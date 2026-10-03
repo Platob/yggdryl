@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "norelatedpartydetailaltsubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpartydetailaltsubids",
-          "FIX:tag": "1572"
-        }
-      },
-      {
         "name": "relatedpartydetailaltsubids",
         "dtype": {
           "type": "null"

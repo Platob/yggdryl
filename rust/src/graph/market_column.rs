@@ -13,7 +13,7 @@ use crate::{
     Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeUnit,
     Timezone, Unit,
 };
-use crate::{IdSource, IdType, Identifier, Identifiers};
+use crate::{IdKey, IdType, Identifier, Identifiers};
 
 /// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -39,7 +39,9 @@ pub enum MarketColumn {
     Unit,
     /// The side it takes.
     Side,
-    /// The security identifiers it names, key to code, sorted.
+    /// The security identifiers it names, key to code, sorted: a
+    /// `map<utf8, utf8>` keyed as [`IdKey`] spells a key, the base key of
+    /// each type its type alone.
     SecurityIds,
     /// The ISIN it names: the `ISIN` security identifier, projected.
     IsinCode,
@@ -248,7 +250,7 @@ impl MarketColumn {
             Self::Currency | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
-            Self::SecurityIds => Identifiers::dtype("securityid"),
+            Self::SecurityIds => Identifiers::dtype(),
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
             Self::MicCode => DataType::Mic,
@@ -435,9 +437,11 @@ impl MarketColumn {
                     Scalar::Isin(held) => Some(held.clone()),
                     other => other.as_str().and_then(|text| Isin::new(text).ok()),
                 };
+                // A projection of `securityids`: it fills an absent ISIN,
+                // replaces one ranking below it and leaves another real one
+                // standing - what `insert` decides.
                 if let Some(code) = code
-                    && element.get_isincode().is_none()
-                    && let Ok(id) = Identifier::new(IdSource::Base, IdType::Isin, code.as_str())
+                    && let Ok(id) = Identifier::new(IdKey::base(IdType::Isin), code.as_str())
                 {
                     let _ = element.insert_securityid(id);
                 }

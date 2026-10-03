@@ -948,10 +948,11 @@ impl Rowset {
     /// zone.
     ///
     /// XML Schema's `dateTime` is a wall reading or an instant, and the schema
-    /// does not say which; the rows do. A leaf whose first present value
-    /// ends in `Z` or an offset is a UTC instant, and one whose first value
-    /// carries no zone stays naive - the one decision the document leaves to
-    /// its rows, made once per leaf, never per row.
+    /// does not say which; the rows do. A leaf whose first present value the
+    /// crate's timestamp reader reads - one ending in `Z` or an offset, the
+    /// compact `+0200` and `+02` too - is a UTC instant, and one whose first
+    /// value carries no zone stays naive - the one decision the document
+    /// leaves to its rows, made once per leaf, never per row.
     fn zoned_where_the_rows_are(mut self, root: &Element<'_>) -> Result<Self> {
         let mut paths = Vec::new();
         naive_datetime_paths(self.field.fields(), &mut Vec::new(), &mut paths);
@@ -1014,8 +1015,9 @@ fn naive_datetime_paths(fields: &[Field], prefix: &mut Vec<usize>, paths: &mut V
 }
 
 /// Whether the first non-empty text at `path` under `element` - a struct's
-/// child by index, each element of a repeated one - spells a zone; `None`
-/// where the row holds no such text, which decides nothing.
+/// child by index, each element of a repeated one - is an instant, as the
+/// timestamp reader reads one; `None` where the row holds no such text,
+/// which decides nothing.
 fn first_zone(
     element: &Element<'_>,
     field: &Field,
@@ -1027,7 +1029,7 @@ fn first_zone(
             .text()
             .map(str::trim)
             .filter(|text| !text.is_empty())
-            .map(spells_a_zone);
+            .map(|text| crate::temporal::parse_timestamp(text).is_ok());
     };
     let child_field = nested_fields(field).get(*head)?;
     let child_column = column.children.get(*head)?;
@@ -1074,26 +1076,6 @@ fn with_instant(field: &Field, path: &[usize]) -> Result<Field> {
         (other, _) => other.clone(),
     };
     Ok(Field::new(field.name(), dtype, field.is_nullable()))
-}
-
-/// Whether an `xsd:dateTime` text ends in a zone designator: `Z`, or an
-/// offset `+hh:mm` / `-hh:mm` after the time of day, a bracketed zone name
-/// after either (`+01:00[Europe/Paris]`) read past.
-fn spells_a_zone(text: &str) -> bool {
-    let text = text.split('[').next().unwrap_or(text).trim_end();
-    if text.ends_with(['Z', 'z']) {
-        return true;
-    }
-    // `2024-01-01T10:00:00+02:00`: an offset is a sign six characters from the
-    // end, past the `T` that opens the time of day.
-    text.find('T').is_some_and(|clock| {
-        text.len() >= clock + 6
-            && text[clock..]
-                .char_indices()
-                .rev()
-                .nth(5)
-                .is_some_and(|(_, sign)| matches!(sign, '+' | '-'))
-    })
 }
 
 /// Refuse a column a rowset cannot spell.
@@ -1247,13 +1229,8 @@ fn write_cell<W: Write>(
             let Some(bytes) = child.value_bytes(row) else {
                 return Ok(());
             };
-            use base64::Engine as _;
             write!(writer, "<{element}>")?;
-            writer.write_all(
-                base64::engine::general_purpose::STANDARD
-                    .encode(bytes)
-                    .as_bytes(),
-            )?;
+            writer.write_all(crate::bytes::into_base64(bytes).as_bytes())?;
             write!(writer, "</{element}>")?;
             Ok(())
         }

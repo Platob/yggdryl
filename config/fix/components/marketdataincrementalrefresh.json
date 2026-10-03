@@ -112,17 +112,6 @@
         }
       },
       {
-        "name": "nomdentries",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nomdentries",
-          "FIX:tag": "268"
-        }
-      },
-      {
         "name": "mdincgrp",
         "dtype": {
           "type": "null"
@@ -152,17 +141,6 @@
         "metadata": {
           "FIX:field": "applqueueresolution",
           "FIX:tag": "814"
-        }
-      },
-      {
-        "name": "noroutingids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noroutingids",
-          "FIX:tag": "215"
         }
       },
       {

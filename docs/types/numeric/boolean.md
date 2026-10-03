@@ -7,10 +7,10 @@ One bit of logic, and the `null` datatype beside it: the two variants that carry
 | Aspect | Rule |
 | --- | --- |
 | Owns | `boolean` and `null`, the `Boolean` value and the one `Null` value |
-| Validates | At the value door: a boolean is `true` or `false`, or the text that spells one of them |
+| Validates | At the value door: a boolean, or text the one boolean table reads - `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off`, `1`/`0` and their prefixes ([The one text reader](#the-one-text-reader)) |
 | Lazy | Nothing - neither variant has a parameter, a child or a payload |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
-| Refuses | Any text that is not `true` or `false` at the value door; a number, which is a coercion rather than a value |
+| Refuses | Text outside the table at the value door, `expected boolean`; a number, which is a coercion rather than a value; a registered code or an enum member, an identity rather than a spelling - `Country("NO")` is Norway |
 | Kinds | `DataTypeKind::Boolean` and `DataTypeKind::Null`, and neither is numeric: logic and absence are not arithmetic |
 
 ## DataType
@@ -212,9 +212,20 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
     assert.equal(DataType.from('null').fixedByteWidth, null)
     ```
 
-## The value door reads one spelling
+<a id="the-value-door-reads-what-a-column-cast-reads"></a>
 
-`true` and `false` are what a boolean prints, so they are what it reads; the case is not part of the spelling and surrounding space is not part of the value. Anything else is refused, because this door is the String-to-Boolean *cast* rather than the wider [truthiness](../scalar.md#truthiness-and-length) coercion.
+## The one text reader
+
+Every text that becomes a boolean anywhere in the crate is read by one table - Arrow's String-to-Boolean vocabulary, ASCII case-insensitive, the surrounding blanks not part of the value - and allocates nothing:
+
+| Reads as | Spellings |
+| --- | --- |
+| `true` | `true`, `t`, `tr`, `tru`, `yes`, `y`, `ye`, `on`, `1` |
+| `false` | `false`, `f`, `fa`, `fal`, `fals`, `no`, `n`, `off`, `of`, `0` |
+
+The value door, a [String-to-Boolean column cast](#casts) at either tier, a typed literal, a reserved metadata flag (`FIELD:init`, `FIELD:partition` - [Protocol](../protocol.md)), a target's `safe` property ([Plans](../../expression/plans.md)), every flag of an [HTTP session](../../holder/index.md#configuration_1) or an [object store](../../holder/index.md#configuration), a YAML `!!bool` and an Excel boolean cell all read it, so FIX's `Y` and `N`, a bridge's `no`, an environment's `on` and a property's `0` are readings wherever text enters a boolean. Text outside the table is refused: the value door says `expected boolean`, and a column cast and every setting name the table - `expected true/false, yes/no, y/n, on/off or 1/0`. Only a string is a spelling: a registered code or an enum member is an identity, so `Country("NO")` is never false. The table is also the false set [truthiness](#truthiness-is-the-other-question) reads text by, where text outside it is a value rather than a refusal.
+
+Inference is narrower: a [CSV](../../media/csv.md) column and a text capture's [`autotype`](../text/string.md#regex-captures) prove a boolean only from `true` and `false` in any case, because `1` already is an integer and a column of them is not a column of flags.
 
 === "Rust"
 
@@ -223,7 +234,9 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert_eq!(DataType::Boolean.scalar("TRUE")?, Scalar::from(true));
     assert_eq!(DataType::Boolean.scalar(" false ")?, Scalar::from(false));
-    assert!(DataType::Boolean.scalar("off").is_err());
+    assert_eq!(DataType::Boolean.scalar("off")?, Scalar::from(false));
+    assert_eq!(DataType::Boolean.scalar("Y")?, Scalar::from(true));
+    assert!(DataType::Boolean.scalar("maybe").is_err());
     ```
 
 === "Python"
@@ -235,9 +248,11 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert DataType("boolean").scalar("TRUE").as_bool() is True
     assert DataType("boolean").scalar(" false ").as_bool() is False
+    assert DataType("boolean").scalar("off").as_bool() is False
+    assert DataType("boolean").scalar("Y").as_bool() is True
 
     with pytest.raises(ValueError, match="expected boolean"):
-        DataType("boolean").scalar("off")
+        DataType("boolean").scalar("maybe")
     ```
 
 === "JavaScript"
@@ -248,22 +263,27 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     assert.equal(DataType.from('boolean').scalar('TRUE').asJs(), true)
     assert.equal(DataType.from('boolean').scalar(' false ').asJs(), false)
-    assert.throws(() => DataType.from('boolean').scalar('off'), /expected boolean/)
+    assert.equal(DataType.from('boolean').scalar('off').asJs(), false)
+    assert.equal(DataType.from('boolean').scalar('Y').asJs(), true)
+    assert.throws(() => DataType.from('boolean').scalar('maybe'), /expected boolean/)
     ```
 
 ## Truthiness is the other question
 
-`is_truthy` is a coercion and answers for every value; `as_bool` is a reading and answers only for a boolean. Nothing falls back between them, and the whole rule is on [Scalar](../scalar.md#truthiness-and-length).
+`is_truthy` is a coercion and answers for every value; `as_bool` is a reading and answers only for a boolean. Nothing falls back between them. Text is false exactly where [the table](#the-one-text-reader) reads it false or nothing but blanks is there, so text the value door refuses - `n/a` - is true here; a code or an enum member is true unless its text is empty. The whole rule is on [Scalar](../scalar.md#truthiness-and-length).
 
 === "Rust"
 
     ```rust
-    use yggdryl::Scalar;
+    use yggdryl::{DataType, Scalar};
 
     assert!(Scalar::from(true).is_truthy());
     assert!(!Scalar::from(0).is_truthy());
     assert!(!Scalar::from("OFF").is_truthy());
     assert_eq!(Scalar::from("OFF").as_bool(), None);
+    // Text the table does not read is present; a code is an identity.
+    assert!(Scalar::from("n/a").is_truthy());
+    assert!(DataType::country().scalar("NO")?.is_truthy());
     ```
 
 === "Python"
@@ -275,6 +295,8 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
     assert not bool(Scalar.from_(0))
     assert not bool(Scalar.from_("off"))
     assert Scalar.from_("off").as_bool() is None
+    # Text the table does not read is present.
+    assert bool(Scalar.from_("n/a"))
     ```
 
 === "JavaScript"
@@ -286,11 +308,13 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
     assert.equal(Scalar.from(true).isTruthy(), true)
     assert.equal(Scalar.from(0).isTruthy(), false)
     assert.equal(Scalar.from('off').isTruthy(), false)
+    // Text the table does not read is present.
+    assert.equal(Scalar.from('n/a').isTruthy(), true)
     ```
 
 ## Casts
 
-A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, `1` and `0` convert in a String-to-Boolean column cast, and text that names nothing becomes null under the default `safe`. A number column converts by whether the value is zero.
+A String-to-Boolean column cast reads [the table](#the-one-text-reader) the value door reads - `yes`, `no`, `1` and `0` among them - under every text layout, a dictionary or run-end pair over text decoded once first: each exposed cell is one lookup and two bits, so the column costs its two bitmaps and nothing per row, and a row an ancestor null hides is never read. Text that names nothing becomes null under the default `safe`; strict, or in a required column, it is refused naming the field and the row - `field "flag" row 1: "n/a" does not read as boolean: expected true/false, yes/no, y/n, on/off or 1/0`. An empty cell is absence before any reading ([Empty text](../cast.md#empty-text)). A number column converts by whether the value is zero.
 
 === "Rust"
 
@@ -309,6 +333,12 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
     assert_eq!(flags.value(1), Some(false));
     // Text that names nothing becomes null under the default `safe`.
     assert_eq!(flags.value(2), None);
+
+    // Strict, it is refused naming the field, the row and the table.
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["yes", "n/a"]));
+    let strict = ArrowCastOptions::new().with_safe(false);
+    let refused = Serie::from_arrow_array(Some(&ok), text, strict).unwrap_err().to_string();
+    assert!(refused.contains("expected true/false, yes/no, y/n, on/off or 1/0"), "{refused}");
     ```
 
 === "Python"

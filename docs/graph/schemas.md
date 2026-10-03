@@ -16,10 +16,10 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 | Order | Element, event, market, operation - the order of the traits that answer them (`Element`, `Event`, `Market`, `Operation`) - then the row's own columns |
 | Names | Every fact has one name and one datatype in every row. Every generated column carries a display name in its `display` metadata |
 | Text line | The 15 element and event columns, then `body`, then one column per row-header capture |
-| FIX row | The 54 prefix columns, then the message's own bands and `fixentries`: 152 columns and 149 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
-| `marketdata` row | The 54 prefix columns, `bookscope`, then the book's nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 60 columns |
-| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, struct<src, type, value>>` from the identifier's key `src:type` to its row, in every row that carries them, the FIX row's included ([Identifier](identifier.md#arrow)) |
-| Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row (`10:1:O-1001`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
+| FIX row | The 54 prefix columns, then the message's own bands and `fixentries`: 150 columns and 149 tags under the committed dictionary. A fact FIX states in a field of its own is that field, typed as the dictionary types it (`price` is `Price(44)`, `timeinforce` the `TimeInForce(59)` wire text the message's [`TimeInForce`](../types/enum/timeinforce.md) member is read from) |
+| `marketdata` row | The 54 prefix columns, the three book controls `bookscope`, `bookaction` and `bookposition`, then the nested `alive`, `deltas`, `executions`, `bidlimits` and `asklimits`: 62 columns |
+| Identifiers | `securityids`, `identifiers` and `partyids` are each a sorted `map<utf8, utf8>` from the key's text - `src:type`, the type alone for the base source - to its value, in every row that carries them, the FIX row's included, closed on read so every type held has its base key ([Identifier](identifier.md#arrow)) |
+| Cross code | `crosscode` is the code as an element stores it - `{kind}:{side}:{base}` on a `marketdata` row and on a FIX row, the side stated by an order or an execution alone (`10:1:O-1001`, `14:0:Q-1`, `3:0:AAPL`) - and as given on a text line, which is no market element ([Market](market.md#sides-and-cross-codes)) |
 | Persisted | Every [market fill](market.md#setting-fill-or-overwrite) a leaf answered is stored as a column value. A row read back through `MarketData::from_arrow_reader` or `FixMsg::from_row` answers the same facts without running the fills again |
 
 === "Rust"
@@ -40,9 +40,9 @@ A fact has one name and one datatype in every row, so a reader who knows one row
 
     let row = MarketData::field()?;
     let names: Vec<&str> = row.fields().iter().map(|field| field.name()).collect();
-    assert_eq!(names.len(), 60);
+    assert_eq!(names.len(), 62);
     assert_eq!(&names[..54], prefix.as_slice());
-    assert_eq!(names[54], "bookscope");
+    assert_eq!(&names[54..57], ["bookscope", "bookaction", "bookposition"]);
     ```
 
 === "Python"
@@ -55,8 +55,8 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     assert prefix[15:17] == ["marketdatakind", "marketdatatype"]
 
     names = graph.MarketData.field().into_arrow_schema().names
-    assert len(names) == 60
-    assert names[:54] == prefix and names[54] == "bookscope"
+    assert len(names) == 62
+    assert names[:54] == prefix and names[54:57] == ["bookscope", "bookaction", "bookposition"]
     ```
 
 === "JavaScript"
@@ -70,8 +70,8 @@ A fact has one name and one datatype in every row, so a reader who knows one row
     assert.deepEqual(prefix.slice(15, 17), ['marketdatakind', 'marketdatatype'])
 
     const row = graph.MarketData.field()
-    assert.equal(row.fieldLen, 60)
-    assert.equal(row.getFieldAt(54).name, 'bookscope')
+    assert.equal(row.fieldLen, 62)
+    assert.deepEqual([54, 55, 56].map((at) => row.getFieldAt(at).name), ['bookscope', 'bookaction', 'bookposition'])
     ```
 
 ## The text line
@@ -245,39 +245,38 @@ Some wire values also keep a column of their own:
 | 125 | `ordrejreason` | `int32` |  | OrdRejReason | 103 |
 | 126 | `cxlrejreason` | `int32` |  | CxlRejReason | 102 |
 | 127 | `text` | `utf8` |  | Text | 58 |
-| 128 | `notrdregtimestamps` | `int32` |  | NoTrdRegTimestamps | 768 |
-| 129 | `trdregtimestamps` | `serie(...)` |  | TrdRegTimestamps | 763375 |
-| 130 | `noregulatorytradeids` | `int32` |  | NoRegulatoryTradeIDs | 1907 |
-| 131 | `regulatorytradeids` | `serie(...)` |  | RegulatoryTradeIDs | 497401 |
-| 132 | `bodylength` | `int32` |  | BodyLength | 9 |
-| 133 | `onbehalfofcompid` | `utf8` |  | OnBehalfOfCompID | 115 |
-| 134 | `delivertocompid` | `utf8` |  | DeliverToCompID | 128 |
-| 135 | `securedatalen` | `int32` |  | SecureDataLen | 90 |
-| 136 | `securedata` | `binary` |  | SecureData | 91 |
-| 137 | `sendersubid` | `utf8` |  | SenderSubID | 50 |
-| 138 | `senderlocationid` | `utf8` |  | SenderLocationID | 142 |
-| 139 | `targetsubid` | `utf8` |  | TargetSubID | 57 |
-| 140 | `targetlocationid` | `utf8` |  | TargetLocationID | 143 |
-| 141 | `onbehalfofsubid` | `utf8` |  | OnBehalfOfSubID | 116 |
-| 142 | `onbehalfoflocationid` | `utf8` |  | OnBehalfOfLocationID | 144 |
-| 143 | `delivertosubid` | `utf8` |  | DeliverToSubID | 129 |
-| 144 | `delivertolocationid` | `utf8` |  | DeliverToLocationID | 145 |
-| 145 | `possresend` | `boolean` |  | PossResend | 97 |
-| 146 | `xmldatalen` | `int32` |  | XmlDataLen | 212 |
-| 147 | `xmldata` | `binary` |  | XmlData | 213 |
-| 148 | `signaturelength` | `int32` |  | SignatureLength | 93 |
-| 149 | `signature` | `binary` |  | Signature | 89 |
-| 150 | `checksum` | `utf8` |  | CheckSum | 10 |
-| 151 | `fixentries` | `map(...)` |  | FixEntries |  |
+| 128 | `trdregtimestamps` | `serie(...)` |  | TrdRegTimestamps | 763375 |
+| 129 | `regulatorytradeids` | `serie(...)` |  | RegulatoryTradeIDs | 497401 |
+| 130 | `bodylength` | `int32` |  | BodyLength | 9 |
+| 131 | `onbehalfofcompid` | `utf8` |  | OnBehalfOfCompID | 115 |
+| 132 | `delivertocompid` | `utf8` |  | DeliverToCompID | 128 |
+| 133 | `securedatalen` | `int32` |  | SecureDataLen | 90 |
+| 134 | `securedata` | `binary` |  | SecureData | 91 |
+| 135 | `sendersubid` | `utf8` |  | SenderSubID | 50 |
+| 136 | `senderlocationid` | `utf8` |  | SenderLocationID | 142 |
+| 137 | `targetsubid` | `utf8` |  | TargetSubID | 57 |
+| 138 | `targetlocationid` | `utf8` |  | TargetLocationID | 143 |
+| 139 | `onbehalfofsubid` | `utf8` |  | OnBehalfOfSubID | 116 |
+| 140 | `onbehalfoflocationid` | `utf8` |  | OnBehalfOfLocationID | 144 |
+| 141 | `delivertosubid` | `utf8` |  | DeliverToSubID | 129 |
+| 142 | `delivertolocationid` | `utf8` |  | DeliverToLocationID | 145 |
+| 143 | `possresend` | `boolean` |  | PossResend | 97 |
+| 144 | `xmldatalen` | `int32` |  | XmlDataLen | 212 |
+| 145 | `xmldata` | `binary` |  | XmlData | 213 |
+| 146 | `signaturelength` | `int32` |  | SignatureLength | 93 |
+| 147 | `signature` | `binary` |  | Signature | 89 |
+| 148 | `checksum` | `utf8` |  | CheckSum | 10 |
+| 149 | `fixentries` | `map(...)` |  | FixEntries |  |
 
-A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the group's struct, placed beside its `No*` counter. `SecurityID(48)`, `SecurityIDSource(22)` and the groups `Parties(453)` and `SecAltIDGrp(454)` are no columns: the prefix's [`securityids` and `partyids`](identifier.md) state the identifiers they name, as does an unmapped entry whose key names one (`OMS_InstrumentID`, `OMS_UserID`), read into the map its type belongs to; a message stating them keeps them in `fixentries` or its metadata as sent - `453:parties` holding the group as JSON. `fixentries` is the sorted residual `map<utf8, utf8>`, keyed `tag:name`.
+A group column (`trdregtimestamps`, `regulatorytradeids`) is a `serie` of the group's struct, found by its counter's tag (`NoTrdRegTimestamps(768)`, `NoRegulatoryTradeIDs(1907)`); no counter column stands beside it, the group's length being the count. `SecurityID(48)`, `SecurityIDSource(22)` and the groups `Parties(453)` and `SecAltIDGrp(454)` are no columns: the prefix's [`securityids` and `partyids`](identifier.md) state the identifiers they name, as does an unmapped entry whose key names one - `OMS_InstrumentID`, `OMS_UserID`, a security alias such as `ISINCODE` or `OMS_RICCODE` - read into the map its type belongs to ([Identifier](identifier.md#where-identifiers-come-from)). A message stating them keeps them in `fixentries` as sent - `453:parties` holding the group as JSON - and an unmapped entry an identifier map holds leaves the `metadata` cell and rides `fixentries` under `0:<key>`, the key as it arrived, so `metadata` holds only what nothing resolved. `fixentries` is the sorted residual `map<utf8, utf8>`, keyed `tag:name`.
 
 ## The `marketdata` row
 
 This is `MarketData::field()`: the prefix, then the book.
 
-- `securityids`, `identifiers` and `partyids` are sorted maps keyed `src:type` to the identifier row (`securityid`, `identifier`, `partyid`: `struct<src, type, value>`).
-- `alive`, `deltas` and `executions` are series of the prefix itself (`operationevent`).
+- `securityids`, `identifiers` and `partyids` are sorted `map<utf8, utf8>`s from the key's text - `src:type`, the type alone for the base source - to the value.
+- `bookscope`, `bookaction` and `bookposition` are the [book control](order.md#book-control) a market-data entry states, which a book's deltas replay by.
+- `alive`, `deltas` and `executions` are series of the prefix and the three book controls (`operationevent`); `alive` is a complete book's, `deltas` every book's, `executions` a trade's alone - null on a book row.
 - `bidlimits` and `asklimits` are series of [`Limit`](book.md), best level first.
 
 | # | Column | Datatype | Required | Display | Band |
@@ -307,7 +306,7 @@ This is `MarketData::field()`: the prefix, then the book.
 | 22 | `hiddenqty` | `decimal` |  | Hidden Quantity | market |
 | 23 | `unit` | `unit` | yes | Unit | market |
 | 24 | `side` | `side` | yes | Side | market |
-| 25 | `securityids` | `map<utf8, securityid>` |  | Security IDs | market |
+| 25 | `securityids` | `map<utf8, utf8>` |  | Security IDs | market |
 | 26 | `isincode` | `isin` |  | ISIN Code | market |
 | 27 | `cficode` | `cfi` |  | CFI Code | market |
 | 28 | `miccode` | `mic` |  | MIC Code | market |
@@ -334,14 +333,16 @@ This is `MarketData::field()`: the prefix, then the book.
 | 49 | `ordqty` | `decimal` |  | Order Quantity | operation |
 | 50 | `timeinforce` | `timeinforce` |  | Time In Force | operation |
 | 51 | `tradable` | `boolean` |  | Tradable | operation |
-| 52 | `identifiers` | `map<utf8, identifier>` |  | Identifiers | operation |
-| 53 | `partyids` | `map<utf8, partyid>` |  | Party IDs | operation |
-| 54 | `bookscope` | `utf8` |  | Book Scope | book |
-| 55 | `alive` | `serie<operationevent>` |  |  | book |
-| 56 | `deltas` | `serie<operationevent>` |  |  | book |
-| 57 | `executions` | `serie<operationevent>` |  |  | book |
-| 58 | `bidlimits` | `serie<limit>` |  |  | book |
-| 59 | `asklimits` | `serie<limit>` |  |  | book |
+| 52 | `identifiers` | `map<utf8, utf8>` |  | Identifiers | operation |
+| 53 | `partyids` | `map<utf8, utf8>` |  | Party IDs | operation |
+| 54 | `bookscope` | `utf8` |  | Book Scope | book control |
+| 55 | `bookaction` | `utf8` |  | Book Action | book control |
+| 56 | `bookposition` | `uint32` |  | Book Position | book control |
+| 57 | `alive` | `serie<operationevent>` |  |  | book |
+| 58 | `deltas` | `serie<operationevent>` |  |  | book |
+| 59 | `executions` | `serie<operationevent>` |  |  | trade |
+| 60 | `bidlimits` | `serie<limit>` |  |  | book |
+| 61 | `asklimits` | `serie<limit>` |  |  | book |
 
 ## Edges
 

@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nounderlyingdividendperiodbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingdividendperiodbusinesscenters",
-          "FIX:tag": "42882"
-        }
-      },
-      {
         "name": "underlyingdividendperiodbusinesscenters",
         "dtype": {
           "type": "null"

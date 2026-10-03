@@ -31,8 +31,19 @@ mod categories {
                 Some("BBG000BLNQ16")
             );
         }
-        let malformed = codec
+        // A FIGI whose check digit does not close is a value of rank 0, held
+        // until a closing one replaces it; one of no FIGI shape - no closing
+        // digit at all - stays raw.
+        let unclosed = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=X|22=S|48=BBG000BLNQ17|10=0|")
+            .expect("an unclosed FIGI is a value");
+        assert_eq!(
+            unclosed.get_securityids().get(&IdType::Figi),
+            Some("BBG000BLNQ17")
+        );
+        assert_eq!(IdType::Figi.rank("BBG000BLNQ17"), 0);
+        let malformed = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|11=Y|22=S|48=BBG000BLNQ1X|10=0|")
             .expect("a malformed FIGI stays raw");
         assert!(malformed.get_securityids().get(&IdType::Figi).is_none());
 
@@ -258,7 +269,7 @@ mod inferred {
 
     use std::sync::Arc;
     use yggdryl::graph::{Market, Operation};
-    use yggdryl::{FixMsg, IdSource, IdType};
+    use yggdryl::{FixMsg, IdKey, IdSource, IdType};
 
     fn parsed(line: &[u8]) -> FixMsg {
         super::fixed_codec(super::committed_registry())
@@ -297,11 +308,11 @@ mod inferred {
         // identifier name it ends with.
         let ids = held.get_securityids();
         assert_eq!(
-            ids.get_from(&src("oms"), &IdType::InstrumentId),
+            ids.get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF")
         );
         assert_eq!(
-            ids.get_from(&src("ullink"), &IdType::InstrumentId),
+            ids.get_from(&IdKey::new(src("ullink"), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF")
         );
         assert!(held.get_identifiers().get(&IdType::InstrumentId).is_none());
@@ -340,7 +351,7 @@ mod inferred {
             let held = parsed(line.as_bytes());
             assert_eq!(
                 held.get_securityids()
-                    .get_from(&src("oms"), &IdType::InstrumentId),
+                    .get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
                 Some("dbi;CH0012214059_XSWX_CHF"),
                 "{key}: {}",
                 held.get_securityids()
@@ -366,7 +377,7 @@ mod inferred {
         );
         assert_eq!(
             held.get_securityids()
-                .get_from(&src("ullink"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("ullink"), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF")
         );
         assert_eq!(
@@ -402,20 +413,20 @@ mod inferred {
         assert_eq!(
             order
                 .get_securityids()
-                .get_from(&src("oms"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF")
         );
         assert_eq!(
             order
                 .get_securityids()
-                .get_from(&src("ullink"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("ullink"), IdType::InstrumentId)),
             Some("dbi;CH0012214059_XSWX_CHF"),
             "the namespaced key was read first and stands"
         );
         assert_eq!(
             order
                 .get_partyids()
-                .get_from(&src("venue"), &IdType::UserId),
+                .get_from(&IdKey::new(src("venue"), IdType::UserId)),
             Some("trader1")
         );
         // What was lifted left the metadata; the one disagreeing key stays.
@@ -444,7 +455,7 @@ mod inferred {
         );
         assert_eq!(
             held.get_securityids()
-                .get_from(&src("oms"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
             Some("OTHER"),
             "the wire's own statement ranks first"
         );
@@ -504,7 +515,7 @@ mod inferred {
         let held = parsed(line.as_bytes());
         assert_eq!(
             held.get_securityids()
-                .get_from(&src("oms"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
             Some(long)
         );
         assert!(held.anomalies().is_empty(), "{:?}", held.anomalies());
@@ -529,12 +540,14 @@ mod inferred {
             ("omsdealer", "parentorderid", "OP1"),
             ("exchange", "orderid", "X1"),
             ("trader", "clordid", "U1"),
-            // A parent states what it is a parent of, under its own source.
-            ("base", "orderid", "P1"),
+            // A parent states what it is a parent of, under its own source,
+            // where nothing answers it: the exchange's order identifier
+            // filled the base key first, so the base parent fills nothing.
+            ("base", "orderid", "X1"),
             ("omsdealer", "orderid", "OP1"),
         ] {
             assert_eq!(
-                ids.get_from(&src(source), &kind(type_)),
+                ids.get_from(&IdKey::new(src(source), kind(type_))),
                 Some(value),
                 "{source}:{type_} in {ids}"
             );
@@ -573,18 +586,18 @@ mod inferred {
         );
         let parties = held.get_partyids();
         assert_eq!(
-            parties.get_from(&src("dealer"), &IdType::UserId),
+            parties.get_from(&IdKey::new(src("dealer"), IdType::UserId)),
             Some("trader1"),
             "{parties}"
         );
         assert_eq!(
-            parties.get_from(&src("dealer"), &IdType::Account),
+            parties.get_from(&IdKey::new(src("dealer"), IdType::Account)),
             Some("YNHD5"),
             "{parties}"
         );
         assert!(
             held.get_identifiers()
-                .get_from(&src("dealer"), &IdType::UserId)
+                .get_from(&IdKey::new(src("dealer"), IdType::UserId))
                 .is_none()
         );
         assert_eq!(kept(&held, "dealeruserid").as_deref(), Some("trader1"));
@@ -611,17 +624,18 @@ mod inferred {
         assert_eq!(text(526).as_deref(), Some("X1"));
         assert_eq!(text(553).as_deref(), Some("trader1"));
         assert_eq!(
-            held.get_partyids().get_from(&src("base"), &IdType::Account),
+            held.get_partyids()
+                .get_from(&IdKey::new(src("base"), IdType::Account)),
             Some("YNHD5")
         );
         assert_eq!(
             held.get_identifiers()
-                .get_from(&src("fix"), &IdType::ClOrdId),
+                .get_from(&IdKey::new(src("fix"), IdType::ClOrdId)),
             Some("U1")
         );
         assert_eq!(
             held.get_identifiers()
-                .get_from(&src("fix"), &kind("secondaryclordid")),
+                .get_from(&IdKey::new(src("fix"), kind("secondaryclordid"))),
             Some("X1")
         );
         let wire = wire(&held);
@@ -660,19 +674,19 @@ mod inferred {
         assert_eq!(
             again
                 .get_securityids()
-                .get_from(&src("oms"), &IdType::InstrumentId),
+                .get_from(&IdKey::new(src("oms"), IdType::InstrumentId)),
             Some("dbi;X_Y_Z")
         );
         assert_eq!(
             again
                 .get_identifiers()
-                .get_from(&src("base"), &kind("parentorderid")),
+                .get_from(&IdKey::new(src("base"), kind("parentorderid"))),
             Some("P1")
         );
         assert_eq!(
             again
                 .get_partyids()
-                .get_from(&src("venue"), &IdType::UserId),
+                .get_from(&IdKey::new(src("venue"), IdType::UserId)),
             Some("trader1")
         );
         assert_eq!(again.into_row(&schema).unwrap(), row);

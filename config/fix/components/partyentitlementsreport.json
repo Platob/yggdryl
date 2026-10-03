@@ -79,17 +79,6 @@
         }
       },
       {
-        "name": "nopartyentitlements",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyentitlements",
-          "FIX:tag": "1772"
-        }
-      },
-      {
         "name": "partyentitlementgrp",
         "dtype": {
           "type": "null"

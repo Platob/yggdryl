@@ -451,6 +451,37 @@ nothing =
         );
         assert_eq!(desk.flag("missing"), None, "an absent flag is no answer");
     }
+
+    #[test]
+    fn a_profile_flag_reads_the_one_boolean_table_every_flag_in_the_crate_reads() {
+        for (spelling, expected) in [
+            ("true", true),
+            ("T", true),
+            ("tru", true),
+            ("yes", true),
+            ("Y", true),
+            ("ye", true),
+            ("on", true),
+            ("1", true),
+            ("false", false),
+            ("f", false),
+            ("fals", false),
+            ("no", false),
+            ("N", false),
+            ("off", false),
+            ("of", false),
+            ("0", false),
+            ("maybe", false),
+            ("2", false),
+        ] {
+            let config = format!("[profile desk]\nuse_fips_endpoint = {spelling}\n");
+            assert_eq!(
+                configured(&config, "desk").flag("use_fips_endpoint"),
+                Some(expected),
+                "{spelling:?}"
+            );
+        }
+    }
 }
 
 mod services {
@@ -880,6 +911,47 @@ region = eu-west-3
                 .is_none(),
             "a profile without role_arn assumes nothing"
         );
+    }
+
+    #[test]
+    fn duration_seconds_reads_every_spelling_a_setting_spells_a_length_with() {
+        for (spelling, seconds) in [
+            ("7200", 7200),
+            ("+7200", 7200),
+            ("7200s", 7200),
+            ("7200 seconds", 7200),
+            ("1e4", 10_000),
+            ("3600000ms", 3600),
+            ("7200.9", 7200),
+            // STS's own bounds still clamp what is asked.
+            ("60", 900),
+            ("1d", 43_200),
+        ] {
+            let config = format!(
+                "[profile hourly]\nrole_arn = {ARN}\nsource_profile = base\nduration_seconds = {spelling}\n"
+            );
+            let role = configured(&config, "hourly")
+                .assumed_role()
+                .unwrap_or_else(|error| panic!("{spelling:?}: {error}"))
+                .expect("a role");
+            assert_eq!(role.duration().as_secs(), seconds, "{spelling:?}");
+        }
+    }
+
+    #[test]
+    fn duration_seconds_that_no_length_spells_is_refused_naming_the_key_and_the_value() {
+        for spelling in ["an hour", "-1", "1e30", "1m", "nan", "1h"] {
+            let config = format!(
+                "[profile hourly]\nrole_arn = {ARN}\nsource_profile = base\nduration_seconds = {spelling}\n"
+            );
+            let refused = refusal(configured(&config, "hourly").assumed_role());
+            assert!(refused.contains("duration_seconds"), "{refused}");
+            assert!(refused.contains(&format!("{spelling:?}")), "{refused}");
+            assert!(
+                refused.contains("seconds, with an optional fraction"),
+                "{refused}"
+            );
+        }
     }
 
     #[test]

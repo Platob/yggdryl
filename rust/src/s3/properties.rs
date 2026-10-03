@@ -24,6 +24,11 @@ use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
 use super::options::S3Options;
 use crate::aws::{AssumedRole, CredentialSource, Credentials, Sso};
+use crate::boolean::{BOOLEAN_SPELLINGS, bool_from_text};
+use crate::duration::{DURATION_SPELLINGS, duration_from_text};
+use crate::integer::{
+    BYTE_COUNT_SPELLINGS, INTEGER_SPELLINGS, byte_count_from_text, integer_from_text_as,
+};
 use crate::{Error, Result};
 
 impl S3Options {
@@ -857,15 +862,13 @@ fn canonical(name: &str) -> String {
     }
 }
 
-/// A boolean, in any of the spellings a configuration file uses.
+/// A boolean, read through the one table every flag in the crate reads.
 fn flag(name: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "t" | "yes" | "y" | "on" | "1" => Ok(true),
-        "false" | "f" | "no" | "n" | "off" | "0" => Ok(false),
-        _ => Err(refusal(&format!(
-            "expected a boolean for {name}, got {value}"
-        ))),
-    }
+    bool_from_text(value).ok_or_else(|| {
+        refusal(&format!(
+            "expected {BOOLEAN_SPELLINGS} for {name}, got {value}"
+        ))
+    })
 }
 
 /// Whether STS is reached in the region: `regional`, `legacy`, or a boolean.
@@ -887,52 +890,31 @@ fn requester(name: &str, value: &str) -> Result<bool> {
     flag(name, value)
 }
 
-/// A duration in seconds, which is how every vocabulary spells one.
+/// A duration, which is how every vocabulary spells seconds.
 fn seconds(name: &str, value: &str) -> Result<Duration> {
-    let seconds: f64 = value
-        .parse()
-        .map_err(|_| refusal(&format!("expected seconds for {name}, got {value}")))?;
-    if !seconds.is_finite() || seconds < 0.0 {
-        return Err(refusal(&format!(
-            "expected a duration of at least zero seconds for {name}, got {value}"
-        )));
-    }
-    Ok(Duration::from_secs_f64(seconds))
+    duration_from_text(value).ok_or_else(|| {
+        refusal(&format!(
+            "expected {DURATION_SPELLINGS} for {name}, got {value}"
+        ))
+    })
 }
 
 /// A count.
 fn count(name: &str, value: &str) -> Result<u32> {
-    value
-        .parse()
-        .map_err(|_| refusal(&format!("expected a whole number for {name}, got {value}")))
+    integer_from_text_as(value).ok_or_else(|| {
+        refusal(&format!(
+            "expected {INTEGER_SPELLINGS} for {name}, got {value}"
+        ))
+    })
 }
 
 /// A byte count, which may carry a `KiB`, `MiB`, or `GiB` suffix.
 fn size(name: &str, value: &str) -> Result<u64> {
-    let lowered = value.to_ascii_lowercase();
-    let (digits, scale) = ["gib", "mib", "kib", "gb", "mb", "kb", "g", "m", "k", "b"]
-        .iter()
-        .find_map(|suffix| {
-            lowered
-                .strip_suffix(suffix)
-                .map(|digits| (digits, unit(suffix)))
-        })
-        .unwrap_or((lowered.as_str(), 1));
-    let count: u64 = digits
-        .trim()
-        .parse()
-        .map_err(|_| refusal(&format!("expected a byte count for {name}, got {value}")))?;
-    Ok(count.saturating_mul(scale))
-}
-
-/// The multiplier a size suffix names.
-const fn unit(suffix: &str) -> u64 {
-    match suffix.as_bytes() {
-        [b'g', ..] => 1024 * 1024 * 1024,
-        [b'm', ..] => 1024 * 1024,
-        [b'k', ..] => 1024,
-        _ => 1,
-    }
+    byte_count_from_text(value).ok_or_else(|| {
+        refusal(&format!(
+            "expected {BYTE_COUNT_SPELLINGS} for {name}, got {value}"
+        ))
+    })
 }
 
 /// Refuse a property this client understands and cannot honor.

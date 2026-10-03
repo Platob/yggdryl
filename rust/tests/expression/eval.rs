@@ -65,6 +65,86 @@ mod internal {
     }
 
     #[test]
+    fn text_enters_a_flag_a_number_or_a_decimal_as_a_column_of_text_does() {
+        let strict =
+            |target: &DataType, text: &str| convert(target, &Scalar::from(text), Safety::Strict);
+        let safe =
+            |target: &DataType, text: &str| convert(target, &Scalar::from(text), Safety::Safe);
+
+        // A flag reads the one table the value door and a column cast read.
+        for (text, expected) in [
+            ("yes", true),
+            (" TRUE ", true),
+            ("Y", true),
+            ("1", true),
+            ("no", false),
+            ("n", false),
+            ("Off", false),
+            ("0", false),
+        ] {
+            assert_eq!(
+                strict(&DataType::Boolean, text).unwrap(),
+                Scalar::from(expected),
+                "{text}"
+            );
+        }
+        assert!(strict(&DataType::Boolean, "maybe").is_err());
+        assert_eq!(safe(&DataType::Boolean, "maybe").unwrap(), Scalar::Null);
+        // A code is its registry, never a flag: `NO` is Norway.
+        let norway = Scalar::from(yggdryl::Country::new("NO").unwrap());
+        assert!(convert(&DataType::Boolean, &norway, Safety::Strict).is_err());
+
+        // An integer reads its signed, trimmed spelling at the declared width.
+        assert_eq!(
+            strict(&DataType::Int32, " 5 ").unwrap(),
+            Scalar::from(5_i32)
+        );
+        assert_eq!(strict(&DataType::Int64, "+7").unwrap(), Scalar::from(7_i64));
+        for text in ["1.0", "x", "99999999999"] {
+            assert!(strict(&DataType::Int32, text).is_err(), "{text}");
+            assert_eq!(
+                safe(&DataType::Int32, text).unwrap(),
+                Scalar::Null,
+                "{text}"
+            );
+        }
+        // A code is its registry, never a number: the digits of a CUSIP are
+        // not the integer they spell.
+        let apple = Scalar::from(yggdryl::Cusip::new("037833100").unwrap());
+        assert!(convert(&DataType::Int64, &apple, Safety::Strict).is_err());
+
+        // A float reads what a column of text is cast through, the
+        // infinities included.
+        assert_eq!(
+            strict(&DataType::Float64, " 1.5 ").unwrap(),
+            Scalar::from(1.5_f64)
+        );
+        assert_eq!(
+            strict(&DataType::Float32, "1e3").unwrap(),
+            Scalar::from(1000.0_f32)
+        );
+        assert_eq!(
+            strict(&DataType::Float64, "inf").unwrap(),
+            Scalar::from(f64::INFINITY)
+        );
+        assert!(strict(&DataType::Float64, "x").is_err());
+        assert_eq!(safe(&DataType::Float64, "x").unwrap(), Scalar::Null);
+
+        // A decimal reads its exponent form at the declared scale, and a digit
+        // past the scale or the precision is refused, never rounded.
+        let price = DataType::decimal128(10, 2).unwrap();
+        assert_eq!(strict(&price, "1.50").unwrap(), Scalar::decimal128(150, 2));
+        assert_eq!(
+            strict(&price, "1e2").unwrap(),
+            Scalar::decimal128(10_000, 2)
+        );
+        assert_eq!(strict(&price, " 1.5 ").unwrap(), Scalar::decimal128(150, 2));
+        assert!(strict(&price, "1.555").is_err());
+        assert_eq!(safe(&price, "1.555").unwrap(), Scalar::Null);
+        assert!(strict(&DataType::decimal128(5, 2).unwrap(), "1234.56").is_err());
+    }
+
+    #[test]
     fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
         let patch2 = Scalar::from("5.0.2".parse::<Version>().unwrap());
         let patch10 = Scalar::from("5.0.10".parse::<Version>().unwrap());
@@ -647,6 +727,50 @@ mod fixed_leaves {
             both_tiers("n * n as v", &schema, &row).0,
             Scalar::from_sequence([big("100000000000000000000000000000000000000")])
         );
+    }
+
+    #[test]
+    fn text_cast_into_a_flag_a_number_or_a_decimal_reads_in_a_row_as_in_a_batch() {
+        let schema = root([Field::new("s", DataType::utf8(), true)]);
+        let one = |value: Scalar| Scalar::from_sequence([value]);
+        for (text, cell, expected) in [
+            ("cast(s as boolean) as v", "yes", Scalar::from(true)),
+            ("cast(s as boolean) as v", " N ", Scalar::from(false)),
+            ("cast(s as int64) as v", " 7 ", Scalar::from(7_i64)),
+            ("cast(s as float64) as v", " 1.5 ", Scalar::from(1.5_f64)),
+            (
+                "cast(s as decimal(10, 2)) as v",
+                "1.50",
+                Scalar::decimal128(150, 2),
+            ),
+            (
+                "cast(s as decimal(10, 2)) as v",
+                "1e2",
+                Scalar::decimal128(10_000, 2),
+            ),
+            ("try_cast(s as boolean) as v", "maybe", Scalar::Null),
+            ("try_cast(s as float64) as v", "x", Scalar::Null),
+            ("try_cast(s as decimal(10, 2)) as v", "1.555", Scalar::Null),
+        ] {
+            let row = one(Scalar::from(cell));
+            let (by_row, by_batch) = both_tiers(text, &schema, &row);
+            assert_eq!(by_row, one(expected), "{text} {cell:?}");
+            assert_eq!(by_batch, by_row, "{text} {cell:?}");
+        }
+
+        // A text constant compared with a column is read as the column's own
+        // type when that type reads it, so `flag = 'yes'` is a boolean test
+        // and `f > '10'` a numeric one, never a comparison of their spellings.
+        let flags = root([Field::new("b", DataType::Boolean, true)]);
+        let flag = |held: bool| Scalar::from_sequence([Scalar::from(held)]);
+        let is_yes = "b = 'yes'".parse::<Filter>().unwrap();
+        assert!(is_yes.apply_scalar(&flags, &flag(true)).unwrap());
+        assert!(!is_yes.apply_scalar(&flags, &flag(false)).unwrap());
+        let numbers = root([Field::new("f", DataType::Float64, true)]);
+        let above_ten = "f > '10'".parse::<Filter>().unwrap();
+        let number = |held: f64| Scalar::from_sequence([Scalar::from(held)]);
+        assert!(!above_ten.apply_scalar(&numbers, &number(9.0)).unwrap());
+        assert!(above_ten.apply_scalar(&numbers, &number(11.0)).unwrap());
     }
 
     #[test]

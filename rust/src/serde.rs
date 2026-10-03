@@ -17,7 +17,7 @@ mod field {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::Scalar;
-    use crate::serde::{integer, invalid, key};
+    use crate::serde::{deserialize_flag, flag, integer, invalid, key};
     use crate::{DataType, Error, Field, Metadata, Result};
 
     impl Field {
@@ -122,9 +122,8 @@ mod field {
             where
                 E: DeError,
             {
-                value
-                    .parse()
-                    .map_err(|_| E::custom("invalid signed 64-bit dictionary id"))
+                crate::integer::integer_from_text_as(value)
+                    .ok_or_else(|| E::custom("invalid signed 64-bit dictionary id"))
             }
         }
 
@@ -141,10 +140,11 @@ mod field {
             struct FieldWire {
                 name: SmolStr,
                 dtype: DataType,
+                #[serde(deserialize_with = "deserialize_flag")]
                 nullable: bool,
                 #[serde(default, deserialize_with = "deserialize_dictionary_id")]
                 dictionary_id: i64,
-                #[serde(default)]
+                #[serde(default, deserialize_with = "deserialize_flag")]
                 dictionary_is_ordered: bool,
                 #[serde(default)]
                 metadata: Metadata,
@@ -267,27 +267,24 @@ mod field {
                     .ok_or_else(|| invalid("$.dtype()", "a datatype mapping", "nothing"))?
                     .clone(),
             )?;
-            let nullable = match at("nullable") {
-                Some(held) if held.as_bool().is_some() => held.as_bool().unwrap_or(false),
-                other => {
-                    return Err(invalid(
-                        "$.is_nullable()",
-                        "a boolean",
-                        other.map_or("nothing", Scalar::kind),
-                    ));
-                }
-            };
+            let nullable = flag(at("nullable"), "nullable")?;
 
             let mut field = Self::new(name, dtype, nullable);
             // Only a dictionary carries the pair, and both settle together so a
             // half-declared state can never reach the field.
             let dictionary_id =
                 match at("dictionary_id").filter(|held| !matches!(held, Scalar::Null)) {
-                    Some(held) => i64::from(integer(Some(held), "dictionary_id")?),
+                    Some(held) => {
+                        integer::<i64>(Some(held), "dictionary_id", "a signed 64-bit integer")?
+                    }
                     None => 0,
                 };
+            // Unstated is unordered; a stated flag is read, never dropped.
             let dictionary_is_ordered =
-                at("dictionary_is_ordered").and_then(Scalar::as_bool) == Some(true);
+                match at("dictionary_is_ordered").filter(|held| !matches!(held, Scalar::Null)) {
+                    Some(held) => flag(Some(held), "dictionary_is_ordered")?,
+                    None => false,
+                };
             if dictionary_id != 0 || dictionary_is_ordered {
                 field.set_dictionary_options(dictionary_id, dictionary_is_ordered)?;
             }
@@ -976,6 +973,7 @@ enum DataTypeWire {
     },
     Map {
         entries: Field,
+        #[serde(deserialize_with = "deserialize_flag")]
         keys_sorted: bool,
     },
     RunEndEncoded {
@@ -1414,16 +1412,8 @@ impl DataType {
                 .ok_or_else(|| invalid(&format!("$.{name}"), "a time unit", "nothing"))?;
             text.parse()
         };
-        let width = |name: &str| -> Result<i32> { integer(at(name), name) };
-        let bound = |name: &str| -> Result<u32> {
-            u32::try_from(integer(at(name), name)?).map_err(|_| {
-                invalid(
-                    &format!("$.{name}"),
-                    "a byte bound",
-                    "an out-of-range value",
-                )
-            })
-        };
+        let width = |name: &str| -> Result<i32> { integer(at(name), name, "a 32-bit integer") };
+        let bound = |name: &str| -> Result<u32> { integer(at(name), name, "a byte bound") };
         let child = |name: &str| -> Result<Field> {
             let held = at(name)
                 .ok_or_else(|| invalid(&format!("$.{name}"), "a field mapping", "nothing"))?;
@@ -1435,15 +1425,8 @@ impl DataType {
             Self::from_value(held.clone())
         };
         let precision_scale = || -> Result<(u8, i8)> {
-            let precision = u8::try_from(integer(at("precision"), "precision")?).map_err(|_| {
-                invalid(
-                    "$.precision",
-                    "a decimal precision",
-                    "an out-of-range value",
-                )
-            })?;
-            let scale = i8::try_from(integer(at("scale"), "scale")?)
-                .map_err(|_| invalid("$.scale", "a decimal scale", "an out-of-range value"))?;
+            let precision = integer(at("precision"), "precision", "a decimal precision")?;
+            let scale = integer(at("scale"), "scale", "a decimal scale")?;
             Ok((precision, scale))
         };
 
@@ -1583,14 +1566,11 @@ impl DataType {
                     .ok_or_else(|| invalid("$.fields", "a sequence of union members", "nothing"))?;
                 let mut variants = Vec::with_capacity(members.len());
                 for held in members.iter() {
-                    let type_id = i8::try_from(integer(held.get_key_str("type_id"), "type_id")?)
-                        .map_err(|_| {
-                            invalid(
-                                "$.fields[].type_id",
-                                "an 8-bit type id",
-                                "an out-of-range value",
-                            )
-                        })?;
+                    let type_id = integer::<i8>(
+                        held.get_key_str("type_id"),
+                        "fields[].type_id",
+                        "an 8-bit type id",
+                    )?;
                     let field = held
                         .get_key_str("field")
                         .ok_or_else(|| invalid("$.fields[].field", "a field mapping", "nothing"))?;
@@ -1616,16 +1596,9 @@ impl DataType {
                 Self::decimal256(precision, scale)?
             }
             "map" => {
-                let keys_sorted = match at("keys_sorted") {
-                    Some(held) if held.as_bool().is_some() => held.as_bool().unwrap_or(false),
-                    other => {
-                        return Err(invalid(
-                            "$.keys_sorted",
-                            "a boolean",
-                            other.map_or("nothing", Scalar::kind),
-                        ));
-                    }
-                };
+                // Required, as an ordering claim about the data: absent and
+                // null are refused, never defaulted.
+                let keys_sorted = flag(at("keys_sorted"), "keys_sorted")?;
                 Self::map(child("entries")?, keys_sorted)?
             }
             "run_end_encoded" => Self::run_end_encoded(child("run_ends")?, child("values")?)?,
@@ -1792,38 +1765,99 @@ fn unit_value(unit: TimeUnit) -> Scalar {
     }))
 }
 
-/// Read an integer parameter, accepting every width the model may carry it in.
-pub(crate) fn integer(held: Option<&Scalar>, name: &str) -> Result<i32> {
-    let held = held.ok_or_else(|| invalid(&format!("$.{name}"), "an integer", "nothing"))?;
-    let value = if let Some(value) = held.as_i128() {
-        i64::try_from(value)
-            .map_err(|_| invalid(&format!("$.{name}"), "an integer", "an out-of-range value"))?
-    } else {
-        // A structured-text document may carry a wide integer as text; the
-        // JSON path already accepts the decimal-string spelling for the same
-        // reason, so the two stay interchangeable.
-        let Some(text) = held.as_string() else {
-            return Err(invalid(
-                &format!("$.{name}"),
-                "an integer",
-                format_smolstr!("{}", held.kind()),
-            ));
-        };
-        text.as_str().parse::<i64>().map_err(|_| {
-            invalid(
-                &format!("$.{name}"),
-                "an integer",
-                format_smolstr!("{:?}", text.as_str()),
-            )
-        })?
+/// Read an integer parameter at the native width `T`, accepting every width
+/// the model may carry it in.
+///
+/// A structured-text document may carry a wide integer as text, as the JSON
+/// path already does for a dictionary id, so a string is read by the
+/// integer reader every count in the crate shares. `expected` names what the
+/// parameter is, and a value `T` cannot hold is refused by that name rather
+/// than wrapped.
+pub(crate) fn integer<T: TryFrom<i128>>(
+    held: Option<&Scalar>,
+    name: &str,
+    expected: &str,
+) -> Result<T> {
+    let path = || format!("$.{name}");
+    let held = held.ok_or_else(|| invalid(&path(), expected, "nothing"))?;
+    let value = match held.as_i128() {
+        Some(value) => value,
+        None => {
+            let text = held
+                .as_string()
+                .ok_or_else(|| invalid(&path(), expected, held.kind()))?;
+            crate::integer::integer_from_text_as::<i128>(text.as_str()).ok_or_else(|| {
+                invalid(
+                    &path(),
+                    expected,
+                    format_args!(
+                        "{:?}",
+                        crate::text::elide_to(text.as_str(), crate::text::ERROR_TEXT_LIMIT)
+                    ),
+                )
+            })?
+        }
     };
-    i32::try_from(value).map_err(|_| {
-        invalid(
-            &format!("$.{name}"),
-            "a 32-bit integer",
-            "an out-of-range value",
-        )
+    T::try_from(value).map_err(|_| invalid(&path(), expected, "an out-of-range value"))
+}
+
+/// Read a flag of the structural document: a boolean, or the text the boolean
+/// reader reads, so a document that spells `nullable: "yes"` is read. A number
+/// is no flag, and neither is null: a caller that defaults an unstated flag filters absence and null
+/// itself, and a stated one is read or refused here.
+pub(crate) fn flag(held: Option<&Scalar>, name: &str) -> Result<bool> {
+    let path = || format!("$.{name}");
+    let expected = crate::boolean::BOOLEAN_SPELLINGS;
+    let held = held.ok_or_else(|| invalid(&path(), expected, "nothing"))?;
+    crate::boolean::bool_of(held).ok_or_else(|| {
+        let actual = held.as_string().map_or_else(
+            || SmolStr::new(held.kind()),
+            |text| {
+                format_smolstr!(
+                    "{:?}",
+                    crate::text::elide_to(text.as_str(), crate::text::ERROR_TEXT_LIMIT)
+                )
+            },
+        );
+        invalid(&path(), expected, actual)
     })
+}
+
+/// The serde twin of [`flag`]: a boolean or the text the boolean reader
+/// reads, so the JSON door and the value door accept one set.
+fn deserialize_flag<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{Error as DeError, Unexpected, Visitor};
+
+    struct FlagVisitor;
+
+    impl Visitor<'_> for FlagVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                formatter,
+                "a boolean or its text ({})",
+                crate::boolean::BOOLEAN_SPELLINGS
+            )
+        }
+
+        fn visit_bool<E>(self, value: bool) -> std::result::Result<Self::Value, E> {
+            Ok(value)
+        }
+
+        fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+        where
+            E: DeError,
+        {
+            crate::boolean::bool_from_text(value)
+                .ok_or_else(|| E::invalid_value(Unexpected::Str(value), &self))
+        }
+    }
+
+    deserializer.deserialize_any(FlagVisitor)
 }
 
 /// A typed structural failure naming the path, the expectation, and the actual.

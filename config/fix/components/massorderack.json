@@ -134,17 +134,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -349,17 +338,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "throttleresponse"
-        }
-      },
-      {
-        "name": "noorderentries",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorderentries",
-          "FIX:tag": "2428"
         }
       },
       {

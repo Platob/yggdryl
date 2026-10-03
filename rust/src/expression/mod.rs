@@ -1006,6 +1006,17 @@ impl std::str::FromStr for Expression {
     }
 }
 
+impl std::str::FromStr for Comparison {
+    type Err = Error;
+
+    /// Read a comparison as the grammar spells one: `=`, `<>` or `!=`, `<`,
+    /// `<=`, `>`, `>=`, `is distinct from` or `is not distinct from`, in any
+    /// case, the surrounding blanks not part of it.
+    fn from_str(input: &str) -> Result<Self> {
+        parser::parse_comparison(input)
+    }
+}
+
 impl TryFrom<&str> for Expression {
     type Error = Error;
 

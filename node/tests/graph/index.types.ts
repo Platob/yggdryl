@@ -2,8 +2,10 @@ import {
   BatchReader,
   Field,
   FieldPath,
+  Filter,
   Plan,
   Scalar,
+  Term,
   Timezone,
   enums,
   graph,
@@ -68,9 +70,17 @@ const marketKinds: readonly string[] = enums.marketKinds
 // A book folds any iterable of items, and the two walks pull theirs lazily.
 const book: BookEvent = new graph.BookEvent(1n, 'IBM').withOperations(new Set(items))
 const alive: MarketData[] = book.alive()
+const bids: MarketData[] = book.aliveOn('BUYS')
+const asks: MarketData[] = book.aliveOn(2)
 const deltas: MarketData[] = book.deltas()
-const executions: ExecutionEvent[] = book.executions()
+const complete: boolean = book.isComplete
+const keyed: BookEvent = graph.BookEvent.keyed(1n, 'CH0012214059')
+const rebuilt: BookEvent | null = book.withPrevious(keyed)
 const books: BookEvent[] = [...new graph.BookIterator(items, 0)]
+// A book walk narrows what it folds by a predicate over the `marketdata` row.
+const filtered: BookEvent[] = [...new graph.BookIterator(items, 0, "side = 'BUYS'")]
+const heldFilter: BookEvent[] = [...new graph.BookIterator(items, 0, new Filter("side = 'BUYS'"))]
+const termFilter: BookEvent[] = [...new graph.BookIterator(items, 0, Term.parse("side = 'BUYS'"))]
 const walked: MarketData[] = [...new graph.EventIterator(items, true, 5n)]
 const snapshotNs: bigint | null = new graph.EventIterator([]).snapshotNs
 
@@ -107,8 +117,11 @@ const open: string | undefined = bid?.open
 const start: bigint = candle.start
 const ticker: string | null = candle.ticker
 const bidqty: string | null = candle.bidqty
-const volume: string = candle.volume
 const bookCount: number = candle.books
+// @ts-expect-error a candle counts books; what traded is no book's
+void candle.volume
+// @ts-expect-error a book holds no execution
+void book.executions()
 const candleField: Field = graph.Candle.field()
 const candleScalar: Scalar = candle.intoScalar()
 const restoredCandle: Candle = graph.Candle.fromScalar(candleScalar)
@@ -121,14 +134,14 @@ void new graph.CandleIterator(books)
 void new graph.CandleIterator(items, '1m')
 
 // A named view is one plan, applied to whatever `BatchReader.from` takes.
-const viewPlan: Plan = graph.MarketData.plan('orders', ["identifiers['fix:clordid'].value as clordid", new FieldPath('ticker')])
+const viewPlan: Plan = graph.MarketData.plan('orders', ["identifiers['clordid'] as clordid", new FieldPath('ticker')])
 const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], '10:1:C-1')
 const view: BatchReader = graph.MarketData.applyView('trades', reader)
-const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['base:isin'].value as isin"])
+const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['isin'] as isin"])
 const marketViews: readonly string[] = enums.marketViews
 // @ts-expect-error a lift is a path or its text
 graph.MarketData.plan('orders', [1])
-// @ts-expect-error the book walk takes no third argument
+// @ts-expect-error the book walk's filter is a predicate, never a flag
 void new graph.BookIterator(items, 0, false)
 
 // @ts-expect-error the namespace is frozen
@@ -157,11 +170,11 @@ void kinds
 void field
 void rows
 void marketKinds
-void [alive, deltas, executions]
+void [alive, bids, asks, deltas, complete, keyed, rebuilt, filtered, heldFilter, termFilter]
 void books
 void walked
 void snapshotNs
 void [limitPrice, limitQuantity, limitUuids, limitTradable, depth, bestPrice, bestQuantity, locked, spread, imbalance]
 void [byNanos, byZone, interval, zone, spelling, walkedCandles, walkOptions, heldCandles]
-void [open, start, ticker, bidqty, volume, bookCount, candleField, fromObject, fromJson, sameCandle]
+void [open, start, ticker, bidqty, bookCount, candleField, fromObject, fromJson, sameCandle]
 void [viewPlan, lifecyclePlan, view, liftedView, marketViews]

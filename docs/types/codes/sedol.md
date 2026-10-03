@@ -1,16 +1,16 @@
 # SEDOL
 
-The London Stock Exchange's seven-character securities identifier: six alphanumerics and the weighted check digit that closes them.
+The London Stock Exchange's seven-character securities identifier: six alphanumerics and the weighted check digit that closes them - held by its shape, ranked by whether the digit closes.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `sedol`, `SedolType`/`SedolField`, the `Sedol` value and `Scalar::Sedol` |
-| Validates | Seven ASCII bytes: six alphanumerics weighted `1, 3, 1, 7, 3, 9` and one digit closing the weighted sum to a multiple of ten; lower case folds at the value door |
+| Validates | The shape: seven ASCII bytes, six alphanumerics and one check digit; lower case folds at the value door. Whether the digit closes the six weighted `1, 3, 1, 7, 3, 9` to a multiple of ten is its [rank](index.md#rank), never a gate |
 | Lazy | Nothing - the whole check runs on the stack, over bounded bytes |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
-| Refuses | A spelling of the wrong length or shape, and a check digit that does not close the identifier; the empty text, so there is no default value |
+| Refuses | A spelling of the wrong length or shape; the empty text, so there is no default value |
 
 ## DataType
 
@@ -93,7 +93,7 @@ The London Stock Exchange's seven-character securities identifier: six alphanume
 
 ## Scalar
 
-The value is the canonical spelling: upper case, closed by its check digit.
+The value is the canonical spelling: upper case, of the identifier's shape, its check digit as stated.
 
 === "Rust"
 
@@ -105,8 +105,10 @@ The value is the canonical spelling: upper case, closed by its check digit.
     assert_eq!(shell.as_str(), Some("B0YBKJ7"));
     assert_eq!(shell.kind(), "sedol");
 
-    // One digit off is a typo, not a security.
-    assert!(DataType::sedol().scalar("B0YBKJ8").is_err());
+    // One digit off is a typo: a value of rank zero, never a refusal.
+    assert_eq!(DataType::sedol().scalar("B0YBKJ8")?.as_str(), Some("B0YBKJ8"));
+    // The shape is the refusal.
+    assert!(DataType::sedol().scalar("B0YBKJ").is_err());
     assert_ne!(shell, Scalar::from("B0YBKJ7"));
     ```
 
@@ -121,8 +123,8 @@ The value is the canonical spelling: upper case, closed by its check digit.
     assert sedol.scalar("b0ybkj7").as_py() == "B0YBKJ7"
     assert sedol.scalar("b0ybkj7").kind == "sedol"
 
-    with pytest.raises(ValueError, match="check digit does not close"):
-        sedol.scalar("B0YBKJ8")
+    # One digit off is a typo: a value of rank zero, never a refusal.
+    assert sedol.scalar("B0YBKJ8").as_py() == "B0YBKJ8"
     with pytest.raises(ValueError, match="expected seven characters"):
         sedol.scalar("B0YBKJ")
     ```
@@ -135,7 +137,8 @@ The value is the canonical spelling: upper case, closed by its check digit.
 
     const sedol = new DataType('sedol')
     assert.equal(sedol.scalar('b0ybkj7').asJs(), 'B0YBKJ7')
-    assert.throws(() => sedol.scalar('B0YBKJ8'), /check digit does not close/)
+    // One digit off is a typo: a value of rank zero, never a refusal.
+    assert.equal(sedol.scalar('B0YBKJ8').asJs(), 'B0YBKJ8')
     assert.throws(() => sedol.scalar('B0YBKJ'), /expected seven characters/)
     ```
 
@@ -177,8 +180,8 @@ The value is the canonical spelling: upper case, closed by its check digit.
     const arrow = require('apache-arrow')
     const { Serie, fields } = require('yggdryl')
 
-    // A column holds the canonical spelling, so a cast lets in an identifier
-    // the check digit closes and answers null for a lower-case spelling.
+    // A column holds the canonical spelling, so a cast answers null for a
+    // lower-case spelling.
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
     const stored = Serie.fromArrowArray(utf8(['B0YBKJ7', 'b0ybkj7']), fields.sedol('sid'))
     assert.deepEqual([...stored.intoArrowArray()], ['B0YBKJ7', null])
@@ -186,26 +189,31 @@ The value is the canonical spelling: upper case, closed by its check digit.
 
 ## The check digit
 
-Each of the six leading characters reads as a digit or as ten plus its alphabet position, weighted `1, 3, 1, 7, 3, 9` in turn; the digit is what closes the weighted sum to a multiple of ten. `Sedol::is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
+Each of the six leading characters reads as a digit or as ten plus its alphabet position, weighted `1, 3, 1, 7, 3, 9` in turn; the digit is what closes the weighted sum to a multiple of ten. `closing_digit` computes it, `is_closed` answers whether it closes an upper-case identifier - the [rank](index.md#rank) a value answers, one where it closes, zero where it does not - and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the digit. Rust only.
 
 ```rust
-use yggdryl::Sedol;
+use yggdryl::{CodeValue, Sedol};
 
 let shell = Sedol::new("B0YBKJ7")?;
 assert_eq!(shell.check_digit(), 7);
 assert_eq!(Sedol::closing_digit("B0YBKJ"), Some(7));
 assert_eq!(Sedol::new("0263494")?.check_digit(), 4);
 
-// The rule answers without building a value, in either case.
-assert!(Sedol::is_valid("b0ybkj7"));
-assert!(Sedol::is_canonical("B0YBKJ7"));
+// The readings answer without building a value.
+assert!(Sedol::is_closed("B0YBKJ7"));
+assert!(!Sedol::is_closed("B0YBKJ8"));
+assert!(Sedol::is_canonical("B0YBKJ8"));
 assert!(!Sedol::is_canonical("b0ybkj7"));
-assert!(!Sedol::is_valid("B0YBKJ8"));
+
+// A typo is a value of rank zero, which a closing identifier replaces.
+let typo = Sedol::new("B0YBKJ8")?;
+assert_eq!(typo.rank(), 0);
+assert_eq!(typo.merge_with(&shell), shell);
 ```
 
 ## A column holds the canonical spelling
 
-A scalar read folds the case; a column's bytes are what every reader digests, so an Arrow cast is held to the canonical spelling and answers null under the default `safe` for a typo or a lower-case spelling alike. Strict names the row and the column, and `try_cast(sid as sedol)` in an [expression](../../expression/terms.md) is that safe cast.
+A scalar read folds the case; a column's bytes are what every reader digests, so an Arrow cast is held to the canonical spelling - upper case, the shape - and answers null under the default `safe` for a lower-case spelling, while a typo is a spelling of the shape and lands as the value it is. Strict names the row and the column, and `try_cast(sid as sedol)` in an [expression](../../expression/terms.md) is that safe cast.
 
 === "Rust"
 
@@ -234,7 +242,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 
     sid = Field("sid", "sedol")
     stored = Serie.from_arrow_array(pa.array(["B0YBKJ7", "b0ybkj7", "B0YBKJ8"]), sid)
-    assert stored.as_py() == ["B0YBKJ7", None, None]
+    assert stored.as_py() == ["B0YBKJ7", None, "B0YBKJ8"]
     ```
 
 === "JavaScript"
@@ -245,18 +253,18 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    const stored = Serie.fromArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8']), fields.sedol('sid'))
-    assert.deepEqual([...stored.intoArrowArray()], ['B0YBKJ7', null])
+    const stored = Serie.fromArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']), fields.sedol('sid'))
+    assert.deepEqual([...stored.intoArrowArray()], ['B0YBKJ7', 'B0YBKJ8', null])
     ```
 
 ## Edges
 
-- `expected seven characters`, `expected six alphanumerics before the check digit`, `expected a closing check digit`, `the check digit does not close the identifier` - the four refusals, each naming `sedol` and the spelling it saw.
+- `expected seven characters`, `expected six alphanumerics before the check digit`, `expected a closing check digit` - the three refusals, each naming `sedol` and the spelling it saw; a digit that does not close the identifier is a rank, never a refusal.
 - An eighth byte -> `at most 7 bytes`, the refusal any code of that width gives.
 - No default value: the empty text names no security, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("sedol")` answers an enum of no members, and no Python code class declares it.
-- Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- No crate column: in a [FIX capture](index.md#fix-message-definitions) a SEDOL is one [security identifier](../../graph/identifier.md) of type `sedol` - `SecurityID(48)` under source `2`, or a `SecAltIDGrp(454)` occurrence, each from `fix` - read as `get_securityids().get(&IdType::Sedol)`, and derived from a GB, IE, GG, JE or IM ISIN where the message states none, from `derived`.
+- [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
+- No crate column: in a [FIX capture](index.md#fix-message-definitions) a SEDOL is one [security identifier](../../graph/identifier.md) of type `sedol` - `SecurityID(48)` under source `2`, or a `SecAltIDGrp(454)` occurrence, each under the base key `sedol` - read as `get_securityids().get(&IdType::Sedol)`, and derived from a GB, IE, GG, JE or IM ISIN that closes where the message states none, from `derived`.
 
 ## Commands
 

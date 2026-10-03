@@ -80,17 +80,6 @@
         }
       },
       {
-        "name": "nolegstipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstipulations",
-          "FIX:tag": "683"
-        }
-      },
-      {
         "name": "legstipulations",
         "dtype": {
           "type": "null"
@@ -101,17 +90,6 @@
         }
       },
       {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
-        }
-      },
-      {
         "name": "nestedparties",
         "dtype": {
           "type": "null"
@@ -119,17 +97,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "nestedparties"
-        }
-      },
-      {
-        "name": "nolegratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegratesources",
-          "FIX:tag": "3116"
         }
       },
       {

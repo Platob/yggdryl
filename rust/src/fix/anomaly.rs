@@ -1,8 +1,9 @@
 //! What a message states that its reading could not take as it stands.
 //!
-//! A value that will not type is null in the row rather than a failure, a
-//! counter that disagrees with the group it counts is kept as it arrived,
-//! and a settle drops a stated identifier that conflicts with a stated one:
+//! A value that will not type is null in the row rather than a failure, an
+//! alias stating another value than the field it lost to is kept in the
+//! metadata, and a settle drops a stated identifier that conflicts with a
+//! stated one:
 //! each is a fact about the message worth more than a null nobody can
 //! explain. An anomaly is that fact, read off the message beside the row -
 //! never a column, never a digest input.

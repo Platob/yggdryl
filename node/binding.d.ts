@@ -17,6 +17,7 @@ export {
   Filter,
   Identifier,
   Identifiers,
+  IsinRegistry,
   IOBase,
   IOCursor,
   Listing,
@@ -97,6 +98,7 @@ import type {
   Digest,
   Field,
   FieldPath,
+  Filter,
   IOBase,
   IOCursor,
   Listing,
@@ -940,9 +942,16 @@ declare module './index' {
     /**
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
-     * snapshot width is epoch aligned.
+     * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
+     * messages fold; an execution or a trade never reaches a book. `filter`,
+     * a predicate over the `marketdata` row, narrows what the books fold and
+     * never admits a pruned kind; not given, every booked leaf is kept.
      */
-    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number): BatchReader
+    bookArrowReader(
+      messages: Iterable<FixMsg>,
+      snapshotMillis?: number,
+      filter?: Filter | Term | string,
+    ): BatchReader
     /**
      * The sorted door: a capture collected, what `bookArrowReader` admits
      * expanded into market data, stably sorted by `snapunix`, else
@@ -5416,10 +5425,17 @@ export interface OperationEventConstructor<T> {
 /**
  * The public `BookIterator` constructor: its items pulled lazily from the
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
- * streams are; a failure behind the iterable is thrown as itself.
+ * streams are; a failure behind the iterable is thrown as itself. Orders,
+ * quotes and snapshot controls fold, and every other input is pruned;
+ * `filter`, a predicate over the `marketdata` row bound once, narrows what
+ * the books fold and never admits an execution or a trade.
  */
 export interface BookIteratorConstructor {
-  new (items: Iterable<MarketItem>, snapshotMillis?: number): BookIterator
+  new (
+    items: Iterable<MarketItem>,
+    snapshotMillis?: number,
+    filter?: Filter | Term | string,
+  ): BookIterator
   readonly prototype: BookIterator
 }
 

@@ -39,6 +39,7 @@ use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::eval::EpochPeriod;
 use crate::expression::{Bound, Bounds};
 use crate::holder::Holder;
+use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
@@ -1250,7 +1251,7 @@ fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatc
         let id = field
             .metadata()
             .get(crate::metadata::PARQUET_FIELD_ID_KEY)
-            .and_then(|text| text.trim().parse::<i32>().ok());
+            .and_then(|text| integer_from_text_as::<i32>(text.as_str()));
         let target = id
             .and_then(|id| by_id.iter().find(|(candidate, _)| *candidate == id))
             .filter(|(_, target)| target.name() != field.name());

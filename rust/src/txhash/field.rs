@@ -37,8 +37,9 @@ fn parse_digest_unit(value: &str) -> Result<TimeUnit> {
     Ok(unit)
 }
 
-/// Accept a stored time path: one non-empty field path, never the
-/// select-everything spelling.
+/// Accept a stored time path: one non-empty field path of names, read once
+/// here by the one path parser - a column whose name holds a dot the quoted
+/// `"a.b"` - never the select-everything spelling.
 pub(crate) fn validate_digest_time(value: &str) -> Result<()> {
     if value.is_empty() || value == crate::metadata::ALL_COLUMNS {
         return Err(Error::InvalidMetadataValue {
@@ -46,7 +47,20 @@ pub(crate) fn validate_digest_time(value: &str) -> Result<()> {
             reason: format_smolstr!("expected one non-empty field path, got {value:?}"),
         });
     }
-    Ok(())
+    let reason = match crate::FieldPath::with_schema_segments(value, |segments| {
+        !segments.is_empty()
+            && segments
+                .iter()
+                .all(|segment| matches!(segment, crate::FieldSegment::Field(_)))
+    }) {
+        Ok(true) => return Ok(()),
+        Ok(false) => format_smolstr!("expected a path of field names, got {value:?}"),
+        Err(error) => format_smolstr!("expected one field path, got {value:?}: {error}"),
+    };
+    Err(Error::InvalidMetadataValue {
+        key: SmolStr::new_static(DIGEST_TIME_KEY),
+        reason,
+    })
 }
 
 /// Return whether a coupled holder's storage carries this algorithm's width.
@@ -133,7 +147,8 @@ impl DigestFieldMut<'_> {
     /// # Errors
     ///
     /// Returns an error when this field is not a holder, when `path` is
-    /// empty or the select-everything spelling, or when the storage is not
+    /// empty, the select-everything spelling or not one field path of
+    /// names, or when the storage is not
     /// the `fixed_size_binary` a coupled digest of its declared or implied
     /// algorithm needs, leaving the field unchanged.
     pub fn set_time(&mut self, path: &str) -> Result<()> {

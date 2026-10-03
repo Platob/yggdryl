@@ -59,17 +59,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -176,17 +165,6 @@
         "metadata": {
           "FIX:field": "preallocmethod",
           "FIX:tag": "591"
-        }
-      },
-      {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
         }
       },
       {
@@ -342,17 +320,6 @@
         }
       },
       {
-        "name": "notradingsessions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingsessions",
-          "FIX:tag": "386"
-        }
-      },
-      {
         "name": "trdgses",
         "dtype": {
           "type": "null"
@@ -381,17 +348,6 @@
         "nullable": false,
         "metadata": {
           "FIX:component": "instrument"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -479,17 +435,6 @@
         "metadata": {
           "FIX:field": "transacttime",
           "FIX:tag": "60"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {
@@ -817,17 +762,6 @@
         }
       },
       {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
-        }
-      },
-      {
         "name": "commissions",
         "dtype": {
           "type": "null"
@@ -879,17 +813,6 @@
         "metadata": {
           "FIX:field": "custordercapacity",
           "FIX:tag": "582"
-        }
-      },
-      {
-        "name": "noorderattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorderattributes",
-          "FIX:tag": "2593"
         }
       },
       {
@@ -1074,17 +997,6 @@
         "metadata": {
           "FIX:field": "targetstrategy",
           "FIX:tag": "847"
-        }
-      },
-      {
-        "name": "nostrategyparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrategyparameters",
-          "FIX:tag": "957"
         }
       },
       {

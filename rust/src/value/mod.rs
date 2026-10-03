@@ -194,22 +194,61 @@ pub trait CodeValue: Value {
     /// keeps it clones this handle rather than re-validating and copying.
     fn storage(&self) -> &SmolStr;
 
-    /// The better statement of this code and another of the same kind: this
-    /// one, unless it states less than `other` does.
+    /// The highest rank a value of this code reaches: the rank of a real
+    /// one. One, for a code with nothing partial about it.
+    const MAX_RANK: u8 = 1;
+
+    /// How real this value is, from zero to [`Self::MAX_RANK`]: shape to
+    /// state, closing and listing to rank. A code's `new` admits its shape,
+    /// and what the shape leaves open - whether a number closes on its
+    /// check digit, whether its prefix is one an agency numbers under,
+    /// whether the text is the one that states no value - is this reading,
+    /// which every merge decides by: an [`Isin`](crate::Isin) closing under a
+    /// listed prefix is two, closing or listed one, neither zero; a
+    /// [`Cusip`](crate::Cusip), a [`Sedol`](crate::Sedol) and a [`Figi`](crate::Figi)
+    /// one where they close; a [`Country`](crate::Country) one where ISO 3166
+    /// lists it; a [`Ccy`](crate::Ccy) `XXX`, a [`Mic`](crate::Mic) `XXXX` and an
+    /// empty [`Unit`](crate::Unit) zero; a [`Cfi`](crate::Cfi) unclassified zero,
+    /// classified one and detailed two; every other code one.
+    fn rank(&self) -> u8 {
+        Self::MAX_RANK
+    }
+
+    /// Whether this value is as real as one of its code gets:
+    /// [`Self::rank`] at [`Self::MAX_RANK`].
+    fn is_real(&self) -> bool {
+        self.rank() == Self::MAX_RANK
+    }
+
+    /// The better statement of this code and another of the same kind: the
+    /// other where it outranks this one, else this one - so a real value
+    /// replaces a placeholder, a masked number or a typo whichever was
+    /// stated first, and two values of one rank keep the one that leads.
     ///
-    /// What "less" means is each code's own, and the codes that can state
-    /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
-    /// where the two describe one instrument, and an unclassified one - every
-    /// position `X`, or no classification at all - yields whole to a
-    /// classified other; a [`Ccy`](crate::Ccy) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the
-    /// other; an [`Isin`](crate::Isin) under the `ZZ` prefix yields to any other prefix.
-    /// Every other code is an identifier with nothing partial about it, so
-    /// this one stands as it is. This is what a graph element folds two statements
-    /// of one fact with.
+    /// A [`Cfi`](crate::Cfi) folds further: it fills every `X` position from
+    /// the other where the two describe one instrument. This is what a graph
+    /// element folds two statements of one fact with.
+    ///
+    /// ```
+    /// use yggdryl::{CodeValue, Isin, Mic};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let masked = Isin::new("XX0000000001")?;
+    /// let apple = Isin::new("US0378331005")?;
+    /// assert_eq!(masked.clone().merge_with(&apple), apple);
+    /// assert_eq!(apple.clone().merge_with(&masked), apple);
+    /// assert_eq!(Mic::new("XXXX")?.merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
+    /// assert_eq!(Mic::new("XNAS")?.merge_with(&Mic::new("XPAR")?).as_str(), "XNAS");
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
     fn merge_with(self, other: &Self) -> Self {
-        let _ = other;
-        self
+        if other.rank() > self.rank() {
+            other.clone()
+        } else {
+            self
+        }
     }
 }
 

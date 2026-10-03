@@ -102,17 +102,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -120,17 +109,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {
@@ -187,17 +165,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -205,17 +172,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nopositions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopositions",
-          "FIX:tag": "702"
         }
       },
       {
@@ -270,17 +226,6 @@
         "metadata": {
           "FIX:field": "pricetype",
           "FIX:tag": "423"
-        }
-      },
-      {
-        "name": "noposamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noposamt",
-          "FIX:tag": "753"
         }
       },
       {

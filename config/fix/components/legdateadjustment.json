@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegbusinesscenters",
-          "FIX:tag": "40923"
-        }
-      },
-      {
         "name": "legbusinesscenters",
         "dtype": {
           "type": "null"

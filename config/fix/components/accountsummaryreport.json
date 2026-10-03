@@ -112,17 +112,6 @@
         }
       },
       {
-        "name": "nosettlementamounts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettlementamounts",
-          "FIX:tag": "1700"
-        }
-      },
-      {
         "name": "settlementamounts",
         "dtype": {
           "type": "null"
@@ -130,17 +119,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "settlementamounts"
-        }
-      },
-      {
-        "name": "nomarginamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarginamt",
-          "FIX:tag": "1643"
         }
       },
       {
@@ -154,17 +132,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -172,17 +139,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "nocollateralamounts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocollateralamounts",
-          "FIX:tag": "1703"
         }
       },
       {
@@ -196,17 +152,6 @@
         }
       },
       {
-        "name": "nopaycollects",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaycollects",
-          "FIX:tag": "1707"
-        }
-      },
-      {
         "name": "paycollects",
         "dtype": {
           "type": "null"
@@ -214,17 +159,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "paycollects"
-        }
-      },
-      {
-        "name": "noposamt",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noposamt",
-          "FIX:tag": "753"
         }
       },
       {

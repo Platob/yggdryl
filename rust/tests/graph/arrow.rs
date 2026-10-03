@@ -11,13 +11,14 @@ use arrow_array::{
 use arrow_buffer::{OffsetBuffer, ScalarBuffer};
 use arrow_schema::{Fields, Schema};
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
-    BookEvent, BookRef, Element, ElementColumn, Event, EventColumn, Execution, ExecutionEvent,
-    FxRates, Market, MarketColumn, MarketData, MarketKind, MdUpdateAction, Operation,
-    OperationColumn, OperationEvent, OperationKind, Order, OrderEvent, Quote, QuoteEvent,
-    SnapshotEvent, TradeEvent,
+    BookEvent, BookIterator, BookRef, Element, ElementColumn, Event, EventColumn, Execution,
+    ExecutionEvent, FxRates, Market, MarketColumn, MarketData, MarketKind, MdUpdateAction,
+    Operation, OperationColumn, OperationEvent, OperationKind, Order, OrderEvent, Quote,
+    QuoteEvent, SnapshotEvent, TradeEvent,
 };
 use yggdryl::{
     ArrowCastOptions, Ccy, Decimal, Field, IdSource, IdType, Identifier, Limit, MarketDataKind,
@@ -45,11 +46,11 @@ fn operation<K: OperationKind>(
     operation.set_ticker(Some(SmolStr::new("ACME")), true);
     operation.set_state(State::read(state).unwrap());
     operation
-        .insert_identifier(Identifier::new(IdSource::Fix, ENTRY_ID, code).unwrap())
+        .insert_identifier(Identifier::new(IdKey::base(ENTRY_ID), code).unwrap())
         .unwrap();
     operation
         .insert_identifier(
-            Identifier::new(IdSource::Fix, IdType::OrderId, &format!("ORDER-{code}")).unwrap(),
+            Identifier::new(IdKey::base(IdType::OrderId), &format!("ORDER-{code}")).unwrap(),
         )
         .unwrap();
     operation.finalize();
@@ -105,6 +106,8 @@ fn snapshot(unix: i64, code: &str) -> SnapshotEvent {
     SnapshotEvent::snapshot(&event, Some(SmolStr::new("Symbol=ACME")))
 }
 
+/// A book of one order and one quote: the execution beside them is pruned
+/// before the fold.
 fn book(unix: i64) -> BookEvent {
     let mut book = BookEvent::new(unix, "ACME");
     book.add_operations([
@@ -318,7 +321,7 @@ fn replace_struct_child(array: &StructArray, name: &str, child: ArrayRef) -> Str
 fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     let field = MarketData::field().unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 6 + 9 + 34 + 5 + 1 + 5);
+    assert_eq!(names.len(), 6 + 9 + 34 + 5 + 3 + 5);
     // The element's facts, the event's, the market's and the operation's,
     // in the order their traits state them: the columns every generated
     // schema opens with.
@@ -377,8 +380,10 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
             "partyids"
         ]
     );
-    // The one book control a row states; the rest is walk-time.
-    assert_eq!(names[54], "bookscope");
+    // The book controls a row states - what a book's deltas replay by;
+    // the price and size an entry stated are walk-time.
+    assert_eq!(names[54..57], ["bookscope", "bookaction", "bookposition"]);
+    assert_eq!(field.fields()[56].dtype(), &yggdryl::DataType::UInt32);
     for gone in [
         "mdupdateaction",
         "mdentrypositionno",
@@ -399,16 +404,16 @@ fn the_field_is_every_fact_in_trait_order_then_the_nested_columns() {
     }
     assert!(field.fields()[54..].iter().all(Field::is_nullable));
     assert_eq!(
-        names[55..],
+        names[57..],
         ["alive", "deltas", "executions", "bidlimits", "asklimits"]
     );
     // An operation row, the item of every operation list: nothing nested.
-    let item = field.fields()[55].dtype().serie_item().unwrap().clone();
+    let item = field.fields()[57].dtype().serie_item().unwrap().clone();
     let item: Vec<&str> = item.fields().iter().map(Field::name).collect();
-    assert_eq!(item.len(), 6 + 9 + 34 + 5 + 1);
-    assert_eq!(item, names[..55]);
+    assert_eq!(item.len(), 6 + 9 + 34 + 5 + 3);
+    assert_eq!(item, names[..57]);
     // A book's two sides are its price levels, one limit each.
-    for side in &field.fields()[58..] {
+    for side in &field.fields()[60..] {
         assert_eq!(side.dtype(), &yggdryl::DataType::serie(Limit::field()));
     }
 }
@@ -467,9 +472,9 @@ fn every_leaf_round_trips_in_bounded_batches() {
         ]
     );
     // Every fact a row states round trips, and the leaves read back write
-    // the same rows; a book control's walk-time facts - an action, a
-    // position, an entry's own price and size - are no row fact, so the two
-    // leaves stating one read back without them and keep their identity.
+    // the same rows; a book control's walk-time facts - an entry's own price
+    // and size - are no row fact, so the two leaves stating one read back
+    // without them and keep their identity, their action and position.
     assert_eq!(rewritten(actual.clone(), 5), batches);
     for (index, (read, stated)) in actual.iter().zip(&expected).enumerate() {
         assert_eq!(read.get_curruuid(), stated.get_curruuid(), "{index}");
@@ -478,14 +483,22 @@ fn every_leaf_round_trips_in_bounded_batches() {
         }
     }
     let entry = actual[4].as_quote_event().unwrap();
-    assert_eq!(entry.action(), None, "an action is walk-time");
+    assert_eq!(entry.action(), Some(MdUpdateAction::Change));
+    assert_eq!(entry.book().and_then(|book| book.position), Some(1));
+    assert_eq!(
+        entry.book().and_then(|book| book.entry_px),
+        None,
+        "an entry's own price is walk-time"
+    );
     assert_eq!(entry.scope(), "Symbol=ACME");
     assert_eq!(entry.get_identifiers().get(&ENTRY_ID), Some("Q-6"));
     assert_eq!(actual[6].as_trade_event().unwrap().executions().len(), 2);
     let book = actual[7].as_book_event().unwrap();
     assert_eq!(book.alive().count(), 2);
-    assert_eq!(book.deltas().count(), 2);
-    assert_eq!(book.executions().len(), 1);
+    assert_eq!(book.deltas().len(), 2);
+    // A trade's row states its executions; a book's states none.
+    let executions = batches[1].column_by_name("executions").unwrap();
+    assert!(executions.is_valid(1) && executions.is_null(2));
     let replaced = actual[8].as_book_event().unwrap();
     assert_eq!(replaced.alive().count(), 1);
     let control = actual[10].as_snapshot_event().unwrap();
@@ -712,15 +725,19 @@ fn a_dated_book_row_is_told_by_its_alive_entries() {
         "{error}"
     );
 
-    // A book row with its entries nulled reads as a snapshot control, whose
-    // identity is not the one the row states.
+    // A book row with its entries nulled reads as a book stating its deltas
+    // alone, which states no price level.
     let held = batch.column_by_name("alive").unwrap();
     let error = refusal(with_column(
         &batch,
         "alive",
         new_null_array(held.data_type(), 1),
     ));
-    assert!(error.contains("$[0].curruuid"), "{error}");
+    assert!(error.contains("$[0].bidlimits"), "{error}");
+    assert!(
+        error.contains("expected no limits on a book holding only its deltas, got 1"),
+        "{error}"
+    );
 
     // An undated `BOOK` row names no leaf.
     let without = schema.index_of("currunix").unwrap();
@@ -826,6 +843,42 @@ fn a_trade_requires_its_executions() {
     assert!(error.contains("$[0].executions"), "{error}");
 }
 
+/// A book holds no execution, so a `BOOK` row whose `executions` cell holds
+/// any is refused there; a null or empty cell states none.
+#[test]
+fn a_book_row_stating_executions_is_refused() {
+    let stated = written(vec![MarketData::from(trade(8, "T-8"))]);
+    let stated = stated.column_by_name("executions").unwrap().clone();
+    let batch = written(vec![MarketData::from(book(9))]);
+    let error = refusal(with_column(&batch, "executions", Arc::clone(&stated)));
+    assert!(error.contains("$[0].executions"), "{error}");
+    assert!(
+        error.contains("expected no executions on a book_event, got 2"),
+        "{error}"
+    );
+
+    let arrow_schema::DataType::List(item) = stated.data_type() else {
+        panic!("executions is a list");
+    };
+    let values = stated
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .unwrap()
+        .values();
+    let empty = ListArray::new(
+        Arc::clone(item),
+        OffsetBuffer::new(ScalarBuffer::from(vec![0_i32, 0])),
+        values.slice(0, 0),
+        None,
+    );
+    let read = read(batch_reader(
+        batch.schema(),
+        [with_column(&batch, "executions", Arc::new(empty))],
+    ))
+    .unwrap();
+    assert_eq!(read, [MarketData::from(book(9))]);
+}
+
 /// `isincode` is the `isin` of `securityids`, projected: written from it,
 /// filling an absent one on the way back, and refused where the two
 /// disagree.
@@ -833,7 +886,7 @@ fn a_trade_requires_its_executions() {
 fn isincode_projects_the_securityids_isin() {
     let mut listed = order(1, "O-1");
     listed
-        .insert_securityid(Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap())
+        .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap())
         .unwrap();
     listed.finalize();
     assert_eq!(listed.get_isincode(), Some("US0378331005"));
@@ -904,24 +957,20 @@ fn map_keys(batch: &RecordBatch, name: &str) -> Vec<Option<Vec<String>>> {
         .collect()
 }
 
-/// The `src:type=value` of every identifier row an identifier map column
-/// holds, flat, read through the item struct's three cells.
+/// The `key=value` of every entry an identifier map column holds, flat.
 fn map_rows(batch: &RecordBatch, name: &str) -> Vec<String> {
     let map = column_of(batch, name);
     let map = map.as_any().downcast_ref::<MapArray>().unwrap();
-    let item = map.entries().column(1);
-    let item = item.as_any().downcast_ref::<StructArray>().unwrap();
-    let cell = |child: &str| {
-        item.column_by_name(child)
-            .unwrap()
+    let text = |array: &ArrayRef| {
+        array
             .as_any()
             .downcast_ref::<StringArray>()
-            .unwrap()
+            .expect("a text column")
             .clone()
     };
-    let (src, kind, value) = (cell("src"), cell("type"), cell("value"));
-    (0..item.len())
-        .map(|at| format!("{}:{}={}", src.value(at), kind.value(at), value.value(at)))
+    let (keys, values) = (text(map.keys()), text(map.values()));
+    (0..keys.len())
+        .map(|at| format!("{}={}", keys.value(at), values.value(at)))
         .collect()
 }
 
@@ -946,28 +995,28 @@ fn with_map_keys(batch: &RecordBatch, name: &str, keys: Vec<&str>) -> RecordBatc
 }
 
 /// The three identifier columns - `securityids`, `identifiers`, `partyids` -
-/// are sorted maps from the key `src:type` to the identifier row, written
-/// in the order the set holds them, null where a row states none, and read
-/// back as the sets they were.
+/// are sorted `map<utf8, utf8>`s from a key's spelling to its value, written
+/// in the order the map holds them, null where a row states none, and read
+/// back as the maps they were.
 #[test]
 fn the_three_identifier_columns_are_sorted_maps_keyed_by_source_and_type() {
     let venue: IdSource = "venue".parse().unwrap();
     let mut stated = order(1, "O-1");
     for id in [
-        Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1").unwrap(),
-        Identifier::new(venue.clone(), IdType::OrderId, "V-1").unwrap(),
+        Identifier::new(IdKey::base(IdType::ClOrdId), "C-1").unwrap(),
+        Identifier::new(IdKey::new(venue.clone(), IdType::OrderId), "V-1").unwrap(),
     ] {
         stated.insert_identifier(id).unwrap();
     }
     for id in [
-        Identifier::new(IdSource::Fix, IdType::Account, "ACC-1").unwrap(),
-        Identifier::new(IdSource::Base, IdType::Account, "ACC-0").unwrap(),
+        Identifier::new(IdKey::base(IdType::Account), "ACC-1").unwrap(),
+        Identifier::new(IdKey::new(IdSource::Bic, IdType::Account), "ACC-0").unwrap(),
     ] {
         stated.insert_partyid(id).unwrap();
     }
     for id in [
-        Identifier::new(IdSource::Base, IdType::Ric, "AAPL.O").unwrap(),
-        Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap(),
+        Identifier::new(IdKey::base(IdType::Ric), "AAPL.O").unwrap(),
+        Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap(),
     ] {
         stated.insert_securityid(id).unwrap();
     }
@@ -990,48 +1039,43 @@ fn the_three_identifier_columns_are_sorted_maps_keyed_by_source_and_type() {
         keys("identifiers"),
         [
             Some(
-                [
-                    "fix:clordid",
-                    "fix:mdentryid",
-                    "fix:orderid",
-                    "venue:orderid"
-                ]
-                .map(str::to_owned)
-                .to_vec()
+                ["clordid", "mdentryid", "orderid", "venue:orderid"]
+                    .map(str::to_owned)
+                    .to_vec()
             ),
-            Some(["fix:mdentryid", "fix:orderid"].map(str::to_owned).to_vec())
+            Some(["mdentryid", "orderid"].map(str::to_owned).to_vec())
         ],
-        "each row's keys in key order"
+        "each row's keys in key order, a base key its type alone"
     );
     assert_eq!(
         map_rows(&batch, "identifiers")[..4],
         [
-            "fix:clordid=C-1",
-            "fix:mdentryid=O-1",
-            "fix:orderid=ORDER-O-1",
+            "clordid=C-1",
+            "mdentryid=O-1",
+            "orderid=ORDER-O-1",
             "venue:orderid=V-1"
         ],
-        "each key beside the row it names"
+        "each key beside its value"
     );
     assert_eq!(
         keys("partyids"),
         [
-            Some(["base:account", "fix:account"].map(str::to_owned).to_vec()),
+            Some(["account", "bic:account"].map(str::to_owned).to_vec()),
             None
         ],
         "a row stating no party is a null cell"
     );
     assert_eq!(
         map_rows(&batch, "partyids"),
-        ["base:account=ACC-0", "fix:account=ACC-1"]
+        ["account=ACC-1", "bic:account=ACC-0"]
     );
     // The ISIN implies the national number it carries, derived and keyed by
-    // the source that derived it.
+    // the source that derived it, its base key beside it.
     assert_eq!(
         keys("securityids"),
         [
             Some(
-                ["base:isin", "base:ric", "derived:cusip"]
+                ["cusip", "derived:cusip", "isin", "ric"]
                     .map(str::to_owned)
                     .to_vec()
             ),
@@ -1041,9 +1085,10 @@ fn the_three_identifier_columns_are_sorted_maps_keyed_by_source_and_type() {
     assert_eq!(
         map_rows(&batch, "securityids"),
         [
-            "base:isin=US0378331005",
-            "base:ric=AAPL.O",
-            "derived:cusip=037833100"
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005",
+            "ric=AAPL.O"
         ]
     );
     assert_eq!(column_of(&batch, "partyids").null_count(), 1);
@@ -1054,20 +1099,20 @@ fn the_three_identifier_columns_are_sorted_maps_keyed_by_source_and_type() {
     );
 }
 
-/// A key that is not the `src:type` of the row it keys has no one reading:
-/// the landing refuses it on its row, naming the column, in each of the
-/// three identifier maps.
+/// An entry no identifier reads - a key no `IdKey` spells, a value its type
+/// refuses, a second value under one key - is refused by the landing on its
+/// key, below the column, in each of the three identifier maps.
 #[test]
-fn an_identifier_key_that_disagrees_with_its_row_is_refused_naming_the_column() {
+fn an_identifier_entry_no_identifier_reads_is_refused_on_its_key() {
     let mut stated = order(1, "O-1");
     stated
-        .insert_identifier(Identifier::new(IdSource::Fix, IdType::ClOrdId, "C-1").unwrap())
+        .insert_identifier(Identifier::new(IdKey::base(IdType::ClOrdId), "C-1").unwrap())
         .unwrap();
     stated
-        .insert_partyid(Identifier::new(IdSource::Fix, IdType::Account, "ACC-1").unwrap())
+        .insert_partyid(Identifier::new(IdKey::base(IdType::Account), "ACC-1").unwrap())
         .unwrap();
     stated
-        .insert_securityid(Identifier::new(IdSource::Base, IdType::Ric, "AAPL.O").unwrap())
+        .insert_securityid(Identifier::new(IdKey::base(IdType::Ric), "AAPL.O").unwrap())
         .unwrap();
     stated.finalize();
     let batch = written(vec![MarketData::from(stated)]);
@@ -1078,43 +1123,41 @@ fn an_identifier_key_that_disagrees_with_its_row_is_refused_naming_the_column() 
         1,
         "the batch as written reads"
     );
-    for (name, keys, expected, got) in [
-        ("securityids", vec!["base:cusip"], "base:ric", "base:cusip"),
-        ("partyids", vec!["fix:userid"], "fix:account", "fix:userid"),
+    for (name, keys, located, reason) in [
+        (
+            "securityids",
+            vec!["cusip"],
+            "$[0].securityids['cusip']",
+            "cusip",
+        ),
+        (
+            "partyids",
+            vec!["fix:"],
+            "$[0].partyids['fix:']",
+            "expected an identifier key src:type or type",
+        ),
         (
             "identifiers",
-            vec!["fix:clordid", "fix:mdentryid", "fix:orderidx"],
-            "fix:orderid",
-            "fix:orderidx",
+            vec!["clordid", "fix:clordid", "orderid"],
+            "$[0].identifiers['fix:clordid']",
+            "expected one value under clordid",
         ),
     ] {
         let error = refusal(with_map_keys(&batch, name, keys));
-        assert!(error.contains(&format!("$[0].{name}")), "{name}: {error}");
-        assert!(
-            error.contains(&format!("expected the key {expected}, got \"{got}\"")),
-            "{name}: {error}"
-        );
+        assert!(error.contains(located), "{name}: {error}");
+        assert!(error.contains(reason), "{name}: {error}");
     }
     // Keys out of the order a sorted map declares are refused before any
     // identifier is read.
     let error = refusal(with_map_keys(
         &batch,
         "identifiers",
-        vec!["fix:orderid", "fix:mdentryid", "fix:clordid"],
+        vec!["orderid", "mdentryid", "clordid"],
     ));
     assert!(error.contains("$[0]"), "{error}");
     assert!(error.contains("sorted keys"), "{error}");
-    // A key that is no `src:type` at all is refused the same way.
-    let error = refusal(with_map_keys(&batch, "securityids", vec!["ric"]));
-    assert!(error.contains("$[0].securityids"), "{error}");
-    assert!(
-        error.contains("expected the key base:ric, got \"ric\""),
-        "{error}"
-    );
 }
 
-/// Rates ride a sorted `map<ccy, decimal>`, target currency to the rate
-/// to divide by, null where an element states none.
 #[test]
 fn fxrates_round_trip_and_are_null_where_none_is_stated() {
     let rates: FxRates = [("JPY", "150.25"), ("EUR", "0.92")]
@@ -1168,6 +1211,47 @@ fn fxrates_round_trip_and_are_null_where_none_is_stated() {
         Arc::clone(differing.column_by_name("fxrates").unwrap()),
     ));
     assert!(error.contains("$[0].curruuid"), "{error}");
+}
+
+/// The retired struct shape of an identifier map - `map<utf8,
+/// struct<src, type, value>>` - is no `map<utf8, utf8>`: the stream binds,
+/// since a struct casts into text as its JSON document, and the first row
+/// stating an entry is refused where that document arrives as a value its
+/// type's rule does not read, named by the row and the key.
+#[test]
+fn an_identifier_map_of_the_retired_struct_shape_is_refused() {
+    use arrow_array::builder::{MapBuilder, MapFieldNames, StringBuilder, StructBuilder};
+    let batch = written(vec![MarketData::from(order(1, "O-1"))]);
+    let item = Fields::from(vec![
+        arrow_schema::Field::new("src", arrow_schema::DataType::Utf8, true),
+        arrow_schema::Field::new("type", arrow_schema::DataType::Utf8, true),
+        arrow_schema::Field::new("value", arrow_schema::DataType::Utf8, true),
+    ]);
+    let mut builder = MapBuilder::new(
+        Some(MapFieldNames {
+            entry: "entries".into(),
+            key: "key".into(),
+            value: "securityid".into(),
+        }),
+        StringBuilder::new(),
+        StructBuilder::from_fields(item, 1),
+    );
+    builder.keys().append_value("base:isin");
+    let values = builder.values();
+    for (at, text) in ["base", "isin", "US0378331005"].into_iter().enumerate() {
+        values
+            .field_builder::<arrow_array::builder::StringBuilder>(at)
+            .unwrap()
+            .append_value(text);
+    }
+    values.append(true);
+    builder.append(true).unwrap();
+    let retired = with_column(&batch, "securityids", Arc::new(builder.finish()));
+    let error = refusal(retired);
+    assert!(
+        error.contains("$[0].securityids['base:isin']") && error.contains("isin"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -1657,7 +1741,7 @@ fn a_batch_stating_no_limits_columns_still_reads() {
         .filter(|at| !schema.field(*at).name().ends_with("limits"))
         .collect();
     let batch = batch.project(&kept).unwrap();
-    assert_eq!(batch.schema().fields().len(), 6 + 9 + 34 + 5 + 1 + 3);
+    assert_eq!(batch.schema().fields().len(), 6 + 9 + 34 + 5 + 3 + 3);
     assert_eq!(
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected
@@ -1796,4 +1880,337 @@ fn every_filled_fact_is_a_column_and_reads_back() {
         read(batch_reader(batch.schema(), [batch])).unwrap(),
         expected
     );
+}
+
+/// The books a walk with no grid emits over two orders of ACME at `unix`
+/// and one at `unix + 1`: each its deltas alone, the first following no
+/// book and the second the first.
+fn walked_books(unix: i64) -> Vec<BookEvent> {
+    BookIterator::new(
+        [
+            MarketData::from(order(unix, &format!("O-{unix}"))),
+            MarketData::from(quote(unix, &format!("Q-{unix}"))),
+            MarketData::from(order(unix + 1, &format!("O-{}", unix + 1))),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<yggdryl::Result<Vec<_>>>()
+    .unwrap()
+}
+
+/// A complete book holding no live entry and stating deltas - every entry
+/// it folded ended - writes an empty `alive` list, which a table storing a
+/// null list as an empty one cannot tell from the null a book stating its
+/// deltas alone writes; stating no snapshot instant to be told by, as every
+/// complete book a walk emits does, it reads back from either table as a
+/// book stating its deltas alone, its identity and its deltas kept, and
+/// rebuilds whole over the empty book it follows: the row does not carry
+/// the completeness of an empty book, a loss the walk never meets. Only a
+/// built or rebuilt book meets this.
+#[test]
+fn a_complete_empty_book_stating_deltas_and_no_snapshot_instant_reads_back_as_its_deltas() {
+    let mut ended = order(1, "O-1");
+    ended.set_state(State::Canceled);
+    ended.finalize();
+    // The fixtures' orders state ACME's ticker: a book keyed otherwise
+    // refuses them.
+    let mut book = BookEvent::new(1, "ACME");
+    book.add_operations([MarketData::from(order(1, "O-1")), MarketData::from(ended)])
+        .unwrap();
+    assert!(book.is_complete());
+    assert_eq!(
+        (
+            book.alive().count(),
+            book.deltas().len(),
+            book.get_snapunix()
+        ),
+        (0, 2, None)
+    );
+    let batch = written(vec![MarketData::from(book.clone())]);
+    assert!(
+        !column_of(&batch, "alive").is_null(0),
+        "a complete book states its alive list, empty"
+    );
+    for batch in [batch.clone(), with_null_lists_emptied(&batch)] {
+        let read_back = read(batch_reader(batch.schema(), [batch]))
+            .unwrap()
+            .remove(0);
+        let read_back = read_back.as_book_event().unwrap();
+        assert!(
+            !read_back.is_complete(),
+            "the row does not carry the completeness of an empty book"
+        );
+        assert_eq!(read_back.get_curruuid(), book.get_curruuid());
+        assert_eq!(read_back.deltas().len(), 2);
+        let rebuilt = read_back
+            .clone()
+            .with_previous(&BookEvent::new(1, "ACME"))
+            .unwrap();
+        assert!(rebuilt.is_complete());
+        assert_eq!(rebuilt.alive().count(), 0);
+        assert_eq!(rebuilt.get_curruuid(), book.get_curruuid());
+    }
+}
+
+/// A book stating its deltas alone writes its `deltas` and leaves `alive`,
+/// `bidlimits` and `asklimits` null; a complete book - an empty one -
+/// writes all of them, even empty. Each reads back as the form it was
+/// written in, its identity kept; read from a table that stores a null
+/// list as an empty one, a book stating its deltas alone reads back as one
+/// still.
+#[test]
+fn a_delta_book_row_states_no_alive_entry_and_no_limits() {
+    let books = walked_books(20);
+    assert!(!books[0].is_complete() && !books[1].is_complete());
+    assert_eq!(books[0].get_prevuuid(), None);
+    let values = vec![
+        MarketData::from(books[0].clone()),
+        MarketData::from(books[1].clone()),
+        MarketData::from(BookEvent::new(30, "EMPTY")),
+    ];
+    let batch = written(values.clone());
+    for name in ["alive", "bidlimits", "asklimits"] {
+        let column = column_of(&batch, name);
+        assert_eq!(
+            (0..3).map(|row| column.is_null(row)).collect::<Vec<_>>(),
+            [true, true, false],
+            "{name}"
+        );
+    }
+    assert_eq!(column_of(&batch, "deltas").null_count(), 0);
+    for batch in [batch.clone(), with_null_lists_emptied(&batch)] {
+        let actual = read(batch_reader(batch.schema(), [batch])).unwrap();
+        let actual: Vec<&BookEvent> = actual
+            .iter()
+            .map(|value| value.as_book_event().unwrap())
+            .collect();
+        assert_eq!(
+            actual
+                .iter()
+                .map(|book| book.is_complete())
+                .collect::<Vec<_>>(),
+            [false, false, true]
+        );
+        for (read, stated) in actual.iter().zip(&values) {
+            assert_eq!(read.get_curruuid(), stated.get_curruuid());
+        }
+        assert_eq!(actual[1].deltas().len(), 1);
+        assert_eq!(actual[1].alive().count(), 0);
+        assert_eq!(
+            actual[1].best_price(Side::Buy),
+            books[1].best_price(Side::Buy)
+        );
+        // Read back, the first rebuilds over the empty book it follows and
+        // the second over the first, each under its own identity.
+        let first = actual[0]
+            .clone()
+            .with_previous(&BookEvent::new(20, "ACME"))
+            .unwrap();
+        assert_eq!(first.get_curruuid(), books[0].get_curruuid());
+        assert_eq!(first.alive().count(), 2);
+        let rebuilt = actual[1].clone().with_previous(&first).unwrap();
+        assert_eq!(rebuilt.get_curruuid(), books[1].get_curruuid());
+        assert_eq!(rebuilt.alive().count(), 3);
+    }
+}
+
+/// A two-sided quote is listed once in `alive`, with the bids, while the
+/// order its level holds on the ask side may be another: the row's price
+/// levels state each side's own order, which the read restores, so a
+/// complete book whose sides order a level differently reads back as
+/// written - two quotes tied on the ask in the other order than on the bid,
+/// an ask order before a quote at its price, and a grid tick's book.
+#[test]
+fn a_complete_book_whose_sides_order_a_level_differently_round_trips() {
+    let quote = |code: &str, unix: i64, bid: (i64, i64), ask: (i64, i64)| {
+        let mut quote = QuoteEvent::at(unix);
+        quote.set_crosscode(code.to_owned());
+        quote.set_ticker(Some(SmolStr::new("ACME")), true);
+        quote.set_bidpx(Some(Decimal::from_int(bid.0)), true);
+        quote.set_bidqty(Some(Decimal::from_int(bid.1)), true);
+        quote.set_askpx(Some(Decimal::from_int(ask.0)), true);
+        quote.set_askqty(Some(Decimal::from_int(ask.1)), true);
+        quote.set_state(State::New);
+        quote.finalize();
+        MarketData::from(quote)
+    };
+    let mut tied = BookEvent::new(1, "ACME");
+    tied.add_operations([
+        quote("Q-2", 1, (98, 5), (101, 5)),
+        quote("Q-1", 1, (99, 10), (101, 20)),
+    ])
+    .unwrap();
+    let mut crossed_kinds = BookEvent::new(1, "ACME");
+    crossed_kinds
+        .add_operations([
+            resting(1, "A-1", "Sell", Some(101), 1),
+            quote("Q-1", 1, (98, 2), (101, 3)),
+        ])
+        .unwrap();
+    let ticked: Vec<BookEvent> = BookIterator::new(
+        [
+            resting(1_000_000, "A-1", "Sell", Some(101), 1),
+            quote("Q-1", 2_000_000, (98, 2), (101, 3)),
+        ]
+        .into_iter(),
+        1,
+    )
+    .unwrap()
+    .collect::<yggdryl::Result<_>>()
+    .unwrap();
+    let tick = ticked
+        .into_iter()
+        .rfind(BookEvent::is_complete)
+        .expect("a grid tick");
+    for book in [tied, crossed_kinds, tick] {
+        let asks: Vec<&str> = book
+            .alive_on(Side::Sell)
+            .map(Element::get_crosscode)
+            .collect();
+        let listed: Vec<&str> = book.alive().map(Element::get_crosscode).collect();
+        assert_ne!(
+            asks,
+            listed[listed.len() - asks.len()..],
+            "the ask side orders its level otherwise than alive lists it"
+        );
+        let expected = vec![MarketData::from(book)];
+        let batch = written(expected.clone());
+        assert_eq!(
+            read(batch_reader(batch.schema(), [batch])).unwrap(),
+            expected
+        );
+    }
+}
+
+/// A book's deltas replay by the update action and the position each
+/// states, which its row states: a walk positioning entries in a level and
+/// deleting through a position, written and read back, rebuilds every book
+/// as the walk held it.
+#[test]
+fn delta_books_read_back_replay_their_ranges_and_positions() {
+    let positioned = |code: &str, unix: i64, price: i64, position: u32| {
+        let mut quote = quote(unix, code);
+        quote.set_side(Side::Buy, true);
+        quote.set_price(Some(Decimal::from_int(price)), true);
+        quote.set_book(Some(BookRef {
+            action: Some(MdUpdateAction::New),
+            scope: Some(SmolStr::new("PRIMARY")),
+            position: Some(position),
+            ..BookRef::default()
+        }));
+        quote.finalize();
+        MarketData::from(quote)
+    };
+    let mut through = quote(3, "P-X");
+    through.set_side(Side::Buy, true);
+    through.set_state(State::Canceled);
+    through.set_book(Some(BookRef {
+        action: Some(MdUpdateAction::DeleteThru),
+        scope: Some(SmolStr::new("PRIMARY")),
+        position: Some(1),
+        ..BookRef::default()
+    }));
+    through.finalize();
+    let inputs = vec![
+        positioned("P-A", 1, 97, 2),
+        positioned("P-B", 2, 97, 1),
+        positioned("P-C", 2, 96, 3),
+        MarketData::from(through),
+    ];
+    let books: Vec<BookEvent> = BookIterator::new(inputs.into_iter(), 0)
+        .unwrap()
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    let fold = |books: Vec<BookEvent>| {
+        let mut last = BookEvent::new(0, "ACME");
+        books
+            .into_iter()
+            .map(|book| {
+                last = book.with_previous(&last).expect("a rebuild");
+                last.clone()
+            })
+            .collect::<Vec<_>>()
+    };
+    let walked = fold(books.clone());
+    let batch = written(books.into_iter().map(MarketData::from).collect());
+    let read_back = fold(
+        read(batch_reader(batch.schema(), [batch]))
+            .unwrap()
+            .into_iter()
+            .map(|value| value.as_book_event().unwrap().clone())
+            .collect(),
+    );
+    assert_eq!(read_back.len(), 3);
+    for (read, walked) in read_back.iter().zip(&walked) {
+        assert_eq!(read.get_curruuid(), walked.get_curruuid());
+        assert_eq!(
+            read.alive().map(Element::get_curruuid).collect::<Vec<_>>(),
+            walked
+                .alive()
+                .map(Element::get_curruuid)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            read.limits(Side::Buy).collect::<Vec<_>>(),
+            walked.limits(Side::Buy).collect::<Vec<_>>()
+        );
+    }
+    // The level at 97 holds P-B before P-A by position; the delete through
+    // position one took P-B off.
+    let codes = |book: &BookEvent| {
+        book.alive_on(Side::Buy)
+            .map(|entry| entry.get_crosscode().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(codes(&walked[1]), ["14:0:P-B", "14:0:P-A", "14:0:P-C"]);
+    assert_eq!(codes(&walked[2]), ["14:0:P-A", "14:0:P-C"]);
+}
+
+/// A book stating its deltas alone states the price and the quantity its
+/// best bid and ask settle on, and a row stating another is refused there;
+/// so is one stating a snapshot instant, which only a whole book states.
+#[test]
+fn a_delta_book_row_whose_price_disagrees_with_its_legs_is_refused() {
+    let books = walked_books(20);
+    let batch = written(vec![MarketData::from(books[1].clone())]);
+    let error = refusal(with_column(
+        &batch,
+        "price",
+        Arc::new(
+            Decimal128Array::from(vec![Decimal::from_int(999).units()])
+                .with_precision_and_scale(Decimal::PRECISION, Decimal::SCALE)
+                .unwrap(),
+        ),
+    ));
+    assert!(error.contains("$[0].price"), "{error}");
+    let error = refusal(with_column(
+        &batch,
+        "snapunix",
+        Arc::new(Int64Array::from(vec![21_i64])),
+    ));
+    assert!(error.contains("$[0].snapunix"), "{error}");
+    assert!(
+        error.contains("expected no snapshot instant on a book holding only its deltas, got 21"),
+        "{error}"
+    );
+}
+
+/// A book stating its deltas alone is pinned by the book it follows and
+/// the deltas it applied: a row naming another predecessor, or stating
+/// other deltas, derives another identity and is refused at its
+/// `curruuid`.
+#[test]
+fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
+    let books = walked_books(20);
+    let batch = written(vec![MarketData::from(books[1].clone())]);
+    let itself = Arc::clone(batch.column_by_name("curruuid").unwrap());
+    let error = refusal(with_column(&batch, "prevuuid", itself));
+    assert!(error.contains("$[0].curruuid"), "{error}");
+
+    let empty = written(vec![MarketData::from(BookEvent::new(21, "EMPTY"))]);
+    let none = Arc::clone(empty.column_by_name("deltas").unwrap());
+    let error = refusal(with_column(&batch, "deltas", none));
+    assert!(error.contains("$[0].curruuid"), "{error}");
 }

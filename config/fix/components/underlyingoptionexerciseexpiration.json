@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingoptionexerciseexpirationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingoptionexerciseexpirationdatebusinesscenters",
-          "FIX:tag": "41844"
-        }
-      },
-      {
         "name": "underlyingoptionexerciseexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingoptionexerciseexpirationdatebusinesscenters"
-        }
-      },
-      {
-        "name": "nounderlyingoptionexerciseexpirationdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingoptionexerciseexpirationdates",
-          "FIX:tag": "41856"
         }
       },
       {

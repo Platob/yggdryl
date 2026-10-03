@@ -4,17 +4,6 @@
     "type": "struct",
     "fields": [
       {
-        "name": "notickrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notickrules",
-          "FIX:tag": "1205"
-        }
-      },
-      {
         "name": "tickrules",
         "dtype": {
           "type": "null"
@@ -22,17 +11,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "tickrules"
-        }
-      },
-      {
-        "name": "nolottyperules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolottyperules",
-          "FIX:tag": "1234"
         }
       },
       {
@@ -56,17 +34,6 @@
         }
       },
       {
-        "name": "nopricerangerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricerangerules",
-          "FIX:tag": "2550"
-        }
-      },
-      {
         "name": "pricerangerules",
         "dtype": {
           "type": "null"
@@ -74,17 +41,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "pricerangerules"
-        }
-      },
-      {
-        "name": "noquotesizerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquotesizerules",
-          "FIX:tag": "2558"
         }
       },
       {

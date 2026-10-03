@@ -69,6 +69,9 @@ use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
     UserRef,
 };
+use crate::boolean::{BOOLEAN_SPELLINGS, boolean_from_text};
+use crate::floating::{FLOAT_SPELLINGS, float_from_text};
+use crate::integer::{INTEGER_SPELLINGS, integer_from_text};
 use crate::{DataType, Error, JoinKind, Result, Scalar, Url};
 
 impl FromStr for Term {
@@ -187,6 +190,32 @@ pub(crate) fn parse_plan(input: &str) -> Result<Plan> {
     parser.expect_end()?;
     plan.check_budget()?;
     Ok(plan)
+}
+
+/// Parse one write verb, in any spelling the grammar reads, with or without
+/// the word that introduces its target.
+pub(crate) fn parse_verb(input: &str) -> Result<Verb> {
+    let mut parser = Parser::new(input)?;
+    let verb = parser.verb()?.ok_or_else(|| {
+        parse_error(
+            parser.position(),
+            format_smolstr!(
+                "expected a write verb - insert, append, overwrite, replace, upsert, merge or \
+                 delete - got {}",
+                parser.describe()
+            ),
+        )
+    })?;
+    parser.expect_end()?;
+    Ok(verb)
+}
+
+/// Parse one comparison: a symbol, or `is [not] distinct from`.
+pub(crate) fn parse_comparison(input: &str) -> Result<Comparison> {
+    let mut parser = Parser::new(input)?;
+    let comparison = parser.comparison()?;
+    parser.expect_end()?;
+    Ok(comparison)
 }
 
 /// Parse one target: a URL, or a catalog path, with its properties.
@@ -1260,14 +1289,8 @@ impl<'input> Parser<'input> {
                     left.is_null()
                 });
             }
-            self.expect_word("distinct")?;
-            self.expect_word("from")?;
+            let comparison = self.distinct_from(negated)?;
             let right = self.additive()?;
-            let comparison = if negated {
-                Comparison::IsNotDistinctFrom
-            } else {
-                Comparison::IsDistinctFrom
-            };
             return Ok(left.compare(comparison, right));
         }
         let negated = self.at_word("not")
@@ -1346,6 +1369,37 @@ impl<'input> Parser<'input> {
             return Ok(left);
         };
         Ok(if negated { built.not() } else { built })
+    }
+
+    /// Read one comparison where one is expected: a symbol, or `is [not]
+    /// distinct from`.
+    fn comparison(&mut self) -> Result<Comparison> {
+        if let Some(comparison) = self.comparison_symbol() {
+            return Ok(comparison);
+        }
+        if self.eat_word("is") {
+            let negated = self.eat_word("not");
+            return self.distinct_from(negated);
+        }
+        Err(parse_error(
+            self.position(),
+            format_smolstr!(
+                "expected a comparison - =, <>, !=, <, <=, >, >= or is [not] distinct from - \
+                 got {}",
+                self.describe()
+            ),
+        ))
+    }
+
+    /// The rest of `is [not] distinct from`, its `is` and `not` already read.
+    fn distinct_from(&mut self, negated: bool) -> Result<Comparison> {
+        self.expect_word("distinct")?;
+        self.expect_word("from")?;
+        Ok(if negated {
+            Comparison::IsNotDistinctFrom
+        } else {
+            Comparison::IsDistinctFrom
+        })
     }
 
     fn comparison_symbol(&mut self) -> Option<Comparison> {
@@ -1943,7 +1997,8 @@ fn number_literal(text: &str, position: usize) -> Result<Term> {
 ///
 /// The text forms are the crate's own: ISO 8601 for every temporal, an exact
 /// decimal string for a decimal, lowercase hex for binary. Nothing here is a
-/// second value parser - each family delegates to the one the codecs use.
+/// second value parser - each family delegates to the reader its root file
+/// owns, the one a column of text is cast through.
 pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> Result<Scalar> {
     use DataType as D;
 
@@ -1953,19 +2008,15 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             format_smolstr!("expected {expected}, got {text:?}"),
         )
     };
-    let integer = |text: &str| -> Result<Scalar> {
-        text.parse::<i128>()
-            .map(Scalar::from)
-            .map_err(|_| fail("a whole number"))
-    };
     let value = match dtype {
         D::Null => Scalar::Null,
-        D::Boolean => match text {
-            "true" => Scalar::from(true),
-            "false" => Scalar::from(false),
-            _ => return Err(fail("`true` or `false`")),
-        },
-        D::Int8 | D::Int16 | D::Int32 | D::Int64 => integer(text)?,
+        D::Boolean => boolean_from_text(text).ok_or_else(|| fail(BOOLEAN_SPELLINGS))?,
+        // Every width reads the one integer spelling; the closing conversion
+        // narrows it to the declared width and refuses a magnitude or a sign
+        // that width cannot hold.
+        D::Int8 | D::Int16 | D::Int32 | D::Int64 | D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => {
+            integer_from_text(text).ok_or_else(|| fail(INTEGER_SPELLINGS))?
+        }
         // A temporal literal is its classic spelling, never a raw count: the
         // count is a physical detail and the literal is what a person wrote.
         // The reading is the crate's one text reading, so a literal and a
@@ -1977,21 +2028,14 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         | D::DateTime64 { .. }
         | D::Duration32(_)
         | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
-        D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
-            .parse::<u128>()
-            .map(Scalar::from)
-            .map_err(|_| fail("a whole number that is not negative"))?,
-        D::Float16 => Scalar::from(half::f16::from_f64(
-            float_from_text(text).ok_or_else(|| fail("a floating-point number"))?,
-        )),
-        D::Float32 => Scalar::from(
-            float_from_text(text).ok_or_else(|| fail("a floating-point number"))? as f32,
-        ),
-        D::Float64 => {
-            Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
+        // Every width reads the one float spelling; the closing conversion
+        // rounds it to the declared width.
+        D::Float16 | D::Float32 | D::Float64 => {
+            float_from_text(text).ok_or_else(|| fail(FLOAT_SPELLINGS))?
         }
-        // A decimal reads through the crate's one decimal text door, which
-        // refuses a digit its scale cannot hold.
+        // Every width and both fixed leaves read the one decimal spelling at
+        // the declared scale, a digit past it refused; the closing conversion
+        // holds the coefficient to the declared precision.
         D::Decimal32 { .. }
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
@@ -2021,16 +2065,6 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
     // cast value can never end up shaped differently.
     super::eval::convert(dtype, &value, super::Safety::Strict)
         .map_err(|error| parse_error(position, format_smolstr!("{error}")))
-}
-
-/// Read a float, accepting the three names the finite grammar cannot spell.
-fn float_from_text(text: &str) -> Option<f64> {
-    match folded(text).as_str() {
-        "nan" => Some(f64::NAN),
-        "inf" | "+inf" | "infinity" => Some(f64::INFINITY),
-        "-inf" | "-infinity" => Some(f64::NEG_INFINITY),
-        _ => text.parse::<f64>().ok(),
-    }
 }
 
 /// Read lowercase or uppercase hex into bytes.

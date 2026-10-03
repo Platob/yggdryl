@@ -147,17 +147,6 @@
         }
       },
       {
-        "name": "nodeliveryschedulesettldays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodeliveryschedulesettldays",
-          "FIX:tag": "41051"
-        }
-      },
-      {
         "name": "deliveryschedulesettldays",
         "dtype": {
           "type": "null"

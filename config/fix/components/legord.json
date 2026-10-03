@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "nolegstipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstipulations",
-          "FIX:tag": "683"
-        }
-      },
-      {
         "name": "legstipulations",
         "dtype": {
           "type": "null"
@@ -76,17 +65,6 @@
         "metadata": {
           "FIX:field": "legallocid",
           "FIX:tag": "1366"
-        }
-      },
-      {
-        "name": "nolegallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegallocs",
-          "FIX:tag": "670"
         }
       },
       {
@@ -141,17 +119,6 @@
         "metadata": {
           "FIX:field": "legcoveredoruncovered",
           "FIX:tag": "565"
-        }
-      },
-      {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
         }
       },
       {
@@ -272,17 +239,6 @@
         "metadata": {
           "FIX:field": "legshortsaleexemptionreason",
           "FIX:tag": "1689"
-        }
-      },
-      {
-        "name": "nolegratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegratesources",
-          "FIX:tag": "3116"
         }
       },
       {

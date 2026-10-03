@@ -10,14 +10,14 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, IdSource, IdType,
+    DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, IdKey, IdSource, IdType,
     Identifier, Identifiers, Scalar, StructType, fix_schema, fix_schema_carrying,
 };
 
 /// One security identifier of `kind` a caller states, validated by its type
 /// and from no named source.
 fn securityid(kind: IdType, code: &str) -> Identifier {
-    Identifier::new(IdSource::Base, kind, code).expect("an identifier")
+    Identifier::new(IdKey::base(kind), code).expect("an identifier")
 }
 
 /// Every identifier of a set as `src:type=value`, in the set's order.
@@ -41,6 +41,31 @@ fn reader() -> (Arc<FixRegistry>, FixCodec) {
     (registry, reader)
 }
 
+/// A status code set whose values are numbers - `QuoteStatus(297)`, typed
+/// as an integer by the dictionary - states the message's state as a text
+/// one does: a quote status report reads its quote as cancelled, expired or
+/// rejected rather than unknown.
+#[test]
+fn an_integer_typed_status_tag_states_the_messages_state() {
+    use yggdryl::State;
+
+    let (_, reader) = reader();
+    for (code, state) in [
+        ("1", State::Canceled),
+        ("7", State::Expired),
+        ("5", State::Rejected),
+    ] {
+        let line = format!("8=FIX.4.4|35=AI|52=20260921-10:00:00|117=Q1|55=AAPL|297={code}|10=0|");
+        let message = reader.sole_line(line.as_bytes()).expect("one message");
+        assert_eq!(
+            message.get_by_tag(297).and_then(|held| held.as_i64()),
+            code.parse().ok(),
+            "{code} is typed as an integer"
+        );
+        assert_eq!(*message.get_state(), state, "{code}");
+    }
+}
+
 /// A setter states a security identifier as the message's fact and leaves
 /// the wire as the source sent it: the `SecAltIDGrp(454)` occurrence the
 /// message carried is still its one, and the identifier it read stands
@@ -51,7 +76,7 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     let mut message = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
         .expect("an order with one unrelated alternate identifier");
-    assert_eq!(shown(message.get_securityids()), ["fix:ric=AAPL.O"]);
+    assert_eq!(shown(message.get_securityids()), ["ric=AAPL.O"]);
 
     for (kind, code) in [
         (IdType::Isin, "US0378331005"),
@@ -69,12 +94,12 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     assert_eq!(
         shown(message.get_securityids()),
         [
-            "base:bloomberg=AAPL US EQUITY",
-            "base:cusip=037833100",
-            "base:figi=BBG000BLNQ16",
-            "base:isin=US0378331005",
-            "base:sedol=2046251",
-            "fix:ric=AAPL.O",
+            "bloomberg=AAPL US EQUITY",
+            "cusip=037833100",
+            "figi=BBG000BLNQ16",
+            "isin=US0378331005",
+            "ric=AAPL.O",
+            "sedol=2046251",
         ],
         "held in the order of their keys, as `src:type` spells them"
     );
@@ -97,7 +122,7 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     );
     assert!(
         message
-            .remove_securityid(&IdSource::Base, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert!(
@@ -107,12 +132,12 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     );
     assert!(
         message
-            .remove_securityid(&IdSource::Base, &IdType::Bloomberg)
+            .remove_securityid(&IdKey::base(IdType::Bloomberg))
             .unwrap()
     );
     assert!(
         !message
-            .remove_securityid(&IdSource::Base, &IdType::Bloomberg)
+            .remove_securityid(&IdKey::base(IdType::Bloomberg))
             .unwrap()
     );
     assert_eq!(
@@ -122,9 +147,13 @@ fn instrument_identifier_setters_state_securityids_and_leave_the_wire() {
     assert_eq!(message.get_securityids().get(&IdType::Bloomberg), None);
 
     for kind in [IdType::Isin, IdType::Cusip, IdType::Sedol, IdType::Figi] {
-        assert!(message.remove_securityid(&IdSource::Base, &kind).unwrap());
+        assert!(
+            message
+                .remove_securityid(&IdKey::base(kind.clone()))
+                .unwrap()
+        );
     }
-    assert_eq!(shown(message.get_securityids()), ["fix:ric=AAPL.O"]);
+    assert_eq!(shown(message.get_securityids()), ["ric=AAPL.O"]);
     assert_eq!(wire_value(&message, 454).as_deref(), Some("1"));
 }
 
@@ -140,7 +169,11 @@ fn a_stated_identifier_replaces_a_derived_one() {
         .expect("an order stating its ISIN");
     assert_eq!(
         shown(message.get_securityids()),
-        ["derived:cusip=037833100", "fix:isin=US0378331005"]
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "isin=US0378331005"
+        ]
     );
 
     assert!(
@@ -151,13 +184,13 @@ fn a_stated_identifier_replaces_a_derived_one() {
     assert_eq!(
         message
             .get_securityids()
-            .get_from(&IdSource::Derived, &IdType::Cusip),
+            .get_from(&IdKey::new(IdSource::Derived, IdType::Cusip)),
         None
     );
     assert_eq!(
         message
             .get_securityids()
-            .get_from(&IdSource::Base, &IdType::Cusip),
+            .get_from(&IdKey::base(IdType::Cusip)),
         Some("037833100")
     );
     assert!(
@@ -171,14 +204,14 @@ fn a_stated_identifier_replaces_a_derived_one() {
         .expect("an order stating its ISIN");
     assert!(
         derived
-            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert_eq!(derived.get_securityids().get(&IdType::Cusip), None);
     assert_eq!(wire_value(&derived, 48).as_deref(), Some("US0378331005"));
     assert!(
         message
-            .remove_securityid(&IdSource::Fix, &IdType::Isin)
+            .remove_securityid(&IdKey::base(IdType::Isin))
             .unwrap()
     );
     assert_eq!(
@@ -187,6 +220,41 @@ fn a_stated_identifier_replaces_a_derived_one() {
     );
     assert_eq!(wire_value(&message, 48).as_deref(), Some("US0378331005"));
     assert_eq!(wire_value(&message, 22).as_deref(), Some("4"));
+}
+
+/// Removing the ISIN takes back what was derived under it, and the
+/// currency pair the symbol names - which hangs on the symbol - stands.
+#[test]
+fn removing_the_isin_keeps_the_pair_the_symbol_names() {
+    let (_, reader) = reader();
+    let mut message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=EUR/USD|22=4|48=US0378331005|54=1|38=1|10=0|")
+        .expect("an order");
+    assert_eq!(
+        shown(message.get_securityids()),
+        [
+            "cusip=037833100",
+            "derived:cusip=037833100",
+            "derived:forex=EUR/USD",
+            "forex=EUR/USD",
+            "isin=US0378331005"
+        ]
+    );
+    assert!(
+        message
+            .remove_securityid(&IdKey::base(IdType::Isin))
+            .unwrap()
+    );
+    assert_eq!(
+        shown(message.get_securityids()),
+        ["derived:forex=EUR/USD", "forex=EUR/USD"]
+    );
+    message.finalize();
+    assert_eq!(
+        shown(message.get_securityids()),
+        ["derived:forex=EUR/USD", "forex=EUR/USD"],
+        "and a settle restates neither"
+    );
 }
 
 #[test]
@@ -206,12 +274,12 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     assert_eq!(
         shown(message.get_identifiers()),
         [
-            "fix:clordid=CLIENT-1",
-            "fix:mdreqid=MARKET-1",
-            "fix:orderid=ORDER-1",
-            "fix:origclordid=CLIENT-0",
-            "fix:quoteid=QUOTE-1",
-            "fix:quotereqid=REQUEST-1",
+            "clordid=CLIENT-1",
+            "mdreqid=MARKET-1",
+            "orderid=ORDER-1",
+            "origclordid=CLIENT-0",
+            "quoteid=QUOTE-1",
+            "quotereqid=REQUEST-1",
         ],
         "every identifier a source field states stands, without the capture context"
     );
@@ -356,11 +424,19 @@ fn a_cross_code_is_stored_under_the_kind_and_the_side_the_message_takes() {
     assert_eq!(order.get_crosshashcode(), yggdryl::xxhash::xxh3(b"10:2:C9"));
 
     // A message stating no side states `0`; so does any kind that is no
-    // order, quote or execution, whatever side its parts take.
+    // order or execution, whatever side its parts take - a quote's side is
+    // a tag, which a write moves without moving its code.
     let none = reader
         .sole_line(b"8=FIX.4.4|35=D|11=C2|55=AAPL|38=1|40=2|10=0|")
         .unwrap();
     assert_eq!(none.get_crosscode(), "10:0:C2");
+    let mut quote = reader
+        .sole_line(b"8=FIX.4.4|35=S|117=Q5|55=AAPL|54=1|132=99|134=1|10=0|")
+        .unwrap();
+    assert_eq!(quote.get_crosscode(), "14:0:Q5");
+    quote.set(54, Scalar::from("2")).unwrap();
+    assert_eq!(quote.get_side().as_str(), "SELL");
+    assert_eq!(quote.get_crosscode(), "14:0:Q5", "a tag moves no code");
     let mut trade = reader
         .parse_line(
             b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=R1|150=F|55=AAPL|32=10|31=101.25|60=20260921-10:00:00|552=1|54=1|1427=E1|1009=10|37=O1|11=C3|10=0|",
@@ -819,6 +895,72 @@ fn a_parsed_execution_report_states_its_execution_at_its_instant() {
     assert_eq!(unstated.get_execunix(), None);
 }
 
+/// `ExpireDate(432)` is the last day an order can trade, so it stops being
+/// good where that day ends - an order good until today is alive the day it
+/// is placed, and its acknowledgement follows it - while `ExpireTime(126)` is
+/// the instant it names. `MaturityDate(541)` is when the instrument matures,
+/// no deadline of the message stating it.
+#[test]
+fn an_expire_date_is_good_through_its_day_and_a_maturity_is_no_deadline() {
+    const PLACED: i64 = 1_789_984_800_000_000_000; // 2026-09-21T10:00:00Z
+    const DAY_ENDS: i64 = 1_790_035_200_000_000_000; // 2026-09-22T00:00:00Z
+    const AT_1630: i64 = 1_790_008_200_000_000_000; // 2026-09-21T16:30:00Z
+
+    let (_, reader) = reader();
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|38=10|44=100|40=2|59=6|432=20260921|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|11=C1|37=O1|150=0|39=0|54=1|55=AAPL|59=6|432=20260921|10=0|",
+    ];
+    let parsed: Vec<FixMsg> = reader
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("two messages");
+    let placed = &parsed[0];
+    assert_eq!(placed.get_currunix(), PLACED);
+    assert_eq!(placed.get_exprunix(), Some(DAY_ENDS));
+    let chained: Vec<FixMsg> = reader
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    let [order, ack, expired] = chained.as_slice() else {
+        panic!(
+            "the order, its acknowledgement and its expiry: {}",
+            chained.len()
+        )
+    };
+    assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
+    assert_eq!(ack.get_crossuuid(), order.get_crossuuid());
+    assert_eq!(expired.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(expired.get_currunix(), DAY_ENDS);
+    assert_eq!(*expired.get_state(), yggdryl::State::Expired);
+
+    // A written date reads back as the day it names, so the wire a walk
+    // answers re-parses to the same deadline.
+    let rewritten = reader
+        .sole_line(order.into_text('|').unwrap().as_bytes())
+        .unwrap();
+    assert_eq!(rewritten.get_exprunix(), Some(DAY_ENDS));
+
+    // An expiry time is exact, and wins over a date beside it.
+    let timed = reader
+        .sole_line(
+            b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C2|55=AAPL|54=1|126=20260921-16:30:00|432=20260921|10=0|",
+        )
+        .unwrap();
+    assert_eq!(timed.get_exprunix(), Some(AT_1630));
+
+    // An instrument maturing today leaves the order without a deadline.
+    let maturing = reader
+        .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C3|55=ESZ6|54=1|541=20260921|10=0|")
+        .unwrap();
+    assert_eq!(maturing.get_exprunix(), None);
+    let walked: Vec<FixMsg> = reader
+        .lifecycle([maturing])
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(walked.len(), 1, "nothing expires it");
+}
+
 const ORDER: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|";
 
 /// Every tag a message's children carry, beside the value each holds.
@@ -939,6 +1081,83 @@ fn a_set_is_what_the_entries_and_the_wire_re_emit() {
     );
     assert_ne!(message.digest(), parsed.digest());
     assert_ne!(message.entries(), parsed.entries());
+}
+
+#[test]
+fn a_boolean_reads_every_spelling_a_column_cast_reads() {
+    // FIX spells a flag `Y` or `N`, and a bridge writes `yes` or `no`: each
+    // is the generic value door's reading, as a column cast's, never a
+    // refusal left null beside an anomaly.
+    let (_, reader) = reader();
+    for (spelling, flag) in [
+        ("Y", true),
+        ("yes", true),
+        ("1", true),
+        ("N", false),
+        ("no", false),
+        ("OFF", false),
+    ] {
+        let line = format!("8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1028={spelling}|10=0|");
+        let message = reader.sole_line(line.as_bytes()).expect("a message");
+        assert_eq!(
+            message.get_by_tag(1028),
+            Some(Scalar::from(flag)),
+            "{spelling:?}"
+        );
+        assert!(
+            message.anomalies().is_empty(),
+            "{spelling:?}: {:?}",
+            message.anomalies()
+        );
+    }
+    // Text no boolean spells stays a named refusal, the entry kept.
+    let message = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1028=maybe|10=0|")
+        .expect("a message");
+    assert_eq!(message.get_by_tag(1028), Some(Scalar::Null));
+    assert_eq!(message.anomalies().len(), 1);
+}
+
+#[test]
+fn a_status_a_dictionary_left_as_text_reads_as_the_number_it_spells() {
+    // `SecurityTradingStatus(326)` and `TradSesStatus(340)` are numbers in the
+    // committed dictionary and `SecurityStatus(965)` a code, spelled as text:
+    // a dictionary that leaves all three text states the spelling the wire
+    // carried, and the one integer reader reads each as the number it is.
+    let fields = [
+        ("securitytradingstatus", 326),
+        ("tradsesstatus", 340),
+        ("securitystatus", 965),
+        ("symbol", 55),
+    ]
+    .map(|(name, tag)| {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).expect("a tag");
+        field
+    });
+    let registry = Arc::new(FixRegistry::from_fields(fields).expect("a dictionary"));
+    let reader = super::fixed_codec(registry);
+    for (body, expected) in [
+        ("326=17|", Some(true)),
+        ("326= 17 |", Some(true)),
+        ("326=2|", Some(false)),
+        ("326=7|", None),
+        ("340=2|", Some(true)),
+        ("340=3|", Some(false)),
+        ("965=1|", Some(true)),
+        ("965=3|", Some(true)),
+        ("965=01|", Some(true)),
+        ("965=5|", Some(false)),
+        ("965=11|", Some(false)),
+        ("965=7|", None),
+        ("965=abc|", None),
+        // The first status that answers decides.
+        ("340=3|965=1|", Some(false)),
+    ] {
+        let line = format!("8=FIX.4.4|35=8|55=BRN|{body}10=0|");
+        let held = reader.sole_line(line.as_bytes()).expect("a message");
+        assert_eq!(held.get_tradable(), expected, "{line}");
+    }
 }
 
 #[test]
@@ -1120,18 +1339,13 @@ fn a_row_reads_back_into_the_message_that_made_it() {
     assert_eq!(held.get_execunix(), Some(200));
 }
 
-/// The fixed row projecting the dictionary's `Parties(453)` group, its
-/// `NoPartyIDs` counter beside it, in place of the `partyids` identifiers:
+/// The fixed row projecting the dictionary's `Parties(453)` group - its list
+/// alone, its length the count - in place of the `partyids` identifiers:
 /// the shape of a row that holds the group as a column, which the fixed row
 /// itself keeps among its entries instead.
 fn fixed_with_party_group(registry: &FixRegistry) -> Field {
     let fixed = fix_schema(registry, "fix").unwrap();
     // Every column of a row is nullable: a message states the group or not.
-    let count = registry
-        .field_by_tag(453)
-        .expect("NoPartyIDs")
-        .clone()
-        .with_nullable(true);
     let group = registry
         .field_by_counter(453)
         .expect("Parties")
@@ -1140,7 +1354,7 @@ fn fixed_with_party_group(registry: &FixRegistry) -> Field {
     let mut columns = Vec::new();
     for column in fixed.fields() {
         if column.name() == FIXENTRIES_COLUMN {
-            columns.extend([count.clone(), group.clone()]);
+            columns.push(group.clone());
         }
         if column.name() != "partyids" {
             columns.push(column.clone());
@@ -1152,14 +1366,14 @@ fn fixed_with_party_group(registry: &FixRegistry) -> Field {
         .required_field("fix")
 }
 
-/// A repeating group holding no occurrence is stated by its count alone:
-/// `NoPartySubIDs(802)=0` is the counter stating zero beside the empty
-/// list - an entry of its own, which re-emits - and a list holding nothing
-/// beside no stated count is the group absent. A table storing a null list
-/// as an empty one - PyIceberg reads a null list of structs back as `[]`,
-/// the counter beside it still null - so hands each message back as the
-/// parse wrote it: settled again from its content, each keeps its content
-/// code and its identity, and only the count stated re-emits.
+/// A repeating group is its list alone: `NoPartySubIDs(802)=0` is the list
+/// holding nothing - an entry of its own, which re-emits - and a group never
+/// stated is no list at all. A column holds a group as null or as at least
+/// one occurrence, so the stated zero rides the residual record, and a table
+/// storing a null list as an empty one - PyIceberg reads a null list of
+/// structs back as `[]` - hands each message back as the parse wrote it:
+/// settled again from its content, each keeps its content code and its
+/// identity, and only the group stated empty re-emits.
 #[test]
 fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     let (registry, reader) = reader();
@@ -1200,7 +1414,10 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
         panic!("parties is a repeating group");
     };
     let subids_at = party.index_of("partysubids").expect("a partysubids member");
-    let count_at = party.index_of("nopartysubids").expect("its counter member");
+    assert!(
+        party.index_of("nopartysubids").is_none(),
+        "no counter member"
+    );
     for (message, stated) in [(&absent, false), (&counted, true)] {
         let mut cells = message
             .into_row(&fixed)
@@ -1214,12 +1431,11 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
             .as_sequence()
             .expect("one party")
             .to_vec();
-        assert_eq!(!members[count_at].is_null(), stated, "the count");
-        assert_eq!(!members[subids_at].is_null(), stated, "the subgroup");
+        assert!(members[subids_at].is_null(), "the subgroup's column");
         members[subids_at] = Scalar::from_sequence(Vec::<Scalar>::new());
         cells[parties_at] = Scalar::from_sequence([Scalar::from_sequence(members)]);
         let read_back = Scalar::from_sequence(cells);
-        assert_eq!(read_back == written, stated, "only the absent list moves");
+        assert_ne!(read_back, written, "the list read back empty");
         let [as_written, as_read_back] = [written, read_back]
             .map(|row| FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap());
         for (held, read) in [(&as_written, "as written"), (&as_read_back, "as read back")] {
@@ -1231,8 +1447,7 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
             assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
             assert_eq!(wire(held).contains("|802=0|"), stated, "{read}");
         }
-        // Equality compares the row's storage; what the row states agrees.
-        assert_eq!(as_read_back == as_written, stated);
+        // What the row states agrees, whichever way the list was stored.
         assert_eq!(as_read_back.entries(), as_written.entries());
         assert_eq!(as_read_back.digest(), as_written.digest());
         assert_eq!(wire(&as_read_back), wire(&as_written));
@@ -1241,9 +1456,8 @@ fn a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
 
 /// The same rule at the root of a row: `NoPartyIDs(453)=0` is stated and
 /// re-emits, and a `parties` group column read back as `[]` where the row held
-/// null - its `nopartyids` still null, or no such column at all - is the
-/// group absent, so a message settled again from the row keeps its content
-/// code and its identity.
+/// null is the group absent, so a message settled again from the row keeps
+/// its content code and its identity.
 #[test]
 fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     let (registry, reader) = reader();
@@ -1257,42 +1471,37 @@ fn a_root_group_counting_none_is_stated_and_a_list_read_back_empty_is_not() {
     assert!(!wire(&absent).contains("453="), "{}", wire(&absent));
 
     // Read without the content code, so each message is settled from what
-    // its row states; then without the count's column as well.
+    // its row states.
     let fixed = fixed_with_party_group(&registry);
     let hashcode_at = yggdryl::fix_column_of(&fixed, yggdryl::CURRHASHCODE_TAG_NAME.0)
         .expect("a currhashcode column");
-    let count_at = fixed.index_of("nopartyids").expect("a nopartyids column");
-    for dropped in [vec![hashcode_at], vec![hashcode_at, count_at]] {
-        let schema = StructType::from_fields(
-            fixed
-                .fields()
-                .iter()
-                .enumerate()
-                .filter(|(at, _)| !dropped.contains(at))
-                .map(|(_, column)| column.clone()),
-        )
-        .map(DataType::from)
-        .unwrap()
-        .required_field("fix");
-        let parties_at = schema.index_of("parties").expect("a parties column");
-        for (message, stated) in [(&absent, false), (&counted, true)] {
-            let written = message.into_row(&schema).unwrap();
-            let mut cells = written.as_sequence().unwrap().to_vec();
-            if cells[parties_at].is_null() {
-                cells[parties_at] = Scalar::from_sequence(Vec::<Scalar>::new());
-            }
-            let read_back = Scalar::from_sequence(cells);
-            let columns = dropped.len();
-            for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
-                let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
-                assert_eq!(
-                    held.get_currhashcode(),
-                    message.get_currhashcode(),
-                    "{read}, {columns} column(s) dropped"
-                );
-                assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
-                assert_eq!(wire(&held).contains("|453="), stated, "{read}");
-            }
+    let schema = StructType::from_fields(
+        fixed
+            .fields()
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at != hashcode_at)
+            .map(|(_, column)| column.clone()),
+    )
+    .map(DataType::from)
+    .unwrap()
+    .required_field("fix");
+    let parties_at = schema.index_of("parties").expect("a parties column");
+    for (message, stated) in [(&absent, false), (&counted, true)] {
+        let written = message.into_row(&schema).unwrap();
+        let mut cells = written.as_sequence().unwrap().to_vec();
+        assert!(cells[parties_at].is_null(), "a column holds no empty group");
+        cells[parties_at] = Scalar::from_sequence(Vec::<Scalar>::new());
+        let read_back = Scalar::from_sequence(cells);
+        for (row, read) in [(&written, "as written"), (&read_back, "as read back")] {
+            let held = FixMsg::from_row(Arc::clone(&registry), &schema, row).unwrap();
+            assert_eq!(
+                held.get_currhashcode(),
+                message.get_currhashcode(),
+                "{read}"
+            );
+            assert_eq!(held.get_curruuid(), message.get_curruuid(), "{read}");
+            assert_eq!(wire(&held).contains("|453="), stated, "{read}");
         }
     }
 }
@@ -1762,7 +1971,7 @@ fn a_group_held_as_a_column_reads_as_its_run() {
     assert_eq!(
         message
             .get_identifiers()
-            .get_from(&IdSource::Fix, &IdType::RegTradeId),
+            .get_from(&IdKey::base(IdType::RegTradeId)),
         Some("RTID-1")
     );
     let group = message
@@ -1841,6 +2050,10 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
         .unwrap();
     assert_eq!(stated.get_side().as_str(), "SELL");
     assert_eq!(stated.get_price(), None);
+    // The side a quote states is a tag: its code stores none, and its bid
+    // stands beside the ask it tags.
+    assert_eq!(stated.get_crosscode(), "14:0:Q4");
+    assert_eq!(stated.get_bidpx(), Some(decimal("101")));
 
     // A report pricing itself is about the fill: what it last executed at
     // is `lastpx`, never the price.
@@ -1868,6 +2081,135 @@ fn a_quotes_bid_and_offer_name_no_side_and_no_price() {
     assert_eq!(order.get_side().as_str(), "BUYS");
     order.remove(54).unwrap();
     assert_eq!(order.get_side().as_str(), "UNKN");
+}
+
+/// The market facts an element completes, by name: what the twin property
+/// compares.
+fn completed_market(element: &impl Operation) -> Vec<(&'static str, Option<String>)> {
+    let shown = |value: Option<Decimal>| value.map(|held| held.to_string());
+    vec![
+        ("currency", Some(element.get_currency().as_str().to_owned())),
+        ("price", shown(element.get_price())),
+        ("quantity", shown(element.get_quantity())),
+        ("displayqty", shown(element.get_displayqty())),
+        ("hiddenqty", shown(element.get_hiddenqty())),
+        ("bidpx", shown(element.get_bidpx())),
+        ("bidqty", shown(element.get_bidqty())),
+        (
+            "bidccy",
+            element.get_bidccy().map(|held| held.as_str().to_owned()),
+        ),
+        ("askpx", shown(element.get_askpx())),
+        ("askqty", shown(element.get_askqty())),
+        (
+            "askccy",
+            element.get_askccy().map(|held| held.as_str().to_owned()),
+        ),
+        ("ordqty", shown(element.get_ordqty())),
+        ("cumqty", shown(element.get_cumqty())),
+        ("leavesqty", shown(element.get_leavesqty())),
+        ("cxlqty", shown(element.get_cxlqty())),
+        ("lastpx", shown(element.get_lastpx())),
+        ("lastqty", shown(element.get_lastqty())),
+        ("avgpx", shown(element.get_avgpx())),
+        ("spotrate", shown(element.get_spotrate())),
+        ("forwardpoints", shown(element.get_forwardpoints())),
+    ]
+}
+
+/// The typed twin of `message`: an element of its category stating, through
+/// the setters, its state, its side, its ticker and each market fact the
+/// line states as it states it - and nothing the dictionary derived from
+/// them - then finalized, as a parse finalizes the message.
+fn typed_twin<E: Event + Operation>(
+    mut twin: E,
+    message: &FixMsg,
+    line: &str,
+) -> Vec<(&'static str, Option<String>)> {
+    twin.set_state(*message.get_state());
+    for (tag, value) in line
+        .split('|')
+        .filter_map(|field| field.split_once('='))
+        .filter_map(|(tag, value)| Some((tag.parse::<i32>().ok()?, value)))
+    {
+        let number = || Some(Decimal::parse(value).expect("a decimal"));
+        match tag {
+            54 => twin.set_side(message.get_side(), true),
+            55 => twin.set_ticker(Some(value.into()), true),
+            15 => twin.set_currency(yggdryl::Ccy::new(value).expect("a currency"), true),
+            44 => twin.set_price(number(), true),
+            53 => twin.set_quantity(number(), true),
+            1138 | 111 => twin.set_displayqty(number(), true),
+            132 => twin.set_bidpx(number(), true),
+            134 => twin.set_bidqty(number(), true),
+            133 => twin.set_askpx(number(), true),
+            135 => twin.set_askqty(number(), true),
+            38 => twin.set_ordqty(number(), true),
+            14 => twin.set_cumqty(number(), true),
+            151 => twin.set_leavesqty(number(), true),
+            84 => twin.set_cxlqty(number(), true),
+            31 => twin.set_lastpx(number(), true),
+            32 => twin.set_lastqty(number(), true),
+            6 => twin.set_avgpx(number(), true),
+            194 => twin.set_spotrate(number(), true),
+            195 => twin.set_forwardpoints(number(), true),
+            _ => {}
+        }
+    }
+    twin.finalize();
+    completed_market(&twin)
+}
+
+/// A FIX message and its typed twin are two representations of one market:
+/// what the message completes - the dictionary's derivations over its
+/// fields, then the facts it states through the setters - is exactly what
+/// the twin completes stating the same raw facts through the setters alone,
+/// so neither layer fills a fact the other leaves, or fills it otherwise.
+#[test]
+fn a_fix_message_and_its_typed_twin_complete_alike() {
+    use yggdryl::MarketDataKind;
+    use yggdryl::graph::{ExecutionEvent, OrderEvent, QuoteEvent};
+
+    const CORPUS: [&str; 17] = [
+        // A new order, and an iceberg showing part of it.
+        "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=100|40=2|15=USD|10=0|",
+        "8=FIX.4.4|35=D|11=C2|55=AAPL|54=2|44=50|38=1000|1138=100|40=2|15=USD|10=0|",
+        // Acknowledged, pending and accepted for bidding.
+        "8=FIX.4.4|35=8|37=O1|17=E1|150=0|39=0|54=1|55=AAPL|44=10|38=100|151=100|14=0|10=0|",
+        "8=FIX.4.4|35=8|37=O1|17=E2|150=A|39=A|54=1|55=AAPL|38=100|14=0|10=0|",
+        "8=FIX.4.4|35=8|37=O1|17=E3|150=D|39=D|54=1|55=AAPL|38=100|10=0|",
+        // Partly filled, stating what traded or what is left.
+        "8=FIX.4.4|35=8|37=O2|17=E4|150=F|39=1|54=1|55=AAPL|44=100|38=100|14=40|32=40|31=100.5|15=USD|10=0|",
+        "8=FIX.4.4|35=8|37=O2|17=E5|150=F|39=1|54=1|55=AAPL|38=100|151=60|32=40|31=10|10=0|",
+        // Filled, and an FX forward filled at spot plus points - stating
+        // the currency its symbol's pair would otherwise name, a reading of
+        // the wire the twin has no symbol detector for.
+        "8=FIX.4.4|35=8|37=O3|17=E6|150=F|39=2|54=2|55=AAPL|38=100|14=100|32=60|31=101|6=100.8|10=0|",
+        "8=FIX.4.4|35=8|37=O4|17=E7|150=F|39=2|54=1|55=EURUSD|15=EUR|38=1000000|32=1000000|194=1.25|195=0.0025|10=0|",
+        // Canceled, stating what was canceled or nothing, and expired.
+        "8=FIX.4.4|35=8|37=O5|17=E8|150=4|39=4|54=1|55=AAPL|38=100|14=40|84=60|10=0|",
+        "8=FIX.4.4|35=8|37=O5|17=E9|150=4|39=4|54=1|55=AAPL|38=100|10=0|",
+        "8=FIX.4.4|35=8|37=O6|17=E10|150=C|39=C|54=2|55=AAPL|38=100|14=30|10=0|",
+        // Rejected.
+        "8=FIX.4.4|35=8|37=O7|17=E11|150=8|39=8|54=1|55=AAPL|38=100|10=0|",
+        // Quotes: two-sided, tagged, and one leg alone.
+        "8=FIX.4.4|35=S|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|",
+        "8=FIX.4.4|35=S|117=Q2|55=AAPL|54=1|15=USD|132=99|134=7|133=101|135=8|10=0|",
+        "8=FIX.4.4|35=S|117=Q3|55=AAPL|54=2|133=101|135=8|10=0|",
+        // A quote's FX parts are its legs', which no last price reads.
+        "8=FIX.4.4|35=S|117=Q4|55=EURUSD|15=EUR|54=1|132=1.2|134=1000000|188=1.19|189=0.01|10=0|",
+    ];
+    let (_, reader) = reader();
+    for line in CORPUS {
+        let message = reader.sole_line(line.as_bytes()).expect("a message");
+        let twin = match message.msgcat() {
+            MarketDataKind::Order => typed_twin(OrderEvent::at(0), &message, line),
+            MarketDataKind::Quotation => typed_twin(QuoteEvent::at(0), &message, line),
+            MarketDataKind::Execution => typed_twin(ExecutionEvent::at(0), &message, line),
+            other => panic!("{line}: an order, a quote or an execution, got {other:?}"),
+        };
+        assert_eq!(completed_market(&message), twin, "{line}");
+    }
 }
 
 mod market_ladder {
@@ -2057,8 +2399,8 @@ mod identifier_maps {
     //! and a bridge's user and account keys name, which leave its leaves'
     //! metadata.
 
-    use yggdryl::graph::{Market, Operation};
-    use yggdryl::{FixMsg, IdSource, IdType, Identifier};
+    use yggdryl::graph::{Element, Market, Operation};
+    use yggdryl::{FixMsg, IdType, Identifier};
 
     fn parsed(line: &str) -> FixMsg {
         super::super::fixed_codec(super::super::committed_registry())
@@ -2073,7 +2415,8 @@ mod identifier_maps {
 
     /// An identifier of `kind` the wire's own fields state.
     fn fix_id(kind: &str, value: &str) -> Identifier {
-        Identifier::new(IdSource::Fix, kind.parse().expect("a type"), value).expect("an identifier")
+        Identifier::new(yggdryl::IdKey::base(kind.parse().expect("a type")), value)
+            .expect("an identifier")
     }
 
     /// The metadata of the first leaf the message expands to: what it
@@ -2082,6 +2425,102 @@ mod identifier_maps {
         message.market_data().expect("market data")[0]
             .get_metadata()
             .clone()
+    }
+
+    /// A bridge's code-like keys each land in `securityids`: the crate's
+    /// own `ISINCODE` and `BLOOMBERGCODE` views, and the keyed `RICCODE`,
+    /// `OMS_CUSIPCODE` and `SEDOLCODE` the alias table reads. The row's
+    /// `metadata` holds none of them - a keyed one rides `fixentries` under
+    /// `0:<key>` as it arrived, a view its own column - and only a value a
+    /// type refuses by shape stays in `metadata`; the row read back restates
+    /// the wire, the sets, the digest and the identity.
+    #[test]
+    fn a_bridges_code_aliases_land_in_securityids_and_leave_the_rows_metadata() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|ISINCODE=US0378331005|BLOOMBERGCODE=AAPL US Equity|\
+             OMS_CUSIPCODE=037833100|RICCODE=AAPL.O|SEDOLCODE=2046251|#CUSIPCODE=03783310|\
+             10=0|",
+        );
+        let ids = held.get_securityids();
+        for (kind, value) in [
+            (IdType::Isin, "US0378331005"),
+            (IdType::Bloomberg, "AAPL US Equity"),
+            (IdType::Ric, "AAPL.O"),
+            (IdType::Cusip, "037833100"),
+            (IdType::Sedol, "2046251"),
+        ] {
+            assert_eq!(ids.get(&kind), Some(value), "{kind}: {ids}");
+        }
+        assert_eq!(
+            ids.get_from(&yggdryl::IdKey::new("oms".parse().unwrap(), IdType::Cusip)),
+            Some("037833100")
+        );
+        let anomalies: Vec<&str> = held.anomalies().iter().map(|held| held.field()).collect();
+        assert_eq!(anomalies, ["cusipcode"]);
+
+        let registry = super::super::committed_registry();
+        let schema = yggdryl::fix_schema(&registry, "fix").expect("a schema");
+        let row = held.into_row(&schema).expect("a row");
+        let cells = row.as_sequence().expect("a row");
+        let cell = |name: &str| -> Vec<(String, String)> {
+            cells[schema.index_of(name).expect(name)]
+                .as_mapping()
+                .map(|held| {
+                    held.iter()
+                        .map(|(key, value)| {
+                            (
+                                key.as_str().expect("a text key").to_owned(),
+                                value.as_str().expect("a text value").to_owned(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            cell("metadata"),
+            [("cusipcode".to_owned(), "03783310".to_owned())]
+        );
+        let residual = cell("fixentries");
+        for (key, value) in [
+            ("0:omscusipcode", "037833100"),
+            ("0:riccode", "AAPL.O"),
+            ("0:sedolcode", "2046251"),
+        ] {
+            assert!(
+                residual.contains(&(key.to_owned(), value.to_owned())),
+                "{key} in {residual:?}"
+            );
+        }
+        assert!(
+            residual.iter().all(|(key, _)| {
+                key != "0:cusipcode"
+                    && !key.ends_with("isincode")
+                    && !key.ends_with("bloombergcode")
+            }),
+            "{residual:?}"
+        );
+        let column = |name: &str| cells[schema.index_of(name).expect(name)].as_str();
+        assert_eq!(column("isincode"), Some("US0378331005"));
+        assert_eq!(column("bloombergcode"), Some("AAPL US Equity"));
+
+        let again =
+            FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row).expect("again");
+        assert_eq!(again.get_securityids(), ids);
+        assert_eq!(again.metadata(), held.metadata());
+        let tokens = |held: &FixMsg| {
+            let mut tokens: Vec<String> = String::from_utf8(held.into_bytes(b'|'))
+                .expect("a text wire")
+                .split('|')
+                .map(str::to_owned)
+                .collect();
+            tokens.sort();
+            tokens
+        };
+        assert_eq!(tokens(&again), tokens(&held));
+        assert_eq!(again.digest(), held.digest());
+        assert_eq!(again.get_currhashcode(), held.get_currhashcode());
+        assert_eq!(again.into_row(&schema).expect("a row again"), row);
     }
 
     #[test]
@@ -2103,15 +2542,14 @@ mod identifier_maps {
         assert_eq!(
             shown(held.get_identifiers()),
             [
-                "base:orderid=P1",
-                "base:parentorderid=P1",
-                "fix:clordid=U1",
-                "fix:execid=E1",
-                "fix:orderid=O1",
-                "fix:origclordid=PC1",
-                "fix:secondaryclordid=X1",
+                "clordid=U1",
+                "execid=E1",
                 "omsdealer:orderid=OP1",
                 "omsdealer:parentorderid=OP1",
+                "orderid=O1",
+                "origclordid=PC1",
+                "parentorderid=P1",
+                "secondaryclordid=X1",
             ]
         );
         let text = |tag: i32| {
@@ -2167,7 +2605,7 @@ mod identifier_maps {
         }
         assert_eq!(
             held.get_partyids().to_string(),
-            "[base:account=ACC, omsdealer:account=YNHD5]"
+            "[account=ACC, omsdealer:account=YNHD5]"
         );
         // The leaf holds what it read in its sets and drops it from its
         // metadata: only the key no identifier name ends is still there.
@@ -2222,7 +2660,7 @@ mod identifier_maps {
         // the leaf's metadata, since no map the leaf holds names it.
         assert_eq!(
             held.get_partyids().to_string(),
-            "[proprietary:customeraccount=C1, proprietary:enteringtrader=T1]"
+            "[customeraccount=C1, enteringtrader=T1, proprietary:customeraccount=C1, proprietary:enteringtrader=T1]"
         );
         let metadata = leaf_metadata(&held);
         assert_eq!(
@@ -2240,19 +2678,151 @@ mod identifier_maps {
         );
     }
 
+    /// `PartyRole(452)` `21` is `ClearingOrganization` in the code set: its
+    /// name folded is the party's type - a party role - and never
+    /// `SecurityIDSource(22)` `H`'s `clearinghouse`, a security type.
+    #[test]
+    fn a_clearing_organization_party_is_typed_by_its_roles_own_name_and_is_no_security() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|453=2|448=LCH|447=D|452=21|\
+             448=T1|447=D|452=12|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "clearingorganization=LCH",
+                "executingtrader=T1",
+                "proprietary:clearingorganization=LCH",
+                "proprietary:executingtrader=T1"
+            ]
+        );
+        assert!(
+            held.get_partyids()
+                .iter()
+                .all(|id| id.kind().is_party() && !id.kind().is_security()),
+            "{}",
+            held.get_partyids()
+        );
+        // A party's value is any text, whatever its role: a security type's
+        // printable-ASCII rule never reaches it.
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|38=5|40=2|453=1|448=Chambre\u{e9}|447=D|452=21|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "clearingorganization=Chambre\u{e9}",
+                "proprietary:clearingorganization=Chambre\u{e9}"
+            ]
+        );
+    }
+
+    /// A source the set names nothing for is its own spelling where it is a
+    /// word; a bare wire code - one character, or digits - is prefixed by
+    /// its field, as a role is, so it never reads as a word of its own.
+    #[test]
+    fn a_party_or_account_source_the_set_names_nothing_for_is_its_spelling_or_its_prefixed_code() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|1=ACC|660=7|55=AAPL|54=1|40=2|453=2|448=T1|447=W|452=12|\
+             448=F1|447=MyVenue|452=1|10=0|",
+        );
+        assert_eq!(
+            shown(held.get_partyids()),
+            [
+                "account=ACC",
+                "acctidsource7:account=ACC",
+                "executingfirm=F1",
+                "executingtrader=T1",
+                "myvenue:executingfirm=F1",
+                "partyidsourcew:executingtrader=T1",
+            ]
+        );
+    }
+
+    /// `Account(1)` is a party typed `account`, sourced by its
+    /// `AcctIDSource(660)` code's name; each `RootPartyID(1117)` of
+    /// `NoRootPartyIDs(1116)` is typed by its `RootPartyRole(1119)` and
+    /// sourced by its `RootPartyIDSource(1118)`, `base` for none.
+    #[test]
+    fn an_account_is_sourced_by_its_acctidsource_name_and_root_parties_are_parties() {
+        for (source, expected) in [
+            ("1", "bic:account=ACC-1"),
+            ("6", "spsaid:account=ACC-1"),
+            ("99", "other:account=ACC-1"),
+        ] {
+            let held = parsed(&format!(
+                "8=FIX.4.4|35=D|11=C1|1=ACC-1|660={source}|55=AAPL|54=1|38=5|40=2|10=0|"
+            ));
+            // The source fills the base key, the account's answer.
+            assert_eq!(
+                shown(held.get_partyids()),
+                ["account=ACC-1", expected],
+                "660={source}"
+            );
+        }
+        let quoted = parsed(
+            "8=FIX.4.4|35=R|131=QR1|303=2|55=AAPL|1116=2|1117=R1|1118=D|1119=12|1117=R2|1119=3|10=0|",
+        );
+        assert_eq!(
+            shown(quoted.get_partyids()),
+            [
+                "clientid=R2",
+                "executingtrader=R1",
+                "proprietary:executingtrader=R1"
+            ]
+        );
+    }
+
+    /// A regulatory trade identifier is typed by its
+    /// `RegulatoryTradeIDType(1906)` alone: neither its
+    /// `RegulatoryTradeIDSource(1905)` nor its
+    /// `RegulatoryTradeIDScope(2397)` reaches the identifier, so a second
+    /// current one - another scope's - is an anomaly and the first stands.
+    #[test]
+    fn a_regulatory_trade_id_is_typed_by_its_type_alone_and_a_second_scope_is_an_anomaly() {
+        let held = parsed(
+            "8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|40=2|1907=2|1903=UTI-1|1905=LEI-A|1906=0|2397=1|\
+             1903=UTI-2|1905=LEI-B|1906=0|2397=2|10=0|",
+        );
+        assert_eq!(
+            held.get_identifiers()
+                .get_from(&yggdryl::IdKey::base(IdType::RegTradeId)),
+            Some("UTI-1"),
+            "{}",
+            held.get_identifiers()
+        );
+        let dropped: Vec<_> = held
+            .anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "regulatorytradeids")
+            .collect();
+        assert_eq!(dropped.len(), 1, "{:?}", held.anomalies());
+        assert!(
+            dropped[0]
+                .reason()
+                .contains("states regtradeid=UTI-2 where regtradeid=UTI-1"),
+            "{}",
+            dropped[0].reason()
+        );
+    }
+
     #[test]
     fn a_following_operation_carries_what_the_dictionary_follows() {
         let held = parsed("8=FIX.4.4|35=8|17=E1|37=O1|10=0|");
-        for key in ["orderid", "secondaryorderid"] {
+        // The parents of an identifier are no flag of any field: they travel
+        // with a base that follows, so a follower naming no `OrderID(37)`
+        // keeps its chain's lineage, and not with one that does not.
+        for key in [
+            "orderid",
+            "secondaryorderid",
+            "parentorderid",
+            "origorderid",
+        ] {
             assert!(held.is_followed_identifier(&fix_id(key, "x")), "{key}");
         }
-        // The parents of an identifier are no flag of any field: a follower
-        // takes them from its chain by the parentage rule.
         for key in [
             "clordid",
             "execid",
-            "parentorderid",
-            "origorderid",
             "origclordid",
             "ultraderclordid",
             "marketorderid",
@@ -2271,55 +2841,57 @@ mod identifier_maps {
         assert_eq!(
             shown(both.get_identifiers()),
             [
-                "base:orderid=P1",
-                "base:origorderid=O0",
-                "base:parentorderid=P1",
-                "fix:clordid=C1",
+                "clordid=C1",
+                "orderid=P1",
+                "origorderid=O0",
+                "parentorderid=P1",
             ]
         );
         let farthest = parsed("8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|OrigOrderID=O0|10=0|");
         assert_eq!(
             shown(farthest.get_identifiers()),
-            ["base:orderid=O0", "base:origorderid=O0", "fix:clordid=C1"]
+            ["clordid=C1", "orderid=O0", "origorderid=O0"]
         );
-        // Each source states its own: the wire's `OrderID(37)` is no base of
-        // the bridge's parent, which fills `base:orderid` beside it.
+        // The wire's `OrderID(37)` states the type's answer, so the
+        // bridge's parent fills no base the wire states.
         let beside =
             parsed("8=FIX.4.4|35=8|17=E1|37=O1|150=0|39=0|54=1|55=AAPL|ParentOrderID=P1|10=0|");
         assert_eq!(
             beside
                 .get_identifiers()
-                .get_from(&IdSource::Fix, &IdType::OrderId),
+                .get_from(&yggdryl::IdKey::base(IdType::OrderId)),
             Some("O1")
         );
         assert_eq!(
-            beside
-                .get_identifiers()
-                .get_from(&IdSource::Base, &IdType::OrderId),
+            beside.get_identifiers().get_from(&yggdryl::IdKey::base(
+                "parentorderid".parse().expect("a type")
+            )),
             Some("P1")
         );
         // An empty value states nothing, and fills nothing.
         let empty = parsed("8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|ParentOrderID=|10=0|");
-        assert_eq!(shown(empty.get_identifiers()), ["fix:clordid=C1"]);
+        assert_eq!(shown(empty.get_identifiers()), ["clordid=C1"]);
         // A namespaced key names its own source, a dot inside kept: a parent
-        // there fills that source's base, however the wire states its own.
+        // there fills that source's base, however the wire states its own,
+        // and the base parent key it fills where nothing else states one.
         let stated = parsed(
             "8=FIX.4.4|35=D|11=C1|55=HOLN|54=1|40=2|firm.x.ParentOrderID=P1|OrderID=O9|10=0|",
         );
         assert_eq!(
             shown(stated.get_identifiers()),
             [
+                "clordid=C1",
                 "firm.x:orderid=P1",
                 "firm.x:parentorderid=P1",
-                "fix:clordid=C1",
-                "fix:orderid=O9",
+                "orderid=O9",
+                "parentorderid=P1",
             ]
         );
     }
 
     /// The registry's own list says which types are parents of a base: a
-    /// dictionary field stating `grandparentorderid` under the `fix` source
-    /// is a base of its own by the names alone, and the middle of the three
+    /// dictionary field stating `grandparentorderid` under its base key is a
+    /// base of its own by the names alone, and the middle of the three
     /// parents `OrderID(37)` states in the registry that lists them - which
     /// the base then takes before the farthest.
     #[test]
@@ -2360,10 +2932,10 @@ mod identifier_maps {
         assert_eq!(
             shown(named.get_identifiers()),
             [
-                "base:orderid=O0",
-                "base:origorderid=O0",
-                "fix:clordid=C1",
-                "fix:grandparentorderid=G1",
+                "clordid=C1",
+                "grandparentorderid=G1",
+                "orderid=O0",
+                "origorderid=O0",
             ],
             "by its name alone `grandparentorderid` is a base of its own"
         );
@@ -2371,11 +2943,10 @@ mod identifier_maps {
         assert_eq!(
             shown(listed.get_identifiers()),
             [
-                "base:orderid=O0",
-                "base:origorderid=O0",
-                "fix:clordid=C1",
-                "fix:grandparentorderid=G1",
-                "fix:orderid=G1",
+                "clordid=C1",
+                "grandparentorderid=G1",
+                "orderid=G1",
+                "origorderid=O0",
             ],
             "the list makes it a parent of `orderid`, and the nearer of the two stated"
         );

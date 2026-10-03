@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nounderlyingprovisioncashsettlvaluedatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingprovisioncashsettlvaluedatebusinesscenters",
-          "FIX:tag": "42182"
-        }
-      },
-      {
         "name": "underlyingprovisioncashsettlvaluedatebusinesscenters",
         "dtype": {
           "type": "null"

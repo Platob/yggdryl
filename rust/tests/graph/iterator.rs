@@ -4,16 +4,18 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
+use yggdryl::IdKey;
+
 use yggdryl::graph::{
     Element, Event, EventIterator, ExecutionEvent, Market, Operation, OrderEvent,
 };
-use yggdryl::{IdSource, IdType, Identifier, State, Uuid};
+use yggdryl::{IdType, Identifier, State, Uuid};
 
 use super::element::filled;
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &IdType, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind.clone(), value).unwrap()
+    Identifier::new(IdKey::base(kind.clone()), value).unwrap()
 }
 
 /// One nanosecond count per millisecond: a derived identity opens with the
@@ -382,6 +384,83 @@ fn a_chain_with_no_cross_code_is_one_cross_element() {
 }
 
 #[test]
+fn a_chain_with_no_cross_code_keeps_one_cross_element_through_an_update_an_expiry_a_twin_and_a_stated_code()
+ {
+    use yggdryl::Side;
+
+    let event = |ms: i64, code: Option<&str>, state: State, expiry: Option<i64>| {
+        let mut event = OrderEvent::at(at(ms));
+        if let Some(code) = code {
+            event.set_crosscode(code.to_owned());
+        }
+        event.set_side(Side::Buy, true);
+        event.set_state(state);
+        event.set_exprunix(expiry);
+        event
+            .insert_identifier(identifier(&CL_ORD_ID, "C-7"))
+            .unwrap();
+        event.finalize();
+        event
+    };
+
+    // A NEW over the live NEW walks UPDATED.
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            event(10, None, State::New, None),
+            event(20, None, State::New, None),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[0].get_crossuuid(), walked[0].get_curruuid());
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(*walked[1].get_state(), State::Updated);
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the update"
+    );
+
+    // The expiry the walk emits at the deadline.
+    let walked: Vec<OrderEvent> =
+        EventIterator::new(vec![event(10, None, State::New, Some(at(30)))], true).collect();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(*walked[1].get_state(), State::Expired);
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the expiry"
+    );
+
+    // A twin of a follower, restating it.
+    let fill = event(20, None, State::PartiallyFilled, None);
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![event(10, None, State::New, None), fill.clone(), fill],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(walked[2], walked[1], "the twin");
+
+    // A follower joining by the name, stating a code of its own.
+    let walked: Vec<OrderEvent> = EventIterator::new(
+        vec![
+            event(10, None, State::New, None),
+            event(20, Some("O-9"), State::PartiallyFilled, None),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(
+        walked[1].get_crossuuid(),
+        walked[0].get_crossuuid(),
+        "the stated code"
+    );
+}
+
+#[test]
 fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     // One message a capture logged at two hops: the same instant, the same
     // content, arriving under the identity the live element arrived under.
@@ -474,6 +553,140 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
             (0, None),
             (0, Some(20)),
         ]
+    );
+}
+
+#[test]
+fn a_statement_logged_again_after_its_chain_moved_on_at_its_instant_restates_it() {
+    // An acknowledgement, the fill that moved its chain on at the same
+    // instant, then the acknowledgement logged again: a statement of the
+    // acknowledgement, not a step after the fill.
+    let mut ack = named("O-100", 20, &EXEC_ID, "E-1");
+    ack.set_state(State::New);
+    ack.finalize();
+    let mut fill = named("O-100", 20, &EXEC_ID, "E-2");
+    fill.set_state(State::PartiallyFilled);
+    fill.finalize();
+    let arrived = vec![
+        incarnation("O-100", 10),
+        ack.clone(),
+        fill,
+        ack,
+        incarnation("O-100", 30),
+    ];
+    let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
+    let [_, ack, fill, again, next] = walked.as_slice() else {
+        panic!("five statements, not {}", walked.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
+    assert_eq!(again, ack, "the acknowledgement's own identity and place");
+    // The chain stays where the fill moved it.
+    assert_eq!(next.get_prevuuid(), Some(fill.get_curruuid()));
+}
+
+#[test]
+fn a_statement_logged_again_after_the_step_that_ended_its_chain_at_its_instant_restates_it() {
+    // An acknowledgement, the fill that ended its chain at the same
+    // instant, then each logged again: statements of the two, not a chain
+    // started afresh.
+    let mut ack = named("O-100", 20, &EXEC_ID, "E-1");
+    ack.set_state(State::New);
+    ack.finalize();
+    let mut fill = named("O-100", 20, &EXEC_ID, "E-2");
+    fill.set_state(State::Filled);
+    fill.finalize();
+    let arrived = vec![
+        incarnation("O-100", 10),
+        ack.clone(),
+        fill.clone(),
+        ack.clone(),
+        fill,
+        incarnation("O-100", 30),
+    ];
+    let walked: Vec<OrderEvent> = EventIterator::new(arrived, true).collect();
+    let [_, first, fill, again, filled_again, next] = walked.as_slice() else {
+        panic!("six statements, not {}", walked.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(again, first, "the acknowledgement's own identity and place");
+    assert_eq!(filled_again, fill, "the fill's own identity and place");
+    // The chain stays ended: the next statement starts one afresh.
+    assert_eq!(next.get_prevuuid(), None);
+
+    // The walk keeps them only while it reads that instant: one read after
+    // a later instant is out of order, and restates nothing.
+    let mut walk = EventIterator::new(
+        vec![
+            incarnation("O-100", 10),
+            ack.clone(),
+            stating("O-100", 20, State::Filled),
+            incarnation("O-200", 30),
+            ack,
+        ],
+        true,
+    );
+    let first = walk.nth(1).expect("the acknowledgement");
+    let late = walk.nth(2).expect("the acknowledgement, read late");
+    assert_eq!(late.get_prevuuid(), None);
+    assert_ne!(late.get_curruuid(), first.get_curruuid());
+}
+
+/// A FIX message held as market data walks as itself: a twin of the live
+/// message, and a statement logged again after its chain moved on at its
+/// instant, restate the message they repeat through its own reading.
+#[test]
+fn a_market_data_walk_restates_a_fix_twin_and_a_fix_statement_logged_again() {
+    use yggdryl::graph::MarketData;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind};
+
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+    let codec = FixCodec::new(std::sync::Arc::new(
+        FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
+    ));
+    // Walked as market data, read back as the messages the walk yielded.
+    let walked = |lines: &[&str]| -> Vec<FixMsg> {
+        let arrived: Vec<MarketData> = lines
+            .iter()
+            .flat_map(|line| codec.parse_line(line.as_bytes()).expect("a readable line"))
+            .map(|message| MarketData::from(message.expect("every frame parses")))
+            .collect();
+        EventIterator::new(arrived, true)
+            .filter(|held| held.marketdatakind() == MarketDataKind::Order)
+            .map(|held| FixMsg::try_from(held).expect("a FIX message walks as itself"))
+            .collect()
+    };
+    let order =
+        "8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30.000|11=A1|55=AAPL|54=1|38=100|10=0|";
+    let ack = |sequence: u64| {
+        format!(
+            "8=FIX.4.4|35=8|49=T|56=S|34={sequence}|52=20260102-10:15:30.500|11=A1|37=O1|150=0|39=0|54=1|55=AAPL|10=0|"
+        )
+    };
+    let fill = "8=FIX.4.4|35=8|49=T|56=S|34=2|52=20260102-10:15:30.500|11=A1|37=O1|17=E1|150=F|39=1|14=10|151=90|31=10|32=10|54=1|55=AAPL|10=0|";
+
+    // The acknowledgement delivered again under another sequence: a twin.
+    let twin = walked(&[order, &ack(1), &ack(2)]);
+    let [order_walked, first, again] = twin.as_slice() else {
+        panic!("three order messages, not {}", twin.len())
+    };
+    assert_eq!(first.get_prevuuid(), Some(order_walked.get_curruuid()));
+    assert_eq!(
+        (again.get_curruuid(), again.get_prevuuid()),
+        (first.get_curruuid(), first.get_prevuuid()),
+        "the twin is the acknowledgement again"
+    );
+
+    // Delivered again after the fill that moved its chain on at its instant.
+    let passed = walked(&[order, &ack(1), fill, &ack(3)]);
+    let [_, first, fill, again] = passed.as_slice() else {
+        panic!("four order messages, not {}", passed.len())
+    };
+    assert_eq!(fill.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(
+        (again.get_curruuid(), again.get_prevuuid()),
+        (first.get_curruuid(), first.get_prevuuid()),
+        "the acknowledgement again, not a step after the fill"
     );
 }
 
@@ -609,6 +822,12 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
             .collect::<Vec<_>>(),
         [(0, -1)]
     );
+    for view in walked.iter().filter(|event| event.get_snapunix().is_some()) {
+        let mut settled = view.clone();
+        settled.finalize();
+        settled.set_crossuuid(view.get_crossuuid());
+        assert_eq!(*view, settled, "a view is what settling it answers");
+    }
 
     // Without a grid the snapshot instant is left as it came, and a step
     // of no width is no grid.
@@ -889,6 +1108,13 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
             snapshot.get_curruuid() == source.get_curruuid(),
             tick == source.get_currunix()
         );
+        // Only instants moved, and they feed no code: the view is stamped
+        // again over the live code, and is what settling a copy of it
+        // answers, under its chain's cross element.
+        let mut settled = snapshot.clone();
+        settled.finalize();
+        settled.set_crossuuid(snapshot.get_crossuuid());
+        assert_eq!(*snapshot, settled, "the view at {}", ms(tick));
     }
     assert!(walked.iter().all(|event| {
         event
@@ -1316,6 +1542,139 @@ fn an_unsided_order_joins_the_one_live_side_of_its_base_under_the_stored_code() 
     assert_eq!(quote.get_crosscode(), "14:0:ORD-1");
 }
 
+/// A quote is unsided: every statement of one quote stores `14:0:`
+/// whatever side it tags, so a bid statement and an offer statement under
+/// one code are one chain, each following the one before. A name a quote
+/// goes by is alive on the side it tags - FIX scopes an `MDEntryID(278)` by
+/// its `MDEntryType(269)` - so under two codes a bid and an offer going by
+/// one name are two chains; a statement tagging no side joins the one
+/// quote alive under the name, and a tagged one the untagged quote holding
+/// both legs.
+#[test]
+fn one_quote_identifier_is_one_chain_whatever_side_its_statements_state() {
+    use yggdryl::Side;
+    use yggdryl::graph::QuoteEvent;
+
+    let quote = |code: &str, ms: i64, side: Side, px: &str| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_side(side, true);
+        quote.set_price(Some(px.parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "Q1"))
+            .unwrap();
+        quote.finalize();
+        quote
+    };
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("Q-1", 10, Side::Buy, "99"),
+            quote("Q-1", 20, Side::Sell, "101"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+    assert_eq!(
+        (walked[0].get_crosscode(), walked[1].get_crosscode()),
+        ("14:0:Q-1", "14:0:Q-1")
+    );
+    assert_eq!(
+        walked[1].get_side(),
+        Side::Sell,
+        "the tag is the statement's"
+    );
+
+    // Two codes going by one quote identifier, tagging two sides: two
+    // chains, each its own code.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ASK-1", 20, Side::Sell, "101"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), None);
+    assert_eq!(walked[1].get_crosscode(), "14:0:ASK-1");
+    assert_ne!(walked[1].get_crossuuid(), walked[0].get_crossuuid());
+
+    // A statement tagging no side joins the one quote alive under the
+    // name, and neither where both sides are.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ANY-1", 20, Side::Unknown, "98"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:BID-1");
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("BID-1", 10, Side::Buy, "99"),
+            quote("ASK-1", 20, Side::Sell, "101"),
+            quote("ANY-1", 30, Side::Unknown, "98"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[2].get_prevuuid(), None);
+
+    // A tagged statement continues the untagged quote going by its name.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            quote("TWO-1", 10, Side::Unknown, "99"),
+            quote("FILL-1", 20, Side::Buy, "99"),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+    assert_eq!(walked[1].get_crosscode(), "14:0:TWO-1");
+}
+
+/// Elements split off one message - two entries of one batch going by the
+/// batch's own identifier - are two entries: neither joins the other's
+/// chain by the name they share.
+#[test]
+fn elements_split_off_one_message_never_join_one_another_by_a_name() {
+    use yggdryl::graph::QuoteEvent;
+
+    let batch = Uuid::from_v8(7);
+    let entry = |code: &str, ms: i64, sources: Vec<Uuid>| {
+        let mut quote = QuoteEvent::at(at(ms));
+        quote.set_crosscode(code.to_owned());
+        quote.set_bidpx(Some("99".parse().unwrap()), true);
+        quote
+            .insert_identifier(identifier(&IdType::QuoteId, "MQ1"))
+            .unwrap();
+        quote.set_srcuuids(sources);
+        quote.finalize();
+        quote
+    };
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![entry("E-1", 10, vec![batch]), entry("E-2", 10, vec![batch])],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), None, "a sibling is no step");
+    assert_eq!(walked[1].get_crosscode(), "14:0:E-2");
+    // An element of another message going by the name joins by it.
+    let walked: Vec<QuoteEvent> = EventIterator::new(
+        vec![
+            entry("E-1", 10, vec![batch]),
+            entry("ACK-1", 20, vec![Uuid::from_v8(8)]),
+        ],
+        true,
+    )
+    .collect();
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+}
+
 /// Two sides of one code stay two chains for as long as both live: each
 /// statement follows the live one of its own side, under the stored code
 /// and the cross identity that side owns.
@@ -1384,7 +1743,7 @@ fn an_element_joins_a_live_chain_through_a_parent_identifiers_value() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
     assert_eq!(held(&walked[1], "orderid").as_deref(), Some("B"));
@@ -1427,7 +1786,7 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
 
@@ -1495,5 +1854,44 @@ fn a_walk_carries_the_parents_of_each_identifier_along_its_chain() {
             .map(|event| held(event, "parentclordid"))
             .collect::<Vec<_>>(),
         [None, some("A"), some("B")]
+    );
+}
+
+/// The expiration a walk emits reports no fill: it takes the live
+/// element's facts and its cumulative fill, never its last one - the last
+/// price, its FX parts and the last quantity are the fill the live element
+/// reported, which the expiry did not.
+#[test]
+fn an_expiration_reports_no_fill() {
+    let decimal = |text: &str| yggdryl::Decimal::parse(text).expect("a decimal");
+    let mut order = incarnation("O-100", 10);
+    order.set_state(State::PartiallyFilled);
+    order.set_ordqty(Some(decimal("100")), true);
+    order.set_cumqty(Some(decimal("40")), true);
+    order.set_lastqty(Some(decimal("40")), true);
+    order.set_spotrate(Some(decimal("1.25")), true);
+    order.set_forwardpoints(Some(decimal("0.25")), true);
+    order.set_exprunix(Some(at(20)));
+    order.finalize();
+    assert_eq!(order.get_lastpx(), Some(decimal("1.5")));
+    assert_eq!(order.get_avgpx(), Some(decimal("1.5")));
+    let walked: Vec<_> = EventIterator::new([order], true).collect();
+    let expired = &walked[1];
+    assert_eq!(*expired.get_state(), State::Expired);
+    assert_eq!(
+        (expired.get_lastpx(), expired.get_lastqty()),
+        (None, None),
+        "an expiry reports no fill"
+    );
+    assert_eq!(
+        (expired.get_spotrate(), expired.get_forwardpoints()),
+        (None, None),
+        "nor the parts of a fill's price"
+    );
+    assert_eq!(expired.get_cumqty(), Some(decimal("40")));
+    assert_eq!(expired.get_avgpx(), Some(decimal("1.5")));
+    assert_eq!(
+        (expired.get_leavesqty(), expired.get_cxlqty()),
+        (Some(decimal("0")), Some(decimal("60")))
     );
 }

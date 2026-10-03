@@ -1496,37 +1496,66 @@ mod generic {
         let mut field = Field::new("total", DataType::Int64, true);
 
         // An ordinary field participates in initialization and carries no key.
-        assert!(field.is_init().unwrap());
+        assert!(field.is_init());
         assert!(!field.has_metadata("FIELD:init"));
 
         // Marking it derived stores exactly one canonical value.
         field.set_init(false);
-        assert!(!field.is_init().unwrap());
+        assert!(!field.is_init());
         assert_eq!(field.get_metadata("FIELD:init"), Some("false"));
 
         // Restoring the default removes the key rather than storing `true`.
         field.set_init(true);
-        assert!(field.is_init().unwrap());
+        assert!(field.is_init());
         assert!(!field.has_metadata("FIELD:init"));
 
         // The consuming form mirrors the setter.
         let derived = Field::new("total", DataType::Int64, true).with_init(false);
-        assert!(!derived.is_init().unwrap());
+        assert!(!derived.is_init());
     }
 
     #[test]
-    fn the_init_flag_rejects_a_non_boolean_spelling() {
-        let error = Field::from_parts("total", DataType::Int64, true, [("FIELD:init", "yes")])
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("expected true or false"), "{error}");
-        assert!(error.contains("\"yes\""), "{error}");
-
-        // The canonical spellings are accepted and round-trip.
-        for (text, expected) in [("true", true), ("false", false)] {
+    fn the_init_flag_reads_every_boolean_spelling_and_stores_the_canonical_one() {
+        for (text, expected) in [
+            ("true", true),
+            ("false", false),
+            ("No", false),
+            ("Y", true),
+            (" off ", false),
+            ("1", true),
+            ("0", false),
+            ("TRUE", true),
+        ] {
             let field =
                 Field::from_parts("total", DataType::Int64, true, [("FIELD:init", text)]).unwrap();
-            assert_eq!(field.is_init().unwrap(), expected, "{text}");
+            assert_eq!(field.is_init(), expected, "{text:?}");
+            // Two spellings of one reading are one schema: the stored text is
+            // `true` or `false`, which `is_init` compares.
+            assert_eq!(
+                field.get_metadata("FIELD:init"),
+                Some(if expected { "true" } else { "false" }),
+                "{text:?}"
+            );
+        }
+        let spelled =
+            Field::from_parts("total", DataType::Int64, true, [("FIELD:init", "no")]).unwrap();
+        let canonical =
+            Field::from_parts("total", DataType::Int64, true, [("FIELD:init", "false")]).unwrap();
+        assert_eq!(spelled, canonical);
+    }
+
+    #[test]
+    fn the_init_flag_refuses_text_no_boolean_spells_naming_the_key() {
+        for text in ["perhaps", "2", "n/a"] {
+            let error = Field::from_parts("total", DataType::Int64, true, [("FIELD:init", text)])
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("FIELD:init"), "{text:?}: {error}");
+            assert!(
+                error.contains("expected true/false, yes/no, y/n, on/off or 1/0, got"),
+                "{text:?}: {error}"
+            );
+            assert!(error.contains(&format!("{text:?}")), "{text:?}: {error}");
         }
     }
 

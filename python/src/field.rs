@@ -933,8 +933,8 @@ impl PyField {
     /// An absent marker means it may; an explicit `False` marks a field a
     /// schema declares but a constructor must refuse.
     #[getter]
-    fn is_init(&self) -> PyResult<bool> {
-        self.inner.is_init().map_err(value_error)
+    fn is_init(&self) -> bool {
+        self.inner.is_init()
     }
 
     /// Record whether a constructor may supply a value for this field.

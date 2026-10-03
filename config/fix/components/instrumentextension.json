@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "noinstrattrib",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrattrib",
-          "FIX:tag": "870"
-        }
-      },
-      {
         "name": "attrbgrp",
         "dtype": {
           "type": "null"
@@ -55,17 +44,6 @@
         "metadata": {
           "FIX:field": "commodityfinalpricetype",
           "FIX:tag": "2736"
-        }
-      },
-      {
-        "name": "noindexrollmonths",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noindexrollmonths",
-          "FIX:tag": "2734"
         }
       },
       {
@@ -97,17 +75,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "floatingrateindex"
-        }
-      },
-      {
-        "name": "noreferencedatadates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noreferencedatadates",
-          "FIX:tag": "2746"
         }
       },
       {

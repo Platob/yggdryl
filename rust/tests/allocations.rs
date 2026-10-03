@@ -27,11 +27,11 @@ use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    BookEvent, BookIterator, BookRef, CandleIterator, CandleOptions, Element, ElementColumn, Event,
-    ExecutionEvent, Market, MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent,
-    TradeEvent,
+    BookEvent, BookIterator, BookRef, Element, ElementColumn, Event, ExecutionEvent, Market,
+    MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -969,73 +969,6 @@ fn trade_construction_does_not_allocate_per_execution() {
     black_box((shallow, deep));
 }
 
-/// `count` books of `ALLOC` inside one minute, each carrying one fill of
-/// 5 whose `EXECID` is `exec(index)` - thirty-odd bytes, past `SmolStr`'s
-/// inline width, so holding one the fold has not seen allocates.
-fn allocation_candle_books(count: usize, exec: impl Fn(usize) -> String) -> Vec<BookEvent> {
-    (0..count)
-        .map(|index| {
-            let unix = i64::try_from(index).expect("a small corpus") + 1;
-            let mut fill = ExecutionEvent::at(unix);
-            fill.set_crosscode(format!("ALLOC-FILL-{index:04}"));
-            fill.set_ticker(Some(SmolStr::new("ALLOC")), true);
-            fill.set_side(Side::read("Buy").expect("the shipped buy side"), true);
-            fill.set_lastqty(Some(Decimal::from_int(5)), true);
-            fill.set_state(State::read("Filled").expect("the shipped filled state"));
-            assert!(
-                fill.insert_identifier(
-                    Identifier::new(IdSource::Fix, IdType::ExecId, &exec(index)).unwrap()
-                )
-                .unwrap()
-            );
-            fill.finalize();
-            let mut book = BookEvent::new(unix, "ALLOC");
-            book.add_operations([MarketData::from(fill)])
-                .expect("one execution");
-            book
-        })
-        .collect()
-}
-
-/// What folding `books` into minute candles allocates, the one candle it
-/// answers included, and that candle's volume.
-fn allocation_candle_fold(books: Vec<BookEvent>) -> (usize, Decimal) {
-    let options = CandleOptions::from_spelling("1m").expect("a shipped spelling");
-    let (allocations, candles) = counted(|| {
-        CandleIterator::new(books.into_iter().map(Ok), options)
-            .collect::<yggdryl::Result<Vec<_>>>()
-            .expect("a sorted stream")
-    });
-    assert_eq!(candles.len(), 1, "one bucket, one cross code");
-    (allocations, candles[0].volume)
-}
-
-#[test]
-fn a_candle_fold_allocates_per_trade_and_never_per_statement() {
-    // Every book restates one fill: its name is looked up borrowed, so a
-    // hundred and twenty-eight statements cost what one does.
-    let restated = |_: usize| "ALLOC-EXECUTION-IDENTIFIER-00000000".to_owned();
-    let (one, volume) = allocation_candle_fold(allocation_candle_books(1, restated));
-    assert_eq!(volume, Decimal::from_int(5));
-    let (many, volume) = allocation_candle_fold(allocation_candle_books(128, restated));
-    assert_eq!(volume, Decimal::from_int(5), "one trade, counted once");
-    assert_eq!(
-        many, one,
-        "128 statements of one trade allocated {many} times, one statement {one}"
-    );
-
-    // Every book states a fill of its own: each new name is held once, and
-    // the maps and slots grow by doubling - a logarithm of the trades.
-    let fresh = |index: usize| format!("ALLOC-EXECUTION-IDENTIFIER-{index:08}");
-    let (one, _) = allocation_candle_fold(allocation_candle_books(1, fresh));
-    let (many, volume) = allocation_candle_fold(allocation_candle_books(128, fresh));
-    assert_eq!(volume, Decimal::from_int(640), "128 trades of 5");
-    assert!(
-        many >= one + 127 && many <= one + 127 + 32,
-        "128 trades allocated {many} times where one trade allocated {one}"
-    );
-}
-
 fn allocation_book_operation(
     code: impl Into<String>,
     unix: i64,
@@ -1062,29 +995,104 @@ fn allocation_book(entries: usize) -> BookEvent {
     book
 }
 
+/// One step of a book walk between ticks - the next book, emitted as its
+/// deltas alone - makes as many allocations at 8 levels a side as at 1,024,
+/// whether the consumer drops every book or holds every one: nothing the
+/// step allocates is per level or per entry, and a book stating its deltas
+/// alone holds no side, so holding it never makes the next step copy one.
+/// The second step is counted, the walk's first change after its first
+/// book - every entry its delta - behind it. A copy of a side's store is
+/// the same few
+/// allocations at any depth, so this count cannot tell a shared store from
+/// a copied one; `a_walk_shares_each_side_s_store_with_the_books_it_emits`
+/// in `rust/tests/graph/book.rs` pins the sharing itself.
 #[test]
-fn one_book_iterator_update_clones_depth_only_for_its_output() {
-    let overhead = |entries| {
-        let initial = (0..entries)
-            .map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New"))
-            .collect::<Vec<_>>();
-        let update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
-        let mut books = BookIterator::new(initial.into_iter().chain([update]), 0).unwrap();
-        assert_eq!(books.next().unwrap().unwrap().alive().count(), entries);
+fn a_delta_book_walk_step_allocates_alike_at_8_and_1024_levels_while_every_book_is_held() {
+    let step = |levels: usize, held: bool| {
+        let updates = [2, 3].map(|unix| allocation_level_entry("Buy", 0, 0, unix, "Replaced"));
+        let mut books = BookIterator::new(
+            allocation_level_entries(levels).into_iter().chain(updates),
+            0,
+        )
+        .unwrap();
+        let first = books.next().unwrap().unwrap();
+        assert_eq!(first.deltas().len(), levels * 16);
+        let second = books.next().unwrap().unwrap();
+        assert!(!second.is_complete());
+        let kept = held.then_some((first, second));
         let (allocations, book) = counted(|| books.next().unwrap().unwrap());
-        assert_eq!(book.alive().count(), entries);
-        let (output, _) = counted(|| book.clone());
+        assert!(!book.is_complete());
+        assert_eq!(book.deltas().len(), 1);
+        black_box((kept, book));
         allocations
-            .checked_sub(output)
-            .expect("one owned output book")
     };
-    let shallow = overhead(1);
-    let deep = overhead(128);
-    // Output owns its depth. Transactional work has the same small fixed
-    // allowance as direct BookEvent::add_operations, regardless of resting entries.
+    for held in [false, true] {
+        let (shallow, deep) = (step(8, held), step(1_024, held));
+        assert!(
+            deep <= shallow + 2,
+            "a walk step allocated {deep} times at 1,024 levels but {shallow} times at 8, every book held: {held}"
+        );
+    }
+}
+
+/// One step of a walk at a touch 1,024 entries deep on each side makes as
+/// many allocations as at 8: the step finds and moves one entry of the
+/// level, and settling the top of book and checking the level it joined
+/// read what the level keeps - nothing it builds is per entry.
+#[test]
+fn a_walk_step_at_a_deep_touch_allocates_alike_at_8_and_1024_entries() {
+    let step = |entries: usize| {
+        let touch = ["Buy", "Sell"].into_iter().flat_map(move |side| {
+            (0..entries).map(move |slot| allocation_level_entry(side, 0, slot, 1, "New"))
+        });
+        let updates =
+            [2, 3].map(|unix| allocation_level_entry("Buy", 0, entries / 2, unix, "Replaced"));
+        let mut books = BookIterator::new(touch.chain(updates), 0).unwrap();
+        assert_eq!(books.next().unwrap().unwrap().deltas().len(), 2 * entries);
+        drop(books.next().unwrap().unwrap());
+        let (allocations, book) = counted(|| books.next().unwrap().unwrap());
+        assert!(!book.is_complete());
+        assert_eq!(book.deltas().len(), 1);
+        black_box(book);
+        allocations
+    };
+    let (shallow, deep) = (step(8), step(1_024));
     assert!(
-        deep <= shallow + 4,
-        "iterator overhead allocated {deep} times at depth 128 but {shallow} times at depth 1"
+        deep <= shallow + 2,
+        "a walk step allocated {deep} times at a touch 1,024 deep but {shallow} times at 8"
+    );
+}
+
+/// Rebuilding a book stating its deltas alone over the whole book before
+/// it - the fold `BookService::book` runs over the rows it read, through
+/// [`Element::with_previous`] - makes as many allocations over a book 8
+/// levels a side deep as over one 1,024 deep: it replays its deltas, and
+/// never copies an entry or builds anything per level.
+#[test]
+fn a_service_rebuild_allocates_per_delta_not_per_level() {
+    let rebuild = |levels: usize| {
+        let updates = [2, 3].map(|unix| allocation_level_entry("Buy", 0, 0, unix, "Replaced"));
+        let books = BookIterator::new(
+            allocation_level_entries(levels).into_iter().chain(updates),
+            0,
+        )
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+        assert_eq!(books.len(), 3);
+        let origin = BookEvent::new(books[0].get_currunix(), books[0].get_crosscode());
+        let first = books[0].clone().with_previous(&origin).unwrap();
+        let previous = books[1].clone().with_previous(&first).unwrap();
+        let delta = books[2].clone();
+        let (allocations, rebuilt) = counted(|| delta.with_previous(&previous).unwrap());
+        assert_eq!(rebuilt.alive().count(), levels * 16);
+        black_box((previous, rebuilt));
+        allocations
+    };
+    let (shallow, deep) = (rebuild(8), rebuild(1_024));
+    assert!(
+        deep <= shallow + 2,
+        "a rebuild allocated {deep} times at 1,024 levels but {shallow} times at 8"
     );
 }
 
@@ -1115,29 +1123,47 @@ fn one_book_update_does_not_allocate_per_live_entry() {
 /// four a vector grown by pushing holds in its first allocation, so a limit
 /// that grew its identities rather than collecting them shows in the count.
 fn allocation_book_levels(levels: usize) -> BookEvent {
-    let entry = |side: &str, level: usize, slot: usize| {
-        let offset = i64::try_from(level).expect("a small corpus");
-        let (name, price) = if side == "Buy" {
-            ("B", 1_000 - offset)
-        } else {
-            ("A", 1_001 + offset)
-        };
-        let mut event = QuoteEvent::at(1);
-        event.set_crosscode(format!("{name}-{level}-{slot}"));
-        event.set_ticker(Some(SmolStr::new("ALLOC")), true);
-        event.set_side(Side::read(side).expect("a shipped side"), true);
-        event.set_price(Some(Decimal::from_int(price)), true);
-        event.set_quantity(Some(Decimal::from_int(1 + offset)), true);
-        event.set_state(State::read("New").expect("the shipped new state"));
-        event.finalize();
-        MarketData::from(event)
-    };
     let mut book = BookEvent::new(1, "ALLOC");
-    book.add_operations(["Buy", "Sell"].into_iter().flat_map(|side| {
-        (0..levels).flat_map(move |level| (0..8).map(move |slot| entry(side, level, slot)))
-    }))
-    .expect("the initial depth");
+    book.add_operations(allocation_level_entries(levels))
+        .expect("the initial depth");
     book
+}
+
+/// The entries of [`allocation_book_levels`], in the order it adds them.
+fn allocation_level_entries(levels: usize) -> Vec<MarketData> {
+    ["Buy", "Sell"]
+        .into_iter()
+        .flat_map(|side| {
+            (0..levels).flat_map(move |level| {
+                (0..8).map(move |slot| allocation_level_entry(side, level, slot, 1, "New"))
+            })
+        })
+        .collect()
+}
+
+/// The entry at `slot` of `level` on `side`, at `unix` in `state`.
+fn allocation_level_entry(
+    side: &str,
+    level: usize,
+    slot: usize,
+    unix: i64,
+    state: &str,
+) -> MarketData {
+    let offset = i64::try_from(level).expect("a small corpus");
+    let (name, price) = if side == "Buy" {
+        ("B", 1_000 - offset)
+    } else {
+        ("A", 1_001 + offset)
+    };
+    let mut event = QuoteEvent::at(unix);
+    event.set_crosscode(format!("{name}-{level}-{slot}"));
+    event.set_ticker(Some(SmolStr::new("ALLOC")), true);
+    event.set_side(Side::read(side).expect("a shipped side"), true);
+    event.set_price(Some(Decimal::from_int(price)), true);
+    event.set_quantity(Some(Decimal::from_int(unix + offset)), true);
+    event.set_state(State::read(state).expect("a shipped state"));
+    event.finalize();
+    MarketData::from(event)
 }
 
 /// Every reading of a book's bests and depth is read off the price levels
@@ -1220,22 +1246,17 @@ fn allocation_market_order(index: usize) -> MarketData {
     order.set_srcuuids(vec![Uuid::from_v8(7)]);
     order
         .insert_identifier(
-            Identifier::new(IdSource::Fix, IdType::OrderId, &format!("ORDER-{index:06}")).unwrap(),
+            Identifier::new(IdKey::base(IdType::OrderId), &format!("ORDER-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order
         .insert_identifier(
-            Identifier::new(
-                IdSource::Fix,
-                IdType::MdEntryId,
-                &format!("ENTRY-{index:06}"),
-            )
-            .unwrap(),
+            Identifier::new(IdKey::base(IdType::MdEntryId), &format!("ENTRY-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order
         .insert_identifier(
-            Identifier::new(IdSource::Fix, IdType::ClOrdId, &format!("CL-{index:06}")).unwrap(),
+            Identifier::new(IdKey::base(IdType::ClOrdId), &format!("CL-{index:06}")).unwrap(),
         )
         .expect("an identifier");
     order.set_metadata(
@@ -1305,7 +1326,7 @@ fn allocation_market_order_with_rates(index: usize) -> MarketData {
     };
     order
         .insert_securityid(
-            Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").expect("an ISIN"),
+            Identifier::new(IdKey::base(IdType::Isin), "US0378331005").expect("an ISIN"),
         )
         .expect("a plain holder");
     order.set_fxrates(
@@ -1362,12 +1383,24 @@ fn a_market_data_row_with_rates_reads_only_what_it_hands_back() {
     }
 }
 
-/// The key of a ticker's book is the ticker itself, borrowed.
+/// The key of a book is borrowed from the input whatever it states: its
+/// ISIN identifier, its ticker, or the static number that states none.
 #[test]
-fn a_book_crosscode_allocates_nothing_for_a_ticker_input() {
+fn a_book_crosscode_allocates_nothing_for_any_input() {
     let order = allocation_market_order(1);
     let (allocations, key) = counted(|| black_box(order.book_crosscode().len()));
     assert_eq!(key, "ALLOC".len());
+    assert_eq!(allocations, 0);
+    let listed = allocation_market_order_with_rates(1);
+    let (allocations, key) = counted(|| black_box(listed.book_crosscode().len()));
+    assert_eq!(key, "US0378331005".len());
+    assert_eq!(allocations, 0);
+    let MarketData::OrderEvent(mut blank) = allocation_market_order(1) else {
+        unreachable!("the allocation order is an order event")
+    };
+    blank.set_ticker(None, true);
+    let (allocations, key) = counted(|| black_box(blank.book_crosscode().len()));
+    assert_eq!(key, yggdryl::Isin::NONE.len());
     assert_eq!(allocations, 0);
 }
 
@@ -1402,6 +1435,138 @@ fn a_market_data_batch_write_allocates_per_row_only_its_canonical_check() {
     );
 }
 
+/// `count` books of `ALLOC`, a second apart, each holding one order alive
+/// and applied.
+fn allocation_market_books(count: usize) -> Vec<MarketData> {
+    (0..count)
+        .map(|index| {
+            let unix = 1 + i64::try_from(index).expect("a small corpus");
+            let mut book = BookEvent::new(unix, "ALLOC");
+            book.add_operations([allocation_book_operation("ALLOC-0", unix, 1, "New")])
+                .expect("one order");
+            MarketData::from(book)
+        })
+        .collect()
+}
+
+/// A book row's nested lists - its `alive` and `deltas` rows and its
+/// `bidlimits` and `asklimits` levels - are laid out straight into the
+/// batch's items, no list built per row: past its canonical check, what a
+/// batch of books costs grows with the buffers' doublings and not with the
+/// rows, at two corpus sizes.
+#[test]
+fn a_book_batch_write_allocates_no_nested_list_per_row() {
+    let overhead = |rows: usize| {
+        let values = allocation_market_books(rows);
+        // The check clones each entry, alive and applied, and the book's
+        // event: what a clone of the book holds - its event and its deltas'
+        // vector, sharing the one entry applied - and a clone of each of its
+        // entries, alive and applied, less the deltas' vector the check never
+        // builds.
+        let (checked, ()) = counted(|| {
+            for value in &values {
+                let book = value.as_book_event().expect("a book");
+                black_box(book.clone());
+                for entry in book.alive().chain(book.deltas()) {
+                    black_box(entry.clone());
+                }
+            }
+        });
+        let checked = checked
+            .checked_sub(rows)
+            .expect("a deltas' vector per book");
+        let mut reader = MarketData::arrow_reader(values, Some(rows), None).expect("a reader");
+        let (written, batch) = counted(|| reader.next().expect("one batch").expect("the batch"));
+        assert_eq!(batch.num_rows(), rows);
+        black_box(batch);
+        written
+            .checked_sub(checked)
+            .expect("a write costs at least its checks")
+    };
+    let (small, large) = (overhead(64), overhead(512));
+    // 448 more books add under one allocation per four of them: the
+    // buffers' doublings, where a list built per row would add hundreds.
+    assert!(
+        large < small + (512 - 64) / 4,
+        "512 books cost {large} allocations beyond their checks, against {small} for 64"
+    );
+}
+
+/// A batch of the books a walk emits between its snapshot ticks - each
+/// stating its one delta alone, its `alive` cell and its levels null -
+/// costs as many allocations over a book 8 levels a side deep as over one
+/// 1,024 deep: writing one lays out and checks its deltas, never an entry
+/// or a level it holds.
+#[test]
+fn a_batch_of_books_stating_their_deltas_alone_writes_alike_at_8_and_1024_levels() {
+    let write = |levels: usize| {
+        let updates = (2..66).map(|unix| allocation_level_entry("Buy", 0, 0, unix, "Replaced"));
+        let books = BookIterator::new(
+            allocation_level_entries(levels).into_iter().chain(updates),
+            0,
+        )
+        .unwrap()
+        .skip(1)
+        .map(|book| book.map(MarketData::from))
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+        assert_eq!(books.len(), 64);
+        let mut reader = MarketData::arrow_reader(books, Some(64), None).expect("a reader");
+        let (allocations, batch) =
+            counted(|| reader.next().expect("one batch").expect("the batch"));
+        assert_eq!(batch.num_rows(), 64);
+        assert_eq!(batch.column_by_name("alive").unwrap().null_count(), 64);
+        black_box(batch);
+        allocations
+    };
+    let (shallow, deep) = (write(8), write(1_024));
+    assert!(
+        deep <= shallow + 2,
+        "64 books stating their deltas alone cost {deep} allocations at 1,024 levels but {shallow} at 8"
+    );
+}
+
+/// A filtered book walk lays out one batch per pull ahead for its filter,
+/// so what the filter costs grows with the batch's buffers and not with
+/// the inputs it judges, at two corpus sizes.
+#[test]
+fn a_filtered_book_walk_lays_out_one_batch_per_pull_ahead() {
+    let walk = |inputs: usize, filter: Option<&str>| {
+        let operations: Vec<MarketData> = (0..inputs)
+            .map(|index| {
+                let unix = 1 + i64::try_from(index).expect("a small corpus");
+                allocation_book_operation(format!("ALLOC-{index}"), unix, 1, "New")
+            })
+            .collect();
+        let books = BookIterator::new(operations.into_iter(), 0).unwrap();
+        let books = match filter {
+            Some(filter) => books.with_filter(filter).unwrap(),
+            None => books,
+        };
+        let (allocations, count) = counted(|| {
+            books.fold(0, |count, book| {
+                black_box(book.unwrap());
+                count + 1
+            })
+        });
+        assert_eq!(count, inputs);
+        allocations
+    };
+    let overhead = |inputs: usize| {
+        walk(inputs, Some("side = 'BUYS'"))
+            .checked_sub(walk(inputs, None))
+            .expect("a filter costs at least nothing")
+    };
+    let (small, large) = (overhead(64), overhead(512));
+    // 448 more inputs add under one allocation per sixteen of them: the
+    // batch's and the pulled leaves' doublings, where a cell or a batch
+    // per input would add hundreds.
+    assert!(
+        large < small + (512 - 64) / 16,
+        "filtering 512 inputs cost {large} allocations, against {small} for 64"
+    );
+}
+
 /// A capture expands into its sorted leaves at a cost per message that does
 /// not grow with the capture - no row parsed again, no metadata key built
 /// per leaf beyond its own, one sort of the leaves - whether the leaves
@@ -1410,8 +1575,8 @@ fn a_market_data_batch_write_allocates_per_row_only_its_canonical_check() {
 fn fix_market_operations_cost_is_linear_in_the_leaves() {
     let registry = Arc::new(committed_registry().clone());
     // Orders, quotes, a fill and a two-entry snapshot in turn, a second
-    // apart, each stating fields no typed column reads. The quote states its
-    // side: a two-sided one is its parse's to split (A13) and no leaf here.
+    // apart, each stating fields no typed column reads. The quote is
+    // two-sided: one leaf holding both its legs.
     let capture = |codec: &FixCodec, messages: usize| -> Vec<FixMsg> {
         (0..messages)
             .map(|index| {
@@ -1421,7 +1586,7 @@ fn fix_market_operations_cost_is_linear_in_the_leaves() {
                         "8=FIX.4.4|35=D|52={clock}|11=C{index}|55=AAPL|54=1|44=100|38=5|40=2|21=1|10=0|"
                     ),
                     1 => format!(
-                        "8=FIX.4.4|35=S|52={clock}|117=Q{index}|55=AAPL|54=1|132=99|134=7|133=101|135=8|537=1|10=0|"
+                        "8=FIX.4.4|35=S|52={clock}|117=Q{index}|55=AAPL|132=99|134=7|133=101|135=8|537=1|10=0|"
                     ),
                     2 => format!(
                         "8=FIX.4.4|35=8|52={clock}|17=E{index}|37=O{index}|55=AAPL|54=1|31=100|32=2|150=F|40=2|10=0|"
@@ -5102,6 +5267,38 @@ fn cast_corpus() -> (Field, [Serie; 2], Field) {
 }
 
 #[test]
+fn a_text_to_boolean_cast_allocates_nothing_per_cell() {
+    // The one boolean table reads each cell where it lies and writes two
+    // bits, so a column costs its two bitmaps whatever its length - never a
+    // scalar, a lowered copy or Arrow's kernel per row.
+    let source = Field::new("flag", DataType::utf8(), true);
+    let target = Field::new("flag", DataType::Boolean, true);
+    let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())
+        .expect("a text column casts into booleans");
+    let spellings = ["yes", "N", " true ", "off", "1", "0", "n/a", "tr"];
+    let mut counts = Vec::new();
+    for rows in [64_usize, 4_096] {
+        let column = Serie::from_scalars(
+            source.clone(),
+            (0..rows).map(|row| Scalar::from(spellings[row % spellings.len()])),
+        )
+        .expect("a text column");
+        let cast = || plan.apply(&column).expect("the column casts");
+        drop(cast());
+        let (allocations, booleans) = counted(cast);
+        assert_eq!(booleans.len(), rows);
+        assert_eq!(booleans.scalar(0).expect("a row"), Scalar::from(true));
+        assert_eq!(booleans.scalar(1).expect("a row"), Scalar::from(false));
+        assert_eq!(booleans.scalar(rows - 2).expect("a row"), Scalar::Null);
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "a text to boolean cast cost {counts:?} allocations at 64 and 4096 rows"
+    );
+}
+
+#[test]
 fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
     use yggdryl::ArrowCastPlan;
 
@@ -5402,9 +5599,7 @@ fn a_view_plan_is_compiled_once_per_stream() {
     use yggdryl::graph::MarketView;
 
     let batch = view_corpus();
-    let isin: FieldPath = "securityids['base:isin'].value as isin"
-        .parse()
-        .expect("a lift");
+    let isin: FieldPath = "securityids['isin'] as isin".parse().expect("a lift");
     for (view, lifts) in [
         (MarketView::Orders, vec![isin]),
         (MarketView::Trades, Vec::new()),
@@ -6410,7 +6605,12 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// became a market fact: that line's tags run from 1100 to 1162 and so state
 /// `DisplayQty(1138)`, which the market facts hold in the one boxed record
 /// of rarely stated quantities they allocate on the first such fact.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 29), (16, 30), (64, 32)];
+///
+/// It fell by one at every width when a group became its list alone: the
+/// builder's finish no longer collects each child's tag and counter to
+/// restate a counter beside its group, there being none: 29 to 28, 30 to 29
+/// and 32 to 31.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -6462,7 +6662,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 ///
 /// It last moved with [`FIX_LINE_COSTS`], by the same one in both columns.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (29, 35)), (16, (30, 60)), (64, (31, 157))];
+    [(4, (28, 34)), (16, (29, 59)), (64, (30, 156))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -6547,8 +6747,9 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// Each rendered key is exactly one allocation: the path, held as the bytes
 /// it is, rather than a counted page that would only be borrowed back.
 /// Members stay in `Member::Value` and the group keeps occurrences, so no
-/// `Slot.values` buffer exists. A packed row has exactly three scalar slots:
-/// `MsgType`, the counter, and fallback `BeginString`.
+/// `Slot.values` buffer exists. A packed row has exactly two scalar slots:
+/// `MsgType` and fallback `BeginString`; the counter opens the group and is
+/// no slot of its own.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
 /// and the rest of it is the row a wider group builds. The codec reads a
@@ -6577,7 +6778,12 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 ///
 /// It rose by one at both widths with [`FIX_LINE_COSTS`], the `Arc` the
 /// message's table of names is shared through: 54 to 55 and 74 to 75.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 55), (16, 75)];
+///
+/// It fell by two at both widths when a group became its list alone: the
+/// finish's list of each child's tag and counter, as at every width of
+/// [`FIX_LINE_COSTS`], and the list of counters the entries collected at
+/// the row's level to leave the counter's child out: 55 to 53 and 75 to 73.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 53), (16, 73)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -6623,8 +6829,8 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// It moved with [`FIX_LINE_COSTS`], by the same four: 31 to 27 at four
 /// pairs, 32 to 28 at sixteen and 33 to 29 at sixty-four; then by the
 /// same one: 28, 29 and 30; and last by its displayed quantity at
-/// sixty-four alone: 31.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 28), (16, 29), (64, 31)];
+/// sixty-four alone: 31; and with it by one at every width: 27, 28 and 30.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 27), (16, 28), (64, 30)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -6800,6 +7006,58 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
             },
         );
     }
+}
+
+/// What a key costs the residual record: nothing of its own. Every pair
+/// past `MsgType(35)` in [`fix_pairs_line`] is a dictionary field no column
+/// of the fixed row represents, so each is filed in `fixentries` under its
+/// `tag:name`; the keys are sorted on the stack and a key stated once is
+/// filed as the one entry it is, so a row of fifteen such keys costs what a
+/// row of three does - every key and value inside `SmolStr`'s inline width.
+#[test]
+fn a_residual_record_files_a_key_stated_once_at_no_cost_of_its_own() {
+    let registry = Arc::new(fix_registry(64));
+    let codec = FixCodec::new(Arc::clone(&registry))
+        .try_with_default_sending_time(Some(
+            Scalar::datetime64(
+                1_704_190_530_000_000_000,
+                TimeUnit::Nanosecond,
+                Timezone::UTC,
+            )
+            .expect("a clock"),
+        ))
+        .expect("a fixed clock");
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
+    let at = schema.index_of("fixentries").expect("the residual column");
+    let mut each = Vec::with_capacity(2);
+    for pairs in [4, 16] {
+        let message = codec
+            .parse_fix_line(&fix_pairs_line(pairs))
+            .expect("a readable line");
+        let row = message.into_row(&schema).expect("the fixed row");
+        let keys = row.as_sequence().expect("a row")[at]
+            .as_mapping()
+            .expect("the residual record")
+            .len();
+        assert!(
+            keys >= pairs - 1,
+            "{pairs} pairs filed {keys} residual keys"
+        );
+        let (once, repeated) = counted_each(
+            || message.clone(),
+            |held| held.into_row(&schema).expect("the fixed row"),
+        );
+        assert_eq!(
+            repeated,
+            once * 64,
+            "{pairs} pairs: a row costs {once} per call"
+        );
+        each.push(once);
+    }
+    assert_eq!(
+        each[0], each[1],
+        "a row filing three residual keys and one filing fifteen"
+    );
 }
 
 /// `rows` lines of the shape a bridge writes - [`fix_packed_line`]'s
@@ -7506,42 +7764,175 @@ struct StageCosts {
 /// decimal spellings used to cost, four for the bridge row (581), two for a
 /// frame (232) and twenty for the packed frame (1114).
 ///
+/// Each identifier set then became one sorted `map<utf8, utf8>` from the key
+/// (a base key spelled as its type alone, a key of two words the crate
+/// names one static string) to the value, and every type a named source
+/// states came to hold its base key too. The bridge row measured a parse of
+/// 596 and a row of 151 before it, where this pin stated 595 and 152. Each
+/// batch fell by twelve to 212: an identifier column is a map node and its
+/// entries struct (four) over two texts (two), six arrays where ten were.
+/// Each landing fell by sixty-nine with the layout - twenty-three a column,
+/// the identifier struct and its three texts gone - and by two more for
+/// each set it lands, its entries three allocations where they were five:
+/// 1515, 1496 and 1533, the bridge row's eighteen party keys growing their
+/// text once more. `into_row` lost the record each identifier was and every
+/// key spelled past `SmolStr`'s inline width, a key of two words the crate
+/// names being a static string and only a key naming a source it does not -
+/// `omsdealer:account` among them - spelled: 151 to 116 for the bridge row's
+/// thirty identifiers, thirty records and eight texts past the inline width
+/// where its thirty-seven entries now spell three, 109 to 95 for a frame's
+/// eleven (eleven and three, none now) and 279 to 262 for the packed
+/// frame's thirteen (thirteen and five, one now). The parses moved by the
+/// sets the rule
+/// keeps: a frame's rose to 245, three for the base keys its three sourced
+/// parties fill growing its party map at its three settles and one for the
+/// base keys its two derivations fill growing its security identifiers;
+/// the bridge row's fell to 592, nine for the parent fills its
+/// `ParentOrderID` keys no longer make at its three settles - the base
+/// `orderid` is the wire's `OrderID(37)` - against three for its sourced
+/// parties' base keys, one for its security identifiers' and one for the
+/// `DETAILEDCFICODE` it states, now a name of `CFICode(461)` folded where
+/// the message is built; the packed frame's did not move. Each walk rose to
+/// 8: its instrument registry takes its own table on its first learn, the
+/// empty registry sharing one static table until then.
+///
+/// A fill's report and the execution split off it then came to settle by
+/// what the split recorded alone - the category, the state, the chain, the
+/// sources - which moves no field, so neither rebuilds the identifier maps
+/// a whole settle rebuilt off the fields its parse had already read. The
+/// bridge row's parse fell by eighteen to 574, the nine that rebuild cost
+/// at each of its two settles after the first: its identifier set grown
+/// twice (to four, then eight) by what its fields state and once past
+/// eight by the keys its unmapped entries name; its party set grown three
+/// times (to four, eight and sixteen) by the fifteen its group and its
+/// `Account(1)` state and once past sixteen by its unmapped entries; and
+/// the two occurrences stating the source
+/// `generallyacceptedmarketparticipantidentifier`, a text past `SmolStr`'s
+/// inline width, read again. A frame's fell by eight to 237, the four at
+/// each: its five identifiers grown twice, the fifth a regulatory trade
+/// identifier, and its five parties twice. The packed frame is a trade,
+/// whose sides settle whole, and did not move.
+///
+/// A map whose keys stand in strictly ascending order then came to prove
+/// them distinct in the one pass that proves them sorted, and a map past
+/// sixteen entries no longer builds the set its duplicate search held. A
+/// map is checked where its entries are gathered and again where its row is
+/// canonicalized, a map built in the metadata or residual's own order at
+/// both and a party map at the second alone, and a landing checks each once
+/// more. The bridge row's `into_row` fell by five to 111, its metadata's
+/// thirty-three keys and its residual's eighteen twice each and its eighteen
+/// parties once, and its landing by three to 1512; a frame's fell by four
+/// to 91, its metadata's seventeen keys and its residual's twenty-two twice
+/// each, and by two to 1494; the packed frame's by two to 260, its
+/// metadata's eighteen keys twice, and by one to 1532.
+///
+/// A boolean's text then came to be read as a column cast reads it, so the
+/// packed frame's `ManualOrderIndicator(1028)=no` types as false where it
+/// was refused: its parse fell by sixteen to 1137, the located error, the
+/// anomaly and the warning the refusal built, and its `into_row` rose by
+/// three to 263, the entry the typed flag now adds to the row's
+/// `fixentries`.
+///
+/// A row then came to hold each arrival once: a key no dictionary resolved
+/// that an identifier map holds with its value rides the residual record
+/// under `0:key` and leaves the `metadata` cell, which is built sorted in
+/// one pass rather than by cloning the message's map and inserting each
+/// unresolved name into the clone. A frame's `into_row` fell by two to 89 -
+/// the three nodes its seventeen names split the cloned map into and the
+/// one its cell collected from them, against the one vector the cell now
+/// fills and the one its map keeps - and captured nothing; the packed
+/// frame's fell by one to 262, the same two saved against the one vector
+/// its one captured key adds to the residual's keyed tree; the bridge
+/// row's rose by nine to 120: ten vectors for the ten keys captured out of
+/// its metadata's thirty-three into its residual's eighteen and two for the
+/// one key past the inline width - `0:omsdealerparentorderid` - against
+/// three fewer between the residual's tree growing a node for them and the
+/// metadata's clone and its splits going: ten and two, less three. Each walk
+/// rose by two to 10 when the instrument registry gained its ticker index:
+/// the index shares one static empty table until a walk's first learn
+/// lists a ticker, which takes the index's own Arc and its own table beside
+/// the rows'.
+///
+/// A decimal's text then came to be read with no string of its own: the
+/// strict reader's `format!` of the sign, the whole and the fraction into
+/// one digit string went with its fold into the one decimal reader, so each
+/// parse fell by one for every decimal text it reads - eight for the bridge
+/// row, six for a frame, nine for the packed frame - and no other stage
+/// moved.
+///
+/// The two lines of history then met: the decimal reading above was the
+/// one this file's earlier paragraph already counted from the other side,
+/// so the merged parse is each side's fall summed less that one saving -
+/// 595 less fourteen and twenty-nine plus eight is the bridge row's 560,
+/// 241 less nine and ten plus six a frame's 228, 1153 less forty and
+/// twenty-five plus nine the packed frame's 1097 - and every digest stands
+/// at the one its stack-built decimal text leaves, every other stage as
+/// this line left it.
+///
+/// A key stated once then came to be filed in the residual record as the
+/// one entry it is, the keys sorted on the stack rather than grouped in a
+/// tree of vectors: each `into_row` fell by its record's keys and the
+/// tree's nodes, and no other stage moved - the bridge row's twenty-eight
+/// keys and four nodes to 88, a frame's twenty-two and three to 64, the
+/// packed frame's eleven and one to 250.
+///
+/// A group then became its list alone, no counter beside it at any level.
+/// Each parse fell by the list of every child's tag and counter the
+/// builder's finish collected to restate a counter: one each, and three
+/// more for the bridge row, whose `NoPartyIDs` stated two beside the eight
+/// occurrences the group held, for the anomaly that disagreement built.
+/// Each fell by the list of counters every entries walk collected at
+/// a level holding groups to leave a counter's child out: one for the bridge
+/// row, four for a frame and eleven for the packed frame. The packed frame
+/// fell by sixty-two more, the one write per split side restating
+/// `NoSides(552)=1` beside the side's group, and by one where its root's six
+/// groups no longer spilled the four-wide list of counters the member walk
+/// kept; the bridge row rose by one, the builder holding three slots fewer
+/// and crossing one growth boundary the other way - what the former reading
+/// paid for this line with any one of its three named counters dropped. So
+/// the bridge row's parse fell by four to 556, a frame's by five to 223,
+/// the packed frame's by seventy-five to 1022. Each landing fell by what the
+/// fixed row's two counter columns, `notrdregtimestamps` and
+/// `noregulatorytradeids`, cost to lay out - ten for the bridge row, twelve
+/// for each frame - and each batch by the two arrays it no longer gathers,
+/// to 210; no `into_row` moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 581,
-            into_row: 152,
-            landing: 1589,
-            batch: 224,
+            parse: 556,
+            into_row: 88,
+            landing: 1502,
+            batch: 210,
             digest: 1,
-            lifecycle: 7,
+            lifecycle: 10,
         },
     ),
     (
         "frame_pipe",
         72,
         StageCosts {
-            parse: 232,
-            into_row: 109,
-            landing: 1571,
-            batch: 224,
+            parse: 223,
+            into_row: 64,
+            landing: 1482,
+            batch: 210,
             digest: 1,
-            lifecycle: 7,
+            lifecycle: 10,
         },
     ),
     (
         "frame_packed",
         111,
         StageCosts {
-            parse: 1113,
-            into_row: 279,
-            landing: 1608,
-            batch: 224,
+            parse: 1022,
+            into_row: 250,
+            landing: 1520,
+            batch: 210,
             digest: 1,
-            lifecycle: 7,
+            lifecycle: 10,
         },
     ),
 ];
@@ -7709,6 +8100,21 @@ fn instrument_codes_construct_and_classify_without_allocating() {
     free("ISIN construction", || {
         std::hint::black_box(Isin::new("us0378331005").unwrap());
     });
+    // The readings a merge ranks by are arithmetic over the text and one
+    // binary search of the listed prefixes: no value is built.
+    free("ISIN closing", || {
+        assert!(Isin::is_closed(black_box("US0378331005")));
+        assert!(!Isin::is_closed(black_box("XX0000000001")));
+    });
+    free("ISIN rank", || {
+        assert_eq!(Isin::rank_of(black_box("US0378331005")), 2);
+        assert_eq!(Isin::rank_of(black_box("XX0000000001")), 0);
+    });
+    free("identifier type rank", || {
+        assert_eq!(IdType::Isin.rank(black_box("US0378331005")), 2);
+        assert_eq!(IdType::Cusip.rank(black_box("037833101")), 0);
+        assert_eq!(IdType::OrderId.rank(black_box("O-1")), 1);
+    });
     free("CUSIP construction", || {
         std::hint::black_box(Cusip::new("037833100").unwrap());
     });
@@ -7726,7 +8132,7 @@ fn instrument_codes_construct_and_classify_without_allocating() {
         assert!(Cfi::is_classified("ESVUFR"));
     });
     free("CFI merging", || {
-        assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+        assert_eq!(Cfi::refined("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
     });
     free("CFI inference", || {
         assert_eq!(Cfi::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
@@ -7776,22 +8182,20 @@ fn a_forex_pair_and_an_fx_symbol_read_without_allocating() {
 #[test]
 fn identifier_reads_and_inline_inserts_allocate_nothing() {
     use yggdryl::Identifiers;
-    // A source, a type and a value, 24 bytes each: 72, where the retired
-    // `parent` and `orig` were two more 24-byte strings at 120.
+    // A key - a source and a type - and a value, 24 bytes each: 72, where
+    // the retired `parent` and `orig` were two more 24-byte strings at 120.
     assert_eq!(std::mem::size_of::<Identifier>(), 72);
     assert_eq!(std::mem::size_of::<Identifiers>(), IDENTIFIERS_SIZE);
     let mut ids = Identifiers::new();
-    ids.insert(Identifier::new(IdSource::Base, IdType::Account, "ACC-1").unwrap());
+    ids.insert(Identifier::new(IdKey::base(IdType::Account), "ACC-1").unwrap());
     let venue: IdSource = "venue".parse().unwrap();
-    ids.insert(Identifier::new(venue.clone(), IdType::UserId, "U-1").unwrap());
+    let user = IdKey::new(venue.clone(), IdType::UserId);
+    ids.insert(Identifier::new(user.clone(), "U-1").unwrap());
     free("an Identifiers read of a held type", || {
         assert_eq!(ids.get(black_box(&IdType::Account)), Some("ACC-1"));
     });
     free("an Identifiers read of a held type and source", || {
-        assert_eq!(
-            ids.get_from(black_box(&venue), black_box(&IdType::UserId)),
-            Some("U-1")
-        );
+        assert_eq!(ids.get_from(black_box(&user)), Some("U-1"));
     });
     free("an Identifiers read of an absent type", || {
         assert_eq!(ids.get(black_box(&IdType::DeskId)), None);
@@ -7819,25 +8223,353 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
             IdSource::Proprietary
         );
     });
+    // A real number replacing a masked one under the base key, and the
+    // explicit restatement of the masked one over it, each move in place:
+    // the slot is held, the value inline, the rank read off the text.
+    let mut ranked = Identifiers::new();
+    assert!(ranked.insert(Identifier::new(IdKey::base(IdType::Isin), "XX0000000001").unwrap()));
+    free("a real number replacing a masked one", || {
+        assert!(ranked.insert(
+            Identifier::new(IdKey::base(IdType::Isin), black_box("US0378331005")).unwrap()
+        ));
+        assert!(
+            ranked.set(
+                Identifier::new(IdKey::base(IdType::Isin), black_box("XX0000000001")).unwrap()
+            )
+        );
+        black_box(&ranked);
+    });
     // A codified type and source are static text and a 23-byte value is the
-    // widest SmolStr holds inline: two identifiers cost the set its one
-    // backing and nothing each.
+    // widest SmolStr holds inline: two identifiers cost the map its one
+    // backing and nothing each, the base key the named one fills included.
     costs("two identifiers into a new set", 1, || {
         let mut ids = Identifiers::new();
-        assert!(ids.insert(Identifier::new(IdSource::Fix, IdType::OrderId, "Z").unwrap()));
+        assert!(ids.insert(Identifier::new(IdKey::base(IdType::OrderId), "Z").unwrap()));
         assert!(
             ids.insert(
                 Identifier::new(
-                    black_box(IdSource::Bic),
-                    black_box(IdType::ExecutingTrader),
+                    IdKey::new(black_box(IdSource::Bic), black_box(IdType::ExecutingTrader)),
                     black_box("ABCDEFGHIJKLMNOPQRSTUVW")
                 )
                 .unwrap()
             )
         );
-        assert_eq!(ids.len(), 2);
+        assert_eq!(ids.len(), 3);
         black_box(&ids);
     });
+}
+
+/// An ISIN registry learns a statement of a known instrument that says
+/// nothing new, fills an element that leaves nothing unsaid and looks a row
+/// up by its ISIN or its RIC without allocating, whatever its size.
+#[test]
+fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Isin, IsinEntry, IsinRegistry};
+    let numbered = |number: usize| {
+        let body = format!("FR{number:09}");
+        let digit = Isin::closing_digit(&body).unwrap();
+        format!("{body}{digit}")
+    };
+    for size in [64, 4_096] {
+        let mut registry = IsinRegistry::new();
+        for number in 0..size {
+            registry
+                .merge(
+                    IsinEntry::new(Isin::new(numbered(number)).unwrap())
+                        .with_updunix(Some(1))
+                        .try_with_code(IdType::Common, &format!("C-{number}"))
+                        .unwrap()
+                        .try_with_code(IdType::Ric, &format!("R{number}.X"))
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+        let isin = numbered(7);
+        let mut stated = OrderEvent::at(2);
+        for (kind, value) in [
+            (IdType::Isin, isin.as_str()),
+            (IdType::Common, "C-7"),
+            (IdType::Ric, "R7.X"),
+        ] {
+            stated
+                .insert_securityid(Identifier::new(IdKey::base(kind), value).unwrap())
+                .unwrap();
+        }
+        free(
+            &format!("learning nothing new at {size} instruments"),
+            || {
+                assert!(!registry.learn(black_box(&stated)));
+            },
+        );
+        free(&format!("filling nothing at {size} instruments"), || {
+            assert!(!registry.fill(black_box(&mut stated)));
+        });
+        free(&format!("a row by its ISIN at {size} instruments"), || {
+            assert!(registry.get(black_box(isin.as_str())).is_some());
+        });
+        free(&format!("a row by its RIC at {size} instruments"), || {
+            assert!(registry.get_by_ric(black_box("R7.X")).is_some());
+        });
+    }
+}
+
+/// `size` instruments numbered from zero, each with a CFI code, a market,
+/// a ticker of its own - `T` and its number - a common code and a RIC.
+fn isin_registry_of(size: usize) -> yggdryl::IsinRegistry {
+    use yggdryl::{Cfi, Isin, IsinEntry, IsinRegistry, Mic};
+    let mut registry = IsinRegistry::new();
+    for number in 0..size {
+        registry
+            .merge(
+                IsinEntry::new(Isin::new(numbered_isin("FR", number)).unwrap())
+                    .with_updunix(Some(1))
+                    .with_cficode(Some(Cfi::new("ESVUFR").unwrap()))
+                    .with_miccode(Some(Mic::new("XPAR").unwrap()))
+                    .with_ticker(Some(smol_str::SmolStr::new(format!("T{number}"))))
+                    .try_with_code(IdType::Common, &format!("C-{number}"))
+                    .unwrap()
+                    .try_with_code(IdType::Ric, &format!("R{number}.PA"))
+                    .unwrap(),
+            )
+            .unwrap();
+    }
+    registry
+}
+
+/// The ISIN numbered `number` under the two-letter `prefix`.
+fn numbered_isin(prefix: &str, number: usize) -> String {
+    let body = format!("{prefix}{number:09}");
+    let digit = yggdryl::Isin::closing_digit(&body).unwrap();
+    format!("{body}{digit}")
+}
+
+/// A ticker leads back to its row through the ticker index without
+/// allocating, whatever the registry holds - on no market, on its own, and
+/// to none on another - and a fill keyed by the ticker alone, the ISIN
+/// derived first, costs the same at 64 instruments as at 4,096: nothing it
+/// builds is per instrument the registry holds.
+#[test]
+fn an_isin_registry_reads_and_fills_by_ticker_alike_at_every_size() {
+    use yggdryl::Mic;
+    use yggdryl::graph::{Market, OrderEvent};
+    let paris = Mic::new("XPAR").unwrap();
+    let london = Mic::new("XLON").unwrap();
+    let mut fills = Vec::with_capacity(2);
+    for size in [64, 4_096] {
+        let registry = isin_registry_of(size);
+        let isin = numbered_isin("FR", 7);
+        assert_eq!(
+            registry
+                .get_by_ticker("T7", Some(&paris))
+                .map(|row| row.isin().as_str()),
+            Some(isin.as_str()),
+            "the ticker T7 names one row at {size} instruments"
+        );
+        free(
+            &format!("a row by its ticker at {size} instruments"),
+            || {
+                assert!(registry.get_by_ticker(black_box("T7"), None).is_some());
+            },
+        );
+        free(
+            &format!("a row by its ticker on its market at {size} instruments"),
+            || {
+                assert!(
+                    registry
+                        .get_by_ticker(black_box("T7"), Some(&paris))
+                        .is_some()
+                );
+            },
+        );
+        free(
+            &format!("a ticker on another market at {size} instruments"),
+            || {
+                assert!(
+                    registry
+                        .get_by_ticker(black_box("T7"), Some(&london))
+                        .is_none()
+                );
+            },
+        );
+        let mut stated = OrderEvent::at(2);
+        stated.set_ticker(Some(SmolStr::new("T7")), true);
+        stated.set_miccode(Some(paris.clone()), true);
+        let (filling, repeated) = counted_each(
+            || stated.clone(),
+            |mut held| {
+                assert!(
+                    registry.fill(&mut held),
+                    "a fill by ticker at {size} instruments"
+                );
+                held
+            },
+        );
+        assert_eq!(
+            repeated,
+            filling * 64,
+            "a fill by ticker at {size} instruments"
+        );
+        fills.push(filling);
+    }
+    assert_eq!(
+        fills[0], fills[1],
+        "a fill by ticker at 64 and at 4,096 instruments"
+    );
+}
+
+/// The ticker index grows as the rows do, by doubling: learning as many new
+/// instruments as a registry holds, each listing a ticker of its own, costs
+/// exactly one allocation more than learning the same instruments with no
+/// ticker - the index's one table doubling - at 64 instruments as at 4,096.
+/// A listing's slot is inline, so nothing else the index holds is per
+/// instrument.
+#[test]
+fn an_isin_registry_ticker_index_doubles_once_as_its_listings_double() {
+    use yggdryl::Mic;
+    use yggdryl::graph::{Market, OrderEvent};
+    let learning = |size: usize, ticker: bool| {
+        let mut registry = isin_registry_of(size);
+        let statements: Vec<OrderEvent> = (0..size)
+            .map(|number| {
+                let mut stated = OrderEvent::at(2);
+                stated
+                    .insert_securityid(
+                        Identifier::new(IdKey::base(IdType::Isin), &numbered_isin("BE", number))
+                            .unwrap(),
+                    )
+                    .unwrap();
+                stated.set_miccode(Some(Mic::new("XBRU").unwrap()), true);
+                if ticker {
+                    stated.set_ticker(Some(SmolStr::new(format!("N{number}"))), true);
+                }
+                stated
+            })
+            .collect();
+        let (allocations, learned) = counted(|| {
+            statements
+                .iter()
+                .filter(|stated| registry.learn(black_box(*stated)))
+                .count()
+        });
+        assert_eq!(learned, size, "{size} new instruments learned");
+        assert_eq!(registry.len(), 2 * size);
+        allocations
+    };
+    for size in [64, 4_096] {
+        let (listed, unlisted) = (learning(size, true), learning(size, false));
+        assert_eq!(
+            listed,
+            unlisted + 1,
+            "{size} new tickers into an index of {size}: {listed} against {unlisted} with none"
+        );
+    }
+}
+
+/// Learning a new instrument builds its row in place - the ISIN, the CFI
+/// code, the market, the ticker and up to four codes inline - so the
+/// table's own slot is all it can cost: an ISIN sorting before every other
+/// lands in a leaf ascending inserts left with room, and the ticker
+/// index's slot is inline, its table of 64 or 4,096 distinct tickers having
+/// room for one more, so learning it allocates nothing, whatever the
+/// registry holds.
+#[test]
+fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
+    use yggdryl::graph::{Market, OrderEvent};
+    use yggdryl::{Cfi, Mic};
+    for size in [64, 4_096] {
+        let mut registry = isin_registry_of(size);
+        let mut stated = OrderEvent::at(2);
+        for (kind, value) in [
+            (IdType::Isin, numbered_isin("BE", 1).as_str()),
+            (IdType::Common, "C-NEW"),
+            (IdType::Belgian, "B-NEW"),
+            (IdType::Valor, "1234567"),
+        ] {
+            stated
+                .insert_securityid(Identifier::new(IdKey::base(kind), value).unwrap())
+                .unwrap();
+        }
+        stated.set_cficode(Some(Cfi::new("ESVUFR").unwrap()), true);
+        stated.set_miccode(Some(Mic::new("XBRU").unwrap()), true);
+        stated.set_ticker(Some(smol_str::SmolStr::new("NEW")), true);
+        let (learning, learned) = counted(|| registry.learn(black_box(&stated)));
+        assert!(learned);
+        assert_eq!(
+            learning, 0,
+            "learning a new instrument at {size} instruments"
+        );
+    }
+}
+
+/// A snapshot stream shares the table rather than copying it: opening one
+/// costs the same five allocations at 64 instruments as at 4,096 - the
+/// reader, its schema and its field - and draining it lays each row out
+/// once, seven allocations a row (the named row and its canonical run) plus
+/// one doubling of the batch's row vector each time the rows double.
+#[test]
+fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
+    // The row's Arrow projection is built once per process, on first use.
+    drop(yggdryl::IsinRegistry::new().into_arrow_reader().unwrap());
+    for size in [64, 4_096] {
+        let registry = isin_registry_of(size);
+        let (opening, reader) = counted(|| registry.into_arrow_reader().unwrap());
+        drop(reader);
+        assert_eq!(opening, 5, "opening a snapshot of {size} instruments");
+    }
+    let drain = |size: usize| {
+        let reader = isin_registry_of(size).into_arrow_reader().unwrap();
+        let (draining, rows) =
+            counted(move || reader.map(|batch| batch.unwrap().num_rows()).sum::<usize>());
+        assert_eq!(rows, size);
+        draining
+    };
+    for size in [64, 256] {
+        assert_eq!(
+            drain(2 * size) - drain(size),
+            7 * size + 1,
+            "{size} more rows cost other than seven a row"
+        );
+    }
+}
+
+/// Reloading rows the registry already holds - a golden file read again -
+/// costs each batch the same whatever its rows: one cast plan for the
+/// stream, the landing per batch, and a code cell adopted as the landing
+/// proved it, so a row that moves nothing allocates nothing.
+#[test]
+fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
+    let mut each_at = Vec::new();
+    for size in [64, 512] {
+        let mut registry = isin_registry_of(size);
+        let batch = registry
+            .into_arrow_reader()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let mut load = |batches: usize| {
+            let reader = yggdryl::arrow::batch_reader(batch.schema(), vec![batch.clone(); batches]);
+            let (allocations, read) =
+                counted(|| registry.extend_from_arrow_reader(reader).unwrap());
+            assert_eq!(read, size * batches);
+            allocations
+        };
+        load(1);
+        let (one, two, four) = (load(1), load(2), load(4));
+        let each = two - one;
+        assert_eq!(
+            four - one,
+            3 * each,
+            "{size} rows: a batch after the first cost {each}, but four cost {four} and one {one}"
+        );
+        each_at.push(each);
+    }
+    assert_eq!(
+        each_at,
+        [47, 47],
+        "a batch of 64 and of 512 known rows: a cost per row"
+    );
 }
 
 /// The size of [`yggdryl::Identifiers`]: one vector, its pointer, length and
@@ -7857,8 +8589,7 @@ fn security_identifier_construction_is_inline_for_every_checked_code() {
     ] {
         free(&format!("constructing {kind}:{code}"), || {
             let id = Identifier::new(
-                black_box(IdSource::Base),
-                black_box(kind.clone()),
+                IdKey::new(black_box(IdSource::Base), black_box(kind.clone())),
                 black_box(code),
             )
             .unwrap();
@@ -7869,25 +8600,20 @@ fn security_identifier_construction_is_inline_for_every_checked_code() {
     let widest = "B".repeat(32);
     costs("constructing a 32-byte Bloomberg identifier", 1, || {
         black_box(
-            Identifier::new(
-                IdSource::Base,
-                IdType::Bloomberg,
-                black_box(widest.as_str()),
-            )
-            .unwrap(),
+            Identifier::new(IdKey::base(IdType::Bloomberg), black_box(widest.as_str())).unwrap(),
         );
     });
     assert!(
-        Identifier::new(IdSource::Base, IdType::Bloomberg, &"B".repeat(33)).is_err(),
+        Identifier::new(IdKey::base(IdType::Bloomberg), &"B".repeat(33)).is_err(),
         "33 bytes are refused"
     );
-    let heap = Identifier::new(IdSource::Base, IdType::Bloomberg, &widest).unwrap();
+    let heap = Identifier::new(IdKey::base(IdType::Bloomberg), &widest).unwrap();
     free("cloning a heap Bloomberg identifier", || {
         black_box(heap.clone());
     });
 
     let ids: yggdryl::Identifiers = [
-        Identifier::new(IdSource::Base, IdType::Isin, "US0378331005").unwrap(),
+        Identifier::new(IdKey::base(IdType::Isin), "US0378331005").unwrap(),
         heap.clone(),
     ]
     .into_iter()

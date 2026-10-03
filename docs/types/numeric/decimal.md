@@ -333,7 +333,7 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
 
 ## Casts
 
-Text reads into a decimal without passing through a float, through the one reader in [Text](#text), and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact, so a digit the scale cannot hold is refused, and only the fixed leaves' lenient `parse` cuts one. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
+Text reads into a decimal without passing through a float, through the one reader in [Text](#text), and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact, so a non-zero digit the scale cannot hold is refused by every reader, and [`Decimal::truncated`](#decimal) is the explicit cut. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 
@@ -394,7 +394,7 @@ A decimal writes one text and reads every exact one. The scale is the datatype's
 | Direction | Rule |
 | --- | --- |
 | Write | The shortest text that states the number exactly: no zero trails the point and no point trails the digits - `10.50` is `10.5`, `100.00` is `100`, zero at any scale is `0` - and a negative scale is the whole number it states, `12` at scale -2 is `1200`. Every door writes it: `Display`, `into_decimal_utf8`, JSON, YAML, TOML, XML, CSV, Excel, an expression literal, and a column cast into text, which a row restated as text answers alike. It is built on the stack and written once, so a column renders with no text built per row |
-| Read | The value door - `DataType::scalar`, `Field::scalar`, a column cast from text, a typed literal - reads surrounding whitespace, a sign, a leading or trailing point (`.5`, `5.`), any zeros leading the digits or trailing them, an exponent (`1e2`, `2E+20`) and `_` grouping ahead of the point, at any width. A digit the scale cannot hold is refused, never rounded or cut, and so is a number past the width. A comma is no grouping there: under a decimal comma `1,250` is one and a quarter |
+| Read | One exact grammar, one pass with no allocation, for every door - `DataType::scalar`, `Field::scalar`, a column cast from text, a typed literal, and [`Decimal::parse`](#decimal), [`BigDecimal::parse`](#bigdecimal) and their `FromStr` at scale eighteen: the text trimmed, an optional `+` or `-`, a point leading, trailing or absent (`.5`, `5.`), any zeros leading or trailing the digits, an exponent (`1e2`, `2E+20`) moving the point, and `_` grouping between the digits ahead of the point (`1_250.5`), at any width. Refused: text stating no number - the empty text, a bare sign, two points, a letter, `NaN`, `inf` - a grouping that is not `_` among the digits ahead of the point (`1,250`, which under a decimal comma is one and a quarter, `1 250`, `1'250`, `_1`, `1.000_5`), a non-zero digit past the scale, never rounded or cut (`10.50000` reads at scale two, `10.505` does not), and a number past the precision. An empty cell entering a column is absence before it is read ([Empty text](../cast.md#empty-text)) |
 | Scale kept | Where a standard or a host states the scale itself: Iceberg's v3 `initial-default` and `write-default` (`"1.50"` for `decimal(10, 2)`), as the table spec's single-value form requires; a Hive partition path, as Spark and Iceberg lay one out, so directory pruning matches their lakes; and Python's `as_py()`, a `Decimal` at the column scale (`Decimal("10.50")`), as pyarrow's is |
 
 === "Rust"
@@ -499,7 +499,7 @@ assert_eq!(i256::from_le_bytes(i256::from_i128(9).into_le_bytes()), i256::from_i
 | --- | --- |
 | Value | `yggdryl::Decimal`: one `i128` of units at scale eighteen, bounded to thirty-eight digits, `MIN` to `MAX`; add, subtract and compare are the integer's, and multiply and divide widen to 256 bits for the one product |
 | Arithmetic | `checked_add`, `checked_sub`, `checked_mul`, `checked_div` answer `None` past thirty-eight digits, the last also for a divisor of nothing; `checked_mul` and `checked_div` keep eighteen fractional digits and truncate the rest toward zero; the operators refuse an overflow as the integers' do |
-| Text | `Decimal::parse` (and `FromStr`) is lenient and one pass: surrounding whitespace, an empty text as zero, a sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, an exponent, and digits past the eighteenth fractional one truncated toward zero; it refuses only text stating no number and a value past thirty-eight digits, and an exponent past every width is that refusal or, negative, zero. The value door - `DataType::Decimal.scalar`, `Field::scalar` - is strict: a nineteenth fractional digit is refused, never truncated. `from_f64` reads a float as the shortest text naming it, rounded half away from zero at the eighteenth digit: a float is an inexact reading and is rounded, text is exact and is cut |
+| Text | `Decimal::parse` and `FromStr` read the one [decimal grammar](#text) at scale eighteen, as the value door does: a non-zero nineteenth fractional digit is refused (`decimal has more fractional digits than the field allows`), and so is a value past thirty-eight digits. `truncated(places)` is the explicit cut, toward zero. `from_f64` reads a float as the shortest text naming it, rounded half away from zero at the eighteenth digit: a float is an inexact reading and is rounded, text is exact and is refused rather than cut |
 | Width | `widened()` is the lossless way into [`BigDecimal`](#bigdecimal); `DataType::DECIMAL` is the `decimal128(38, 18)` storage the leaf rides and the spelling a FIX dictionary types a price with, a parameterized width and not the leaf |
 | Identity | `DataTypeId::Decimal`, `0x2d`, inside the decimal family's [range](../scalar.md#families): `is_decimal` answers it and `is_parameterized` does not |
 
@@ -624,11 +624,12 @@ Bare `decimal` is the leaf; a parenthesis names the parameterized family, so `de
     assert_eq!(px.units(), 82_500_000_000_000_000_000);
     assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
 
-    // The text door reads leniently and truncates.
-    assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
-    assert_eq!(Decimal::parse("")?, Decimal::ZERO);
+    // The text door is the one exact grammar; `truncated` is the explicit cut.
+    assert_eq!(Decimal::parse(" 1_250.50 ")?.to_string(), "1250.5");
     assert_eq!(Decimal::parse("2.5e3")?.to_string(), "2500");
-    assert_eq!(Decimal::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
+    assert!(Decimal::parse("0.1234567890123456789").is_err());
+    assert_eq!(Decimal::parse("0.123456789")?.truncated(4).to_string(), "0.1234");
+    assert!(Decimal::parse("").is_err() && Decimal::parse("1,250.50").is_err());
     assert!(Decimal::parse("1.2.3").is_err() && Decimal::parse("NaN").is_err());
 
     // The scalar is the leaf's own, and one number whichever leaf holds it.
@@ -748,7 +749,7 @@ A `decimal` column is `Decimal128(38, 18)` under the `yggdryl.decimal` extension
 | --- | --- |
 | Value | `yggdryl::BigDecimal`: one 256-bit integer of units at scale eighteen, bounded to seventy-six digits - `decimal256(76, 18)` preapplied; add, subtract and compare are the integer's, and multiply and divide run through a 512-bit product so the one truncation is the scale's |
 | Arithmetic | the four checked operations answer `None` past seventy-six digits, `checked_div` also for a divisor of nothing; the operators refuse an overflow |
-| Text | `BigDecimal::parse` reads exactly as `Decimal::parse` does, with seventy-six digits to fill; the value door is as strict as the narrow leaf's |
+| Text | `BigDecimal::parse` and `FromStr` read the one [decimal grammar](#text) as `Decimal::parse` does, with seventy-six digits to fill; `truncated(places)` is the explicit cut |
 | Width | `Decimal::widened()` and `From<Decimal>` come in losslessly; `narrowed()` answers the `Decimal` within thirty-eight digits and `None` past them |
 | Identity | `DataTypeId::BigDecimal`, `0x2e`, inside the decimal family's range |
 
@@ -935,11 +936,11 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 - [Merged](../field.md#merging-two-schemas) widening -> the widest backing either side declared: `decimal128(10,2)` beside `int16` stays `decimal128(10,2)`. Narrowing takes the backing the merged precision needs.
 - A decimal beside a float -> refused; an exact number and an approximate one have no meeting point that is not a re-encoding.
 - `Decimal::MAX.checked_add(Decimal::ONE)` and `BigDecimal::MAX.checked_add(BigDecimal::ONE)` -> `None`; the operator form refuses as the integers' do.
-- `Decimal::parse("0.1234567890123456789")` -> truncated to eighteen digits; `DataType::Decimal.scalar` of the same number -> refused, because the value door restates exactly or not at all.
+- `Decimal::parse("0.1234567890123456789")` and `DataType::Decimal.scalar` of the same text -> refused alike, `decimal has more fractional digits than the field allows`: text restates exactly or not at all, and `truncated(18)` is the cut a caller asks for. `"0.12345678901234567800"` reads, its digits past the scale being zeros.
 - A `decimal` or `bigdecimal` value under `%` -> the exact remainder at scale eighteen, its sign the dividend's: `-5.5 % 2` is `-1.5`. By a divisor of nothing, under `/` or `%` -> `Error::DivisionByZero`. Beside a float -> refused, as every exact decimal is.
 - `-1 / 3` over either leaf -> `-0.333333333333333333`: truncation is toward zero whatever the sign.
 - A `u64` past `i64`, an `int128` or a `uint128` beside a leaf -> read whole; the two 128-bit widths and `decimal256` answer a `bigdecimal`, as they widen the family to `decimal256`.
-- `Decimal::parse("1e2147483647")` -> refused as too many digits; `"1e-2147483648"` and `"0e2147483647"` -> zero, for both leaves.
+- `Decimal::parse("1e2147483647")` -> refused as too many digits; `"1e-2147483648"` -> refused, a non-zero digit past the scale; `"0e2147483647"` -> zero, a zero mantissa whatever the exponent; never wrapped, for both leaves.
 - `cast(f as bigdecimal)` over a float -> the number its shortest text names, `1e25` exactly; a float past the target's digits, `nan` or an infinity -> refused, `null` under `try_cast`. The same reading serves every decimal width, a column as a row: `1.15` into `decimal(10, 2)` is `1.15`, `0.125` is `0.13`, and `2.5` and `-2.5` into `decimal(10, 0)` are `3` and `-3`, rounded half away from zero where text would be cut.
 - `BigDecimal::narrowed()` past thirty-eight digits -> `None`; a `bigdecimal` column cast onto `decimal` narrows under the cast's `safe` rule.
 - `yggdryl.decimal` or `yggdryl.bigdecimal` over another storage, or with a nonempty document -> imports as that storage, a foreign field wearing the name.

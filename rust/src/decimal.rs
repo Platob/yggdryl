@@ -611,7 +611,7 @@ mod fixed {
 
     use smol_str::format_smolstr;
 
-    use super::{Decimal128, Decimal256, Grouping, read_units, signed_units};
+    use super::{Decimal128, Decimal256, PAST_SCALE, read_units, signed_units};
     use crate::{DataType, Error, Result, Scalar, i256, u256};
 
     /// The units one whole is: `10^18`.
@@ -657,8 +657,7 @@ mod fixed {
         // shortest text is spelled with its exponent, so it fits the stack.
         let mut spelled = super::StackText::<32>::new();
         fmt::write(&mut spelled, format_args!("{value:e}")).ok()?;
-        let read = read_units::<u256>(spelled.as_str(), i64::from(scale) + 1, Grouping::Underscore)
-            .ok()?;
+        let read = read_units::<u256>(spelled.as_str(), i64::from(scale) + 1).ok()?;
         let (magnitude, dropped) = read.units.div_rem_word(10);
         let magnitude = if dropped >= 5 {
             magnitude.checked_add_word(1)?
@@ -781,30 +780,35 @@ mod fixed {
             self.0 as f64 / 1e18
         }
 
-        /// The value one decimal text states, read as leniently as a number can
-        /// be read without guessing.
+        /// The value one decimal text states, read exactly: the one grammar
+        /// every decimal spelling in the crate reads, a cell of a `decimal`
+        /// column included.
         ///
-        /// One pass over the bytes, no allocation: surrounding whitespace -
-        /// any the language trims - is ignored; an empty text is nothing, `0`;
-        /// a `+` or `-` may lead; the digits may be grouped with `,`, `_`, `'`
-        /// or a space ahead of the point; the point may lead (`.5`), trail
-        /// (`5.`) or be absent; digits past the eighteenth fractional one are
-        /// truncated toward zero; and an exponent - `1e3`, `2.5E-2` - moves the
-        /// point. What is refused is text
-        /// that states no number - a bare sign, two points, a letter, `NaN`,
-        /// `inf` - and a value past thirty-eight digits, which no reading could
-        /// hold.
+        /// One pass over the bytes, no allocation. The surrounding whitespace
+        /// is not part of the number; a `+` or `-` may lead; the point may
+        /// lead (`.5`), trail (`5.`) or be absent; zeros may lead and trail;
+        /// the digits ahead of the point may be grouped by `_`, as DuckDB,
+        /// Python and Rust group them; an exponent - `1e3`, `2.5E-2` - moves
+        /// the point. What is refused is text that states no number (the
+        /// empty text, a bare sign, two points, a comma-grouped `1,250`, which
+        /// under a decimal comma is one and a quarter, a letter, `NaN`,
+        /// `inf`), a digit past the eighteenth fractional one unless it is a
+        /// zero, because dropping a digit off a price is a value change
+        /// ([`Self::truncated`] is the explicit cut), and a value past
+        /// thirty-eight digits, which no reading could hold.
         ///
         /// ```
         /// use yggdryl::Decimal;
         ///
         /// # fn main() -> yggdryl::Result<()> {
-        /// assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
-        /// assert_eq!(Decimal::parse("")?, Decimal::ZERO);
+        /// assert_eq!(Decimal::parse(" 1250.50 ")?.to_string(), "1250.5");
+        /// assert_eq!(Decimal::parse("1_250.5")?.to_string(), "1250.5");
         /// assert_eq!(Decimal::parse(".5")?.to_string(), "0.5");
         /// assert_eq!(Decimal::parse("2.5e3")?.to_string(), "2500");
         /// assert_eq!(Decimal::parse("1E-2")?.to_string(), "0.01");
-        /// assert_eq!(Decimal::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
+        /// assert_eq!(Decimal::parse("0.1234567890123456780000")?.to_string(), "0.123456789012345678");
+        /// assert!(Decimal::parse("0.1234567890123456789").is_err());
+        /// assert!(Decimal::parse("1,250.50").is_err() && Decimal::parse("").is_err());
         /// assert!(Decimal::parse("1.2.3").is_err() && Decimal::parse("NaN").is_err());
         /// # Ok(())
         /// # }
@@ -812,19 +816,19 @@ mod fixed {
         ///
         /// # Errors
         ///
-        /// Returns [`Error::Parse`] for text that states no number and for a
-        /// value past the precision.
+        /// Returns [`Error::Parse`] for text that states no number, for a
+        /// digit past the scale and for a value past the precision.
         pub fn parse(text: &str) -> Result<Self> {
             let refused = |reason: &str| Error::Parse {
                 target: "decimal",
                 position: 0,
                 reason: format_smolstr!("{reason}: {text:?}"),
             };
-            if text.trim().is_empty() {
-                return Ok(Self::ZERO);
-            }
-            let read = read_units::<u128>(text, i64::from(Self::SCALE), Grouping::Lenient)
+            let read = read_units::<u128>(text, i64::from(Self::SCALE))
                 .map_err(|unread| refused(unread.reason("expected at most 38 digits")))?;
+            if !read.exact {
+                return Err(refused(PAST_SCALE));
+            }
             let units =
                 i128::try_from(read.units).map_err(|_| refused("expected at most 38 digits"))?;
             Self::from_units(if read.negative { -units } else { units })
@@ -845,8 +849,10 @@ mod fixed {
             if let Some(whole) = value.as_i64() {
                 return Some(Self::from_int(whole));
             }
-            if let Some(text) = value.as_str() {
-                return Self::parse(text).ok();
+            // Only a string is a spelling: a code or an enum member answers
+            // `as_str` too, but its identity is its registry.
+            if let Some(text) = value.as_string() {
+                return Self::parse(text.as_str()).ok();
             }
             value.as_f64().and_then(Self::from_f64)
         }
@@ -1037,19 +1043,19 @@ mod fixed {
         ///
         /// # Errors
         ///
-        /// Returns [`Error::Parse`] for text that states no number and for a
-        /// value past the precision.
+        /// Returns [`Error::Parse`] for text that states no number, for a
+        /// digit past the scale and for a value past the precision.
         pub fn parse(text: &str) -> Result<Self> {
             let refused = |reason: &str| Error::Parse {
                 target: "decimal",
                 position: 0,
                 reason: format_smolstr!("{reason}: {text:?}"),
             };
-            if text.trim().is_empty() {
-                return Ok(Self::ZERO);
-            }
-            let read = read_units::<u256>(text, i64::from(Self::SCALE), Grouping::Lenient)
+            let read = read_units::<u256>(text, i64::from(Self::SCALE))
                 .map_err(|unread| refused(unread.reason("expected at most 76 digits")))?;
+            if !read.exact {
+                return Err(refused(PAST_SCALE));
+            }
             signed_units(read.negative, read.units)
                 .and_then(Self::from_units)
                 .ok_or_else(|| refused("expected at most 76 digits"))
@@ -1071,8 +1077,10 @@ mod fixed {
             if let Some(whole) = value.as_i64() {
                 return Some(Self::from_int(whole));
             }
-            if let Some(text) = value.as_str() {
-                return Self::parse(text).ok();
+            // Only a string is a spelling: a code or an enum member answers
+            // `as_str` too, but its identity is its registry.
+            if let Some(text) = value.as_string() {
+                return Self::parse(text.as_str()).ok();
             }
             value.as_f64().and_then(Self::from_f64)
         }
@@ -1833,25 +1841,8 @@ impl<const N: usize> fmt::Write for StackText<N> {
 // The one reading of decimal text.
 // ------------------------------------------------------------------------
 
-/// The separators a reading takes as digit grouping ahead of the point.
-#[derive(Clone, Copy)]
-pub(crate) enum Grouping {
-    /// `_` alone, as DuckDB, Python and Rust group digits: the value door's.
-    /// A comma is not taken there, because under a decimal comma `1,250` is
-    /// one and a quarter.
-    Underscore,
-    /// `,`, `_`, `'` or a space: the fixed leaves' lenient `parse`.
-    Lenient,
-}
-
-impl Grouping {
-    const fn takes(self, byte: u8) -> bool {
-        match self {
-            Self::Underscore => byte == b'_',
-            Self::Lenient => matches!(byte, b',' | b'_' | b'\'' | b' '),
-        }
-    }
-}
+/// What every refusal of a digit past the scale names.
+pub(crate) const PAST_SCALE: &str = "decimal has more fractional digits than the field allows";
 
 /// Why a text states no decimal a reading can hold.
 #[derive(Clone, Copy, Debug)]
@@ -2001,7 +1992,9 @@ impl Mantissa for u256 {
 /// One pass over the bytes, no allocation: surrounding whitespace is
 /// ignored; a `+` or `-` may lead; the point may lead (`.5`), trail (`5.`)
 /// or be absent; zeros may lead the digits and trail them, however many;
-/// the digits ahead of the point may be grouped by what `grouping` takes;
+/// the digits ahead of the point may be grouped by `_`, as DuckDB, Python
+/// and Rust group digits - never by a comma, because under a decimal comma
+/// `1,250` is one and a quarter;
 /// and an exponent (`1e3`, `2.5E-2`, `2E+20`) moves the point. A digit past
 /// the scale is cut and reported through [`Units::exact`], so a door states
 /// whether it refuses or cuts one. What is refused is text that states no
@@ -2009,7 +2002,6 @@ impl Mantissa for u256 {
 pub(crate) fn read_units<M: Mantissa>(
     text: &str,
     scale: i64,
-    grouping: Grouping,
 ) -> std::result::Result<Units<M>, Unread> {
     const UNSPELLED: Unread = Unread::Unspelled("expected a decimal");
     let bytes = text.trim().as_bytes();
@@ -2050,7 +2042,7 @@ pub(crate) fn read_units<M: Mantissa>(
                 }
             }
             b'.' if !seen_point => seen_point = true,
-            separator if seen_digit && !seen_point && grouping.takes(separator) => {}
+            b'_' if seen_digit && !seen_point => {}
             b'e' | b'E' if seen_digit => {
                 exponent = parse_exponent(&rest[at + 1..])
                     .ok_or(Unread::Unspelled("expected an exponent"))?;
@@ -2563,7 +2555,7 @@ const fn decimal_overflow(operation: Arithmetic, wide: bool) -> Error {
 /// a digit off a price is a value change and not a restatement - and a
 /// refusal that is not a parse failure is one no other reading retries.
 fn exact_units<M: Mantissa>(text: &str, scale: i8, width: &'static str) -> Result<(bool, M)> {
-    match read_units::<M>(text, i64::from(scale), Grouping::Underscore) {
+    match read_units::<M>(text, i64::from(scale)) {
         Ok(Units {
             negative,
             units,
@@ -2571,7 +2563,7 @@ fn exact_units<M: Mantissa>(text: &str, scale: i8, width: &'static str) -> Resul
         }) => Ok((negative, units)),
         Ok(_) => Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static("decimal has more fractional digits than the field allows"),
+            reason: SmolStr::new_static(PAST_SCALE),
         }),
         Err(Unread::TooWide) => Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),

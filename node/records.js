@@ -86,6 +86,7 @@ function installRecords({
   SerieReader,
   TextOptions,
   Table,
+  nativeWriteMode,
 }) {
   const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
@@ -108,6 +109,9 @@ function installRecords({
     throw new TypeError('native binding is missing RecordOptions._requireWritePreflightNative')
   }
   delete RecordOptions.prototype._requireWritePreflightNative
+  if (typeof nativeWriteMode !== 'function') {
+    throw new TypeError('native binding is missing RecordOptions._writeModeNative')
+  }
   const textRecordOptions = TextOptions.prototype._recordOptionsNative
   if (typeof textRecordOptions !== 'function') {
     throw new TypeError('native binding is missing TextOptions._recordOptionsNative')
@@ -703,15 +707,13 @@ function installRecords({
     return Reflect.apply(requireWritePreflight, settings, [intent])
   }
 
+  // The mode is read by the core's `IOMode` vocabulary, before any input is
+  // touched; only its type is checked here.
   function writeMode(mode) {
     if (typeof mode !== 'string') {
       throw new TypeError('mode must be overwrite, append, or merge')
     }
-    const canonical = mode.trim().toLowerCase()
-    if (!['overwrite', 'append', 'merge'].includes(canonical)) {
-      throw new TypeError(`unknown write mode ${JSON.stringify(mode)}`)
-    }
-    return canonical
+    return nativeWriteMode(mode)
   }
 
   function writeLimitIsZero(settings) {

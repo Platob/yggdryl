@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
-          "FIX:tag": "40929"
-        }
-      },
-      {
         "name": "legpaymentstreamnondeliverablefixingdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -101,17 +90,6 @@
         }
       },
       {
-        "name": "nolegnondeliverablefixingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegnondeliverablefixingdates",
-          "FIX:tag": "40367"
-        }
-      },
-      {
         "name": "legnondeliverablefixingdates",
         "dtype": {
           "type": "null"
@@ -119,17 +97,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legnondeliverablefixingdates"
-        }
-      },
-      {
-        "name": "nolegsettlratefallbacks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegsettlratefallbacks",
-          "FIX:tag": "40902"
         }
       },
       {

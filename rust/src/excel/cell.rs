@@ -1180,9 +1180,12 @@ pub(crate) fn serial_text(serial: f64) -> SmolStr {
 
 /// Read a numeric cell's text as Excel spells one: a decimal or scientific
 /// literal, never `INF` or `NaN`.
+///
+/// The literal is the float reader's, and the finite filter is this cell's: a
+/// spreadsheet stores no infinity, so one is a refusal here and a reading
+/// everywhere else.
 pub(crate) fn parse_number(text: &str) -> Result<f64> {
-    let trimmed = text.trim();
-    let number: f64 = trimmed.parse().map_err(|_| Error::InvalidRecord {
+    let number = crate::floating::f64_from_text(text).ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new_static("$"),
         reason: format_smolstr!("expected a number in a numeric cell, got {text:?}"),
     })?;
@@ -1253,14 +1256,27 @@ pub(crate) fn wire_scalar(
         CellKind::SharedString | CellKind::FormulaString | CellKind::InlineString => {
             Ok(Scalar::from(Str::new(content)))
         }
-        CellKind::Boolean => match content.trim() {
-            "1" | "true" | "TRUE" => Ok(Scalar::from(true)),
-            "0" | "" | "false" | "FALSE" => Ok(Scalar::from(false)),
-            other => Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected 0 or 1 for a boolean cell, got {other:?}"),
-            }),
-        },
+        // The cell kind selects the reading and the boolean reader spells it:
+        // `1` and `0` as the standard writes them, every other spelling a
+        // column of flags is read by. An empty `<v/>` states nothing, as an
+        // empty numeric cell does.
+        CellKind::Boolean => {
+            if content.trim().is_empty() {
+                return Ok(Scalar::Null);
+            }
+            crate::boolean::bool_from_text(content)
+                .map(Scalar::from)
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        format_args!("{} in a boolean cell", crate::boolean::BOOLEAN_SPELLINGS),
+                        format_args!(
+                            "{:?}",
+                            crate::text::elide_to(content.trim(), crate::text::ERROR_TEXT_LIMIT)
+                        ),
+                    ),
+                })
+        }
         CellKind::Date => iso_scalar(content),
         CellKind::Error => Ok(Scalar::Null),
     }
@@ -1308,11 +1324,6 @@ pub(crate) fn field_scalar(
                     | TemporalKind::DateTime
                     | TemporalKind::Duration,
                 ) => field.scalar(system.temporal_from_serial(parse_number(content)?, dtype)?),
-                _ if matches!(dtype, DataType::Boolean) => match content.trim() {
-                    "1" => field.scalar(Scalar::from(true)),
-                    "0" => field.scalar(Scalar::from(false)),
-                    other => crate::text::prepare_text(Scalar::from(other), field),
-                },
                 _ => crate::text::prepare_text(Scalar::from(content), field),
             }
         }
@@ -1321,7 +1332,7 @@ pub(crate) fn field_scalar(
         }
         CellKind::Boolean => {
             let held = wire_scalar(kind, format, system, content)?;
-            if is_text_target {
+            if is_text_target && !held.is_null() {
                 return field.scalar(Scalar::from(cell_text(&held).into_owned()));
             }
             field.scalar(held)

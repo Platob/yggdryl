@@ -158,17 +158,6 @@
         }
       },
       {
-        "name": "nosidecollateralreinvestments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosidecollateralreinvestments",
-          "FIX:tag": "2864"
-        }
-      },
-      {
         "name": "sidecollateralreinvestments",
         "dtype": {
           "type": "null"

@@ -7,9 +7,10 @@
 //! tree: one entry per field the message states, each carrying the tag the
 //! dictionary resolved - `0` for a key no dictionary explains - the
 //! canonical name, and the value as the wire spells it. A repeating group
-//! is one entry under its counter, its value the count, and each occurrence
-//! is an entry under it with no value of its own and the occurrence's
-//! members nested beneath; a component is an entry with no value and its
+//! is one entry filed under its counter's tag, its value the group's length,
+//! because the count is never a field of its own; each occurrence is an
+//! entry under it with no value of its own and the occurrence's members
+//! nested beneath, and a component is an entry with no value and its
 //! members beneath. So a consumer walks one shape whatever the message
 //! carried, and a wire re-emits from it in pre-order: an entry with a value
 //! is one pair, an entry without one is the pairs under it.

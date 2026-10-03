@@ -34,17 +34,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -55,17 +44,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtleggrp",
         "dtype": {
           "type": "null"
@@ -73,17 +51,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtleggrp"
-        }
-      },
-      {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
         }
       },
       {

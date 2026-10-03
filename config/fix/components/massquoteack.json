@@ -91,17 +91,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -109,17 +98,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {
@@ -240,17 +218,6 @@
         "metadata": {
           "FIX:field": "encodedtext",
           "FIX:tag": "355"
-        }
-      },
-      {
-        "name": "noquotesets",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquotesets",
-          "FIX:tag": "296"
         }
       },
       {

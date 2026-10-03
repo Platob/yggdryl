@@ -68,17 +68,6 @@
         }
       },
       {
-        "name": "norequestingpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestingpartyids",
-          "FIX:tag": "1657"
-        }
-      },
-      {
         "name": "requestingpartyids",
         "dtype": {
           "type": "null"
@@ -86,17 +75,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "requestingpartyids"
-        }
-      },
-      {
-        "name": "nopartyupdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyupdates",
-          "FIX:tag": "1676"
         }
       },
       {

@@ -59,17 +59,6 @@
         }
       },
       {
-        "name": "nomaturityrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomaturityrules",
-          "FIX:tag": "1236"
-        }
-      },
-      {
         "name": "maturityrules",
         "dtype": {
           "type": "null"

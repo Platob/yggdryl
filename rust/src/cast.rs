@@ -38,6 +38,7 @@ pub use plan::ArrowCastPlan;
 use smol_str::SmolStr;
 
 use crate::arrow::{Error, Result};
+use crate::boolean::casts::{holds_boolean, ingest_boolean_text};
 use crate::budget::MaterializationBudget;
 use crate::bytes::casts::{bridges_through_binary, ingest_bytes_array};
 use crate::cast::columns::{
@@ -1075,14 +1076,14 @@ pub(crate) mod text {
     }
 
     /// One text column under whichever of the three plain layouts it uses.
-    enum TextCells<'a> {
+    pub(crate) enum TextCells<'a> {
         Utf8(&'a StringArray),
         LargeUtf8(&'a LargeStringArray),
         Utf8View(&'a StringViewArray),
     }
 
     impl<'a> TextCells<'a> {
-        fn of(array: &'a dyn Array) -> Result<Self> {
+        pub(crate) fn of(array: &'a dyn Array) -> Result<Self> {
             Ok(match array.data_type() {
                 ArrowDataType::Utf8 => Self::Utf8(downcast(array)?),
                 ArrowDataType::LargeUtf8 => Self::LargeUtf8(downcast(array)?),
@@ -1095,7 +1096,7 @@ pub(crate) mod text {
             })
         }
 
-        fn len(&self) -> usize {
+        pub(crate) fn len(&self) -> usize {
             match self {
                 Self::Utf8(cells) => cells.len(),
                 Self::LargeUtf8(cells) => cells.len(),
@@ -1103,11 +1104,20 @@ pub(crate) mod text {
             }
         }
 
-        fn is_valid(&self, index: usize) -> bool {
+        pub(crate) fn is_valid(&self, index: usize) -> bool {
             match self {
                 Self::Utf8(cells) => cells.is_valid(index),
                 Self::LargeUtf8(cells) => cells.is_valid(index),
                 Self::Utf8View(cells) => cells.is_valid(index),
+            }
+        }
+
+        /// The text of a valid cell, borrowed where it lies.
+        pub(crate) fn value(&self, index: usize) -> &'a str {
+            match self {
+                Self::Utf8(cells) => cells.value(index),
+                Self::LargeUtf8(cells) => cells.value(index),
+                Self::Utf8View(cells) => cells.value(index),
             }
         }
 
@@ -1402,6 +1412,7 @@ impl ArrayCastPlan {
             | ArrayCastKind::CodeIngest
             | ArrayCastKind::EnumIngest
             | ArrayCastKind::UuidIngest
+            | ArrayCastKind::BooleanIngest
             | ArrayCastKind::UrlIngest
             | ArrayCastKind::UrnIngest
             | ArrayCastKind::JsonText { .. }
@@ -1491,6 +1502,11 @@ enum ArrayCastKind {
     TimezoneIngest,
     MimeTypeIngest,
     MediaTypeIngest,
+    /// Text entering a boolean: every exposed value is read through the one
+    /// boolean table, the reading a row takes, so Arrow's kernel is never a
+    /// second reader of a flag and a vocabulary change there cannot widen a
+    /// column past its cells.
+    BooleanIngest,
     /// Text entering a decimal: every exposed value is read at the declared
     /// scale, and a digit that scale cannot state stays refused rather than
     /// rounded away - dropping a digit off a price is a value change.
@@ -2089,6 +2105,11 @@ impl ArrayCastPlan {
             // and this crate refuses that where Arrow rounds it.
             (target, source) if holds_decimal(target) && holds_text(source) => {
                 ArrayCastKind::DecimalIngest
+            }
+            // A boolean reads text through the crate's one table, which is
+            // also what a row reads, so the two can never drift apart.
+            (target, source) if holds_boolean(target) && holds_text(source) => {
+                ArrayCastKind::BooleanIngest
             }
             // A float enters a decimal as the number it names, in a batch as
             // in a row, rather than as its binary fraction scaled.
@@ -2836,6 +2857,9 @@ impl ArrayCastPlan {
             }
             ArrayCastKind::DecimalFromFloat => {
                 ingest_float_values(&array, self.safe(), &self.field, exposure, budget)?
+            }
+            ArrayCastKind::BooleanIngest => {
+                ingest_boolean_text(&array, self.safe(), &self.field, exposure, budget)?
             }
             ArrayCastKind::DecimalIngest => ingest_text_values(
                 &array,

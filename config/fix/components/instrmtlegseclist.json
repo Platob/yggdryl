@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nolegstipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstipulations",
-          "FIX:tag": "683"
-        }
-      },
-      {
         "name": "legstipulations",
         "dtype": {
           "type": "null"

@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nostrikerules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrikerules",
-          "FIX:tag": "1201"
-        }
-      },
-      {
         "name": "strikerules",
         "dtype": {
           "type": "null"

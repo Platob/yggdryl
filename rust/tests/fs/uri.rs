@@ -107,6 +107,65 @@ mod fs {
 }
 
 #[test]
+fn a_boolean_option_reads_the_one_boolean_table_and_refuses_text_it_does_not_spell() {
+    use std::collections::BTreeMap;
+
+    for (spelling, expected) in [
+        ("true", true),
+        ("YES", true),
+        ("y", true),
+        (" on ", true),
+        ("1", true),
+        ("false", false),
+        ("No", false),
+        ("off", false),
+        ("0", false),
+    ] {
+        let mut options = BTreeMap::new();
+        options.insert("anonymous".to_owned(), spelling.to_owned());
+        let resolved =
+            ResolvedFileSystemUri::from_uri("s3://bucket/key", Some(&options)).expect(spelling);
+        let ResolvedFileSystem::S3(configuration) = resolved.filesystem() else {
+            panic!("expected S3")
+        };
+        assert_eq!(
+            configuration.anonymous(),
+            expected,
+            "anonymous={spelling:?}"
+        );
+    }
+
+    // The query reads the same table, and so does an addressing switch.
+    let queried = s3("s3://bucket/key?anonymous=yes");
+    let ResolvedFileSystem::S3(configuration) = queried.filesystem() else {
+        panic!("expected S3")
+    };
+    assert!(configuration.anonymous());
+    let mut options = BTreeMap::new();
+    options.insert("force_path_style".to_owned(), " ON ".to_owned());
+    let resolved = ResolvedFileSystemUri::from_uri("s3://bucket/key", Some(&options))
+        .expect("a path-style switch");
+    let ResolvedFileSystem::S3(configuration) = resolved.filesystem() else {
+        panic!("expected S3")
+    };
+    assert_eq!(configuration.addressing_style(), S3AddressingStyle::Path);
+
+    // Text outside the table is refused naming the option and the spellings.
+    for spelling in ["perhaps", "2"] {
+        let mut options = BTreeMap::new();
+        options.insert("anonymous".to_owned(), spelling.to_owned());
+        let refused = ResolvedFileSystemUri::from_uri("s3://bucket/key", Some(&options))
+            .expect_err(spelling)
+            .to_string();
+        assert!(refused.contains("anonymous"), "{refused}");
+        assert!(
+            refused.contains("true/false, yes/no, y/n, on/off or 1/0"),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
 fn an_option_is_a_name_the_resolver_reads() {
     for name in ResolvedFileSystemUri::OPTION_NAMES {
         assert!(ResolvedFileSystemUri::is_option(name), "{name}");

@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nosettlpartysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettlpartysubids",
-          "FIX:tag": "801"
-        }
-      },
-      {
         "name": "settlpartysubids",
         "dtype": {
           "type": "null"

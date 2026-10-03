@@ -510,6 +510,160 @@ fn an_endpoint_splits_into_scheme_host_and_port() {
     Client::split_endpoint("https://host:notaport").expect_err("a refused port");
 }
 
+#[test]
+fn an_endpoint_is_read_once_as_the_url_it_is_and_only_where_the_store_is_is_kept() {
+    for (endpoint, scheme, host, port) in [
+        ("localhost:9000", "https", "localhost", Some(9000)),
+        (
+            "HTTP://minio.example.io:9000/",
+            "http",
+            "minio.example.io",
+            Some(9000),
+        ),
+        ("[::1]:9000", "https", "[::1]", Some(9000)),
+        ("http://[::1]", "http", "[::1]", None),
+        // User information, a path and a query say nothing about where the
+        // store is, so none of them reaches the `Host` header or the signature.
+        ("https://u:p@host:9000", "https", "host", Some(9000)),
+        ("https://host/prefix", "https", "host", None),
+        ("http://host:9000/p?x=1", "http", "host", Some(9000)),
+        // The emulator spelling an Azure connection string states: the path
+        // names the account, which the client adds itself.
+        (
+            "http://127.0.0.1:10000/devstoreaccount1",
+            "http",
+            "127.0.0.1",
+            Some(10000),
+        ),
+    ] {
+        assert_eq!(
+            Client::split_endpoint(endpoint).expect(endpoint),
+            (scheme.to_owned(), host.to_owned(), port),
+            "{endpoint:?}"
+        );
+    }
+}
+
+#[test]
+fn an_endpoint_that_names_no_host_or_a_port_that_is_no_number_is_refused_quoting_it() {
+    for endpoint in [
+        "https://host:notaport",
+        "https://host:99999",
+        "https://host:+80",
+        "https://host:",
+        "https://",
+        "https://a@b@c",
+        "",
+    ] {
+        let refused = Client::split_endpoint(endpoint)
+            .expect_err(endpoint)
+            .to_string();
+        assert!(
+            refused.contains("expected a host and an optional port in the S3 endpoint"),
+            "{endpoint:?}: {refused}"
+        );
+        assert!(refused.contains(&format!("{endpoint:?}")), "{refused}");
+    }
+}
+
+#[test]
+fn the_path_style_variable_reads_the_one_boolean_table_and_text_it_does_not_spell_defers() {
+    let host = |spelling: &str, config: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            ambient(
+                &[
+                    ("AWS_REGION", "eu-west-3"),
+                    ("AWS_S3_FORCE_PATH_STYLE", spelling),
+                ],
+                config,
+            ),
+        )
+        .host_header("trades")
+    };
+    let path = "s3.eu-west-3.amazonaws.com";
+    let virtual_hosted = "trades.s3.eu-west-3.amazonaws.com";
+    for spelling in ["true", "t", "tr", "yes", "y", "on", "1"] {
+        assert_eq!(host(spelling, ""), path, "{spelling:?} forces path style");
+    }
+    for spelling in ["false", "f", "no", "n", "off", "0"] {
+        assert_eq!(
+            host(spelling, ""),
+            virtual_hosted,
+            "{spelling:?} forces virtual hosting"
+        );
+    }
+    // Text no spelling reads states nothing: the profile's addressing style
+    // answers, and without one the host's own default.
+    assert_eq!(
+        host("maybe", "[default]\ns3 =\n  addressing_style = path\n"),
+        path
+    );
+    assert_eq!(host("maybe", ""), virtual_hosted);
+}
+
+#[test]
+fn the_s3_table_s_switches_read_the_one_boolean_table_and_text_it_does_not_spell_is_off() {
+    let host = |table: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            sealed().with_session(profiled(&format!(
+                "[default]\nregion = eu-west-3\ns3 =\n  {table}\n"
+            ))),
+        )
+        .host_header("trades")
+    };
+    assert_eq!(
+        host("use_dualstack_endpoint = y"),
+        "trades.s3.dualstack.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_accelerate_endpoint = on"),
+        "trades.s3-accelerate.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_dualstack_endpoint = maybe"),
+        "trades.s3.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_accelerate_endpoint = no"),
+        "trades.s3.eu-west-3.amazonaws.com"
+    );
+}
+
+#[test]
+fn the_profiles_payload_signing_flag_reads_the_one_boolean_table_and_text_it_does_not_spell_states_nothing()
+ {
+    let signs = |endpoint: &str, spelling: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            ambient(
+                &[("AWS_ENDPOINT_URL_S3", endpoint)],
+                &format!(
+                    "[default]\nregion = eu-west-3\ns3 =\n  payload_signing_enabled = {spelling}\n"
+                ),
+            ),
+        )
+        .signs_payload()
+    };
+    // Over plain HTTP the body is signed unless the profile says otherwise.
+    for spelling in ["false", "f", "no", "n", "off", "0"] {
+        assert!(!signs("http://localhost:9000", spelling), "{spelling:?}");
+    }
+    assert!(
+        signs("http://localhost:9000", "maybe"),
+        "text no spelling reads leaves the default, which signs over HTTP"
+    );
+    // Over TLS it is not, unless the profile says so.
+    for spelling in ["true", "t", "tr", "yes", "y", "ye", "on", "1"] {
+        assert!(signs("https://localhost:9000", spelling), "{spelling:?}");
+    }
+    assert!(
+        !signs("https://localhost:9000", "maybe"),
+        "and the default over TLS does not"
+    );
+}
+
 mod accounting {
     use yggdryl::IOBase;
 

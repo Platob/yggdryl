@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import Identifier, Timezone, graph
+from yggdryl import Timezone, graph
 
 D = decimal.Decimal
 SECOND = 1_000_000_000
@@ -37,8 +37,6 @@ NAMES = [
     "bidqty",
     "askqty",
     "books",
-    "executions",
-    "volume",
 ]
 
 
@@ -54,21 +52,6 @@ def quote(
         price=D(price),
         quantity=quantity,
         state="NEW",
-    )
-
-
-def execution(
-    unix: int, ticker: str, code: str, side: str, lastqty: int | None
-) -> graph.ExecutionEvent:
-    """One fill of `ticker` going by `code`, stating what it traded as its `lastqty` where given one."""
-    return graph.ExecutionEvent(
-        unix,
-        crosscode=code,
-        ticker=ticker,
-        side=side,
-        price=D("100"),
-        lastqty=lastqty,
-        state="FILLED",
     )
 
 
@@ -111,13 +94,10 @@ ONE_MINUTE = [
     quote(10 * SECOND, "ACME", "B", "BUY", "100", 5),
     quote(10 * SECOND, "ACME", "A", "SELL", "103", 7),
     quote(20 * SECOND, "ACME", "B", "BUY", "102", 5),
-    execution(20 * SECOND, "ACME", "E1", "BUY", 4),
     quote(30 * SECOND, "ACME", "A", "SELL", "102.5", 7),
     quote(30 * SECOND, "ACME", "B", "BUY", "99", 5),
     quote(40 * SECOND, "ACME", "B", "BUY", "101", 8),
     quote(40 * SECOND, "ACME", "A", "SELL", "103.5", 9),
-    execution(40 * SECOND, "ACME", "E2", "SELL", 6),
-    execution(40 * SECOND, "ACME", "E3", "SELL", None),
 ]
 
 
@@ -131,8 +111,6 @@ def full_candle() -> graph.Candle:
         "bidqty": 8,
         "askqty": 9,
         "books": 4,
-        "executions": 3,
-        "volume": 10,
     }
     for name, values in (
         ("bid", ("100", "102", "99", "101")),
@@ -147,7 +125,7 @@ def full_candle() -> graph.Candle:
 def empty_candle() -> graph.Candle:
     """A candle of a book that stated nothing."""
     return graph.Candle.from_scalar(
-        {"crosscode": "XXXX:XXXXXX", "start": 0, "end": MINUTE, "books": 1, "executions": 0, "volume": 0}
+        {"crosscode": "3:0:XX0000000000", "start": 0, "end": MINUTE, "books": 1}
     )
 
 
@@ -237,7 +215,7 @@ class TestCandleIterator:
         assert reading(candle.spread) == ohlc("3", "3.5", "1", "2.5")
         assert candle.bidqty is not None and candle.bidqty.as_py() == D(8)
         assert candle.askqty is not None and candle.askqty.as_py() == D(9)
-        assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 3, D(10))
+        assert candle.books == 4
         assert walk.__hash__ is None
 
     def test_a_one_sided_book_states_no_mid_or_spread(self) -> None:
@@ -252,65 +230,48 @@ class TestCandleIterator:
         assert candle.ask is None and candle.mid is None and candle.spread is None
         assert candle.bidqty is not None and candle.bidqty.as_py() == D(6)
         assert candle.askqty is None
-        assert (candle.books, candle.executions, candle.volume.as_py()) == (2, 0, D(0))
+        assert candle.books == 2
         assert candle.as_py()["askopen"] is None
 
-    def test_the_volume_counts_each_trade_once_at_what_it_traded(self) -> None:
-        def fill(
-            unix: int, code: str, side: str, lastqty: int | None, **identifiers: str
-        ) -> graph.ExecutionEvent:
-            # The order's quantity; what the fill traded is its last quantity.
-            return graph.ExecutionEvent(
-                unix,
-                crosscode=code,
-                ticker="ACME",
-                side=side,
-                price=D("100"),
-                quantity=600,
-                lastqty=lastqty,
-                state="FILLED",
-                identifiers=[Identifier("fix", kind, value) for kind, value in identifiers.items()],
-            )
-
-        # A fill delivered twice under one `execid`, the two sides of a trade
-        # under one `tradeid`, and a fill stating no last quantity, which adds
-        # nothing whatever its order's quantity: six executions, three trades.
-        (candle,) = candles(
-            [
-                fill(10 * SECOND, "X-1", "BUY", 21, execid="X-1"),
-                fill(10 * SECOND, "X-2", "BUY", 57, execid="X-2"),
-                fill(11 * SECOND, "X-2", "BUY", 57, execid="X-2"),
-                fill(20 * SECOND, "S-1", "BUY", 100, execid="S-1", tradeid="T-1"),
-                fill(20 * SECOND, "S-2", "SELL", 100, execid="S-2", tradeid="T-1"),
-                fill(30 * SECOND, "X-3", "SELL", None),
-            ],
-            "1m",
+    def test_a_walk_folds_no_execution_so_a_fill_moves_no_candle(self) -> None:
+        # A book prunes an execution before it routes it: an instant only a
+        # fill reached emits no book, so it opens no bucket and counts no book.
+        fill = graph.ExecutionEvent(
+            90 * SECOND,
+            crosscode="E-1",
+            ticker="ACME",
+            side="BUY",
+            price=D("100"),
+            lastqty=4,
+            state="FILLED",
         )
-        assert (candle.books, candle.executions, candle.volume.as_py()) == (4, 6, D(178))
+        assert candles([*ONE_MINUTE, fill], "1m") == candles(ONE_MINUTE, "1m")
 
-        # A trade report's two sides named by its `tradereportid` alone, and a
-        # fill naming its `execid` and the trade's `tradeid` delivered again
-        # naming the `execid` alone: two trades.
-        (candle,) = candles(
-            [
-                fill(10 * SECOND, "SX-B", "BUY", 100, execid="SX-B", tradereportid="TR-1"),
-                fill(10 * SECOND, "SX-S", "SELL", 100, execid="SX-S", tradereportid="TR-1"),
-                fill(20 * SECOND, "E-1", "BUY", 57, execid="E-1", tradeid="T-1"),
-                fill(21 * SECOND, "E-1", "BUY", 57, execid="E-1"),
-            ],
-            "1m",
-        )
-        assert (candle.executions, candle.volume.as_py()) == (4, D(157))
-
-        # Delivered again in the next minute, a fill adds nothing there.
-        first, second = candles(
-            [
-                fill(10 * SECOND, "X-1", "BUY", 21, execid="X-1"),
-                fill(70 * SECOND, "X-1", "BUY", 21, execid="X-1"),
-            ],
-            "1m",
-        )
-        assert (first.volume.as_py(), second.volume.as_py()) == (D(21), D(0))
+    def test_candles_from_delta_books_equal_candles_from_complete_books(self) -> None:
+        # A candle reads a book's top of book, which every book states whether
+        # it holds its sides or its deltas alone: the candles of a walk's
+        # books - each its deltas alone, the first following no book - are the
+        # candles of those books rebuilt whole.
+        operations = [
+            quote(OFFSET_DAY + SECOND, "ACME", "B-1", "BUY", "100", 10),
+            quote(OFFSET_DAY + SECOND, "ACME", "A-1", "SELL", "102", 5),
+            quote(OFFSET_DAY + 20 * SECOND, "ACME", "B-2", "BUY", "101", 4),
+            quote(OFFSET_DAY + 70 * SECOND, "ACME", "A-1", "SELL", "103", 5),
+            quote(OFFSET_DAY + 90 * SECOND, "ACME", "B-1", "BUY", "99", 1),
+            quote(OFFSET_DAY + 130 * SECOND, "ACME", "A-2", "SELL", "101.5", 2),
+        ]
+        deltas = books(operations)
+        assert not any(book.is_complete for book in deltas)
+        whole: list[graph.BookEvent] = []
+        for book in deltas:
+            previous = whole[-1] if whole else graph.BookEvent.keyed(book.currunix, "ACME")
+            rebuilt = book.with_previous(previous)
+            assert rebuilt is not None
+            whole.append(rebuilt)
+        assert all(book.is_complete for book in whole)
+        folded = list(graph.CandleIterator(deltas, MINUTE))
+        assert len(folded) == 3
+        assert folded == list(graph.CandleIterator(whole, MINUTE))
 
     def test_a_reading_a_later_book_lacks_keeps_the_earlier_ones(self) -> None:
         # The ask side empties at the second book: the ask, the mid and the
@@ -382,7 +343,8 @@ class TestCandleIterator:
     def test_a_book_stating_no_ticker_states_none_on_its_candle(self) -> None:
         assert empty_candles([10 * SECOND], MINUTE)[0].ticker == "ACME"
         (candle,) = list(graph.CandleIterator([graph.BookEvent(10 * SECOND, "")], MINUTE))
-        assert candle.ticker is None and candle.crosscode == ""
+        # An empty symbol keys the book by the number that states none.
+        assert candle.ticker is None and candle.crosscode == "3:0:XX0000000000"
 
     def test_market_data_holding_a_book_folds_and_anything_else_is_refused(self) -> None:
         held = [graph.MarketData(book) for book in books(ONE_MINUTE)]
@@ -540,8 +502,6 @@ class TestCandle:
             "bidqty: decimal",
             "askqty: decimal",
             "books: uint64 not null",
-            "executions: uint64 not null",
-            "volume: decimal not null",
         ]
         assert [child.name for child in field.dtype] == NAMES
 
@@ -555,17 +515,8 @@ class TestCandle:
             assert graph.Candle.from_scalar(types.MappingProxyType(value.as_py())) == value
         native = candle.as_py()
         assert sorted(native) == sorted(NAMES)
-        assert (native["crosscode"], native["ticker"], native["books"], native["executions"]) == (
-            "3:0:ACME",
-            "ACME",
-            4,
-            3,
-        )
-        assert (native["bidopen"], native["spreadclose"], native["volume"]) == (
-            D(100),
-            D("2.5"),
-            D(10),
-        )
+        assert (native["crosscode"], native["ticker"], native["books"]) == ("3:0:ACME", "ACME", 4)
+        assert (native["bidopen"], native["spreadclose"]) == (D(100), D("2.5"))
         assert native["start"] == datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
         assert native["end"] == datetime.datetime(1970, 1, 1, 0, 1, tzinfo=datetime.timezone.utc)
         assert empty_candle().as_py()["ticker"] is None
@@ -584,14 +535,11 @@ class TestCandle:
                 "bidlow": "100.5",
                 "bidclose": "100.5",
                 "books": 1,
-                "executions": 0,
-                "volume": 0,
             }
         )
         assert reading(read.bid) == ohlc("100.5", "100.5", "100.5", "100.5")
         assert read.ticker is None and read.ask is None and read.bidqty is None
         assert (read.start, read.end, read.books) == (0, MINUTE, 1)
-        assert read.volume.as_py() == D(0)
 
     def test_a_scalar_of_another_shape_is_refused_under_the_candle(self) -> None:
         for wrong in (1, None, [1, 2]):

@@ -1130,7 +1130,7 @@ Python's `TerminalFormatter` reads the timestamp from `record.created` and its m
 | Environment | Colour |
 | --- | --- |
 | `NO_COLOR` set to anything but the empty text | off |
-| `FORCE_COLOR` or `CLICOLOR_FORCE` set to anything but the empty text, `0` or `false` | on |
+| `FORCE_COLOR` or `CLICOLOR_FORCE` set to anything but the empty text or a false spelling of the [boolean table](types/numeric/boolean.md#the-one-text-reader) (`0`, `false`, `no`, `off`, in any case) | on |
 | `TERM=dumb` | off |
 | otherwise | on for a terminal, off for a file or a pipe |
 
@@ -1642,7 +1642,7 @@ The warnings are counted by the engine of [Deduplication](#deduplication) in a t
 - `disable(level)` -> every record at or below `level` dropped on every logger, under a host too; `disable(NOTSET)` lifts it.
 - No handler on the propagating chain -> the last resort at `WARNING` and above, the terminal line; `set_last_resort(None)` -> dropped; under a host -> the host's own.
 - A handler with no formatter set -> the terminal line, coloured only if the handler `is_colored`; `Formatter::default()` -> `%(message)s`, Python's default `Formatter()`.
-- `NO_COLOR` set to anything but the empty text -> no colour, `FORCE_COLOR` included; an empty `NO_COLOR` -> unset; `FORCE_COLOR` or `CLICOLOR_FORCE` empty, `0` or `false` -> not forced; forced -> coloured under `TERM=dumb` and into a pipe.
+- `NO_COLOR` set to anything but the empty text -> no colour, `FORCE_COLOR` included; an empty `NO_COLOR` -> unset; `FORCE_COLOR` or `CLICOLOR_FORCE` empty or a false spelling (`0`, `false`, `no`, `off`) -> not forced; forced -> coloured under `TERM=dumb` and into a pipe.
 - `%(levelcolor)s`, `%(dim)s`, `%(bold)s`, `%(reset)s` -> nothing through `format` and `format_into`, their escape sequences through `format_colored_into`.
 - A multi-line message under `Formatter::terminal()` -> its later lines start under its first, counted in terminal columns - a wide character or an emoji two, a combining mark, a zero-width character or an escape sequence none - through `with_datefmt` and `with_timezone`; a message ending in a newline -> no trailing indent; under `Formatter::from_str(Formatter::TERMINAL_FORMAT)` or any other format -> not indented.
 - `%(caller)s` of a record stating no function, no module and no file -> `-`; a function and no line -> the function alone.

@@ -1221,7 +1221,7 @@ A handle works without `open`; opening moves materialization to a known point an
 
 `clear` empties and keeps the resource; `remove` deletes it without a probe, treats absence as success, and refuses a container with children unless `recursive`. A wrapping handle removes what it wraps, cache included.
 
-| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `Table` |
+| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `IcebergTable` |
 | --- | --- | --- | --- |
 | `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
 | `remove` | deleted | deleted; refused while children remain, unless `recursive` | the whole location, metadata and data files |
@@ -4066,7 +4066,7 @@ Names match loosely - case, `-`, `_` and `.` are one, and a store or tool prefix
 | | identity | `tenant_id`, `client_id`, `client_secret`, `federated_token_file`, `managed_identity` |
 | | blob, endpoint | `blob_type` (`block`, `append`, `page`), `access_tier`, `encryption_scope`, `api_version`, `data_lake`, `authority_host` |
 
-Sizes may carry a unit (`8MiB`, `32 MB`); durations are seconds.
+Sizes, durations, counts and flags read as an HTTP session's do ([Durations, counts, sizes and flags](#durations-counts-sizes-and-flags)): `8MiB`, `32 MB`, `30`, `250ms`, `yes`.
 
 ### AWS identity
 
@@ -4882,7 +4882,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 | 3 | a URL, absolute or relative, at `next`, `next_url`, `nextUrl`, `next_page_url`, `nextLink`, `@odata.nextLink`, `links.next`, `links.next.href`, `_links.next.href`, `paging.next`, `meta.next`, `pagination.next` |
 | 4 | a cursor at `next_cursor`, `nextCursor`, `next_page_token`, `nextPageToken`, `cursor`, `after`, `meta.cursor`, `pagination.cursor`, sent back under the parameter the request already carries among `cursor`, `after`, `page_token`, `pageToken`, `next_cursor`, else `cursor` |
 
-The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL equal to the current one or already visited, `page_limit` pages, or a page answering `400` or more, which is yielded and ends it. The explicit spellings are `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` and `page:<parameter>:<start>`. A failed page request is retried under the session's policy and resumed from that page's own request, never from the first.
+The walk ends at a `has_more`/`hasMore` of `false` - a boolean, or text the [boolean table](../types/numeric/boolean.md#the-one-text-reader) reads as false (`"false"`, `"no"`, `"0"`) - an empty page, a next URL equal to the current one or already visited, `page_limit` pages, or a page answering `400` or more, which is yielded and ends it. The explicit spellings are `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` and `page:<parameter>:<start>`. A failed page request is retried under the session's policy and resumed from that page's own request, never from the first.
 
 === "Rust"
 
@@ -4947,18 +4947,29 @@ The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL eq
 
 | property | default | reads |
 | --- | --- | --- |
-| `timeout`, `connect_timeout` | 120 s, 10 s | seconds, decimal allowed, `s` or `ms` suffix |
-| `max_attempts`, `max_redirects`, `follow_redirects` | 3, 10, true | the retry and redirect budget |
-| `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for |
-| `max_body_size` | 256 MiB | what `send` holds in memory; `KiB`, `MiB`, `GiB` suffixes |
+| `timeout`, `connect_timeout` | 120 s, 10 s | a duration ([below](#durations-counts-sizes-and-flags)) |
+| `max_attempts`, `max_redirects`, `follow_redirects` | 3, 10, true | the retry and redirect budget: two counts and a flag |
+| `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for, a duration |
+| `max_body_size` | 256 MiB | what `send` holds in memory, a byte size |
 | `accept_encoding` | `gzip, deflate, zstd` | the codings asked for |
 | `concurrency` | the cores, at most 8 | the threads `send_all` sends on |
 | `pagination`, `records`, `page_limit` | `auto`, detected, none | the page walk |
 | `bearer_token`, `basic_auth` | none | a credential; `basic_auth` is `user:password` |
 | `header.<name>`, `headers.<name>` | none | one default header |
 | `http_version` | `auto` | `auto`, `1.1`, `2` or `3` ([HTTP/2 and HTTP/3](#http2-and-http3)) |
-| `netrc` | follows `read_environment` | whether a request naming no credential takes its host's `.netrc` entry; `true`/`false`, `1`/`0` or `yes`/`no`, anything else refused naming the property |
-| `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest |
+| `netrc` | follows `read_environment` | whether a request naming no credential takes its host's `.netrc` entry; a flag |
+| `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest; `cookies` and `read_environment` are flags, `stream_batch_size` a count |
+
+#### Durations, counts, sizes and flags
+
+Every property reads its text through the one reader of the type it holds - the readers an [object store's](#configuration) properties and an AWS profile's `duration_seconds` go through too - and a value one does not read is refused naming the property, what it expected and the text: `timeout: expected seconds, with an optional fraction and an optional s, ms, us, ns or d unit, got "5m"`.
+
+| Type | Reads | Refuses |
+| --- | --- | --- |
+| duration | a non-negative number of seconds, a fraction or an exponent allowed, then an optional unit with blanks allowed between: `s`, `ms`, `us`, `ns` or `d`, or a long spelling of one (`sec`, `seconds`, `millis`, `micros`, `nanos`, `days`); `30`, `1.5`, `250ms`, `1e3`, `1d` | a negative or non-finite length; `m`, `min` and `h`, because a minute and a month share `m` and nothing picks between them |
+| count | a whole number, an optional sign, the surrounding blanks not part of it | a fraction, a unit, a value the option's width cannot hold |
+| byte size | a whole count, then an optional suffix in any case, blanks allowed between: `b`; `k`, `kb`, `kib`; `m`, `mb`, `mib`; `g`, `gb`, `gib` - each a power of 1024, the decimal spellings as every configuration file means them | a fraction, an exponent, a negative count, a count the suffix multiplies past 64 bits |
+| flag | the [boolean table](../types/numeric/boolean.md#the-one-text-reader): `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off`, `1`/`0` and their prefixes, in any case | anything else, `expected true/false, yes/no, y/n, on/off or 1/0` |
 
 With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do, unless the `netrc` option says otherwise (it follows `read_environment` until stated): the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
 

@@ -23,17 +23,22 @@ impl Ccy {
         Self(SmolStr::new_static(Self::NONE))
     }
 
-    /// The better of two currencies: this one, unless it is `XXX`.
-    fn merged(self, other: &Self) -> Self {
-        if self.as_str() == Self::NONE {
-            other.clone()
-        } else {
-            self
-        }
+    /// Whether this is the currency stated as none, `XXX`: rank zero,
+    /// which any stated currency replaces. The ISO listing is no rank - a
+    /// digital-asset ticker is a currency here, and `USD` never displaces
+    /// `USDT`.
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        self.as_str() == Self::NONE
+    }
+
+    /// [`CodeValue::rank`]: zero for `XXX`, one for anything stated.
+    fn ranked(&self) -> u8 {
+        u8::from(!self.is_none())
     }
 }
 
-code_value!(Ccy, Ccy, CCY_WIDTH, merge = Ccy::merged);
+code_value!(Ccy, Ccy, CCY_WIDTH, rank = Ccy::ranked, max_rank = 1);
 
 /// The Arrow extension name of the currency code.
 pub(crate) const CCY_EXTENSION_NAME: &str = "yggdryl.ccy";

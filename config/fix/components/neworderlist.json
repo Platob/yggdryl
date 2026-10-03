@@ -234,17 +234,6 @@
         }
       },
       {
-        "name": "norootpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norootpartyids",
-          "FIX:tag": "1116"
-        }
-      },
-      {
         "name": "rootparties",
         "dtype": {
           "type": "null"
@@ -252,17 +241,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "rootparties"
-        }
-      },
-      {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
         }
       },
       {

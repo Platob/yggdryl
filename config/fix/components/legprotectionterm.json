@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nolegprotectiontermeventnewssources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprotectiontermeventnewssources",
-          "FIX:tag": "41614"
-        }
-      },
-      {
         "name": "legprotectiontermeventnewssources",
         "dtype": {
           "type": "null"
@@ -102,17 +91,6 @@
         }
       },
       {
-        "name": "nolegprotectiontermevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprotectiontermevents",
-          "FIX:tag": "41625"
-        }
-      },
-      {
         "name": "legprotectiontermevents",
         "dtype": {
           "type": "null"
@@ -120,17 +98,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legprotectiontermevents"
-        }
-      },
-      {
-        "name": "nolegprotectiontermobligations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprotectiontermobligations",
-          "FIX:tag": "41635"
         }
       },
       {

@@ -16,7 +16,7 @@ use super::credentials::Credentials;
 use super::sigv4::{self, Signer};
 use crate::auth::{instant, iso8601, write_private};
 use crate::xml::scanner::{parse_document, parse_root};
-use crate::{Error, Result};
+use crate::{Error, Result, Url};
 
 /// The STS API version every request names.
 const VERSION: &str = "2011-06-15";
@@ -518,16 +518,33 @@ fn parse_error(body: &[u8]) -> Option<(String, String)> {
 }
 
 /// The scheme and the host, with its port, of an endpoint URL.
+///
+/// The endpoint is read once, as the URL it is, so what is signed and what
+/// is dialed are one reading: a bare host or `host:port` is reached over
+/// `https`, `http` and `https` are the only schemes an STS endpoint has,
+/// user information is no part of the host, and a path or query is dropped
+/// because every exchange is a `GET /`.
 fn split_endpoint(endpoint: &str) -> Result<(String, String)> {
-    let (scheme, rest) = endpoint.split_once("://").unwrap_or(("https", endpoint));
-    let host = rest.split('/').next().unwrap_or(rest);
-    if host.is_empty() {
-        return Err(Error::Io(std::io::Error::new(
+    let refuse = |reason: &str| {
+        Error::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("expected an STS endpoint naming a host, got {endpoint}"),
-        )));
+            format!("expected an STS endpoint naming a host, got {endpoint}: {reason}"),
+        ))
+    };
+    let named = if endpoint.contains("://") {
+        endpoint.to_owned()
+    } else {
+        format!("https://{endpoint}")
+    };
+    let url = Url::from_str(&named).map_err(|error| refuse(&error.to_string()))?;
+    if !url.scheme().is_http() {
+        return Err(refuse(&format!("{} is not http or https", url.scheme())));
     }
-    Ok((scheme.to_owned(), host.to_owned()))
+    let host = url.authority().host_port();
+    if host.is_empty() {
+        return Err(refuse("no host"));
+    }
+    Ok((url.scheme().as_str().to_owned(), host.to_owned()))
 }
 
 /// Report a failure to reach STS at all.
@@ -624,5 +641,16 @@ pub mod internals {
     /// The session name one exchange at `now` uses.
     pub fn session_name_at(role: &AssumedRole, now: SystemTime) -> String {
         role.session_name_at(now)
+    }
+
+    /// The scheme and the host, with its port, an endpoint is signed and
+    /// dialed as.
+    ///
+    /// # Errors
+    ///
+    /// A refusal naming the endpoint when it is no URL naming a host over
+    /// `http` or `https`.
+    pub fn split_endpoint(endpoint: &str) -> crate::Result<(String, String)> {
+        super::split_endpoint(endpoint)
     }
 }

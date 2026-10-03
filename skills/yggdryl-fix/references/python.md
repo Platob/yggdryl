@@ -106,7 +106,8 @@ from yggdryl.fix import FixCodec, FixRegistry
 codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
 
 message, = codec.parse_line(b"recv 8=FIX.4.4|35=D|453=1|448=BROKER|452=1|10=000|")
-assert message.by_tag(453).as_py() == 1
+# The group is its list: its length is the count, and tag 453 reaches nothing.
+assert len(message.by_name("parties").as_py()) == 1
 assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
 
 # Two frames on one line are two messages; a sentence is none.
@@ -180,7 +181,7 @@ assert message.by_name("symbol").as_py() == "AAPL"
 # The first stated OrderID, ClOrdID, ... names the order's chain, stored under its side.
 assert message.crosscode == "10:1:A1"
 # The names it goes by are identifiers: a source, a type and a value.
-assert str(message.identifiers) == "[fix:clordid=A1]"
+assert str(message.identifiers) == "[clordid=A1]"
 # Instants are int nanoseconds since the epoch, UTC.
 assert message.currunix == 1_767_348_930_000_000_000
 # The entries are the content row as (tag, name, value, children) tuples.
@@ -335,7 +336,9 @@ with tempfile.TemporaryDirectory() as directory:
 
 `fix_schema` is the one row every message answers as; `arrow_reader` and
 `messages` cross between messages and batches, any record medium stores the
-batches, and `write_arrow_reader` writes them back as wire lines.
+batches, and `write_arrow_reader` writes them back as wire lines. A key no
+dictionary resolves lands in `metadata`, unless it names an identifier the
+message captures - then it rides `fixentries` under `0:<key>`.
 
 ```python
 import io
@@ -359,6 +362,14 @@ assert row.as_py()[schema.index_of("msgtype")] == "D"
 assert row.as_py()[schema.index_of("fixentries")] == {"18:execinst": "G"}
 assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
 assert FixMsg.from_row(schema, row, registry).into_row(schema) == row
+
+# An unresolved key naming an identifier is captured: held in its set, it rides
+# `fixentries` under `0:<key>` and leaves `metadata`.
+bridged = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-2|55=AAPL|54=1|RICCODE=AAPL.O|10=0|")
+assert bridged.securityids.get("ric") == "AAPL.O"
+cells = bridged.into_row(schema).as_py()
+assert cells[schema.index_of("fixentries")]["0:riccode"] == "AAPL.O"
+assert "riccode" not in (cells[schema.index_of("metadata")] or {})
 
 with tempfile.TemporaryDirectory() as directory:
     # A stream of messages as batches, landed in Parquet without a per-row detour.
@@ -429,6 +440,37 @@ chained = codec.lifecycle_arrow_reader(rows).read_all()
 assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist())) == 2
 ```
 
+## Share what lifecycles learn about instruments
+
+A lifecycle learns each message's ISIN - else its RIC, which only fills - its
+CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
+what later messages of that instrument leave unsaid, as `derived` identifiers
+and the CFI and ticker facts, never the wire. A codec without one learns into
+a registry of each walk's own; `isin_registry=` shares one across walks run one
+after another, and any `IOBase` saves and loads it.
+
+```python
+from pathlib import Path
+
+from yggdryl import IsinRegistry
+from yggdryl.fix import FixCodec, FixRegistry
+
+instruments = IsinRegistry()
+codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=instruments)
+
+# The first walk states Holcim's ISIN, RIC and CFI code.
+stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|"]
+list(codec.lifecycle(codec.parse_lines(stated)))
+assert instruments.get_by_ric("HOLN.S")["isin"] == "CH0012214059"
+
+# A later walk naming only the RIC is filled from what the first learned.
+[later] = codec.lifecycle(codec.parse_lines([b"8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"]))
+assert later.isincode == "CH0012214059" and later.securityids.is_derived("isin")
+assert later.cficode is not None and later.cficode.as_py() == "ESVUFR"
+# The table is an Arrow stream: a golden file loads with `from_handle`.
+assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
+```
+
 ## Follow a replace chain's parents
 
 A message that states an identifier again under another value is a step in
@@ -456,7 +498,7 @@ chained = list(reader.lifecycle(reader.parse_lines(lines)))
 
 def held(message):
     # What a message holds under each type, "-" where it holds none.
-    return tuple(message.identifiers.get_from("fix", kind) or "-" for kind in KINDS)
+    return tuple(message.identifiers.get(kind) or "-" for kind in KINDS)
 
 
 assert held(chained[0]) == ("-", "-", "-", "C1", "-")
@@ -468,19 +510,21 @@ assert held(chained[3]) == ("O3", "O2", "O1", "C3", "C2")
 assert all(message.crossuuid == chained[0].crossuuid for message in chained)
 ```
 
-## Split fills, two-sided quotes and batches at the parse
+## Split fills and batches at the parse
 
 The parse splits what a message reports, once, so nothing downstream states a
-fill or a side twice: an execution report is its order's report (`msgcat`
-`ORDR`, its own state) - one of no fill from its parse - and one that fills
-adds one `EXEC` message reading `FILLED`, chained under its `ExecID(17)` as given, else
-`TradeID=<TradeID(1003)>`; a trade (`AE`) adds one sided execution per
-`NoSides(552)` occurrence; a quote stating a bid and an offer and no side adds
-a `BUYS` and a `SELL` quote; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
+fill twice: an execution report is its order's report (`msgcat` `ORDR`, its
+own state; `QUOT` where it names a `QuoteID(117)`) - one of no fill from its
+parse - and one that fills adds one `EXEC` message reading `FILLED`, chained
+under its `ExecID(17)` as given, else `TradeID=<TradeID(1003)>`; a trade
+(`AE`) adds one sided execution per `NoSides(552)` occurrence; a batch (`msgcat` `ORDB`, `QUOB`, `EXEB` or `TRDB`:
 an order list, a mass order, a cross, a mass quote, a match report) adds one
-message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`),
-chained by the order the entry names and split again as its category is.
-Each split message names its source in `srcuuids`.
+message per entry, filed under its item (`ORDR`, `QUOT`, `EXEC`, `TRAD`) - a
+mass quote's entry one quote holding both its legs - chained by the order the
+entry names and split again as its category is. Each split message names its
+source in `srcuuids`. A quote is never split: a bid and an offer are the two
+legs of one message, stored under side `0`. An acknowledgement of an execution
+(`BN`, `Q`) states no fact of its order, so it answers no market leaf.
 
 ```python
 from decimal import Decimal
@@ -496,25 +540,30 @@ report, execution = codec.parse_line(fill)
 assert (report.msgcat, report.state) == (MarketDataKind.ORDR, State.PARTIALLY_FILLED)
 assert (execution.msgcat, execution.state) == (MarketDataKind.EXEC, State.FILLED)
 assert report.curruuid in execution.srcuuids
-# An order, quote or execution message stores its cross code under its side; the fill is a chain of its own.
+# An order or an execution message stores its cross code under its side; the fill is a chain of its own.
 assert (report.crosscode, execution.crosscode) == ("10:1:O-9", "8:1:E-1")
 
-quote = b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|"
-quote, bid, ask = codec.parse_line(quote)
-assert (quote.side, bid.side, ask.side) == (Side.UNKN, Side.BUYS, Side.SELL)
-assert (bid.crosscode, ask.crosscode) == ("14:1:Q1", "14:2:Q1")
-# Each side prices at its own level and keeps the pair its source stated.
-assert bid.price is not None and bid.price.as_py() == Decimal(99)
-assert ask.bidpx is not None and ask.bidpx.as_py() == Decimal(99)
-assert bid.bidccy is not None and bid.bidccy.as_py() == "USD"
+[quote] = codec.parse_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|15=USD|132=99|134=7|133=101|135=8|10=0|")
+assert (quote.msgcat, quote.side, quote.crosscode) == (MarketDataKind.QUOT, Side.UNKN, "14:0:Q1")
+# Both legs on the one message, each in its currency; neither is the quote's own price.
+assert quote.price is None
+assert quote.bidpx is not None and quote.bidpx.as_py() == Decimal(99)
+assert quote.askpx is not None and quote.askpx.as_py() == Decimal(101)
+assert quote.askccy is not None and quote.askccy.as_py() == "USD"
+
+# An acknowledgement of an execution states no fact of its order: no market leaf.
+ack = codec.parse_fix_line(b"8=FIX.4.4|35=BN|52=20260921-10:00:01|17=E-1|37=O-9|1036=2|10=0|")
+assert ack.market_data() == []
 ```
 
 ## Turn FIX into market data and books
 
-`market_data` admits what a book folds - orders, one-sided quotes, executions,
-`W`/`X` book messages - reads each as its one graph leaf (a book message one
-per entry) and sorts them by the instant a book folds them at;
-`graph.BookIterator` then walks them. Compose `lifecycle` in front when
+`market_data` admits orders, quotes, executions and `W`/`X` book messages - a
+trade as the executions its parse split off - reads each as its one graph
+leaf (a book message one per entry) and sorts them by the instant a book folds
+them at; `graph.BookIterator` then walks them, pruning the executions.
+`book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
+messages into book rows, one book per book key. Compose `lifecycle` in front when
 predecessor state matters. `market_arrow_reader` writes the sorted leaves as
 `marketdata` rows, and `market_data_arrow_reader` is its twin over batches of
 FIX rows already in Arrow.
@@ -568,6 +617,8 @@ import yggdryl
 from yggdryl import DataType, Field
 from yggdryl.fix import FixRegistry
 
+# The counter is a field of the dictionary; no component or message lists it
+# beside the group, whose length is its count.
 count = Field("NoPartyIDs", "int32")
 count.fix.tag = 453
 party_id = Field("PartyID", "utf8")
@@ -605,16 +656,20 @@ with tempfile.TemporaryDirectory() as directory:
 
 `FixRegistry.from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
 and its declared roots, stamping the dialect on everything it produced;
-`add_cfb_file` folds one into a held registry, `add_cfb_files` folds every
-file a glob pattern selects under a folder, and `merge_with` folds a whole
-other registry, dialect defaulting to each file's own stem. Each answers a
-`dict` - `sources`, `added`, `merged`, `restated` and `dropped` - and a fold
-keeps every declaration the dictionary already holds: a field whose source
-stated another precision of the stored datatype (a CBlock's `float` against
-`decimal128`, `string` against `ccy`) folds under it and is counted in
-`restated`, and a contradiction is passed over into `dropped` rather than
-refusing the whole source; only a source that leaves nothing to keep is
-refused whole. What the reader cannot keep of a file is a `logging` warning
+`add_cfb_file` folds one into a held registry, `add_cfb_files(location)`
+folds what one location holds - a glob (`folder / "*.cfb"`) every file it
+matches, a folder the `.cfb` files directly inside it, a file itself - and
+`merge_with` folds a whole other registry, dialect defaulting to each file's
+own stem. Each answers a `dict` - `sources`, `added`, `merged`, `restated`,
+`dropped` and `failed` - and a fold keeps every declaration the dictionary
+already holds: a field whose source stated another precision of the stored
+datatype (a CBlock's `float` against `decimal128`, `string` against `ccy`)
+folds under it and is counted in `restated`, and a contradiction is passed
+over into `dropped` rather than refusing the whole source. `add_cfb_files`
+folds each file as one mutation: a file it cannot read, parse or fold is left
+out alone, one `{"source", "reason"}` entry in `failed`, while the rest fold;
+`add_cfb_file` and `merge_with` raise only for a source that leaves nothing
+to keep. What the reader cannot keep of a file is a `logging` warning
 under `yggdryl.fix.cfb` naming the line, the column, the element and what the
 reader did instead.
 
@@ -634,15 +689,23 @@ with tempfile.TemporaryDirectory() as directory:
     folder = pathlib.Path(directory)
     (folder / "alpha.cfb").write_text(cblock.format(name="buy"))
     (folder / "beta.cfb").write_text(cblock.format(name="venue_buy"))
+    (folder / "broken.cfb").write_text("<cplugin-configuration><vocabulary>")
 
     venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
     assert venue.field(4).fix.branches == ["venue"] and roots == []
 
+    # A folder holds the .cfb files directly inside it, a glob what it matches.
     registry = FixRegistry()
-    report = registry.add_cfb_files(folder, "*.cfb")
+    report = registry.add_cfb_files(folder)
     assert report["sources"] == 2
     assert report["restated"] == 0, "both files type tag 4 alike"
     assert report["dropped"] == []
+    # One file is one mutation: the broken one is left out, the others fold.
+    [failed] = report["failed"]
+    assert failed["source"].endswith("broken.cfb")
+    globbed = FixRegistry()
+    globbed.add_cfb_files(folder / "*.cfb")
+    assert globbed == registry
     # Ascending URL order, each file stamped with its stem.
     assert registry.field(4).fix.branches == ["alpha", "beta"]
     # A code set only widens: the held name wins a shared value.
@@ -673,5 +736,9 @@ with tempfile.TemporaryDirectory() as directory:
   of undated frames.
 - `side`, `state` and `msgcat` answer `IntEnum` members (`Side.BUYS`,
   `State.FILLED`, `MarketDataKind.ORDR`): compare with `is`, never with text.
-- `book_arrow_reader(messages, snapshot_millis=0)` takes no mode beyond the
-  grid: books are keyed by ticker, else by `MIC:CFI`.
+- `book_arrow_reader(messages, snapshot_millis=0, filter=None)` takes no mode
+  beyond the grid and the filter (a `Filter`, a `Term`, an `Expression` or a
+  predicate's text over the `marketdata` row): books are keyed by the
+  instrument's ISIN, else the ticker, else `XX0000000000`, and a book is
+  complete only at a grid tick or a `W` full refresh - every other row states
+  its deltas, which `book.with_previous(previous)` rebuilds.

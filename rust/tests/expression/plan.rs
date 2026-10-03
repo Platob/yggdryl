@@ -182,11 +182,66 @@ fn a_target_carries_the_properties_it_is_opened_with() {
     // A knob that does not parse names itself.
     let broken = Target::parse("t with (batch_row_size = 'ten')").unwrap();
     let error = broken
-        .knob::<usize>("batch_row_size", "a row count")
+        .knob_count::<usize>("batch_row_size")
         .unwrap_err()
         .to_string();
     assert!(error.contains("batch_row_size"), "{error}");
     assert!(error.contains("ten"), "{error}");
+}
+
+#[test]
+fn a_flag_knob_reads_every_boolean_spelling_and_a_count_knob_every_integer_one() {
+    let with = |name: &str, value: &str| Target::parse("t").unwrap().with_property(name, value);
+    for (text, expected) in [
+        ("true", true),
+        ("yes", true),
+        (" ON ", true),
+        ("1", true),
+        ("FALSE", false),
+        ("n", false),
+        ("off", false),
+        ("0", false),
+    ] {
+        assert_eq!(
+            with("safe", text).knob_bool("safe").unwrap(),
+            Some(expected),
+            "{text}"
+        );
+    }
+    assert_eq!(Target::parse("t").unwrap().knob_bool("safe").unwrap(), None);
+    let error = with("safe", "maybe")
+        .knob_bool("safe")
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$.with.safe"), "{error}");
+    assert!(error.contains("yes/no"), "{error}");
+    assert!(error.contains("maybe"), "{error}");
+
+    // A count is a trimmed, signed whole number at the width the option holds.
+    for text in ["10", " 10 ", "+10"] {
+        assert_eq!(
+            with("batch_row_size", text)
+                .knob_count::<usize>("batch_row_size")
+                .unwrap(),
+            Some(10),
+            "{text:?}"
+        );
+    }
+    assert_eq!(
+        Target::parse("t")
+            .unwrap()
+            .knob_count::<u64>("max_row_size")
+            .unwrap(),
+        None
+    );
+    for text in ["ten", "1.5", "-1", "1e3", "512 MB"] {
+        let error = with("max_row_size", text)
+            .knob_count::<u64>("max_row_size")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("$.with.max_row_size"), "{text}: {error}");
+        assert!(error.contains(text), "{text}: {error}");
+    }
 }
 
 #[test]
@@ -1514,7 +1569,7 @@ mod streams {
             Target::parse(&format!("'{plain}' with (commit_batch_num = 'three')")).unwrap();
         let error = broken.record_options(&holder).unwrap_err().to_string();
         assert!(error.contains("$.with.commit_batch_num"), "{error}");
-        assert!(error.contains("a batch count"), "{error}");
+        assert!(error.contains("a whole number"), "{error}");
         assert!(error.contains("three"), "{error}");
     }
 
@@ -1689,6 +1744,92 @@ fn explain_draws_every_section_as_a_branch() {
 }
 
 #[test]
+fn a_verb_reads_every_spelling_the_grammar_reads_and_prints_its_canonical_one() {
+    for (text, verb) in [
+        ("insert", Verb::Insert),
+        ("INSERT INTO", Verb::Insert),
+        (" append ", Verb::Insert),
+        ("append to", Verb::Insert),
+        ("append into", Verb::Insert),
+        ("insert overwrite", Verb::Overwrite),
+        ("insert overwrite into", Verb::Overwrite),
+        ("overwrite", Verb::Overwrite),
+        ("overwrite into", Verb::Overwrite),
+        ("replace", Verb::Overwrite),
+        ("Replace Into", Verb::Overwrite),
+        ("upsert", Verb::Upsert),
+        ("upsert into", Verb::Upsert),
+        ("merge", Verb::Upsert),
+        ("merge into", Verb::Upsert),
+        ("delete", Verb::Delete),
+        ("delete from", Verb::Delete),
+    ] {
+        assert_eq!(text.parse::<Verb>().expect(text), verb, "{text:?}");
+    }
+    for verb in [Verb::Insert, Verb::Overwrite, Verb::Upsert, Verb::Delete] {
+        assert_eq!(verb.as_str().parse::<Verb>().unwrap(), verb);
+        assert_eq!(verb.word().parse::<Verb>().unwrap(), verb);
+    }
+    for text in [
+        "sideways",
+        "",
+        "insert into t",
+        "upsert by (id)",
+        "delete into",
+        "insert overwrite from",
+        "select",
+    ] {
+        let refused = text.parse::<Verb>().expect_err(text).to_string();
+        assert!(
+            refused.contains("write verb") || refused.contains("end of the expression"),
+            "{text:?}: {refused}"
+        );
+    }
+}
+
+#[test]
+fn an_ordering_key_reads_as_the_grammar_spells_one() {
+    let a = || Term::column("a");
+    for (text, key) in [
+        ("a", Ordering::asc(a())),
+        ("a asc", Ordering::asc(a())),
+        ("a ASC NULLS LAST", Ordering::asc(a())),
+        ("a desc", Ordering::desc(a())),
+        ("a desc nulls first", Ordering::desc(a()).nulls_first(true)),
+        ("a nulls first", Ordering::asc(a()).nulls_first(true)),
+    ] {
+        assert_eq!(text.parse::<Ordering>().expect(text), key, "{text:?}");
+    }
+    // Any term the grammar reads is a key, printed back as it was read.
+    let computed: Ordering = "price * 2 desc nulls first".parse().unwrap();
+    assert!(computed.is_descending() && computed.is_nulls_first());
+    assert_eq!(computed.to_string(), "price * 2 desc nulls first");
+    for key in [
+        Ordering::asc(a()),
+        Ordering::desc(a()),
+        Ordering::desc(a()).nulls_first(true),
+        Ordering::asc(a()).nulls_first(true),
+    ] {
+        assert_eq!(key.to_string().parse::<Ordering>().unwrap(), key);
+    }
+    for text in [
+        "",
+        "a, b",
+        "a descending",
+        "a nulls",
+        "a desc first",
+        "a asc desc",
+    ] {
+        assert!(text.parse::<Ordering>().is_err(), "{text:?} read as a key");
+    }
+    // Neither direction word is reserved: alone, it names a column.
+    assert_eq!(
+        "desc".parse::<Ordering>().unwrap(),
+        Ordering::asc(Term::column("desc"))
+    );
+}
+
+#[test]
 fn an_ordering_record_reads_its_nulls_flag_under_either_spelling() {
     use yggdryl::expression::Ordering;
     use yggdryl::{Scalar, SortOptions};
@@ -1722,4 +1863,21 @@ fn an_ordering_record_reads_its_nulls_flag_under_either_spelling() {
             .to_string()
             .contains("$.nulls")
     );
+    // A flag is a boolean or the text the crate's one boolean table reads.
+    let spelled = Scalar::from_struct([
+        ("term", Scalar::from("price")),
+        ("descending", Scalar::from("yes")),
+        ("nulls_first", Scalar::from("0")),
+    ])
+    .expect("a record");
+    assert_eq!(
+        Ordering::from_scalar(&spelled).expect("spelled flags"),
+        Ordering::new("price".parse().expect("a term"), SortOptions::descending())
+    );
+    for flag in [Scalar::from("maybe"), Scalar::from(1_i64)] {
+        let record = Scalar::from_struct([("term", Scalar::from("price")), ("descending", flag)])
+            .expect("a record");
+        let refused = Ordering::from_scalar(&record).unwrap_err().to_string();
+        assert!(refused.contains("$.descending"), "{refused}");
+    }
 }

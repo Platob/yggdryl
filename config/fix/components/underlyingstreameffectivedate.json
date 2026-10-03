@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nounderlyingstreameffectivedatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreameffectivedatebusinesscenters",
-          "FIX:tag": "40975"
-        }
-      },
-      {
         "name": "underlyingstreameffectivedatebusinesscenters",
         "dtype": {
           "type": "null"

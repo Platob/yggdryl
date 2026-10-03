@@ -1149,7 +1149,7 @@ fn a_literal_value_outside_the_specifications_width_is_refused_naming_its_column
         ("COLUMN_FLAGS", "-1"),
         ("CHARACTER_MAXIMUM_LENGTH", "4294967296"),
         ("IS_NULLABLE", "maybe"),
-        ("COLUMN_HAS_DEFAULT", "yes"),
+        ("COLUMN_HAS_DEFAULT", "perhaps"),
     ] {
         let refusal = literal_refusal(columns, &cell(column, value));
         assert!(

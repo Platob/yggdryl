@@ -6619,6 +6619,57 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
 }
 
 #[test]
+fn a_count_property_reads_as_every_count_reads_and_refuses_what_none_does() {
+    use yggdryl::iceberg::IcebergOptions;
+
+    let path = root("option-integer-spelling");
+    let mut table = IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+
+    // Surrounding blanks and an explicit plus are no part of a number. The
+    // two keys are the crate's own, which the official table-property reader
+    // does not also hold to its untrimmed spelling.
+    table
+        .commit_metadata_changes(|metadata| {
+            metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, " 4 ")?;
+            metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILE_SIZE_KEY, "+9")?;
+            Ok(())
+        })
+        .unwrap();
+    let options = table.options().unwrap();
+    assert_eq!(options.read_parallel_min_files(), 4);
+    assert_eq!(options.read_parallel_min_file_size_bytes(), 9);
+
+    // A fraction, an exponent, a unit, a word and a sign an unsigned count
+    // cannot hold are refused naming the key and the text.
+    for text in ["5.0", "1e3", "1_000", "512 MB", "many", "-1"] {
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property(IcebergOptions::READ_PARALLEL_MIN_FILES_KEY, text)?;
+                Ok(())
+            })
+            .unwrap();
+        let error = table.options().unwrap_err();
+        assert!(
+            matches!(
+                error,
+                yggdryl::Error::InvalidMetadataValue { ref key, .. }
+                    if key == IcebergOptions::READ_PARALLEL_MIN_FILES_KEY
+            ),
+            "{text}: {error:?}"
+        );
+        assert!(error.to_string().contains(text), "{text}: {error}");
+    }
+
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+#[test]
 fn zero_total_retry_budget_allows_a_zero_wait_rebase() {
     use yggdryl::iceberg::IcebergOptions;
 

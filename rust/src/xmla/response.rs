@@ -178,7 +178,7 @@ impl XmlaError {
                 .map(str::to_owned)
         };
         let code = attribute("ErrorCode")
-            .and_then(|code| code.trim().parse().ok())
+            .and_then(|code| crate::integer::integer_from_text_as::<u32>(&code))
             .unwrap_or(0);
         Some(Self {
             code,

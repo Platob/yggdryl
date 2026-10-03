@@ -12,6 +12,7 @@
 | Simplify | `simplify()` is exact under three-valued logic and reaches a fixed point: `a = 1 or a = 2` is `a in (1, 2)`, `not (a = 1 or a = 2)` is `not a in (1, 2)` |
 | Explain | `explain()` draws the tree one node per line; a bound tree adds each node's datatype, nullability and cost |
 | Identity | `Eq`, `Ord`, `Hash` and `stable_hash()` over the canonical text, in every language |
+| Comparison | `Comparison::from_str` reads one comparison as the grammar spells it - `=`, `<>` or `!=`, `<`, `<=`, `>`, `>=`, `is distinct from`, `is not distinct from` - in any case, the surrounding blanks not part of it, and nothing else; Rust only |
 | Bindings | Python `Term` with operators and reflected operators; JavaScript `Term` with the same names as methods |
 
 ## Use

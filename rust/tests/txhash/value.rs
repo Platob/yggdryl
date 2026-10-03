@@ -542,6 +542,51 @@ mod coupled {
     }
 
     #[test]
+    fn the_instant_is_read_by_the_integer_reader() {
+        let digest = DigestAlgorithm::Xxh3.digest(b"AAPL");
+        // The blanks beside the count are not part of it, as those beside the
+        // unit never were, and a sign is.
+        for spelling in [
+            format!("12 @us:{digest}"),
+            format!("+12@us:{digest}"),
+            format!("\t12\t@us:{digest}"),
+        ] {
+            assert_eq!(
+                TxHash::from_str(&spelling).unwrap().unix(),
+                12,
+                "{spelling}"
+            );
+        }
+        // A count past the signed 64 bits, a fraction, an exponent, a radix
+        // prefix or nothing at all is refused at the instant, never wrapped.
+        for count in [
+            "9223372036854775808",
+            "-9223372036854775809",
+            "1.0",
+            "1e3",
+            "0x10",
+            "",
+        ] {
+            let error = TxHash::from_str(&format!("{count}@us:{digest}")).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    Error::Parse {
+                        target: "txhash",
+                        position: 0,
+                        ..
+                    }
+                ),
+                "{count:?}: {error:?}"
+            );
+            assert!(
+                error.to_string().contains("a signed 64-bit unix count"),
+                "{count:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn serde_uses_the_canonical_spelling() {
         let value = txh64(b"AAPL", INSTANT);
         let json = serde_json::to_string(&value).unwrap();

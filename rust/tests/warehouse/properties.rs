@@ -43,26 +43,32 @@ fn a_bag_is_built_from_any_pairs_and_extended() {
 }
 
 #[test]
-fn a_knob_reads_a_typed_value_and_refuses_one_that_does_not_parse() {
+fn a_knob_reads_through_the_one_reader_of_its_type_and_refuses_what_it_cannot_read() {
     let bag = Properties::new()
         .with_property("batch_row_size", " 1024 ")
-        .with_property("safe", "maybe");
+        .with_property("num_threads", "+4")
+        .with_property("safe", "maybe")
+        .with_property("spill", "Yes");
     assert_eq!(
-        bag.knob::<u64>("batch_row_size", "a row count")
-            .expect("a count"),
+        bag.knob_count::<u64>("batch_row_size").expect("a count"),
         Some(1024)
     );
+    // A count reads every spelling a whole number has, a stated sign
+    // included, and a flag every spelling a boolean has, in any case.
     assert_eq!(
-        bag.knob::<u64>("max_row_size", "a row count")
+        bag.knob_count::<usize>("num_threads").expect("a count"),
+        Some(4)
+    );
+    assert_eq!(bag.knob_bool("spill").expect("a flag"), Some(true));
+    assert_eq!(
+        bag.knob_count::<u64>("max_row_size")
             .expect("unset is none"),
         None
     );
-    let error = bag
-        .knob::<bool>("safe", "`true` or `false`")
-        .expect_err("not a boolean");
+    let error = bag.knob_bool("safe").expect_err("not a boolean");
     assert_eq!(
         error.to_string(),
-        "invalid record value at $.with.safe: expected `true` or `false`, got \"maybe\""
+        "invalid record value at $.with.safe: expected true/false, yes/no, y/n, on/off or 1/0, got \"maybe\""
     );
 }
 

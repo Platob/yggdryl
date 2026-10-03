@@ -56,17 +56,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -74,17 +63,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -98,17 +76,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -116,17 +83,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {

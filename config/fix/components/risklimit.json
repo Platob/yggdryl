@@ -4,17 +4,6 @@
     "type": "struct",
     "fields": [
       {
-        "name": "norisklimittypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norisklimittypes",
-          "FIX:tag": "1529"
-        }
-      },
-      {
         "name": "risklimittypes",
         "dtype": {
           "type": "null"
@@ -22,17 +11,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "risklimittypes"
-        }
-      },
-      {
-        "name": "noriskinstrumentscopes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noriskinstrumentscopes",
-          "FIX:tag": "1534"
         }
       },
       {

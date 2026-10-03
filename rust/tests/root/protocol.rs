@@ -1086,11 +1086,30 @@ mod generic {
         assert!(message.contains("\"year\""), "{message}");
         assert!(message.contains("partition on"), "{message}");
 
-        // Only the canonical booleans are accepted for the reserved marker.
-        assert!(
-            Field::from_parts("year", DataType::Int32, false, [("FIELD:partition", "yes")])
-                .is_err()
-        );
+        // The reserved marker reads the boolean vocabulary and stores the one
+        // canonical spelling, so `StructType::is_partition` compares it as is.
+        for (text, expected) in [("Y", true), ("yes", true), ("No", false), ("0", false)] {
+            let field =
+                Field::from_parts("year", DataType::Int32, false, [("FIELD:partition", text)])
+                    .unwrap();
+            assert_eq!(field.is_partition(), expected, "{text}");
+            assert_eq!(
+                field.get_metadata("FIELD:partition"),
+                Some(if expected { "true" } else { "false" }),
+                "{text}"
+            );
+        }
+        // A text no boolean spells is refused by the key.
+        let error = Field::from_parts(
+            "year",
+            DataType::Int32,
+            false,
+            [("FIELD:partition", "perhaps")],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("FIELD:partition"), "{error}");
+        assert!(error.contains("\"perhaps\""), "{error}");
         assert!(
             !Field::from_parts(
                 "year",

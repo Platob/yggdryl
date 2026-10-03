@@ -35,10 +35,10 @@ mod internal {
     /// A store files the document it reads without re-rendering it, so a set
     /// stating one spelling on two codes - which no caller's `set_codeset`
     /// renders - can be held, and every fold that meets it heals it rather
-    /// than refusing the whole source with "expected each name once".
+    /// than refusing the whole source with "expected each code name once".
     #[test]
     fn a_stored_set_stating_one_name_twice_merges_with_any_set() {
-        let document = r#"[{"value":"8","name":"none"},{"value":"Z","name":"none"}]"#;
+        let document = r#"[{"value":"8","name":"pending"},{"value":"Z","name":"pending"}]"#;
         let held = || {
             let mut registry = FixRegistry::new();
             create_codeset(&mut registry, "ordstatuscodeset", document.to_owned()).unwrap();
@@ -57,9 +57,9 @@ mod internal {
                     .collect::<Vec<_>>(),
                 values
             );
-            assert_eq!(set.code_name("8"), Some("none"));
+            assert_eq!(set.code_name("8"), Some("pending"));
             assert_eq!(set.code_name("Z"), Some("Z"));
-            assert_eq!(set.code_value("none"), Some("8"));
+            assert_eq!(set.code_value("pending"), Some("8"));
             assert_eq!(set.code_value("Z"), Some("Z"));
             assert_eq!(
                 &FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
@@ -89,6 +89,90 @@ mod internal {
             .unwrap();
         registry.merge_with(&other).unwrap();
         assert_healed(&registry, &["8", "Z", "0"]);
+    }
+}
+
+#[test]
+fn a_name_spelling_nothing_claims_nothing() {
+    // `None`, `NULL` and a blank name nothing, so they claim nothing: two
+    // codes may both be called by one, beside a code named after its own
+    // value `NONE`, and the writer refuses none of it. A sentinel still
+    // reaches the one code it is the only spelling of.
+    let (registry, field) = dictionary(
+        "daterollconventioncodeset",
+        40922,
+        &[
+            FixCode::new("NONE", "NONE"),
+            FixCode::new("None", "0"),
+            FixCode::new("NULL", "1"),
+        ],
+    );
+    let set = registry.codeset_of(&field).expect("the set");
+    assert_eq!(
+        set.code_value("NONE"),
+        Some("NONE"),
+        "a wire value, exactly"
+    );
+    assert_eq!(set.code_value("none"), Some("0"));
+    assert_eq!(set.code_value("null"), Some("1"));
+    let mut twice = FixRegistry::new();
+    twice
+        .set_codeset(
+            "twicecodeset",
+            &[FixCode::new("none", "0"), FixCode::new("None", "1")],
+        )
+        .expect("two codes may both name nothing");
+    let set = twice.codeset("twicecodeset").unwrap();
+    assert_eq!(
+        set.code_value("none"),
+        None,
+        "one spelling, two codes, neither"
+    );
+}
+
+#[test]
+fn a_merge_never_answers_a_set_the_writer_refuses() {
+    // `EOM` is named after its own value, so a lookup reaches it by that
+    // value exactly - and a new code named `eom` would be the same name to
+    // the writer. The merge keeps the new value under no name and refuses
+    // nothing, where it used to answer a set the writer then refused.
+    let (mut registry, _) = dictionary("rollcodeset", 40922, &[FixCode::new("EOM", "EOM")]);
+    let (merged, warnings) = super::warned::during(|| {
+        registry.merge_codeset("rollcodeset", &[FixCode::new("eom", "99")])
+    });
+    merged.expect("the merge keeps the value");
+    let set = registry.codeset("rollcodeset").unwrap();
+    assert_eq!(set.code_name("99"), Some("99"));
+    assert_eq!(set.code_value("EOM"), Some("EOM"));
+    assert!(
+        warnings.iter().any(|warning| warning
+            .contains(r#"value "99" keeps no name, "eom" already names value "EOM""#)),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn a_sentinel_is_claimed_by_nothing_whichever_side_holds_it() {
+    // A no-break space trims away, so `\u{a0}none` spells nothing, while
+    // `_\u{a0}none` keeps a separator the trim does not reach and is a name
+    // - one the crate's fold joins to the first. Neither side's sentinel
+    // takes part in the one-name rule, so the writer renders the two in
+    // either order rather than refusing the one that happens to come second.
+    for codes in [
+        [
+            FixCode::new("\u{a0}none", "1"),
+            FixCode::new("_\u{a0}none", "2"),
+        ],
+        [
+            FixCode::new("_\u{a0}none", "2"),
+            FixCode::new("\u{a0}none", "1"),
+        ],
+    ] {
+        let mut registry = FixRegistry::new();
+        registry
+            .set_codeset("spacecodeset", &codes)
+            .expect("a sentinel collides with nothing");
+        assert_eq!(registry.codeset("spacecodeset").unwrap().codes().count(), 2);
     }
 }
 
@@ -461,7 +545,14 @@ fn a_codes_own_wire_value_is_the_one_spelling_the_fold_does_not_reach() {
             &[FixCode::new("News", "B"), FixCode::new("n e w s", "b")],
         )
         .expect_err("two names one fold reaches");
-    assert!(error.to_string().contains("twice"), "{error}");
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert!(
+        error.to_string().contains("expected each code name once")
+            && error
+                .to_string()
+                .contains(r#""n e w s" for value "b" beside "News" for value "B""#),
+        "{error}"
+    );
 }
 
 /// Two dictionaries each holding one case of a letter fold to a set holding

@@ -157,17 +157,6 @@
         }
       },
       {
-        "name": "noquotequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquotequalifiers",
-          "FIX:tag": "735"
-        }
-      },
-      {
         "name": "quotequalifiers",
         "dtype": {
           "type": "null"
@@ -211,17 +200,6 @@
         }
       },
       {
-        "name": "noquoteattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquoteattributes",
-          "FIX:tag": "2706"
-        }
-      },
-      {
         "name": "quoteattributes",
         "dtype": {
           "type": "null"
@@ -232,17 +210,6 @@
         }
       },
       {
-        "name": "novaluechecks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "novaluechecks",
-          "FIX:tag": "1868"
-        }
-      },
-      {
         "name": "valuechecks",
         "dtype": {
           "type": "null"
@@ -250,17 +217,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "valuechecks"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {
@@ -324,17 +280,6 @@
         "metadata": {
           "FIX:field": "dividendpayoutratio",
           "FIX:tag": "3115"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -457,17 +402,6 @@
         }
       },
       {
-        "name": "noratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noratesources",
-          "FIX:tag": "1445"
-        }
-      },
-      {
         "name": "ratesources",
         "dtype": {
           "type": "null"
@@ -475,17 +409,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "ratesources"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {
@@ -551,17 +474,6 @@
         "metadata": {
           "FIX:field": "solicitedflag",
           "FIX:tag": "377"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -861,17 +773,6 @@
         }
       },
       {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
-        }
-      },
-      {
         "name": "trdregtimestamps",
         "dtype": {
           "type": "null"
@@ -1046,17 +947,6 @@
         }
       },
       {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
-        }
-      },
-      {
         "name": "pricequalifiers",
         "dtype": {
           "type": "null"
@@ -1099,17 +989,6 @@
         }
       },
       {
-        "name": "norelativevalues",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelativevalues",
-          "FIX:tag": "2529"
-        }
-      },
-      {
         "name": "relativevalues",
         "dtype": {
           "type": "null"
@@ -1127,17 +1006,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "yielddata"
-        }
-      },
-      {
-        "name": "noroutingids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noroutingids",
-          "FIX:tag": "215"
         }
       },
       {

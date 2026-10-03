@@ -108,15 +108,17 @@ This section renders `assets/fix.json` and needs JavaScript.
 - A coded value is emitted as its wire code, never as the name a reader sees:
   `by_tag(54)` answers the `Side` member `BUYS` and the wire carries `54=1`.
 - A group is emitted as the counter pair valued its occurrence count, then the
-  members of each occurrence; the counter column beside the group states the
-  same count once and is not a second pair.
+  members of each occurrence; the count is the list's length. An empty list is
+  the group stated empty and emits `802=0`; a null list is the group absent and
+  emits nothing.
 - A settled value the codec supplied is the message's own fact rather than a pair it received: a `SendingTime` nothing stated is not emitted, and the identity - `currhashcode`, `curruuid`, `crossuuid` - is emitted nowhere.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
   rebuilds each row's semantic message from its projected columns, its residual
-  `fixentries` and the keys its `metadata` holds that no dictionary resolved,
-  then writes one line with the codec's separator.
+  `fixentries` - its `0:<key>` entries, the keys no dictionary resolved that an
+  identifier map holds, included - and the keys its `metadata` holds that no
+  dictionary resolved, then writes one line with the codec's separator.
 
 ## Commands
 

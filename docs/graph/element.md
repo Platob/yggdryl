@@ -8,7 +8,7 @@
 | --- | --- |
 | Owner | trait `yggdryl::graph::Element` (`graph::element`); Rust-only - [leaves](index.md#leaves) answer it in Python/JavaScript |
 | `curruuid` | `get_curruuid`/`set_curruuid`: [`Uuid`](../types/uuid.md) - UUIDv8 over the content code (undated) or [event identity](event.md#identity) (dated) |
-| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; a market element stores it as `{kind}:{side}:{base}` - `10:1:O-1001` an order to buy, `21:0:T-1` a trade - through [`Market::stored_crosscode`](market.md#sides-and-cross-codes) |
+| `crosscode` | `get_crosscode`/`set_crosscode`: name in another graph, shared by every incarnation; empty if unstated; a market element stores it as `{kind}:{side}:{base}` - `10:1:O-1001` an order to buy, `14:0:Q-1` a quote, `21:0:T-1` a trade - through [`Market::stored_crosscode`](market.md#sides-and-cross-codes) |
 | `crosshashcode`, `crossuuid` | `get_crosshashcode`/`set_crosshashcode`: XXH3-64 of the cross code as stored, zero if none; `get_crossuuid`/`set_crossuuid`: the cross element, never absent - UUIDv8 over the cross hash, else the element's own identity, so every element stands in one chain |
 | `currhashcode` | `get_currhashcode`/`set_currhashcode`: XXH3-64 digest of content |
 | `srcuuids` | `get_srcuuids`/`set_srcuuids`: sorted unique identities this one was read from; provenance, never chain, never digested |

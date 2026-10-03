@@ -1114,20 +1114,11 @@ pub(crate) fn parse_capture(
     };
     match dtype {
         crate::string_dtypes!() => Ok(Scalar::from(value)),
-        DataType::Boolean => value
-            .parse::<bool>()
-            .map(Scalar::from)
-            .map_err(|_| invalid()),
-        DataType::Int64 => value
-            .parse::<i64>()
-            .map(Scalar::from)
-            .map_err(|_| invalid()),
-        DataType::Float64 => value
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(Scalar::from)
+        DataType::Boolean => crate::boolean::boolean_from_text(value).ok_or_else(invalid),
+        DataType::Int64 => crate::integer::integer_from_text(value)
+            .and_then(|count| dtype.scalar(count).ok())
             .ok_or_else(invalid),
+        DataType::Float64 => crate::floating::float_from_text(value).ok_or_else(invalid),
         DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }

@@ -14,15 +14,15 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookIterator, BookQuery, BookService, BookServiceOptions, Element, Event, ExecutionEvent,
-    Market, MarketData, OrderEvent, QuoteEvent,
+    BookEvent, BookIterator, BookQuery, BookService, BookServiceOptions, Element, Event,
+    ExecutionEvent, Market, MarketData, OrderEvent, QuoteEvent,
 };
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::http::{Request, Response, Server, Status};
 use yggdryl::media::IORecordOptions;
 use yggdryl::{
-    Codec, DataType, Decimal, IOBase, IOMedia, MimeType, Parameters, Scalar, Scheme, Side, State,
-    Timezone, Url,
+    Codec, DataType, Decimal, IOBase, IOMedia, IdKey, IdType, Identifier, MimeType, Parameters,
+    Scalar, Scheme, Side, State, Timezone, Url,
 };
 
 /// Nanoseconds in one second.
@@ -70,7 +70,9 @@ fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> 
 
 /// Two tickers across three minutes: `ACME` quoted on both sides in the
 /// first minute, requoted and executed in the second and requoted in the
-/// third; `BETA` quoted once in each of the first two minutes. Six books.
+/// third; `BETA` quoted once in each of the first two minutes. Five books:
+/// the execution is pruned before the fold, so no book stands at its
+/// instant and no book holds it.
 fn operations() -> Vec<MarketData> {
     vec![
         quote(T0 + 5 * SECOND, "ACME", "AB1", Side::Buy, "100", 10),
@@ -355,8 +357,9 @@ fn the_events_field_is_the_flat_marketdata_row_behind_its_stamp() {
     let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
     assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
     // The stamp, the six element, nine event, thirty-four market and five
-    // operation columns, then `bookscope`.
-    assert_eq!(names.len(), 2 + 6 + 9 + 34 + 5 + 1);
+    // operation columns, then the book controls `bookscope`, `bookaction`
+    // and `bookposition`.
+    assert_eq!(names.len(), 2 + 6 + 9 + 34 + 5 + 3);
     assert!(
         !names
             .iter()
@@ -452,18 +455,18 @@ fn the_readings_answer_over_a_store_that_kept_no_enum_identity() {
     let tickers = items(&service.tickers("books").unwrap());
     assert_eq!(tickers.len(), 2, "{tickers:?}");
     assert_eq!(text(&tickers[0], "ticker"), "ACME");
-    assert_eq!(member(&tickers[0], "books"), &Scalar::from(4_u64));
+    assert_eq!(member(&tickers[0], "books"), &Scalar::from(3_u64));
     assert_eq!(text(&tickers[1], "ticker"), "BETA");
 
     let candles = service.candles(&query()).unwrap();
     assert_eq!(candles.len(), 3);
-    assert_eq!(candles[1].executions, 1);
+    assert_eq!(candles[1].books, 1);
 
     let book = service
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
+    assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
 }
 
 #[test]
@@ -474,7 +477,7 @@ fn the_readings_answer_without_http() {
     assert_eq!(tickers.len(), 2);
     assert_eq!(text(&tickers[0], "ticker"), "ACME");
     assert_eq!(text(&tickers[1], "ticker"), "BETA");
-    assert_eq!(member(&tickers[0], "books"), &Scalar::from(4_u64));
+    assert_eq!(member(&tickers[0], "books"), &Scalar::from(3_u64));
 
     let candles = service.candles(&query()).unwrap();
     assert_eq!(candles.len(), 3);
@@ -486,14 +489,13 @@ fn the_readings_answer_without_http() {
         candles[1].bid.map(|bid| bid.open),
         Some("100.5".parse().unwrap())
     );
-    assert_eq!(candles[1].executions, 1);
-    assert_eq!(candles[1].volume, Decimal::from_int(3));
+    assert_eq!(candles[1].books, 1, "the execution's instant folds no book");
 
     let book = service
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
+    assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
     assert_eq!(book.best_price(Side::Buy), Some("100.5".parse().unwrap()));
     assert!(service.book("books", "ACME", T0).unwrap().is_none());
     assert!(
@@ -509,10 +511,7 @@ fn the_readings_answer_without_http() {
         .collect::<Result<_, _>>()
         .unwrap();
     let total: usize = rows.iter().map(|batch| batch.num_rows()).sum();
-    assert!(
-        total > 4,
-        "every book's entries, deltas and executions: {total}"
-    );
+    assert_eq!(total, 4, "every book's deltas: {total}");
     assert_eq!(
         rows[0].schema(),
         BookService::events_field()
@@ -951,6 +950,7 @@ fn tickers_span_the_books_of_each_ticker() {
     let tickers = items(&ok_json(&get(&endpoint, "tickers", &[("table", "books")])));
     assert_eq!(tickers.len(), 2);
     let acme = &tickers[0];
+    assert_eq!(text(acme, "key"), "ACME", "a ticker book is keyed by it");
     assert_eq!(text(acme, "ticker"), "ACME");
     assert_eq!(
         text(acme, "crosscode"),
@@ -963,7 +963,7 @@ fn tickers_span_the_books_of_each_ticker() {
         "2026-01-05T10:02:06.000000000Z",
         "the second after the last book"
     );
-    assert_eq!(member(acme, "books"), &Scalar::from(4_u64));
+    assert_eq!(member(acme, "books"), &Scalar::from(3_u64));
     let beta = &tickers[1];
     assert_eq!(text(beta, "ticker"), "BETA");
     assert_eq!(text(beta, "from"), "2026-01-05T10:00:30.000000000Z");
@@ -1008,17 +1008,25 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     assert_eq!(text(first, "bidqty"), "10");
     assert_eq!(text(first, "askqty"), "5");
     assert_eq!(member(first, "books"), &Scalar::from(1_u64));
-    assert_eq!(member(first, "executions"), &Scalar::from(0_u64));
-    assert_eq!(text(first, "volume"), "0");
+    let names: BTreeSet<&str> = first
+        .as_struct()
+        .unwrap()
+        .keys()
+        .map(SmolStr::as_str)
+        .collect();
+    assert_eq!(
+        names,
+        BTreeSet::from([
+            "start", "end", "bid", "ask", "mid", "spread", "bidqty", "askqty", "books"
+        ])
+    );
 
     let second = &candles[1];
     assert_eq!(text(second, "start"), "2026-01-05T10:01:00.000000000Z");
     assert_eq!(text(member(second, "bid"), "open"), "100.5");
     assert_eq!(text(member(second, "bid"), "high"), "100.5");
     assert_eq!(text(member(second, "spread"), "close"), "0.5");
-    assert_eq!(member(second, "books"), &Scalar::from(2_u64));
-    assert_eq!(member(second, "executions"), &Scalar::from(1_u64));
-    assert_eq!(text(second, "volume"), "3");
+    assert_eq!(member(second, "books"), &Scalar::from(1_u64));
 
     let third = &candles[2];
     assert_eq!(text(third, "start"), "2026-01-05T10:02:00.000000000Z");
@@ -1102,7 +1110,7 @@ fn candles_align_to_the_zone_asked_and_render_in_it() {
         text(&candles[0], "end"),
         "2026-01-05T12:00:00.000000000+01:00[Europe/Zurich]"
     );
-    assert_eq!(member(&candles[0], "books"), &Scalar::from(4_u64));
+    assert_eq!(member(&candles[0], "books"), &Scalar::from(3_u64));
 }
 
 #[test]
@@ -1185,7 +1193,11 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
             ("at", "2026-01-05T10:01:40Z"),
         ],
     ));
-    assert_eq!(text(&book, "currunix"), "2026-01-05T10:01:10.000000000Z");
+    assert_eq!(
+        text(&book, "currunix"),
+        "2026-01-05T10:01:05.000000000Z",
+        "the execution at 10:01:10 folded no book"
+    );
     assert_eq!(text(&book, "ticker"), "ACME");
     assert_eq!(
         text(&book, "crosscode"),
@@ -1201,8 +1213,42 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     assert_eq!(text(&book, "imbalance"), "-0.111111111111111111");
     assert_eq!(member(&book, "islocked"), &Scalar::from(false));
     assert_eq!(member(&book, "iscrossed"), &Scalar::from(false));
+    // The table states the book at 10:01:05 as its delta: it is answered
+    // whole, rebuilt over the book before it.
+    assert_eq!(member(&book, "complete"), &Scalar::from(true));
     assert_eq!(member(&book, "alive"), &Scalar::from(3_u64));
-    assert_eq!(member(&book, "executions"), &Scalar::from(1_u64));
+    assert_eq!(member(&book, "deltas"), &Scalar::from(1_u64));
+    // Every member the route table names, and no other: a book holds no
+    // execution.
+    let keys: BTreeSet<&str> = book
+        .as_struct()
+        .unwrap()
+        .keys()
+        .map(SmolStr::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        BTreeSet::from([
+            "currunix",
+            "ticker",
+            "isincode",
+            "crosscode",
+            "bestbid",
+            "bestask",
+            "bidqty",
+            "askqty",
+            "spread",
+            "midpoint",
+            "imbalance",
+            "islocked",
+            "iscrossed",
+            "complete",
+            "alive",
+            "deltas",
+            "bidlimits",
+            "asklimits",
+        ])
+    );
     let bids = items(member(&book, "bidlimits"));
     assert_eq!(bids.len(), 2);
     assert_eq!(text(&bids[0], "price"), "100.5");
@@ -1256,20 +1302,14 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
 }
 
 #[test]
-fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
+fn events_list_every_entry_and_delta_of_the_books_in_range() {
     let (_server, endpoint, _) = running("/", BookServiceOptions::new());
     let answer = ok_json(&get(&endpoint, "events", &range()));
     assert_eq!(member(&answer, "truncated"), &Scalar::from(false));
     let rows = items(member(&answer, "rows"));
+    // With no grid no book is whole: each states its deltas alone.
     let roles: BTreeSet<String> = rows.iter().map(|row| text(row, "role")).collect();
-    assert_eq!(
-        roles,
-        BTreeSet::from([
-            "alive".to_owned(),
-            "delta".to_owned(),
-            "execution".to_owned()
-        ])
-    );
+    assert_eq!(roles, BTreeSet::from(["delta".to_owned()]));
     assert!(rows.iter().all(|row| text(row, "ticker") == "ACME"));
     let instants: BTreeSet<String> = rows.iter().map(|row| text(row, "bookunix")).collect();
     assert_eq!(
@@ -1277,35 +1317,20 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
         BTreeSet::from([
             "2026-01-05T10:00:05.000000000Z".to_owned(),
             "2026-01-05T10:01:05.000000000Z".to_owned(),
-            "2026-01-05T10:01:10.000000000Z".to_owned(),
             "2026-01-05T10:02:05.000000000Z".to_owned(),
-        ])
+        ]),
+        "the execution's instant folds no book"
     );
-    let executions: Vec<&Scalar> = rows
-        .iter()
-        .filter(|row| text(row, "role") == "execution")
-        .collect();
-    assert_eq!(executions.len(), 1);
-    assert_eq!(
-        text(executions[0], "bookunix"),
-        "2026-01-05T10:01:10.000000000Z"
+    assert!(
+        rows.iter().all(|row| text(row, "marketdatakind") == "QUOT"),
+        "no book holds the execution"
     );
-    assert_eq!(text(executions[0], "side"), "SELL");
-    assert_eq!(text(executions[0], "marketdatakind"), "EXEC");
-    assert_eq!(text(executions[0], "quantity"), "3");
     let first_book: Vec<&Scalar> = rows
         .iter()
         .filter(|row| text(row, "bookunix") == "2026-01-05T10:00:05.000000000Z")
         .collect();
-    // Two entries alive and the two deltas that placed them.
-    assert_eq!(first_book.len(), 4);
-    assert_eq!(
-        first_book
-            .iter()
-            .filter(|row| text(row, "role") == "alive")
-            .count(),
-        2
-    );
+    // The two deltas that placed the first book's two entries.
+    assert_eq!(first_book.len(), 2);
     let names: BTreeSet<&str> = rows[0]
         .as_struct()
         .unwrap()
@@ -1314,7 +1339,7 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
         .collect();
     assert!(names.contains("curruuid") && names.contains("prevuuid") && names.contains("state"));
     assert!(!names.contains("alive") && !names.contains("bidlimits"));
-    assert_eq!(names.len(), 57);
+    assert_eq!(names.len(), 59);
     // A UUID is its canonical text.
     assert_eq!(text(&rows[0], "curruuid").len(), 36);
 
@@ -1323,18 +1348,11 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
     let bids = items(member(&ok_json(&get(&endpoint, "events", &bids)), "rows"));
     assert!(!bids.is_empty());
     assert!(bids.iter().all(|row| text(row, "side") == "BUYS"));
-    assert!(bids.iter().all(|row| text(row, "role") != "execution"));
 
     let mut asks = range().to_vec();
     asks.push(("side", "ASK"));
     let asks = items(member(&ok_json(&get(&endpoint, "events", &asks)), "rows"));
     assert!(asks.iter().all(|row| text(row, "side") == "SELL"));
-    assert_eq!(
-        asks.iter()
-            .filter(|row| text(row, "role") == "execution")
-            .count(),
-        1
-    );
     assert_eq!(bids.len() + asks.len(), rows.len());
 
     let mut zoned = range().to_vec();
@@ -1352,7 +1370,10 @@ fn events_list_every_entry_delta_and_execution_of_the_books_in_range() {
 
 #[test]
 fn events_are_bounded_by_the_limit_and_the_options() {
-    let (_server, endpoint, _) = running("/", BookServiceOptions::new().with_max_event_rows(6));
+    // The range's ACME audit is four rows: the first book's two deltas
+    // placing its entries, then the one delta of each book after it - with
+    // no grid each states its deltas alone; the options bound it at three.
+    let (_server, endpoint, _) = running("/", BookServiceOptions::new().with_max_event_rows(3));
     let mut two = range().to_vec();
     two.push(("limit", "2"));
     let answer = ok_json(&get(&endpoint, "events", &two));
@@ -1362,7 +1383,7 @@ fn events_are_bounded_by_the_limit_and_the_options() {
     let answer = ok_json(&get(&endpoint, "events", &range()));
     assert_eq!(
         items(member(&answer, "rows")).len(),
-        6,
+        3,
         "the options bound a query stating no limit"
     );
     assert_eq!(member(&answer, "truncated"), &Scalar::from(true));
@@ -1372,7 +1393,7 @@ fn events_are_bounded_by_the_limit_and_the_options() {
     let answer = ok_json(&get(&endpoint, "events", &many));
     assert_eq!(
         items(member(&answer, "rows")).len(),
-        6,
+        3,
         "a limit above the options' is the options'"
     );
 
@@ -1382,6 +1403,23 @@ fn events_are_bounded_by_the_limit_and_the_options() {
         refused(&get(&endpoint, "events", &bad), Status::BAD_REQUEST)
             .starts_with("invalid record value at $.limit:")
     );
+
+    // The count is read by the one integer reader every count in the crate
+    // reads by: the blanks around it are no part of it, and what is no whole
+    // non-negative number is still refused.
+    let mut blanks = range().to_vec();
+    blanks.push(("limit", " 2 "));
+    let answer = ok_json(&get(&endpoint, "events", &blanks));
+    assert_eq!(items(member(&answer, "rows")).len(), 2);
+    for spelled in ["-1", "2.5", "1e3", "0x10"] {
+        let mut refusing = range().to_vec();
+        refusing.push(("limit", spelled));
+        assert!(
+            refused(&get(&endpoint, "events", &refusing), Status::BAD_REQUEST)
+                .starts_with("invalid record value at $.limit:"),
+            "{spelled}"
+        );
+    }
 }
 
 #[test]
@@ -1452,7 +1490,7 @@ fn the_audit_downloads_as_csv_in_each_coding_and_reads_back() {
         let field = readback.read_arrow_field(&options).unwrap();
         let names: Vec<&str> = field.fields().iter().map(|child| child.name()).collect();
         assert_eq!(&names[..3], ["bookunix", "role", "curruuid"]);
-        assert_eq!(names.len(), 57);
+        assert_eq!(names.len(), 59);
     }
 
     let mut bids = range().to_vec();
@@ -1515,5 +1553,428 @@ fn a_prefix_routes_the_api_under_it_and_nothing_else_is_answered() {
         Arc::new(BookService::new(BookServiceOptions::new()))
             .route(&server, "/x?y")
             .is_err()
+    );
+}
+
+/// A two-sided quote rests on both sides as one entry: the audit of the
+/// grid tick holding it whole lists it alive once when no side is asked,
+/// and keeps it - alive and as the delta that placed it - on either side
+/// asked.
+#[test]
+fn a_two_sided_quote_is_kept_by_either_side_and_listed_once() {
+    let mut quote = QuoteEvent::at(T0 + 5 * SECOND);
+    quote.set_crosscode("Q-1".to_owned());
+    quote.set_ticker(Some(SmolStr::new("ACME")), true);
+    quote.set_bidpx(Some(Decimal::from_int(99)), true);
+    quote.set_bidqty(Some(Decimal::from_int(2)), true);
+    quote.set_askpx(Some(Decimal::from_int(101)), true);
+    quote.set_askqty(Some(Decimal::from_int(3)), true);
+    quote.set_state(State::New);
+    quote.finalize();
+    let books = BookIterator::new([MarketData::from(quote)].into_iter(), 1_000)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(Url::from_str("file:///books.arrows").unwrap().media_type()),
+    );
+    let options = holder.record_options().unwrap();
+    holder
+        .overwrite_arrow_reader(
+            MarketData::arrow_reader(books, None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+    let service = BookService::new(BookServiceOptions::new()).with_table("books", holder);
+    let rows = |side: Option<Side>| -> usize {
+        let mut asked = query();
+        asked.side = side;
+        service
+            .events(&asked)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum()
+    };
+    assert_eq!(rows(None), 2);
+    assert_eq!(rows(Some(Side::Buy)), 2);
+    assert_eq!(rows(Some(Side::Sell)), 2);
+}
+
+/// A delta taking an entry off its side - an order filled to nothing, a
+/// quote's leg withdrawn by a zero size - rests nowhere, yet the audit of
+/// that side keeps it: it is that side's delta.
+#[test]
+fn a_delta_taking_an_entry_off_a_side_is_kept_by_that_side() {
+    let mut withdrawn = QuoteEvent::at(T0 + 6 * SECOND);
+    withdrawn.set_crosscode("Q-1".to_owned());
+    withdrawn.set_ticker(Some(SmolStr::new("ACME")), true);
+    withdrawn.set_askqty(Some(Decimal::ZERO), true);
+    withdrawn.set_state(State::Canceled);
+    withdrawn.finalize();
+    let mut filled = OrderEvent::at(T0 + 6 * SECOND);
+    filled.set_crosscode("B-1".to_owned());
+    filled.set_ticker(Some(SmolStr::new("ACME")), true);
+    filled.set_side(Side::Buy, true);
+    filled.set_price(Some("100".parse().unwrap()), true);
+    filled.set_quantity(Some(Decimal::ZERO), true);
+    filled.set_state(State::read("Filled").unwrap());
+    filled.finalize();
+    let books = BookIterator::new(
+        [
+            quote(T0 + 5 * SECOND, "ACME", "B-1", Side::Buy, "100", 2),
+            quote(T0 + 5 * SECOND, "ACME", "Q-1", Side::Sell, "101", 3),
+            MarketData::from(filled),
+            MarketData::from(withdrawn),
+        ]
+        .into_iter(),
+        0,
+    )
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap();
+    let service = BookService::new(BookServiceOptions::new()).with_table("books", holder_of(books));
+    let roles = |side: Side| -> Vec<(String, String)> {
+        let mut asked = query();
+        asked.side = Some(side);
+        let mut held = Vec::new();
+        for batch in service.events(&asked).unwrap() {
+            let batch = batch.unwrap();
+            let codes = batch
+                .column_by_name("crosscode")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::StringArray>()
+                .unwrap()
+                .clone();
+            let units = batch
+                .column_by_name("bookunix")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::TimestampNanosecondArray>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                held.push((
+                    (units.value(row) - T0).to_string(),
+                    codes.value(row).to_owned(),
+                ));
+            }
+        }
+        held
+    };
+    let at = |seconds: i64| (seconds * SECOND).to_string();
+    assert_eq!(
+        roles(Side::Buy),
+        [
+            (at(5), "14:0:B-1".to_owned()),
+            (at(6), "10:1:B-1".to_owned())
+        ]
+    );
+    assert_eq!(
+        roles(Side::Sell),
+        [
+            (at(5), "14:0:Q-1".to_owned()),
+            (at(6), "14:0:Q-1".to_owned())
+        ]
+    );
+}
+
+/// `books` written as `marketdata` rows into a buffer named
+/// `books.arrows`.
+fn holder_of(books: Vec<BookEvent>) -> Holder {
+    let mut holder = Holder::Buffer(
+        Buffer::new().with_media_type(Url::from_str("file:///books.arrows").unwrap().media_type()),
+    );
+    let options = holder.record_options().unwrap();
+    holder
+        .overwrite_arrow_reader(
+            MarketData::arrow_reader(books.into_iter().map(MarketData::from), None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+    holder
+}
+
+/// The fixture's books of ACME, as the walk emits them with no grid: each
+/// stating its deltas alone, the first following no book.
+fn acme_books() -> Vec<BookEvent> {
+    BookIterator::new(operations().into_iter(), 0)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .into_iter()
+        .filter(|book| book.get_ticker() == Some("ACME"))
+        .collect()
+}
+
+/// A table a walk landed with no grid holds every book as its deltas, the
+/// first following no book: the book at an instant is the last origin at or
+/// before it - a whole book, or the first, rebuilt over the empty book a
+/// walk starts from - with every book after it folded over it in instant
+/// order - whole, under the identity the table states.
+#[test]
+fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
+    let acme = acme_books();
+    assert_eq!(
+        acme.iter().map(BookEvent::is_complete).collect::<Vec<_>>(),
+        [false, false, false]
+    );
+    assert_eq!(acme[0].get_prevuuid(), None);
+    let origin = acme[0]
+        .clone()
+        .with_previous(&BookEvent::new(T0, "ACME"))
+        .unwrap();
+    let expected = acme[2]
+        .clone()
+        .with_previous(&acme[1].clone().with_previous(&origin).unwrap())
+        .unwrap();
+    let service = service(BookServiceOptions::new());
+    let book = service
+        .book("books", "ACME", T0 + 130 * SECOND)
+        .unwrap()
+        .unwrap();
+    assert!(book.is_complete());
+    assert_eq!(book.get_currunix(), T0 + 125 * SECOND);
+    assert_eq!(book.get_curruuid(), acme[2].get_curruuid());
+    assert_eq!(
+        book.alive().map(Element::get_curruuid).collect::<Vec<_>>(),
+        expected
+            .alive()
+            .map(Element::get_curruuid)
+            .collect::<Vec<_>>()
+    );
+    for side in [Side::Buy, Side::Sell] {
+        assert_eq!(
+            book.limits(side).collect::<Vec<_>>(),
+            expected.limits(side).collect::<Vec<_>>()
+        );
+    }
+    assert_eq!(book.alive().count(), 4);
+
+    // The rows hold no order: the deltas fold in instant order still.
+    let mut shuffled = acme.clone();
+    shuffled.reverse();
+    let service =
+        BookService::new(BookServiceOptions::new()).with_table("books", holder_of(shuffled));
+    let book = service
+        .book("books", "ACME", T0 + 130 * SECOND)
+        .unwrap()
+        .unwrap();
+    assert!(book.is_complete());
+    assert_eq!(book.alive().count(), 4);
+}
+
+/// A table holding a book's first appearance alone - its deltas, following
+/// no book - answers it whole, rebuilt over the empty book a walk starts
+/// from, and says it is complete.
+#[test]
+fn a_book_following_no_book_is_rebuilt_over_the_empty_book_and_complete() {
+    let acme = acme_books();
+    let service = BookService::new(BookServiceOptions::new())
+        .with_table("books", holder_of(acme[..1].to_vec()));
+    let book = service
+        .book("books", "ACME", T0 + 10 * SECOND)
+        .unwrap()
+        .unwrap();
+    assert!(book.is_complete());
+    assert_eq!(book.get_curruuid(), acme[0].get_curruuid());
+    assert_eq!(book.alive().count(), 2);
+    assert_eq!(book.best_price(Side::Buy), Some("100".parse().unwrap()));
+}
+
+/// Best effort: a book naming as its `prevuuid` a book the rows read do not
+/// hold is answered as it stands - its deltas, its top of book - and says
+/// it is not complete.
+#[test]
+fn a_book_naming_a_book_the_rows_do_not_hold_answers_incomplete() {
+    let acme = acme_books();
+    let (_server, endpoint, service) = running_over(holder_of(acme[1..].to_vec()));
+    let book = service
+        .book("books", "ACME", T0 + 130 * SECOND)
+        .unwrap()
+        .unwrap();
+    assert!(!book.is_complete());
+    assert_eq!(book.get_curruuid(), acme[2].get_curruuid());
+    assert_eq!(book.alive().count(), 0);
+    assert_eq!(book.best_price(Side::Sell), acme[2].best_price(Side::Sell));
+
+    let answer = ok_json(&get(
+        &endpoint,
+        "book",
+        &[
+            ("table", "books"),
+            ("ticker", "ACME"),
+            ("at", "2026-01-05T10:02:10Z"),
+        ],
+    ));
+    assert_eq!(member(&answer, "complete"), &Scalar::from(false));
+    assert_eq!(member(&answer, "alive"), &Scalar::from(0_u64));
+    assert_eq!(text(&answer, "bestask"), "101");
+    assert!(items(member(&answer, "bidlimits")).is_empty());
+}
+
+/// One finalized quote of HOLN, the listing of the ISIN `CH0012214059`,
+/// going by `code`: its books are keyed by the ISIN and state the ticker.
+fn listed_quote(unix: i64, code: &str, side: Side, price: &str) -> MarketData {
+    let mut quote = QuoteEvent::at(unix);
+    quote.set_crosscode(code.to_owned());
+    quote
+        .insert_securityid(Identifier::new(IdKey::base(IdType::Isin), "CH0012214059").unwrap())
+        .unwrap();
+    quote.set_ticker(Some(SmolStr::new("HOLN")), true);
+    quote.set_side(side, true);
+    quote.set_price(Some(price.parse().unwrap()), true);
+    quote.set_quantity(Some(Decimal::from_int(5)), true);
+    quote.set_state(State::New);
+    quote.finalize();
+    MarketData::from(quote)
+}
+
+/// The fixture's books and two of HOLN's, keyed by its ISIN, served as
+/// `/books.arrows` by a fresh loopback server, and a service reading that
+/// location as the table `books`: what the server counts is what each
+/// reading asks of the table.
+fn served_over_http() -> (Server, Arc<BookService>) {
+    let mut inputs = operations();
+    inputs.insert(2, listed_quote(T0 + 10 * SECOND, "HB1", Side::Buy, "250"));
+    inputs.insert(3, listed_quote(T0 + 20 * SECOND, "HA1", Side::Sell, "251"));
+    let books = BookIterator::new(inputs.into_iter(), 0)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let data = Server::bind("127.0.0.1:0").unwrap();
+    data.mount("/books.arrows", holder_of(books)).unwrap();
+    let table = Holder::from_url(
+        &data.url_of("/books.arrows").unwrap(),
+        std::iter::empty::<(&str, &str)>(),
+    )
+    .unwrap();
+    let service = Arc::new(BookService::new(BookServiceOptions::new()).with_table("books", table));
+    (data, service)
+}
+
+/// The requests `reading` made of the table `data` serves.
+fn requests_of(data: &Server, reading: impl FnOnce()) -> usize {
+    data.clear_requests();
+    reading();
+    data.request_count()
+}
+
+/// A reading of a book key is one filtered read of the table, as listing
+/// its tickers is one projected scan: the scan that names the key a ticker
+/// stands for runs only when the key as stated answers nothing - a ticker
+/// of another key costs the read, the scan and the read again, and one no
+/// book states the read and the scan that refuses it.
+#[test]
+fn a_reading_of_a_book_key_reads_the_table_once() {
+    let (data, service) = served_over_http();
+    // Warm: the location resolves and learns what its first answer says.
+    service.tickers("books").unwrap();
+    let one = requests_of(&data, || {
+        service.tickers("books").unwrap();
+    });
+    assert!(one > 0, "the table is read over HTTP");
+
+    // ACME keys its own books: each reading is one read.
+    let acme = query();
+    assert!(!service.candles(&acme).unwrap().is_empty());
+    assert_eq!(
+        requests_of(&data, || {
+            service.candles(&acme).unwrap();
+        }),
+        one,
+        "candles"
+    );
+    assert_eq!(
+        requests_of(&data, || {
+            assert!(
+                service
+                    .book("books", "ACME", T0 + 100 * SECOND)
+                    .unwrap()
+                    .is_some()
+            );
+        }),
+        one,
+        "book"
+    );
+    assert_eq!(
+        requests_of(&data, || {
+            for batch in service.events(&acme).unwrap() {
+                batch.unwrap();
+            }
+        }),
+        one,
+        "events"
+    );
+
+    // So does the ISIN a listing's books are keyed by.
+    let by_key = BookQuery {
+        ticker: "CH0012214059".into(),
+        ..query()
+    };
+    let keyed = service.candles(&by_key).unwrap();
+    assert!(!keyed.is_empty());
+    assert_eq!(
+        requests_of(&data, || {
+            service.candles(&by_key).unwrap();
+        }),
+        one,
+        "the ISIN"
+    );
+
+    // Its ticker answers the same: the read as stated answers nothing, the
+    // scan names the key, and the key is read.
+    let by_ticker = BookQuery {
+        ticker: "HOLN".into(),
+        ..query()
+    };
+    assert_eq!(service.candles(&by_ticker).unwrap(), keyed);
+    assert_eq!(
+        requests_of(&data, || {
+            service.candles(&by_ticker).unwrap();
+        }),
+        3 * one,
+        "the ticker"
+    );
+
+    // A ticker no book states: the read, then the scan that refuses it.
+    let unknown = BookQuery {
+        ticker: "NOPE".into(),
+        ..query()
+    };
+    assert!(matches!(
+        service.candles(&unknown),
+        Err(yggdryl::Error::Absent { .. })
+    ));
+    assert_eq!(
+        requests_of(&data, || {
+            let _ = service.candles(&unknown);
+        }),
+        2 * one,
+        "an unknown ticker"
+    );
+    assert!(
+        service
+            .book("books", "NOPE", T0 + 100 * SECOND)
+            .unwrap()
+            .is_none()
+    );
+
+    // Routed: the bounded events are the scan of the range's instants and
+    // the read of its books, the audit one read.
+    let api = Server::bind("127.0.0.1:0").unwrap();
+    let endpoint = Arc::clone(&service).route(&api, "/").unwrap();
+    assert_eq!(
+        requests_of(&data, || {
+            ok_json(&get(&endpoint, "events", &range()));
+        }),
+        2 * one,
+        "/api/events"
+    );
+    assert_eq!(
+        requests_of(&data, || {
+            assert_eq!(get(&endpoint, "audit.csv", &range()).status(), Status::OK);
+        }),
+        one,
+        "/api/audit.csv"
     );
 }

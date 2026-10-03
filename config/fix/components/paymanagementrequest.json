@@ -145,17 +145,6 @@
         }
       },
       {
-        "name": "norelatedtrades",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedtrades",
-          "FIX:tag": "1855"
-        }
-      },
-      {
         "name": "relatedtrades",
         "dtype": {
           "type": "null"
@@ -163,17 +152,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedtrades"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {
@@ -194,17 +172,6 @@
         "nullable": false,
         "metadata": {
           "FIX:component": "posttradepayment"
-        }
-      },
-      {
-        "name": "nosettldetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettldetails",
-          "FIX:tag": "1158"
         }
       },
       {

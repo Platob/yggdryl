@@ -28,9 +28,10 @@ use super::encryption::Encryption;
 use super::options::S3Options;
 use super::provider::Provider;
 use super::request::Request;
-use crate::auth::{is_true, variable};
+use crate::auth::variable;
 use crate::aws::sigv4::{self, Signer};
 use crate::aws::{Credentials, Session};
+use crate::boolean::bool_from_text;
 use crate::http::retry::{
     self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter, is_resumable, is_retryable_transport,
 };
@@ -397,12 +398,15 @@ impl Client {
     }
 
     /// The knobs the profile states for S3 that the caller left unset: the
-    /// `s3` table's `payload_signing_enabled`, and `max_attempts`.
+    /// `s3` table's `payload_signing_enabled`, and `max_attempts`. A flag the
+    /// table does not spell is no statement, so the default stands.
     fn under_profile(mut options: S3Options, session: &Session) -> S3Options {
         if options.aws().payload_signing().is_none()
-            && let Some(signing) = session
-                .profile()
-                .and_then(|profile| profile.s3("payload_signing_enabled").map(is_true))
+            && let Some(signing) = session.profile().and_then(|profile| {
+                profile
+                    .s3("payload_signing_enabled")
+                    .and_then(bool_from_text)
+            })
         {
             let aws = options.aws().clone().with_payload_signing(signing);
             options = options.with_aws(aws);
@@ -481,7 +485,7 @@ impl Client {
                     .or_else(|| {
                         session
                             .variable("AWS_S3_FORCE_PATH_STYLE")
-                            .map(|value| is_true(&value))
+                            .and_then(|value| bool_from_text(&value))
                     })
                     .or_else(|| {
                         match session
@@ -576,7 +580,7 @@ impl Client {
                 let table = |key: &str| {
                     profile
                         .as_ref()
-                        .and_then(|profile| profile.s3(key).map(is_true))
+                        .and_then(|profile| profile.s3(key).and_then(bool_from_text))
                         .unwrap_or(false)
                 };
                 let fips = session.use_fips_endpoint();
@@ -612,44 +616,41 @@ impl Client {
     }
 
     /// Split `https://host:port` into its parts, defaulting the scheme.
+    ///
+    /// The endpoint is read once, as the URL it is: a bare `host` or
+    /// `host:port` is reached over `https`, a port is the decimal number the
+    /// URL grammar spells, and an IPv6 literal keeps its brackets. What an
+    /// endpoint carries beyond where the store is - user information, a path
+    /// such as the account an Azure emulator is named by, a query - is no part
+    /// of the host a request is addressed and signed to.
     fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
-        let (scheme, rest) = match endpoint.split_once("://") {
-            Some((scheme, rest)) => (scheme.to_ascii_lowercase(), rest),
-            None => ("https".to_owned(), endpoint),
+        let refuse = |reason: &str| {
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected a host and an optional port in the S3 endpoint {endpoint:?}: {reason}"
+                ),
+            ))
         };
-        let rest = rest.trim_end_matches('/');
-        // An IPv6 literal's own colons belong to the address, so the port is
-        // whatever follows the closing bracket - and elsewhere, whatever
-        // follows the last colon of a host that has no colons of its own.
-        let after_host = if rest.starts_with('[') {
-            rest.find(']').map(|close| close + 1)
+        let named = if endpoint.contains("://") {
+            endpoint.to_owned()
         } else {
-            (rest.matches(':').count() == 1)
-                .then(|| rest.rfind(':'))
-                .flatten()
+            format!("https://{endpoint}")
         };
-        let (host, port) = match after_host {
-            Some(split) if rest[split..].starts_with(':') => {
-                let port = &rest[split + 1..];
-                let port = port.parse::<u16>().map_err(|_| {
-                    Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!(
-                            "expected a port number in the S3 endpoint {endpoint:?}, got {port:?}"
-                        ),
-                    ))
-                })?;
-                (rest[..split].to_owned(), Some(port))
-            }
-            _ => (rest.to_owned(), None),
+        let url = Url::from_str(&named).map_err(|error| refuse(&error.to_string()))?;
+        let authority = url.authority();
+        let port = authority.port();
+        let host_port = authority.host_port();
+        let host = match port {
+            Some(_) => host_port
+                .rsplit_once(':')
+                .map_or(host_port, |(host, _)| host),
+            None => host_port,
         };
         if host.is_empty() {
-            return Err(Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("expected a host in the S3 endpoint {endpoint:?}, got none"),
-            )));
+            return Err(refuse("got no host"));
         }
-        Ok((scheme, host, port))
+        Ok((url.scheme().as_str().to_owned(), host.to_owned(), port))
     }
 
     /// The signing region the URL, the options and the session name.
@@ -2743,6 +2744,12 @@ pub mod internals {
         /// The scheme the endpoint is reached over.
         pub fn scheme(&self) -> &str {
             &self.0.endpoint.scheme
+        }
+
+        /// Whether a write signs its body's real hash: what the options or
+        /// the profile state, else only over plain HTTP.
+        pub fn signs_payload(&self) -> bool {
+            self.0.options.signs_payload(&self.0.endpoint.scheme)
         }
 
         /// The `Host` header a request against `container` carries.

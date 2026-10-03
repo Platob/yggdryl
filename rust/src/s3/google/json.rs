@@ -9,6 +9,7 @@
 
 use super::super::answer::{ErrorBody, ListPage, S3Meta, S3Summary};
 use super::super::xml::XmlError;
+use crate::integer::integer_from_scalar_as;
 use crate::{Result, Scalar};
 
 /// Read one `Object` resource as the metadata a handle caches.
@@ -144,9 +145,5 @@ fn text<'value>(value: &'value Scalar, name: &str) -> Option<&'value str> {
 
 /// One number field, which Google spells as a string when it is 64-bit.
 fn number(value: &Scalar, name: &str) -> Option<u64> {
-    let held = value.get_key_str(name)?;
-    if let Some(text) = held.as_str() {
-        return text.trim().parse().ok();
-    }
-    held.as_u128().and_then(|value| u64::try_from(value).ok())
+    integer_from_scalar_as(value.get_key_str(name)?)
 }

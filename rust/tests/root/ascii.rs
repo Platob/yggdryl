@@ -227,24 +227,33 @@ mod leaves {
                 .num_rows(),
             1
         );
-        // The column tier refuses a number its check digit does not close, and
-        // one spelled in lower case: a column's bytes are what every reader
-        // digests, so a cast lets in the canonical spelling and nothing else.
-        for column in [vec!["US0378331005", "US0378331006"], vec!["us0378331005"]] {
-            let message = bound.filter(&batch(column)).unwrap_err().to_string();
-            assert!(message.contains("canonical spelling"), "{message}");
-        }
+        // The column tier refuses a number spelled in lower case: a column's
+        // bytes are what every reader digests, so a cast lets in the
+        // canonical spelling and nothing else. A number its check digit does
+        // not close is a spelling, and lands as the value it is.
+        let message = bound
+            .filter(&batch(vec!["us0378331005"]))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("canonical spelling"), "{message}");
+        assert_eq!(
+            bound
+                .filter(&batch(vec!["US0378331005", "US0378331006"]))
+                .unwrap()
+                .num_rows(),
+            1
+        );
         // The row tier reads a value as the scalar does, folding the case.
         assert!(
             bound
                 .matches(&Scalar::from_sequence([Scalar::from("us0378331005")]))
                 .unwrap()
         );
-        let message = bound
-            .matches(&Scalar::from_sequence([Scalar::from("US0378331006")]))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("check digit"), "{message}");
+        assert!(
+            !bound
+                .matches(&Scalar::from_sequence([Scalar::from("US0378331006")]))
+                .unwrap()
+        );
     }
 
     #[test]

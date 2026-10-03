@@ -890,6 +890,123 @@ mod generic {
         }
     }
 
+    /// The spellings every flag of the grammar reads, with what each means:
+    /// the boolean reader's, which the value door and the column cast read.
+    const FLAGS: [(&str, bool); 13] = [
+        ("true", true),
+        ("TRUE", true),
+        ("yes", true),
+        ("Y", true),
+        ("on", true),
+        ("t", true),
+        ("1", true),
+        ("false", false),
+        ("no", false),
+        ("N", false),
+        ("off", false),
+        ("f", false),
+        ("0", false),
+    ];
+
+    #[test]
+    fn every_flag_of_the_type_grammar_reads_the_boolean_vocabulary_wherever_it_sits() {
+        for (spelling, expected) in FLAGS {
+            // The whole-string canonical reading and the token grammar one
+            // level down read one set: `field(..., nullable=1)` used to parse
+            // or fail by the path that read it.
+            let canonical = Field::from_str(&format!(
+                r#"field("a",int32,nullable={spelling},metadata={{}})"#
+            ))
+            .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+            assert_eq!(canonical.is_nullable(), expected, "{spelling}");
+            let nested: DataType =
+                format!(r#"serie(field("a",int32,nullable={spelling},metadata={{}}))"#)
+                    .parse()
+                    .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+            assert_eq!(
+                nested,
+                DataType::serie(Field::new("a", DataType::Int32, expected)),
+                "{spelling}"
+            );
+
+            // Arrow's display forms carry the same flag.
+            for form in [
+                format!("Field {{ name: \"a\", data_type: Int32, nullable: {spelling} }}"),
+                format!("field{{name: \"a\", dtype: int32, is_nullable: {spelling}}}"),
+            ] {
+                let parsed =
+                    Field::from_str(&form).unwrap_or_else(|error| panic!("{form}: {error}"));
+                assert_eq!(parsed.is_nullable(), expected, "{form}");
+            }
+
+            // A struct member's `nullable=` and a dictionary's ordering.
+            let structure: DataType = format!("struct<a: int32 nullable={spelling}>")
+                .parse()
+                .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+            assert_eq!(
+                structure.as_fields().unwrap()[0].is_nullable(),
+                expected,
+                "{spelling}"
+            );
+            let ordered = Field::from_str(&format!(
+                r#"field("a",dictionary(int8,utf8),nullable=true,dictionary_is_ordered={spelling},metadata={{}})"#
+            ))
+            .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+            assert_eq!(
+                ordered.dictionary_is_ordered().unwrap_or_default(),
+                expected,
+                "{spelling}"
+            );
+
+            // A map's `keys_sorted`.
+            let map: DataType = format!(
+                r#"map(field("entries",struct(field("key",utf8,nullable=false,metadata={{}}),field("value",binary,nullable=true,metadata={{}})),nullable=false,metadata={{}}),keys_sorted={spelling})"#
+            )
+            .parse()
+            .unwrap_or_else(|error| panic!("{spelling}: {error}"));
+            assert_eq!(
+                matches!(map, DataType::SortedMap(_)),
+                expected,
+                "{spelling}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_flag_no_boolean_spells_is_refused_in_every_form_naming_the_vocabulary() {
+        for refused in [
+            r#"field("a",int32,nullable=maybe,metadata={})"#,
+            r#"field("a",int32,nullable=2,metadata={})"#,
+            r#"field("a",int32,nullable=n/a,metadata={})"#,
+            r#"field("a",dictionary(int8,utf8),nullable=true,dictionary_is_ordered=maybe,metadata={})"#,
+            r#"Field { name: "a", data_type: Int32, nullable: maybe }"#,
+        ] {
+            assert!(Field::from_str(refused).is_err(), "accepted {refused}");
+        }
+        for refused in [
+            r#"serie(field("a",int32,nullable=maybe,metadata={}))"#,
+            "struct<a: int32 nullable=maybe>",
+            r#"map(field("entries",struct(field("key",utf8,nullable=false,metadata={}),field("value",binary,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=maybe)"#,
+        ] {
+            assert!(refused.parse::<DataType>().is_err(), "accepted {refused}");
+        }
+        // The canonical field form names the vocabulary and quotes the text.
+        let error = Field::from_str(r#"field("a",int32,nullable=maybe,metadata={})"#)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("expected true/false, yes/no, y/n, on/off or 1/0, got \"maybe\""),
+            "{error}"
+        );
+        // The token grammar names the flag it was reading as well.
+        let error = "serie(field(\"a\",int32,nullable=maybe,metadata={}))"
+            .parse::<DataType>()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("field nullability"), "{error}");
+        assert!(error.contains("got \"maybe\""), "{error}");
+    }
+
     #[test]
     fn parser_recursion_limit_has_an_exact_public_boundary() {
         let accepted = format!(

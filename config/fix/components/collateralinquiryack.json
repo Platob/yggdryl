@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "nocollinquiryqualifier",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocollinquiryqualifier",
-          "FIX:tag": "938"
-        }
-      },
-      {
         "name": "collinqqualgrp",
         "dtype": {
           "type": "null"
@@ -76,17 +65,6 @@
         "metadata": {
           "FIX:field": "totnumreports",
           "FIX:tag": "911"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {
@@ -166,17 +144,6 @@
         }
       },
       {
-        "name": "noexecs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecs",
-          "FIX:tag": "124"
-        }
-      },
-      {
         "name": "execcollgrp",
         "dtype": {
           "type": "null"
@@ -184,17 +151,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "execcollgrp"
-        }
-      },
-      {
-        "name": "notrades",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrades",
-          "FIX:tag": "897"
         }
       },
       {
@@ -283,17 +239,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtleggrp",
         "dtype": {
           "type": "null"
@@ -301,17 +246,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtleggrp"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {

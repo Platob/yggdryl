@@ -124,17 +124,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -142,17 +131,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {
@@ -205,17 +183,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "financingdetails"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -327,17 +294,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -381,17 +337,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "legquotstatgrp",
         "dtype": {
           "type": "null"
@@ -402,17 +347,6 @@
         }
       },
       {
-        "name": "noquotequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquotequalifiers",
-          "FIX:tag": "735"
-        }
-      },
-      {
         "name": "quotequalifiers",
         "dtype": {
           "type": "null"
@@ -420,17 +354,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "quotequalifiers"
-        }
-      },
-      {
-        "name": "noquoteattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noquoteattributes",
-          "FIX:tag": "2706"
         }
       },
       {
@@ -496,17 +419,6 @@
         "metadata": {
           "FIX:field": "pricetype",
           "FIX:tag": "423"
-        }
-      },
-      {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
         }
       },
       {
@@ -812,17 +724,6 @@
         "metadata": {
           "FIX:field": "transacttime",
           "FIX:tag": "60"
-        }
-      },
-      {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
         }
       },
       {

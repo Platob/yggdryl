@@ -35,8 +35,8 @@ enum Source {
 /// frames yields one per frame, re-entering the frame reader where each
 /// opens over the page the row already holds, and each message read is
 /// followed by the messages it splits into - an order's execution, a
-/// trade's sided executions, an unsided quote's sided quotes - which the
-/// parse splits off once, here. Each message takes its
+/// trade's sided executions, a batch's entries - which the parse splits off
+/// once, here. Each message takes its
 /// [place](crate::graph::Event::get_seqnum) among the row's messages of its
 /// instant, so a report and the execution split off it are places zero and
 /// one, each naming its source by the identity its place gave it. Nothing

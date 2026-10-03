@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noallocgroupsubqtyattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocgroupsubqtyattributes",
-          "FIX:tag": "2979"
-        }
-      },
-      {
         "name": "allocgroupsubqtyattributes",
         "dtype": {
           "type": "null"

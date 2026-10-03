@@ -68,17 +68,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -229,17 +218,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -247,17 +225,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -271,17 +238,6 @@
         }
       },
       {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
-        }
-      },
-      {
         "name": "relatedinstruments",
         "dtype": {
           "type": "null"
@@ -289,17 +245,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedinstruments"
-        }
-      },
-      {
-        "name": "nomdstatistics",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nomdstatistics",
-          "FIX:tag": "2474"
         }
       },
       {

@@ -75,6 +75,7 @@ pub mod iceberg;
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
 pub mod identifier;
+mod idkey;
 mod idsource;
 mod idtype;
 pub(crate) mod int256;
@@ -90,6 +91,7 @@ mod iomode;
 mod iopath;
 pub mod ipc;
 pub mod isin;
+mod isin_registry;
 mod join;
 pub mod json;
 pub mod limit;
@@ -188,8 +190,8 @@ pub use fix::{
     FIGICODE_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FOREXCODE_TAG_NAME, FORWARDPOINTS_TAG_NAME,
     FXRATES_TAG_NAME, FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
     FixCodes, FixCommit, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixDrop,
-    FixEntry, FixFieldIter, FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources, FixKey,
-    FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
+    FixEntry, FixFailure, FixFieldIter, FixHeader, FixId, FixIdMapKind, FixIdSource, FixIdSources,
+    FixKey, FixLifted, FixMerge, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
     HIDDENQTY_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, MARKETDATAKIND_TAG_NAME,
     MARKETDATATYPE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME,
     MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME,
@@ -288,11 +290,13 @@ pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
 pub use identifier::{IdWord, Identifier, Identifiers};
+pub use idkey::IdKey;
 pub use idsource::IdSource;
 pub use idtype::IdType;
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
+pub use isin_registry::{IsinEntry, IsinRegistry};
 pub use limit::Limit;
 pub use mapping::*;
 pub use marketdatakind::*;
@@ -304,7 +308,7 @@ pub use merge::Widening;
 pub use mic::*;
 pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
 pub use mime_type::MimeTypeType;
-pub(crate) use parser::{folds_equal, normalized};
+pub(crate) use parser::{fold_digest, folds_equal, normalized};
 pub use pretty::Pretty;
 pub use ric::*;
 pub use runend::*;
@@ -388,11 +392,14 @@ pub mod internals {
     pub use crate::aws::sso::internals as aws_sso;
     #[cfg(feature = "aws")]
     pub use crate::aws::sts::internals as aws_sts;
+    pub use crate::boolean::internals as boolean;
+    pub use crate::bytes::internals as bytes;
     pub use crate::bytestream::internals as bytestream;
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
     pub use crate::decimal::internals as decimal;
     pub use crate::diff::internals as diff;
+    pub use crate::duration::internals as duration;
     pub use crate::error::internals as error;
     pub use crate::expression::eval::internals as expression_eval;
     pub use crate::expression::selector::internals as expression_selector;
@@ -412,7 +419,9 @@ pub mod internals {
     pub use crate::fix::retired::internals as fix_retired;
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
+    pub use crate::floating::internals as floating;
     pub use crate::fs::local::internals as fs_local;
+    pub use crate::graph::book::internals as graph_book;
     pub use crate::graph::element::internals as graph_element;
     pub use crate::graph::facts::internals as graph_facts;
     pub use crate::graph::iterator::internals as graph_iterator;
@@ -453,13 +462,16 @@ pub mod internals {
     pub use crate::iceberg::table::internals as iceberg_table;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::value::internals as iceberg_value;
+    pub use crate::integer::internals as integer;
     pub use crate::ipc::internals as ipc;
+    pub use crate::isin_registry::internals as isin_registry;
     pub use crate::json::column::internals as json_column;
     pub use crate::json::field::internals as json_field;
     pub use crate::local::internals as local;
     pub use crate::logging::logger::internals as logging_logger;
     pub use crate::logging::terminal::internals as logging_terminal;
     pub use crate::logging::warning::internals as logging_warning;
+    pub use crate::marketdatakind::internals as marketdatakind;
     pub use crate::media::merge::internals as media_merge;
     pub use crate::media::options::commit::internals as media_options_commit;
     pub use crate::media::options::internals as media_options;
@@ -479,6 +491,8 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::aws::xml::internals as s3_aws_xml;
     #[cfg(feature = "s3")]
+    pub use crate::s3::azure::auth::internals as s3_azure_auth;
+    #[cfg(feature = "s3")]
     pub use crate::s3::azure::dialect::internals as s3_azure_dialect;
     #[cfg(feature = "s3")]
     pub use crate::s3::azure::sign::internals as s3_azure_sign;
@@ -489,11 +503,12 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::file::internals as s3_file;
     #[cfg(feature = "s3")]
+    pub use crate::s3::google::token::internals as s3_google_token;
+    #[cfg(feature = "s3")]
     pub use crate::s3::options::internals as s3_options;
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
-    pub use crate::securityid::internals as securityid;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::spill::internals as spill;

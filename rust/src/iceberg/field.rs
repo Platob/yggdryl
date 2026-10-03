@@ -33,6 +33,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
 use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
+use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, IcebergField, IcebergFieldMut, Result, Scalar};
 
 impl<'field> IcebergField<'field> {
@@ -65,7 +66,7 @@ impl<'field> IcebergField<'field> {
             .map(str::trim)
             .filter(|id| !id.is_empty())
             .map(|id| {
-                id.parse().map_err(|_| {
+                integer_from_text_as::<i32>(id).ok_or_else(|| {
                     self.invalid(
                         IDENTIFIER,
                         "a comma-separated list of signed 32-bit decimal integers",
@@ -155,9 +156,8 @@ impl<'field> IcebergField<'field> {
     fn identifier(&self, name: &str) -> Result<Option<i32>> {
         self.get(name)
             .map(|stored| {
-                stored
-                    .parse()
-                    .map_err(|_| self.invalid(name, "a signed 32-bit decimal integer", stored))
+                integer_from_text_as::<i32>(stored)
+                    .ok_or_else(|| self.invalid(name, "a signed 32-bit decimal integer", stored))
             })
             .transpose()
     }

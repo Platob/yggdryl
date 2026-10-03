@@ -4,17 +4,6 @@
     "type": "struct",
     "fields": [
       {
-        "name": "nophysicalsettldeliverableobligations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nophysicalsettldeliverableobligations",
-          "FIX:tag": "40209"
-        }
-      },
-      {
         "name": "physicalsettldeliverableobligations",
         "dtype": {
           "type": "null"

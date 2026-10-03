@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use super::credentials::{self, Credentials};
 use crate::auth::Environment;
-use crate::{Error, Result};
+use crate::{Error, Result, Scheme, Url};
 
 /// Where the ECS container agent serves credentials from.
 const CONTAINER_HOST: &str = "http://169.254.170.2";
@@ -117,53 +117,50 @@ pub(crate) fn uri(env: &Environment) -> Result<Option<String>> {
     let Some(full) = env.get("AWS_CONTAINER_CREDENTIALS_FULL_URI") else {
         return Ok(None);
     };
-    if !is_allowed_full_uri(&full) {
+    let Some(url) = allowed_full_uri(&full) else {
         return Err(refusal(format!(
             "AWS_CONTAINER_CREDENTIALS_FULL_URI {full} is neither https nor on a loopback \
              or container-agent address, so nothing here presents a token to it"
         )));
-    }
-    Ok(Some(full))
+    };
+    // The URL the rule judged, never the text beside it: the host checked is
+    // the host the request goes to.
+    Ok(Some(url.to_string()))
 }
 
-/// Whether a full URI is on a host the AWS tools present a token to.
-fn is_allowed_full_uri(url: &str) -> bool {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return false;
-    };
-    if scheme.eq_ignore_ascii_case("https") {
-        return true;
+/// The URL a full URI names, when it is on a host the AWS tools present a
+/// token to; `None` for everything else, text no URL reader reads included.
+///
+/// The URI is read once, by the crate's one URL reader, and the host the rule
+/// judges is that reading's: the authority after its user information, with
+/// no port. A text that is not a URL, or names no host, is refused, never
+/// split by hand.
+fn allowed_full_uri(text: &str) -> Option<Url> {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    let url = Url::from_str(text).ok()?;
+    let host = url.authority().host().to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
     }
-    if !scheme.eq_ignore_ascii_case("http") {
-        return false;
+    if *url.scheme() == Scheme::HTTPS {
+        return Some(url);
     }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
-    let authority = authority.rsplit('@').next().unwrap_or(authority);
-    let host = if authority.starts_with('[') {
-        authority
-            .split(']')
-            .next()
-            .unwrap_or(authority)
-            .trim_start_matches('[')
-    } else {
-        authority.split(':').next().unwrap_or(authority)
-    };
-    let host = host.to_ascii_lowercase();
-    if host == "localhost" {
-        return true;
+    if *url.scheme() != Scheme::HTTP {
+        return None;
     }
     // An address, never a name that begins like one: `127.0.0.1.example`
     // is a host somebody else answers.
-    if let Ok(address) = host.parse::<std::net::Ipv4Addr>() {
-        return address.is_loopback()
-            || address == std::net::Ipv4Addr::new(169, 254, 170, 2)
-            || address == std::net::Ipv4Addr::new(169, 254, 170, 23);
-    }
-    if let Ok(address) = host.parse::<std::net::Ipv6Addr>() {
-        return address.is_loopback()
-            || address == std::net::Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x23);
-    }
-    false
+    let allowed = host == "localhost"
+        || host.parse::<Ipv4Addr>().is_ok_and(|address| {
+            address.is_loopback()
+                || address == Ipv4Addr::new(169, 254, 170, 2)
+                || address == Ipv4Addr::new(169, 254, 170, 23)
+        })
+        || host.parse::<Ipv6Addr>().is_ok_and(|address| {
+            address.is_loopback() || address == Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x23)
+        });
+    allowed.then_some(url)
 }
 
 fn refusal(message: impl Into<String>) -> Error {
@@ -184,6 +181,6 @@ pub mod internals {
 
     /// Whether a full URI is on a host the AWS tools present a token to.
     pub fn is_allowed_full_uri(url: &str) -> bool {
-        super::is_allowed_full_uri(url)
+        super::allowed_full_uri(url).is_some()
     }
 }

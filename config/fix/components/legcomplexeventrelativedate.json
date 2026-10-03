@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventdatebusinesscenters",
-          "FIX:tag": "41387"
-        }
-      },
-      {
         "name": "legcomplexeventdatebusinesscenters",
         "dtype": {
           "type": "null"

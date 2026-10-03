@@ -24,6 +24,8 @@ use super::profile::{self, Files, Profile};
 use super::sso::{self, Sso, SsoLogin};
 use super::sts::{self, AssumedRole, CredentialSource};
 use crate::auth::{Environment, Expiring, Lease, Report, instant, iso8601};
+use crate::duration::duration_from_text;
+use crate::integer::integer_from_text_as;
 use crate::{Arn, ArnPartition, Charset, Error, Result};
 
 /// The profile read when nothing names another.
@@ -954,7 +956,7 @@ impl Session {
     pub fn max_attempts(&self) -> Option<u32> {
         self.variable("AWS_MAX_ATTEMPTS")
             .or_else(|| self.profile()?.get("max_attempts").map(str::to_owned))
-            .and_then(|value| value.parse().ok())
+            .and_then(|value| integer_from_text_as::<u32>(&value))
             .filter(|attempts| *attempts > 0)
     }
 
@@ -1067,9 +1069,8 @@ impl Session {
                 .metadata_timeout
                 .or_else(|| {
                     setting("AWS_METADATA_SERVICE_TIMEOUT", "metadata_service_timeout")
-                        .and_then(|seconds| seconds.parse::<f64>().ok())
-                        .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
-                        .map(Duration::from_secs_f64)
+                        .and_then(|seconds| duration_from_text(&seconds))
+                        .filter(|timeout| !timeout.is_zero())
                 })
                 .unwrap_or(defaults.timeout),
             attempts: knobs
@@ -1079,7 +1080,7 @@ impl Session {
                         "AWS_METADATA_SERVICE_NUM_ATTEMPTS",
                         "metadata_service_num_attempts",
                     )
-                    .and_then(|count| count.parse().ok())
+                    .and_then(|count| integer_from_text_as::<u32>(&count))
                 })
                 .unwrap_or(defaults.attempts)
                 .max(1),
@@ -2153,6 +2154,12 @@ pub mod internals {
     /// service is disabled or the session consults no environment.
     pub fn imds_endpoint(session: &super::Session) -> Option<String> {
         session.imds().map(|imds| imds.endpoint)
+    }
+
+    /// The bound on each metadata request the session would make, or `None`
+    /// when the service is disabled or the session consults no environment.
+    pub fn imds_timeout(session: &super::Session) -> Option<std::time::Duration> {
+        session.imds().map(|imds| imds.timeout)
     }
 }
 

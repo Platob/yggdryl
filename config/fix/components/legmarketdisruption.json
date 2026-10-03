@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegmarketdisruptionevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegmarketdisruptionevents",
-          "FIX:tag": "41467"
-        }
-      },
-      {
         "name": "legmarketdisruptionevents",
         "dtype": {
           "type": "null"
@@ -47,17 +36,6 @@
         }
       },
       {
-        "name": "nolegmarketdisruptionfallbacks",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegmarketdisruptionfallbacks",
-          "FIX:tag": "41469"
-        }
-      },
-      {
         "name": "legmarketdisruptionfallbacks",
         "dtype": {
           "type": "null"
@@ -65,17 +43,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legmarketdisruptionfallbacks"
-        }
-      },
-      {
-        "name": "nolegmarketdisruptionfallbackreferenceprices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegmarketdisruptionfallbackreferenceprices",
-          "FIX:tag": "41471"
         }
       },
       {

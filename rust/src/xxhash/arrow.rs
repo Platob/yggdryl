@@ -31,7 +31,7 @@ use arrow_select::zip::zip;
 
 use crate::arrow::{Error, Result};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Representation};
-use crate::expression::{Bound, FieldSegment, Term};
+use crate::expression::{Bound, FieldPath, FieldSegment, Term};
 use crate::metadata::{is_all_columns, parse_by_term};
 use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
@@ -315,7 +315,17 @@ impl StructPlan {
             // source takes, and it must be a leaf an instant can be read from.
             let time = match field.as_digest().time() {
                 Some(path) => {
-                    let selection = resolve_selection(fields, path, &field_path, DIGEST_TIME_KEY)?;
+                    // Read once by the one path parser, then resolved.
+                    let selection = FieldPath::with_schema_segments(path, |segments| {
+                        resolve_selection(fields, segments, &field_path, DIGEST_TIME_KEY)
+                    })
+                    .map_err(|error| {
+                        digest_metadata_error(
+                            DIGEST_TIME_KEY,
+                            &field_path,
+                            format!("cannot read stored time: {error}"),
+                        )
+                    })??;
                     if selection.field.as_digest().is_holder() {
                         return Err(digest_metadata_error(
                             DIGEST_TIME_KEY,
@@ -371,9 +381,9 @@ impl StructPlan {
                         let term = parse_by_term(DIGEST_BY_KEY, entry).map_err(|error| {
                             digest_by_error(&field_path, format!("cannot read stored by: {error}"))
                         })?;
-                        if let Some(path) = column_path(&term) {
+                        if let Some(path) = column_segments(&term) {
                             let selection =
-                                resolve_selection(fields, &path, &field_path, DIGEST_BY_KEY)?;
+                                resolve_selection(fields, path, &field_path, DIGEST_BY_KEY)?;
                             if selection
                                 .steps
                                 .first()
@@ -388,7 +398,7 @@ impl StructPlan {
                                 ));
                             }
                             selected.push(
-                                shortcut_struct_holder(selection, &path, Some(&field_path))?.steps,
+                                shortcut_struct_holder(selection, entry, Some(&field_path))?.steps,
                             );
                             continue;
                         }
@@ -483,22 +493,15 @@ fn child_path(parent: &str, name: &str) -> String {
     format!("{parent}.{name}")
 }
 
-/// The dotted path a term reads when it is nothing but one: a column, or a
-/// struct child beneath one, which the Struct-only descent resolves and the
-/// column feed reads without computing anything.
-fn column_path(term: &Term) -> Option<String> {
-    let segments = term.as_path()?;
-    let mut path = String::new();
-    for segment in segments {
-        let FieldSegment::Field(name) = segment else {
-            return None;
-        };
-        if !path.is_empty() {
-            path.push('.');
-        }
-        path.push_str(name);
-    }
-    Some(path)
+/// The names a term reads when it is nothing but a column path: a column,
+/// or struct children beneath one, which the Struct-only descent resolves
+/// and the column feed reads without computing anything.
+fn column_segments(term: &Term) -> Option<&[FieldSegment]> {
+    term.as_path().filter(|segments| {
+        segments
+            .iter()
+            .all(|segment| matches!(segment, FieldSegment::Field(_)))
+    })
 }
 
 /// The struct root a level's terms bind against: its columns, as they stand.
@@ -660,58 +663,59 @@ fn resolve_holder_algorithm(
     })
 }
 
-/// Resolve an exact-name-first path through Struct children only.
+/// Resolve a path of field names through Struct children only, one step
+/// per name.
 ///
-/// `key` names the property the path was written under, so a refusal points
-/// at `DIGEST:by` or `DIGEST:time` as the holder spelled it.
+/// The segments are the path as the grammar read it - a `DIGEST:by` term's
+/// or the parsed `DIGEST:time` - so a column whose name holds a dot is the
+/// quoted `"a.b"` and `a.b` is two levels: one reading, no literal prefix
+/// tried after another. `key` names the property the path was written
+/// under, so a refusal points at `DIGEST:by` or `DIGEST:time` as the holder
+/// spelled it.
 fn resolve_selection<'field>(
     fields: &'field [Field],
-    path: &str,
+    path: &[FieldSegment],
     holder: &str,
     key: &'static str,
 ) -> Result<Selection<'field>> {
-    if let Some((index, field)) = fields
-        .iter()
-        .enumerate()
-        .find(|(_, field)| field.name() == path)
-    {
-        return Ok(Selection {
-            steps: vec![index],
-            field,
-        });
-    }
-    let mut offset = 0;
-    let mut blocked = None;
-    while let Some(relative) = path[offset..].find('.') {
-        let boundary = offset + relative;
-        if let Some((index, field)) = fields
+    let refuse = |reason: String| digest_metadata_error(key, holder, reason);
+    let spelled = || FieldPath::new(path.iter().cloned()).to_string();
+    let mut level = fields;
+    let mut steps = Vec::with_capacity(path.len());
+    let mut reached: Option<&'field Field> = None;
+    for segment in path {
+        if let Some(blocked) = reached.filter(|field| !field.is_struct()) {
+            return Err(refuse(format!(
+                "path {:?} cannot descend through non-Struct field {:?} of {}",
+                spelled(),
+                blocked.name(),
+                blocked.dtype()
+            )));
+        }
+        let FieldSegment::Field(name) = segment else {
+            return Err(refuse(format!(
+                "path {:?} reaches a child by {segment}, which is no field name",
+                spelled()
+            )));
+        };
+        let Some((index, field)) = level
             .iter()
             .enumerate()
-            .find(|(_, field)| field.name() == &path[..boundary])
-        {
-            if !field.is_struct() {
-                blocked = Some(format!(
-                    "path {path:?} cannot descend through non-Struct field {:?} of {}",
-                    field.name(),
-                    field.dtype()
-                ));
-                offset = boundary + 1;
-                continue;
-            }
-            if let Ok(mut tail) =
-                resolve_selection(field.fields(), &path[boundary + 1..], holder, key)
-            {
-                tail.steps.insert(0, index);
-                return Ok(tail);
-            }
-        }
-        offset = boundary + 1;
+            .find(|(_, field)| field.name() == name.as_str())
+        else {
+            return Err(refuse(format!(
+                "path {:?} does not name a field",
+                spelled()
+            )));
+        };
+        steps.push(index);
+        level = field.fields();
+        reached = Some(field);
     }
-    Err(digest_metadata_error(
-        key,
-        holder,
-        blocked.unwrap_or_else(|| format!("path {path:?} does not name a field")),
-    ))
+    let Some(field) = reached else {
+        return Err(refuse("a path names no field".to_owned()));
+    };
+    Ok(Selection { steps, field })
 }
 
 /// A selected Struct carrying one direct holder contributes that holder.

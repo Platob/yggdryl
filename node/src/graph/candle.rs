@@ -47,7 +47,7 @@ fn reading_of(held: Option<Ohlc>) -> Option<CandleReading> {
 /// One OHLC of one book over one bucket: what the books of one cross code
 /// whose instants fell in `[start, end)` read at their best bid, their best
 /// ask, their midpoint and their spread, the quantities resting at the
-/// touch when the bucket closed, and what traded in it. Built by
+/// touch when the bucket closed, and how many books it folded. Built by
 /// `CandleIterator`, or read back from a row through `fromScalar`.
 #[napi(js_name = "Candle")]
 #[derive(Clone)]
@@ -66,8 +66,7 @@ impl JsCandle {
 impl JsCandle {
     /// The required struct `candle` every candle row is laid out under:
     /// `crosscode`, `ticker`, `start`, `end`, the four cells of each reading
-    /// (`bidopen` .. `spreadclose`), `bidqty`, `askqty`, `books`,
-    /// `executions` and `volume`.
+    /// (`bidopen` .. `spreadclose`), `bidqty`, `askqty` and `books`.
     #[napi]
     pub fn field() -> Result<JsField> {
         CoreCandle::field()
@@ -151,29 +150,10 @@ impl JsCandle {
         decimal_text(self.inner.askqty)
     }
 
-    /// What traded in the bucket, as decimal text: each trade its executions
-    /// report counted once within the bucket, at the largest last quantity
-    /// any of its executions states - one stating none adds nothing - a
-    /// trade being named by the `TRADEID`, `TRADEREPORTID`, `TVTIC` and
-    /// `EXECID` its executions state, else by the base of the cross code; a
-    /// trade stated again in the next bucket adds there only what it states
-    /// past what was counted; `'0'` where nothing traded.
-    #[napi(getter)]
-    pub fn volume(&self) -> String {
-        self.inner.volume.to_string()
-    }
-
     /// How many books folded into the bucket.
     #[napi(getter)]
     pub fn books(&self) -> Result<f64> {
         exact_f64(self.inner.books, "books")
-    }
-
-    /// How many executions the folded books carried, a trade they carried
-    /// twice counted twice.
-    #[napi(getter)]
-    pub fn executions(&self) -> Result<f64> {
-        exact_f64(self.inner.executions, "executions")
     }
 
     /// The candle as the named struct of its cells - the flat row

@@ -3,8 +3,6 @@
 use std::borrow::Cow;
 use std::io::Write;
 
-use base64::Engine as _;
-
 use crate::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, Serie, TimeUnit, Timezone};
 use crate::{bytes_scalars, code_scalars, string_scalars};
@@ -312,18 +310,15 @@ fn write_scalar<W: Write>(
             let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             write_quoted(writer, value.render(&mut slot))?;
         }
-        bytes_scalars!(value) => write_quoted(
-            writer,
-            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-        )?,
-        Scalar::Geometry(value) => write_quoted(
-            writer,
-            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-        )?,
-        Scalar::Geography(value) => write_quoted(
-            writer,
-            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-        )?,
+        bytes_scalars!(value) => {
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?
+        }
+        Scalar::Geometry(value) => {
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?;
+        }
+        Scalar::Geography(value) => {
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?;
+        }
         Scalar::Date32(_)
         | Scalar::Date64(_)
         | Scalar::Time32(_)

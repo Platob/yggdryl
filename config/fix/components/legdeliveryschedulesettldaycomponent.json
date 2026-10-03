@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegdeliveryschedulesettltimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdeliveryschedulesettltimes",
-          "FIX:tag": "41425"
-        }
-      },
-      {
         "name": "legdeliveryschedulesettltimes",
         "dtype": {
           "type": "null"

@@ -43,13 +43,19 @@ impl GroupPlan {
         let mut nested = Vec::new();
         let mut delimiter = None;
         for (index, column) in columns.iter().enumerate() {
-            if let Some(tag) = column.as_fix().tag()? {
+            // A nested group arrives as its counter, never under its own
+            // tag, so the counter is its wire tag - the delimiter where it
+            // opens the occurrence - and reaches it through `groups` alone.
+            let counter = column.as_fix().counter()?;
+            if let Some(tag) = counter {
+                delimiter.get_or_insert(tag);
+            } else if let Some(tag) = column.as_fix().tag()? {
                 delimiter.get_or_insert(tag);
                 tags.entry(tag)
                     .and_modify(|held| *held = None)
                     .or_insert(Some(index));
             }
-            if let Some(tag) = column.as_fix().counter()? {
+            if let Some(tag) = counter {
                 let position = nested.len();
                 groups
                     .entry(tag)

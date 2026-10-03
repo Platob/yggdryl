@@ -80,17 +80,6 @@
         }
       },
       {
-        "name": "norootpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norootpartyids",
-          "FIX:tag": "1116"
-        }
-      },
-      {
         "name": "rootparties",
         "dtype": {
           "type": "null"
@@ -98,17 +87,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "rootparties"
-        }
-      },
-      {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
         }
       },
       {

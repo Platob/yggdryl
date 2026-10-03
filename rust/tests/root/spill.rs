@@ -598,6 +598,13 @@ mod internal {
                 .byte_size(),
             4096
         );
+        // The count is the one integer grammar's: a stated sign is part of it.
+        assert_eq!(
+            parse_env(some("+4096"), None)
+                .expect("a signed count")
+                .byte_size(),
+            4096
+        );
         assert_eq!(
             parse_env(None, None).expect("unset").byte_size(),
             DEFAULT_SPILL_BYTE_SIZE
@@ -606,7 +613,15 @@ mod internal {
 
     #[test]
     fn a_bound_that_is_no_byte_count_is_refused_naming_the_variable_and_the_text() {
-        for text in ["12 MiB", "-1", "abc", "1.5", "18446744073709551616"] {
+        for text in [
+            "12 MiB",
+            "-1",
+            "abc",
+            "1.5",
+            "18446744073709551616",
+            "1e3",
+            "1_000",
+        ] {
             let error = parse_env(some(text), None)
                 .expect_err("a bound that is neither a count nor `never` is refused");
             let message = error.to_string();

@@ -252,17 +252,6 @@
         }
       },
       {
-        "name": "nolegpaymentschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentschedules",
-          "FIX:tag": "40374"
-        }
-      },
-      {
         "name": "legpaymentschedules",
         "dtype": {
           "type": "null"
@@ -270,17 +259,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legpaymentschedules"
-        }
-      },
-      {
-        "name": "nolegpaymentstubs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentstubs",
-          "FIX:tag": "40418"
         }
       },
       {
@@ -301,17 +279,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "legdeliverystream"
-        }
-      },
-      {
-        "name": "nolegdeliveryschedules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdeliveryschedules",
-          "FIX:tag": "41408"
         }
       },
       {

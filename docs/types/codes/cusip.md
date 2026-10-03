@@ -1,16 +1,16 @@
 # CUSIP
 
-The nine-character North American securities identifier: six of issuer, two of issue, and the check digit that closes them.
+The nine-character North American securities identifier: six of issuer, two of issue, and the check digit that closes them - held by its shape, ranked by whether the digit closes.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `cusip`, `CusipType`/`CusipField`, the `Cusip` value and `Scalar::Cusip` |
-| Validates | Nine ASCII bytes: eight alphanumerics and one digit closing them by modulus-10 double-add-double; lower case folds at the value door |
+| Validates | The shape: nine ASCII bytes, eight alphanumerics and one check digit; lower case folds at the value door. Whether the digit closes the eight by modulus-10 double-add-double is its [rank](index.md#rank), never a gate |
 | Lazy | Nothing - the whole check runs on the stack, over bounded bytes |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
-| Refuses | A spelling of the wrong length or shape, and a check digit that does not close the identifier; the empty text, so there is no default value |
+| Refuses | A spelling of the wrong length or shape; the empty text, so there is no default value |
 
 ## DataType
 
@@ -105,8 +105,10 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     assert_eq!(apple.kind(), "cusip");
     assert_eq!(DataType::cusip().scalar("38259p508")?.as_str(), Some("38259P508"));
 
-    // One digit off is a typo, not a security.
-    assert!(DataType::cusip().scalar("037833101").is_err());
+    // One digit off is a typo: a value of rank zero, never a refusal.
+    assert_eq!(DataType::cusip().scalar("037833101")?.as_str(), Some("037833101"));
+    // The shape is the refusal.
+    assert!(DataType::cusip().scalar("03783310").is_err());
     assert_ne!(apple, Scalar::from("037833100"));
     ```
 
@@ -123,8 +125,8 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     assert cusip.scalar("037833100").kind == "cusip"
     assert cusip.scalar("037833100") != DataType("utf8").scalar("037833100")
 
-    with pytest.raises(ValueError, match="check digit does not close"):
-        cusip.scalar("037833101")
+    # One digit off is a typo: a value of rank zero, never a refusal.
+    assert cusip.scalar("037833101").as_py() == "037833101"
     with pytest.raises(ValueError, match="expected nine characters"):
         cusip.scalar("03783310")
     ```
@@ -137,7 +139,8 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
     const cusip = new DataType('cusip')
     assert.equal(cusip.scalar('38259p508').asJs(), '38259P508')
-    assert.throws(() => cusip.scalar('037833101'), /check digit does not close/)
+    // One digit off is a typo: a value of rank zero, never a refusal.
+    assert.equal(cusip.scalar('037833101').asJs(), '037833101')
     assert.throws(() => cusip.scalar('03783310'), /expected nine characters/)
     ```
 
@@ -179,19 +182,19 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     const arrow = require('apache-arrow')
     const { Serie, fields } = require('yggdryl')
 
-    // A column holds the canonical spelling, so a cast lets in an identifier
-    // the check digit closes and answers null for a typo.
+    // A column holds the canonical spelling: a typo is one and lands, and a
+    // lower-case spelling is null.
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    const stored = Serie.fromArrowArray(utf8(['037833100', '037833101']), fields.cusip('sid'))
-    assert.deepEqual([...stored.intoArrowArray()], ['037833100', null])
+    const stored = Serie.fromArrowArray(utf8(['037833100', '037833101', '38259p508']), fields.cusip('sid'))
+    assert.deepEqual([...stored.intoArrowArray()], ['037833100', '037833101', null])
     ```
 
 ## The check digit
 
-Each of the eight leading characters reads as a digit or as ten plus its alphabet position; every second value is doubled, the digits of every value are summed, and the digit closes that sum to a multiple of ten. `Cusip::issuer` and `issue` read the six and two characters before the digit; `is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
+Each of the eight leading characters reads as a digit or as ten plus its alphabet position; every second value is doubled, the digits of every value are summed, and the digit closes that sum to a multiple of ten. `Cusip::issuer` and `issue` read the six and two characters before the digit, and `closing_digit` computes it. `is_closed` answers whether the digit closes an upper-case identifier - the [rank](index.md#rank) a value answers, one where it closes, zero where it does not - and `is_canonical` whether text is the canonical spelling, upper case and the shape, whatever the digit. Rust only.
 
 ```rust
-use yggdryl::Cusip;
+use yggdryl::{CodeValue, Cusip};
 
 let apple = Cusip::new("037833100")?;
 assert_eq!(apple.issuer(), "037833");
@@ -202,16 +205,21 @@ assert_eq!(apple.check_digit(), 0);
 assert_eq!(Cusip::new("38259P508")?.check_digit(), 8);
 assert_eq!(Cusip::closing_digit("38259P50"), Some(8));
 
-// The rule answers without building a value, in either case.
-assert!(Cusip::is_valid("38259p508"));
-assert!(Cusip::is_canonical("38259P508"));
+// The readings answer without building a value.
+assert!(Cusip::is_closed("38259P508"));
+assert!(!Cusip::is_closed("037833101"));
+assert!(Cusip::is_canonical("037833101"));
 assert!(!Cusip::is_canonical("38259p508"));
-assert!(!Cusip::is_valid("037833101"));
+
+// A typo is a value of rank zero, which a closing identifier replaces.
+let typo = Cusip::new("037833101")?;
+assert_eq!(typo.rank(), 0);
+assert_eq!(typo.merge_with(&apple), apple);
 ```
 
 ## A column holds the canonical spelling
 
-A scalar read folds the case; a column's bytes are what every reader digests, so an Arrow cast is held to the canonical spelling and answers null under the default `safe` for a typo or a lower-case spelling alike. Strict names the row and the column, and `try_cast(sid as cusip)` in an [expression](../../expression/terms.md) is that safe cast.
+A scalar read folds the case; a column's bytes are what every reader digests, so an Arrow cast is held to the canonical spelling - upper case, the shape - and answers null under the default `safe` for a lower-case spelling, while a typo is a spelling of the shape and lands as the value it is. Strict names the row and the column, and `try_cast(sid as cusip)` in an [expression](../../expression/terms.md) is that safe cast.
 
 === "Rust"
 
@@ -240,7 +248,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 
     sid = Field("sid", "cusip")
     stored = Serie.from_arrow_array(pa.array(["38259P508", "38259p508", "037833101"]), sid)
-    assert stored.as_py() == ["38259P508", None, None]
+    assert stored.as_py() == ["38259P508", None, "037833101"]
     ```
 
 === "JavaScript"
@@ -257,13 +265,13 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 
 ## Edges
 
-- `expected nine characters`, `expected eight alphanumerics before the check digit`, `expected a closing check digit`, `the check digit does not close the identifier` - the four refusals, each naming `cusip` and the spelling it saw.
+- `expected nine characters`, `expected eight alphanumerics before the check digit`, `expected a closing check digit` - the three refusals, each naming `cusip` and the spelling it saw; a digit that does not close the identifier is a rank, never a refusal.
 - A tenth byte -> `at most 9 bytes`, the refusal any code of that width gives.
 - No default value: the empty text names no security, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("cusip")` answers an enum of no members, and no Python code class declares it.
-- Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
+- [`merge_with`](index.md#the-code-family-value) takes an identifier that closes over one that does not, whichever leads; two of one rank keep this one.
 - A CUSIP and a [SEDOL](sedol.md) of the same bytes are two values, and neither is the string that spells it.
-- No crate column: in a [FIX capture](index.md#fix-message-definitions) a CUSIP is one [security identifier](../../graph/identifier.md) of type `cusip` - `SecurityID(48)` under source `1`, or a `SecAltIDGrp(454)` occurrence, each from `fix` - read as `get_securityids().get(&IdType::Cusip)`, and derived from a US or CA ISIN where the message states none, from `derived`.
+- No crate column: in a [FIX capture](index.md#fix-message-definitions) a CUSIP is one [security identifier](../../graph/identifier.md) of type `cusip` - `SecurityID(48)` under source `1`, or a `SecAltIDGrp(454)` occurrence, each under the base key `cusip` - read as `get_securityids().get(&IdType::Cusip)`, and derived from a US or CA ISIN that closes where the message states none, from `derived`.
 
 ## Commands
 

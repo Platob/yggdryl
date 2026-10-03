@@ -344,6 +344,49 @@ mod grammar {
     }
 
     #[test]
+    fn text_read_into_a_flag_a_number_or_a_decimal_agrees_between_the_tiers() {
+        let schema = Field::new(
+            "rows",
+            StructType::from_fields([Field::new("s", DataType::utf8(), true)])
+                .map(DataType::from)
+                .unwrap(),
+            false,
+        );
+        // Each family is compared on the spellings it reads, the refusals a
+        // safe cast turns into null, the empty cell and the null.
+        for (casts, cells) in [
+            (
+                vec!["try_cast(s as boolean)"],
+                vec!["yes", " TRUE ", "n", "0", "maybe", "x", ""],
+            ),
+            (
+                vec!["try_cast(s as int64)", "try_cast(s as int64) > 5"],
+                vec![" 7 ", "+7", "7", "x", ""],
+            ),
+            (
+                vec!["try_cast(s as float64)", "try_cast(s as float64) > 1.0"],
+                vec!["1.5", " 1.5 ", "1e3", "inf", "x", ""],
+            ),
+            (
+                vec![
+                    "try_cast(s as decimal128(9,2))",
+                    "try_cast(s as decimal128(9,2)) > decimal128(9,2) '1.00'",
+                ],
+                vec!["1.50", "1e2", " 1.5 ", "1.555", "x", ""],
+            ),
+        ] {
+            let rows: Vec<Scalar> = cells
+                .into_iter()
+                .map(|cell| Scalar::from_sequence([Scalar::from(cell)]))
+                .chain([Scalar::from_sequence([Scalar::Null])])
+                .collect();
+            for text in casts {
+                assert_tiers_agree(text, &schema, &rows);
+            }
+        }
+    }
+
+    #[test]
     fn projections_agree_between_the_tiers() {
         let schema = rows_schema();
         let rows = rows();

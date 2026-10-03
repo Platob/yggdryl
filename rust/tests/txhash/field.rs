@@ -129,6 +129,23 @@ mod txhash {
     }
 
     #[test]
+    fn a_time_path_is_one_field_path_of_names_read_at_the_door() {
+        let mut holder = coupled_holder(DataType::fixed_binary(16).unwrap());
+        for refused in ["event as at", "event.", "meta[0]", "   "] {
+            let error = holder.as_digest_mut().set_time(refused).unwrap_err();
+            assert!(
+                matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:time"),
+                "{refused}: {error}"
+            );
+        }
+        assert_eq!(holder.as_digest().time(), None);
+        holder.as_digest_mut().set_time("\"event.at\"").unwrap();
+        assert_eq!(holder.as_digest().time(), Some("\"event.at\""));
+        holder.as_digest_mut().set_time("meta.event").unwrap();
+        assert_eq!(holder.as_digest().time(), Some("meta.event"));
+    }
+
+    #[test]
     fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
         let mut holder = coupled_holder(DataType::fixed_binary(16).unwrap());
         holder.as_digest_mut().set_time("event").unwrap();

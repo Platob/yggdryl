@@ -150,3 +150,35 @@ fn a_store_writes_the_list_as_the_json_it_is_and_reads_it_back() {
     let read = again.field_by_tag(37).expect("the field");
     assert_eq!(parents(read), ["parentorderid", "origorderid"]);
 }
+
+#[test]
+fn a_stored_transient_flag_reads_every_spelling_the_crate_reads_for_a_flag() {
+    let transient = |stored: Option<&str>| {
+        let mut field = orderid();
+        if let Some(stored) = stored {
+            field
+                .insert_metadata("FIX:transient", stored)
+                .expect("inert text");
+        }
+        field.as_fix().is_transient()
+    };
+    assert!(
+        transient(None).expect("a field says nothing"),
+        "a field is carried unless it says it is not"
+    );
+    for stored in ["true", "TRUE", "yes", "Y", "on", "1"] {
+        assert!(transient(Some(stored)).expect(stored), "{stored}");
+    }
+    for stored in ["false", "False", "no", "N", "off", "0"] {
+        assert!(!transient(Some(stored)).expect(stored), "{stored}");
+    }
+    // Text no boolean spells is still a named refusal.
+    for stored in ["maybe", "2", "n/a"] {
+        let refusal = transient(Some(stored)).expect_err(stored).to_string();
+        assert!(refusal.contains("FIX:transient"), "{stored}: {refusal}");
+        assert!(
+            refusal.contains("true/false, yes/no, y/n, on/off or 1/0"),
+            "{stored}: {refusal}"
+        );
+    }
+}

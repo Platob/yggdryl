@@ -130,6 +130,7 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
 | JS `xxhash.xxh3(buf) === 123` or `+ 1` | it is a `bigint`: compare with `123n`; only `xxh32` is a `number` |
 | marking the source columns as holders too | mark only the digest column; a holder never feeds itself and may not select a sibling holder in its own Struct, but a selected nested Struct holding exactly one holder feeds that holder's value in its place (several direct holders there are ambiguous - name one by path) |
 | `DIGEST:by` naming a path through a serie or map | a path descends Structs only; a serie, map or union is selected whole |
+| `DIGEST:by` or `DIGEST:time` naming a column whose name holds a dot as `a.b` | `a.b` is always two levels; quote the one column as `"a.b"` (inside `DIGEST:by`'s JSON array, `["\"a.b\""]`) - each path is read once by the one `FieldPath` parser |
 | `TxHasher::new(..).with_seed(7)` after giving a secret | `with_seed` drops a secret: build `Xxh3::from_seed_and_secret` / `Xxh3(seed=, secret=)` and pass it to `from_digester` / `from_state` |
 | sorting raw `TxHash` bytes across units, algorithms or pre-1970 instants | sort values (`<`, `compare`), or keep one unit and algorithm; a negative instant's bytes sort last |
 | `txh128(...).into_uuid()` | refused: UUIDv7 carries 64 digest bits - use `xxh3-64` or `xxh64` |

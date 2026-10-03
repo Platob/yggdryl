@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::hash::Hasher;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{Element, Event, Market, Operation, Order, OrderEvent};
 use yggdryl::xxhash::Xxh3;
 use yggdryl::{
@@ -291,8 +292,7 @@ fn unit(text: &str) -> Unit {
 /// stated from `base` and validated by its type.
 fn securityid(kind: &str, code: &str) -> Identifier {
     Identifier::new(
-        IdSource::Base,
-        IdType::from_security_source(kind).expect("a security type"),
+        IdKey::base(IdType::from_security_source(kind).expect("a security type")),
         code,
     )
     .expect("an identifier")
@@ -300,7 +300,7 @@ fn securityid(kind: &str, code: &str) -> Identifier {
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: &str, value: &str) -> Identifier {
-    Identifier::new(IdSource::Fix, kind.parse().expect("a type"), value).expect("an identifier")
+    Identifier::new(IdKey::base(kind.parse().expect("a type")), value).expect("an identifier")
 }
 
 /// Finalizes `this` the way a market event stating no operation of its own
@@ -435,12 +435,12 @@ fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
     );
     assert!(
         operation
-            .remove_identifier(&IdSource::Fix, &IdType::OrderId)
+            .remove_identifier(&IdKey::base(IdType::OrderId))
             .expect("a plain holder")
     );
     assert!(
         !operation
-            .remove_identifier(&IdSource::Fix, &IdType::OrderId)
+            .remove_identifier(&IdKey::base(IdType::OrderId))
             .expect("nothing left to remove")
     );
     // The set is replaced whole, never merged.
@@ -591,8 +591,8 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
     assert!(event.get_state().is_live(), "not ended, so still live");
     event.set_state(filled());
     assert!(
-        !event.is_execution(),
-        "an order is no execution, whatever its state"
+        event.is_execution(),
+        "an order whose state reports a fill reports an execution"
     );
     let mut report = Report::at(1, 10);
     assert!(!report.is_execution());
@@ -850,17 +850,18 @@ fn a_first_seen_identifier_states_no_parent() {
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .expect("a plain holder");
     event.finalize();
-    let keys = |ids: &Identifiers| ids.iter().map(Identifier::key).collect::<Vec<_>>();
-    assert_eq!(
-        keys(event.get_identifiers()),
-        ["fix:clordid", "fix:orderid"]
-    );
-    assert_eq!(keys(event.get_partyids()), ["fix:customeraccount"]);
+    let keys = |ids: &Identifiers| {
+        ids.iter()
+            .map(|id| id.key().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keys(event.get_identifiers()), ["clordid", "orderid"]);
+    assert_eq!(keys(event.get_partyids()), ["customeraccount"]);
     // The ISIN implies the national number it carries, derived and stated by
     // no source; no security identifier has a parent.
     assert_eq!(
         keys(event.get_securityids()),
-        ["base:isin", "derived:cusip"]
+        ["cusip", "derived:cusip", "isin"]
     );
 
     let mut element = Order::new();
@@ -870,7 +871,7 @@ fn a_first_seen_identifier_states_no_parent() {
     element.finalize();
     assert_eq!(
         keys(element.get_securityids()),
-        ["base:isin", "derived:cusip"]
+        ["cusip", "derived:cusip", "isin"]
     );
 }
 
@@ -892,7 +893,7 @@ fn an_order_identifier_chain_ends_with_its_parent_and_origin() {
     let parentage = |event: &OrderEvent| {
         let ids = event.get_identifiers();
         let held = |kind: &str| {
-            ids.get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            ids.get_from(&IdKey::base(kind.parse().expect("a type")))
                 .map(str::to_owned)
         };
         (held("orderid"), held("parentorderid"), held("origorderid"))
@@ -933,7 +934,7 @@ fn a_client_order_identifier_chain_names_its_previous_value() {
     let orig = |event: &OrderEvent| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &"origclordid".parse().expect("a type"))
+            .get_from(&IdKey::base("origclordid".parse().expect("a type")))
             .map(str::to_owned)
     };
     let first = named(10, "A");
@@ -972,7 +973,7 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     let held = |event: &OrderEvent, kind: &str| {
         event
             .get_identifiers()
-            .get_from(&IdSource::Fix, &kind.parse().expect("a type"))
+            .get_from(&IdKey::base(kind.parse().expect("a type")))
             .map(str::to_owned)
     };
     assert_eq!(held(&next, "parentorderid").as_deref(), Some("STATED"));
@@ -983,7 +984,8 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     other.set_crosscode("O-100".to_owned());
     other
         .insert_identifier(
-            Identifier::new(venue.clone(), IdType::OrderId, "Z").expect("an identifier"),
+            Identifier::new(IdKey::new(venue.clone(), IdType::OrderId), "Z")
+                .expect("an identifier"),
         )
         .expect("a plain holder");
     other.finalize();
@@ -991,7 +993,7 @@ fn a_follower_keeps_the_parents_it_states_and_follows_each_source_alone() {
     assert_eq!(
         other
             .get_identifiers()
-            .get_from(&venue, &"parentorderid".parse().expect("a type")),
+            .get_from(&IdKey::new(venue, "parentorderid".parse().expect("a type"))),
         None,
         "the venue's order identifier has no predecessor under the venue"
     );
@@ -1858,7 +1860,7 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
     // Each is unsaid on its own; a stated identifier is never overwritten
     // by inserting, and a second statement under a held source fills nothing.
     assert!(
-        held.remove_securityid(&IdSource::Base, &IdType::Cusip)
+        held.remove_securityid(&IdKey::base(IdType::Cusip))
             .expect("a plain holder")
     );
     assert!(held.get_securityids().get(&IdType::Cusip).is_none());
@@ -1875,12 +1877,17 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
     // The codes are the crate's own: a spelling that is no identifier never
     // reaches the element.
     assert!(
-        Isin::new("US0378331006").is_err(),
-        "a wrong check digit is no ISIN"
+        Isin::new("US037833100").is_err(),
+        "eleven characters are no ISIN"
     );
     assert!(
-        Identifier::new(IdSource::Base, IdType::Isin, "US0378331006").is_err(),
+        Identifier::new(IdKey::base(IdType::Isin), "US037833100").is_err(),
         "and no security identifier of the ISIN type either"
+    );
+    assert_eq!(
+        IdType::Isin.rank("US0378331006"),
+        1,
+        "a wrong check digit is a rank, not a refusal"
     );
     assert!(
         IdType::from_security_source("ticker").is_err(),
@@ -2406,6 +2413,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     // and what is left open is the quantity it is about, never what it
     // ordered.
     let mut working = OrderEvent::at(at(30));
+    working.set_state(State::PartiallyFilled);
     working.set_cumqty(Some(Decimal::from_int(40)), true);
     working.set_leavesqty(Some(Decimal::from_int(60)), true);
     working.fill_market();
@@ -2742,4 +2750,29 @@ mod internal {
         );
         assert!(instant_places(&[], true).is_empty());
     }
+}
+
+/// An event dates its own execution from its instant where its state
+/// reports one and it states no clock - whatever leaf holds it: an order's
+/// report that filled is as much an execution report as an execution, so a
+/// walk reading it alone dates it as following does.
+#[test]
+fn an_order_report_whose_state_reports_a_fill_dates_its_execution() {
+    use yggdryl::graph::EventIterator;
+
+    for state in [State::PartiallyFilled, filled()] {
+        let mut report = stated(30);
+        report.set_crosscode("ORD-1".to_owned());
+        report.set_state(state);
+        report.finalize();
+        let walked: Vec<OrderEvent> = EventIterator::new([report], true).collect();
+        assert_eq!(walked[0].get_execunix(), Some(at(30)), "{state:?}");
+    }
+    // A state reporting none dates nothing.
+    let mut working = stated(30);
+    working.set_crosscode("ORD-1".to_owned());
+    working.set_state(State::New);
+    working.finalize();
+    let walked: Vec<OrderEvent> = EventIterator::new([working], true).collect();
+    assert_eq!(walked[0].get_execunix(), None);
 }

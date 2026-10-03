@@ -77,17 +77,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -108,17 +97,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -126,17 +104,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
         }
       },
       {
@@ -215,17 +182,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -233,17 +189,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "stipulations"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -265,17 +210,6 @@
         "metadata": {
           "FIX:field": "pricetype",
           "FIX:tag": "423"
-        }
-      },
-      {
-        "name": "nopricequalifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricequalifiers",
-          "FIX:tag": "2709"
         }
       },
       {
@@ -330,17 +264,6 @@
         "metadata": {
           "FIX:field": "ioinaturalflag",
           "FIX:tag": "130"
-        }
-      },
-      {
-        "name": "noioiqualifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noioiqualifiers",
-          "FIX:tag": "199"
         }
       },
       {
@@ -409,17 +332,6 @@
         }
       },
       {
-        "name": "noroutingids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noroutingids",
-          "FIX:tag": "215"
-        }
-      },
-      {
         "name": "routingids",
         "dtype": {
           "type": "null"
@@ -437,17 +349,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "spreadorbenchmarkcurvedata"
-        }
-      },
-      {
-        "name": "norelativevalues",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelativevalues",
-          "FIX:tag": "2529"
         }
       },
       {

@@ -166,6 +166,10 @@ as on any other field. The field's canonical default is the nil identifier.
 
 `Scalar::Uuid` carries a `Uuid`, which is the packed `u128` and nothing else.
 `Uuid::new` takes that integer, `Uuid::from_bytes` takes any accepted spelling,
+and `FromStr` (`text.parse::<Uuid>()`) takes text alone - 32 hexadecimal digits
+or the 36-character hyphenated spelling, in either case, the surrounding blanks
+not part of it - so sixteen characters are never read as the sixteen stored
+bytes, and a refusal names both spellings and what it found.
 `get` and `into_bytes` answer the two storage readings, and `render` writes the
 canonical spelling into a caller's `[u8; Uuid::TEXT_LEN]` without allocating -
 `to_string` is the same characters when an owned string is what the caller
@@ -184,6 +188,11 @@ wants. In Python and JavaScript the value crosses as its spelling.
     assert_eq!(Uuid::from_bytes(text.as_bytes())?, value);
     assert_eq!(Uuid::from_bytes(&value.into_bytes())?, value);
     assert_eq!(value.get(), packed);
+
+    // Text alone: either spelling, in either case, and never stored bytes.
+    assert_eq!(text.parse::<Uuid>()?, value);
+    assert_eq!(" 01912D68783E7C9AB1F20123456789AB ".parse::<Uuid>()?, value);
+    assert!("0123456789abcdef".parse::<Uuid>().is_err());
     assert_eq!(value.to_string(), text);
 
     // The column reads every spelling into the same scalar.

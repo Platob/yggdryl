@@ -12,7 +12,6 @@
 
 use std::io::Write;
 
-use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::{BatchReader, field_from_arrow_schema};
@@ -230,19 +229,7 @@ impl CellWriter {
                     path: format_smolstr!("$.{}", field.name()),
                     reason: expected_got("a byte value", value.kind()),
                 })?;
-                let len =
-                    base64::encoded_len(bytes.len(), true).ok_or_else(|| Error::InvalidRecord {
-                        path: format_smolstr!("$.{}", field.name()),
-                        reason: SmolStr::new_static("a byte value too long to spell as base64"),
-                    })?;
-                cell.resize(len, 0);
-                let written = base64::engine::general_purpose::STANDARD
-                    .encode_slice(bytes, cell)
-                    .map_err(|error| Error::InvalidRecord {
-                        path: format_smolstr!("$.{}", field.name()),
-                        reason: format_smolstr!("{error}"),
-                    })?;
-                cell.truncate(written);
+                crate::bytes::base64_into(bytes, cell);
             }
             Self::Json => crate::json::into_field_vec(&value, field.dtype(), cell)?,
             Self::Value => {

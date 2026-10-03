@@ -33,6 +33,8 @@ use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::{encoded_value_of, is_blank_text};
+use crate::floating::f64_from_text;
+use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
 /// One row's worth of context: its column values.
@@ -1140,15 +1142,24 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
 
 /// A value read as the float a float target takes: a float of any width,
 /// else a whole number, which is what `price > 0` compares a float column
-/// with. A constant coerces into the operand it meets, and the bind's
-/// round-trip check is what refuses a whole number a float cannot hold.
+/// with, else the spelling of a string, read by the one reader a column of
+/// text is cast through. A constant coerces into the operand it meets, and
+/// the bind's round-trip check is what refuses a whole number a float cannot
+/// hold.
 fn floating(value: &Scalar) -> Option<f64> {
-    value.as_f64().or_else(|| {
-        value
-            .as_i128()
-            .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
-            .map(|held| held as f64)
-    })
+    value
+        .as_f64()
+        .or_else(|| {
+            value
+                .as_i128()
+                .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
+                .map(|held| held as f64)
+        })
+        .or_else(|| {
+            value
+                .as_string()
+                .and_then(|text| f64_from_text(text.as_str()))
+        })
 }
 
 /// Convert one value into a datatype, logically rather than physically.
@@ -1212,6 +1223,12 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         Err(error) => Err(error),
     };
     if let Some((precision, scale)) = decimal_parts(target) {
+        // A string is a spelling, and the datatype's own value door reads it
+        // exactly as a column of text is cast: at the declared scale, a digit
+        // past it refused, never rounded.
+        if value.as_string().is_some() {
+            return canonical(value.clone());
+        }
         // An exact number restates at the declared scale. A float is read as
         // the number it names, rounded half away from zero at that scale,
         // through the one reading a column of floats takes too - never as its
@@ -1265,6 +1282,10 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             Scalar::Boolean(_) => Ok(value.clone()),
             other => match other.as_i128() {
                 Some(held) => Ok(Scalar::from(held != 0)),
+                // A string reads through the one table the value door and a
+                // column cast read, so `cast('yes' as boolean)` answers as a
+                // column of `yes` does; a code or an enum member is no flag.
+                None if value.as_string().is_some() => canonical(value.clone()),
                 None => refuse("a boolean"),
             },
         },
@@ -1289,7 +1310,9 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         | DataType::UInt32
         | DataType::UInt64 => {
             // A float that is not finite names no whole number: `as` would
-            // read `nan` as zero. An enum member is the code its column stores.
+            // read `nan` as zero. An enum member is the code its column stores,
+            // and only a string - never a registered code, whose identity is
+            // its registry - is a spelling of one.
             let held = unscaled_at(value, 0)
                 .and_then(i256::as_i128)
                 .or_else(|| value.enum_code().map(i128::from))
@@ -1299,7 +1322,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                         .filter(|held| held.is_finite())
                         .map(|held| held.trunc() as i128)
                 })
-                .or_else(|| value.as_str().and_then(|text| text.parse::<i128>().ok()));
+                .or_else(|| {
+                    value
+                        .as_string()
+                        .and_then(|text| integer_from_text_as::<i128>(text.as_str()))
+                });
             let Some(held) = held else {
                 return refuse("a whole number");
             };

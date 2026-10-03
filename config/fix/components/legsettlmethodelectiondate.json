@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegsettlmethodelectiondatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegsettlmethodelectiondatebusinesscenters",
-          "FIX:tag": "42581"
-        }
-      },
-      {
         "name": "legsettlmethodelectiondatebusinesscenters",
         "dtype": {
           "type": "null"

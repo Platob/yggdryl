@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegstreamcommoditysettltimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegstreamcommoditysettltimes",
-          "FIX:tag": "41683"
-        }
-      },
-      {
         "name": "legstreamcommoditysettltimes",
         "dtype": {
           "type": "null"

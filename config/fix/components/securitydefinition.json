@@ -153,17 +153,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -174,17 +163,6 @@
         }
       },
       {
-        "name": "norelatedinstruments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedinstruments",
-          "FIX:tag": "1647"
-        }
-      },
-      {
         "name": "relatedinstruments",
         "dtype": {
           "type": "null"
@@ -192,17 +170,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedinstruments"
-        }
-      },
-      {
-        "name": "nosecurityclassifications",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityclassifications",
-          "FIX:tag": "1582"
         }
       },
       {
@@ -304,17 +271,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -347,17 +303,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtleggrp",
         "dtype": {
           "type": "null"
@@ -385,17 +330,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "yielddata"
-        }
-      },
-      {
-        "name": "nomarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketsegments",
-          "FIX:tag": "1310"
         }
       },
       {

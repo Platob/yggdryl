@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nostreamcommodityaltids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommodityaltids",
-          "FIX:tag": "41277"
-        }
-      },
-      {
         "name": "streamcommodityaltids",
         "dtype": {
           "type": "null"
@@ -110,17 +99,6 @@
         "metadata": {
           "FIX:field": "streamcommoditydeliverypricingregion",
           "FIX:tag": "42587"
-        }
-      },
-      {
-        "name": "nostreamassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamassetattributes",
-          "FIX:tag": "41237"
         }
       },
       {
@@ -211,17 +189,6 @@
         }
       },
       {
-        "name": "nostreamcommoditydatasources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommoditydatasources",
-          "FIX:tag": "41280"
-        }
-      },
-      {
         "name": "streamcommoditydatasources",
         "dtype": {
           "type": "null"
@@ -287,17 +254,6 @@
         }
       },
       {
-        "name": "nostreamcommoditysettlbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommoditysettlbusinesscenters",
-          "FIX:tag": "41249"
-        }
-      },
-      {
         "name": "streamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
@@ -360,17 +316,6 @@
         "metadata": {
           "FIX:field": "streamcommoditysettldaytype",
           "FIX:tag": "41274"
-        }
-      },
-      {
-        "name": "nostreamcommoditysettlperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreamcommoditysettlperiods",
-          "FIX:tag": "41289"
         }
       },
       {

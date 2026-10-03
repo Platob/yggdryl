@@ -132,17 +132,6 @@
         }
       },
       {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
-        }
-      },
-      {
         "name": "relsymderivsecupdgrp",
         "dtype": {
           "type": "null"

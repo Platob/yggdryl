@@ -804,3 +804,71 @@ mod fields {
         );
     }
 }
+
+#[cfg(feature = "internals")]
+mod base64 {
+    //! The one base64 reader and writer the document layers share.
+
+    use yggdryl::Bytes;
+    use yggdryl::internals::bytes::{BASE64_SPELLING, base64_into, from_base64, into_base64};
+
+    #[test]
+    fn base64_reads_the_standard_padded_alphabet_with_whitespace_between_the_digits() {
+        for (text, expected) in [
+            ("AP8=", &[0_u8, 255][..]),
+            ("AP8Q", &[0, 255, 16]),
+            ("", &[]),
+            ("QUJDREVG", b"ABCDEF"),
+            ("QUJD\nREVG\n", b"ABCDEF"),
+            ("  QU JD\r\n\tRE VG  ", b"ABCDEF"),
+            ("AP8=\n", &[0, 255]),
+        ] {
+            assert_eq!(
+                from_base64(text).as_ref().map(Bytes::as_bytes),
+                Some(expected),
+                "{text:?}"
+            );
+        }
+        for text in [
+            "not base64!",
+            "AP8",
+            "AP8==",
+            "AP9=",
+            "-_8=",
+            "AP8=AQI=",
+            "A",
+            "QUJD\u{a0}REVG",
+        ] {
+            assert_eq!(from_base64(text), None, "{text:?}");
+        }
+        assert_eq!(BASE64_SPELLING, "base64 text");
+    }
+
+    #[test]
+    fn base64_spells_a_payload_on_one_padded_line_that_reads_back() {
+        for payload in [
+            &[][..],
+            &[0],
+            &[0, 255],
+            &[0, 255, 16],
+            b"ABCDEF",
+            &[0_u8; 61],
+        ] {
+            let spelled = into_base64(payload);
+            assert!(!spelled.contains(char::is_whitespace), "{spelled:?}");
+            assert_eq!(spelled.len() % 4, 0, "{spelled:?}");
+            assert_eq!(
+                from_base64(&spelled),
+                Some(Bytes::new(payload)),
+                "{spelled:?}"
+            );
+            // The appending form writes the same digits after what the buffer
+            // holds and nothing else, which is how a reused cell spells one.
+            let mut cell = b"cell,".to_vec();
+            base64_into(payload, &mut cell);
+            assert_eq!(cell, [b"cell,", spelled.as_bytes()].concat(), "{spelled:?}");
+        }
+        assert_eq!(into_base64(&[0_u8, 255]), "AP8=");
+        assert_eq!(into_base64(b"ABCDEF"), "QUJDREVG");
+    }
+}

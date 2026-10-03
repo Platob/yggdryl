@@ -5,6 +5,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::boolean::{BOOLEAN_SPELLINGS, bool_from_text};
 use crate::uri::percent_decode;
 use crate::{Authority, Error, Result, Uri};
 
@@ -400,11 +401,8 @@ fn parse_addressing(values: &BTreeMap<String, String>) -> Result<S3AddressingSty
 }
 
 fn parse_bool(key: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "1" => Ok(true),
-        "false" | "0" => Ok(false),
-        _ => Err(invalid_option(key, "expected a boolean")),
-    }
+    bool_from_text(value)
+        .ok_or_else(|| invalid_option(key, &format!("expected {BOOLEAN_SPELLINGS}")))
 }
 
 fn parse_query(parsed: &Uri) -> Result<BTreeMap<String, String>> {

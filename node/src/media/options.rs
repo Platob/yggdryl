@@ -83,22 +83,11 @@ fn byte_text(byte: u8) -> String {
     char::from(byte).to_string()
 }
 
-/// The one byte a CSV role is spelled as: a one-character string whose
-/// character is a byte. Whether that byte may play the role is the core's
-/// judgement, so a non-ASCII byte is handed over for its refusal; text that
-/// is not one such character can reach no byte and is refused here naming
-/// the property.
+/// The one byte a CSV role is spelled as, read by the core's one spelling
+/// ([`yggdryl::csv::CsvOptions::byte_from_text`]); whether that byte may
+/// play the role is the core setter's judgement.
 fn byte_of(text: &str, name: &str) -> Result<u8> {
-    let mut characters = text.chars();
-    match (characters.next(), characters.next()) {
-        (Some(character), None) => u8::try_from(u32::from(character)).ok(),
-        _ => None,
-    }
-    .ok_or_else(|| {
-        napi_error(format!(
-            "expected one ASCII character for {name}, got {text:?}"
-        ))
-    })
+    yggdryl::csv::CsvOptions::byte_from_text(text, name).map_err(crate::napi_error)
 }
 
 /// The byte an optional CSV role is set to, or `None` where `null` clears
@@ -157,6 +146,25 @@ impl JsRecordOptions {
     #[napi(getter)]
     pub fn field(&self) -> Option<JsField> {
         self.inner.field().map(JsField::from_core)
+    }
+
+    /// The write mode `mode` spells, read through the core's `IOMode`
+    /// vocabulary - trimmed, in any case - as its canonical name: one of
+    /// `overwrite`, `append` and `merge`. The loader captures and removes
+    /// this private bridge, and reads every generic write's mode through it
+    /// before an input is touched; a mode that writes nothing (`readonly`,
+    /// `random`) is refused here.
+    #[napi(js_name = "_writeModeNative", skip_typescript)]
+    pub fn write_mode_native(mode: String) -> Result<String> {
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
+        if IOMode::WRITE.contains(&mode) {
+            Ok(mode.as_str().to_owned())
+        } else {
+            Err(napi_error(format!(
+                "expected a write mode - {} - got {mode}",
+                IOMode::WRITE.map(IOMode::as_str).join(", ")
+            )))
+        }
     }
 
     /// Validate explicit write intent before JavaScript converts or pulls input.

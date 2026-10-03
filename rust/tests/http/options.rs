@@ -17,7 +17,10 @@ fn a_known_property_whose_value_does_not_parse_is_refused_naming_it() {
     for (name, value, expected) in [
         ("timeout", "soon", "seconds"),
         ("connect-timeout", "1m", "seconds"),
-        ("max_pause", "-1", "at least zero"),
+        ("max_pause", "-1", "seconds"),
+        ("timeout", "1e30", "seconds"),
+        ("timeout", "1e30ms", "seconds"),
+        ("timeout", "nan", "seconds"),
         ("max_attempts", "three", "whole number"),
         ("max_redirects", "-1", "whole number"),
         ("concurrency", "many", "whole number"),
@@ -27,6 +30,8 @@ fn a_known_property_whose_value_does_not_parse_is_refused_naming_it() {
         ("netrc", "sometimes", "true/false"),
         ("cookies", "jar", "true/false"),
         ("max_body_size", "lots", "byte count"),
+        ("max_body_size", "1.5MiB", "byte count"),
+        ("max_body_size", "99999999999GiB", "byte count"),
         ("stream_batch_size", "64 pages", "byte count"),
         ("accept_encoding", "gzip, br", "content codings"),
         ("pagination", "scroll", "pagination"),
@@ -247,8 +252,12 @@ fn durations_read_seconds_with_an_optional_s_or_ms_suffix() {
         ("1.5", Duration::from_millis(1500)),
         ("2s", Duration::from_secs(2)),
         ("2 S", Duration::from_secs(2)),
+        ("2 seconds", Duration::from_secs(2)),
         ("250ms", Duration::from_millis(250)),
         ("0.5ms", Duration::from_micros(500)),
+        ("7us", Duration::from_micros(7)),
+        ("250ns", Duration::from_nanos(250)),
+        ("1e1", Duration::from_secs(10)),
     ] {
         let options = HttpOptions::from_properties([("timeout", value)]).expect(value);
         assert_eq!(options.timeout(), expected, "{value}");
@@ -256,18 +265,25 @@ fn durations_read_seconds_with_an_optional_s_or_ms_suffix() {
 }
 
 #[test]
-fn booleans_read_true_false_one_zero_yes_no_in_any_case() {
+fn booleans_read_the_one_boolean_table_in_any_case() {
     for (value, expected) in [
         ("true", true),
         ("TRUE", true),
         ("1", true),
         ("yes", true),
         ("Yes", true),
+        ("y", true),
+        ("t", true),
+        ("on", true),
         ("false", false),
         ("False", false),
         ("0", false),
         ("no", false),
         ("NO", false),
+        ("n", false),
+        ("f", false),
+        ("off", false),
+        ("of", false),
     ] {
         let options = HttpOptions::from_properties([("cookies", value)]).expect(value);
         assert_eq!(options.cookies(), expected, "{value}");

@@ -2,6 +2,9 @@
 //! declared together.
 
 #[cfg(all(feature = "s3", feature = "internals"))]
+#[path = "auth.rs"]
+mod auth;
+#[cfg(all(feature = "s3", feature = "internals"))]
 #[path = "dialect.rs"]
 mod dialect;
 #[cfg(all(feature = "s3", feature = "internals"))]

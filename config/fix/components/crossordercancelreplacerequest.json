@@ -91,17 +91,6 @@
         }
       },
       {
-        "name": "norootpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norootpartyids",
-          "FIX:tag": "1116"
-        }
-      },
-      {
         "name": "rootparties",
         "dtype": {
           "type": "null"
@@ -109,17 +98,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "rootparties"
-        }
-      },
-      {
-        "name": "nosides",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nosides",
-          "FIX:tag": "552"
         }
       },
       {
@@ -143,17 +121,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -161,17 +128,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -327,17 +283,6 @@
         }
       },
       {
-        "name": "notradingsessions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingsessions",
-          "FIX:tag": "386"
-        }
-      },
-      {
         "name": "trdgses",
         "dtype": {
           "type": "null"
@@ -400,17 +345,6 @@
         "metadata": {
           "FIX:field": "transbkdtime",
           "FIX:tag": "483"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {
@@ -691,17 +625,6 @@
         "metadata": {
           "FIX:field": "targetstrategy",
           "FIX:tag": "847"
-        }
-      },
-      {
-        "name": "nostrategyparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrategyparameters",
-          "FIX:tag": "957"
         }
       },
       {

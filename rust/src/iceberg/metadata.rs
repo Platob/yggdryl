@@ -1672,20 +1672,24 @@ impl TableMetadata {
         self.apply_official_update(None, |builder| Ok(builder.set_location(location)))
     }
 
-    /// Replace the table's UUID, validating the canonical 8-4-4-4-12 shape.
+    /// Replace the table's UUID, read as the crate's [`Uuid`](crate::Uuid)
+    /// reads a spelling: 32 hexadecimal digits or the 36-character hyphenated
+    /// shape, in either case.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the input when it is not hyphenated hex of that
-    /// shape; the stored UUID is unchanged.
+    /// Returns an error naming the input when it is neither spelling; the
+    /// stored UUID is unchanged.
     pub fn assign_uuid(&mut self, uuid: impl Into<SmolStr>) -> Result<()> {
         let uuid = uuid.into();
-        let parsed = uuid::Uuid::parse_str(&uuid).map_err(|_| {
+        let parsed = uuid.parse::<crate::Uuid>().map_err(|_| {
             invalid(format_smolstr!(
-                "expected a UUID shaped 8-4-4-4-12 hex, got {:?}",
+                "expected {}, got {:?}",
+                crate::uuid::UUID_SPELLINGS,
                 crate::text::elide_to(&uuid, 64)
             ))
         })?;
+        let parsed = uuid::Uuid::from_bytes(parsed.into_bytes());
         self.apply_official_update(None, |builder| Ok(builder.assign_uuid(parsed)))
     }
 

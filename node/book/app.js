@@ -1,10 +1,13 @@
 // The book display: one page over the book service.
 //
-// The state is the selection the header states - table, ticker, from, to,
+// The state is the selection the header states - table, book, from, to,
 // zone, interval - and the bucket chosen on the chart; every selector change
 // refetches the candles (debounced), a selection fetches the last book of the
 // bucket and its events on both sides, and the download control points at the
-// whole range. `from`, `to` and the chosen bucket are held as instants
+// whole range. A book is held as the key the service lists it under - the
+// instrument's ISIN, else the ticker - which every query sends as its
+// `ticker` parameter, and labelled by its ticker where it states one. `from`,
+// `to` and the chosen bucket are held as instants
 // (nanoseconds, `bigint`) and sent as UTC text, so a zone change moves the
 // wall clocks the inputs show and never the range asked. The URL hash carries
 // the selection, so a view is a link, and a link pasted into the page is
@@ -27,7 +30,10 @@ export const INTERVALS = Object.freeze(['30s', '1m', '5m', '15m', '1h', '1d'])
 /** The events asked per side of a bucket; the service bounds the answer and says when it cut it. */
 export const EVENT_LIMIT = 5000
 
-/** The keys the hash carries, in the order they are written. */
+/**
+ * The keys the hash carries, in the order they are written: `ticker` the
+ * book key, as the service's parameter of that name reads it.
+ */
 export const HASH_KEYS = Object.freeze(['table', 'ticker', 'from', 'to', 'tz', 'interval', 'at'])
 
 /** The debounce of a selector change before the candles are refetched, in milliseconds. */
@@ -194,6 +200,9 @@ export function start(document) {
 
   const wallClock = (instant) => formatInstant(instant, state.tz, WALL_CLOCK)
 
+  // The selected book's name: the ticker its books state, else its key.
+  const bookName = () => state.tickers.find((entry) => entry.key === state.ticker)?.ticker ?? state.ticker
+
   const query = () => ({ table: state.table, ticker: state.ticker, from: instantText(state.from), to: instantText(state.to), tz: state.tz })
 
   const currentHash = () => writeHash({ ...query(), interval: state.interval, at: instantText(state.at) })
@@ -242,9 +251,9 @@ export function start(document) {
     const range = state.candles.length > 0 ? `${state.candles.length} buckets` : 'no buckets'
     elements.chart.setAttribute(
       'aria-label',
-      state.ticker ? `${state.ticker} bid and ask candles, ${state.interval} in ${state.tz}, ${range}` : 'Bid and ask candles',
+      state.ticker ? `${bookName()} bid and ask candles, ${state.interval} in ${state.tz}, ${range}` : 'Bid and ask candles',
     )
-    elements.title.textContent = state.ticker ? `${state.ticker} · ${state.interval} · ${state.tz}` : 'Bid and ask'
+    elements.title.textContent = state.ticker ? `${bookName()} · ${state.interval} · ${state.tz}` : 'Bid and ask'
   }
 
   // The empty panels, which the selection's absence renders; `clearSelection` also drops the selection and its read.
@@ -314,7 +323,7 @@ export function start(document) {
       const chosen = state.at === null ? null : (state.candles.find((candle) => instantNanos(candle.start) === state.at) ?? null)
       if (chosen === null) clearSelection()
       draw()
-      status(state.candles.length === 0 ? `No books for ${state.ticker} between ${wallClock(state.from)} and ${wallClock(state.to)} (${state.tz})` : '', 'empty')
+      status(state.candles.length === 0 ? `No books for ${bookName()} between ${wallClock(state.from)} and ${wallClock(state.to)} (${state.tz})` : '', 'empty')
       if (chosen !== null) await select(chosen)
     } catch (error) {
       if (!reads.candles.current(control)) return
@@ -353,19 +362,27 @@ export function start(document) {
     state.ticker = fill(
       elements.ticker,
       state.tickers.map((entry) => ({
-        value: entry.ticker,
-        label: `${entry.ticker} · ${entry.books} book${entry.books === 1 ? '' : 's'}`,
+        value: entry.key,
+        label: `${entry.ticker ?? entry.key} · ${entry.books} book${entry.books === 1 ? '' : 's'}`,
         title: entry.crosscode,
       })),
-      state.ticker,
+      keyOf(state.ticker),
     )
     if (state.from === null || state.to === null) spanOf(state.ticker)
     return refresh()
   }
 
-  // The range of a ticker: its span as the service states it, `from` its first book's second and `to` the second after its last.
-  const spanOf = (ticker) => {
-    const chosen = state.tickers.find((entry) => entry.ticker === ticker)
+  // The book a link names, as the service reads its `ticker` parameter: a
+  // listed key, else the key of the one book whose ticker it is.
+  const keyOf = (name) => {
+    if (state.tickers.some((entry) => entry.key === name)) return name
+    const named = state.tickers.filter((entry) => entry.ticker === name)
+    return named.length === 1 ? named[0].key : name
+  }
+
+  // The range of a book: its span as the service states it, `from` its first book's second and `to` the second after its last.
+  const spanOf = (key) => {
+    const chosen = state.tickers.find((entry) => entry.key === key)
     if (!chosen) return
     state.from = instantNanos(chosen.from)
     state.to = instantNanos(chosen.to)
@@ -396,8 +413,9 @@ export function start(document) {
   /**
    * Take the view a hash names: the interval, the zone - one the service
    * reads, else the browser's where it is one, else UTC - the table, the
-   * ticker, and the range and the bucket as instants, a wall clock in a
-   * hand-written link read in the link's zone.
+   * book - its key, or a ticker one listed book states - and the range and
+   * the bucket as instants, a wall clock in a hand-written link read in the
+   * link's zone.
    */
   const applyHash = (hash) => {
     state.interval = fill(elements.interval, INTERVALS.map((value) => ({ value, label: value })), INTERVALS.includes(hash.interval) ? hash.interval : '1m')

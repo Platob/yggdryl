@@ -63,16 +63,21 @@ pub struct ArrowFileInfo {
 
 impl ArrowFileInfo {
     fn into_core(self) -> Result<FileInfo> {
+        // Arrow spells absence `not-found`, the kind the core calls
+        // `unknown`; any other spelling is read as the core's own kind, of
+        // which a filesystem reports a file or a directory.
         let kind = match self.kind.as_str() {
-            "file" => IOKind::File,
-            "directory" => IOKind::Directory,
-            "not-found" => IOKind::Unknown,
-            value => {
-                return Err(invalid(format!(
-                    "expected file info kind to be 'file', 'directory', or 'not-found', got {value:?}"
-                )));
-            }
-        };
+            "not-found" => Ok(IOKind::Unknown),
+            text => IOKind::from_str(text),
+        }
+        .ok()
+        .filter(|kind| matches!(kind, IOKind::File | IOKind::Directory | IOKind::Unknown))
+        .ok_or_else(|| {
+            invalid(format!(
+                "expected file info kind to be 'file', 'directory', or 'not-found', got {:?}",
+                self.kind
+            ))
+        })?;
         let size = self
             .size
             .map(|value| exact_bigint_u64(&value, "size"))

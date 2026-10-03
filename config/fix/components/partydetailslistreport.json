@@ -79,17 +79,6 @@
         }
       },
       {
-        "name": "nopartydetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartydetails",
-          "FIX:tag": "1671"
-        }
-      },
-      {
         "name": "partydetails",
         "dtype": {
           "type": "null"

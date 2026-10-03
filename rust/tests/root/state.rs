@@ -362,6 +362,19 @@ fn every_fix_status_field_answers_by_its_own_code_set() {
     }
 }
 
+/// A `QuoteCancel(Z)` asks for its quote's cancel as an order cancel request
+/// does: it moves the quote's chain to a pending cancel, which its
+/// acknowledgement then ends.
+#[test]
+fn a_quote_cancel_asks_for_a_cancel() {
+    assert_eq!(State::from_fix_msgtype("Z"), Some(State::PendingCancel));
+    assert_eq!(
+        State::from_fix_msgtype("Z"),
+        State::from_fix_msgtype("F"),
+        "a quote cancel asks for what an order cancel request asks for"
+    );
+}
+
 #[test]
 fn a_state_is_a_datatype_of_the_enum_family() {
     assert_eq!(DataType::State.id(), DataTypeId::State);

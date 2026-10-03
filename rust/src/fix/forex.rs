@@ -13,7 +13,10 @@
 //! identifier overlay under the crate's `FOREX` key, so a stated identifier
 //! still replaces it and a changed symbol derives it again. The `forexcode`
 //! cell is a view of that key, so a row written from a detected message
-//! carries the pair and a reader of that row states it.
+//! carries the pair, and a reader of that row holds it as derived again
+//! where the symbol names it and nothing else states one - so the pair
+//! follows a written symbol there too. The cells detection wrote are the
+//! row's content, and read back as the row's own word.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -24,7 +27,7 @@ use smol_str::SmolStr;
 
 use super::FixMsg;
 use crate::xxhash::Xxh64;
-use crate::{Cfi, FxSymbol, FxTenor, Result, Scalar};
+use crate::{Cfi, Forex, FxSymbol, FxTenor, Result, Scalar};
 
 /// Every symbol one registry's messages have spelled, each read once into
 /// the pair it names - or into none.
@@ -114,7 +117,6 @@ impl FixMsg {
     /// Detects the currency pair `Symbol(55)` names and fills what it
     /// implies, where the message states no other class.
     ///
-    /// Skipped where the row stated its `forexcode`: that is the row's word.
     /// A symbol naming no pair, or a message stating a class that is not
     /// foreign exchange - a `SecurityType(167)` outside the FX codes, a
     /// `Product(460)` other than currency (commodity too for a metal), a
@@ -146,9 +148,6 @@ impl FixMsg {
     /// Returns the schema grammar's refusal when the written children do not
     /// make a root.
     pub(super) fn derive_forex(&mut self, memo: &FxMemo) -> Result<bool> {
-        if self.states_forex() {
-            return Ok(false);
-        }
         let owned = self.detected_fx();
         // A cell detection wrote is its own, and reads as absent to it.
         let stated = |tag: i32| {
@@ -159,15 +158,7 @@ impl FixMsg {
                 .as_ref()
                 .and_then(super::msg::scalar_text)
         };
-        let written = self.get_by_tag(55);
-        let detected = written
-            .as_ref()
-            .and_then(Scalar::as_str)
-            .map(str::trim)
-            .filter(|held| !held.is_empty() && *held != "[N/A]" && *held != "[N/A")
-            .and_then(|held| memo.symbol(held))
-            .filter(|symbol| admits(symbol, &stated));
-        let Some(symbol) = detected else {
+        let Some(symbol) = self.detected_symbol(memo, &stated) else {
             if owned == 0 && !self.derives_pair() {
                 return Ok(false);
             }
@@ -266,6 +257,34 @@ impl FixMsg {
         }
         self.set_detected_fx(detected_fx);
         Ok(paired || wrote || detected_fx != owned)
+    }
+
+    /// The pair `Symbol(55)` names where the message states no other class,
+    /// `stated` answering what it states under a tag.
+    fn detected_symbol(
+        &self,
+        memo: &FxMemo,
+        stated: &impl Fn(i32) -> Option<SmolStr>,
+    ) -> Option<FxSymbol> {
+        self.get_by_tag(55)
+            .as_ref()
+            .and_then(Scalar::as_str)
+            .map(str::trim)
+            .filter(|held| !held.is_empty() && *held != "[N/A]" && *held != "[N/A")
+            .and_then(|held| memo.symbol(held))
+            .filter(|symbol| admits(symbol, stated))
+    }
+
+    /// The pair detection would derive off `Symbol(55)`, whatever the row
+    /// stated: the derivation a row's `forexcode` naming it views
+    /// ([`FixMsg::viewed_derivation`]).
+    pub(super) fn detected_pair(&self, memo: &FxMemo) -> Option<Forex> {
+        let stated = |tag: i32| {
+            self.get_by_tag(tag)
+                .as_ref()
+                .and_then(super::msg::scalar_text)
+        };
+        Some(self.detected_symbol(memo, &stated)?.forex)
     }
 }
 

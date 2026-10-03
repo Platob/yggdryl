@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventcrediteventqualifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventcrediteventqualifiers",
-          "FIX:tag": "41724"
-        }
-      },
-      {
         "name": "underlyingcomplexeventcrediteventqualifiers",
         "dtype": {
           "type": "null"

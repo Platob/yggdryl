@@ -168,7 +168,7 @@ cannot hold - there is no host-runtime cast in between.
 ```python
 import pytest
 
-from yggdryl import DataType, Field
+from yggdryl import DataType, Field, Scalar
 
 qty = Field("qty", "int16", nullable=False)
 value = qty.scalar(42)
@@ -183,6 +183,14 @@ with pytest.raises(ValueError, match="expected float64, got i64"):
     DataType("float64").scalar(100)                   # an int is not a float
 assert DataType("float64").scalar(100.0).kind == "f64"
 assert Field("note", "utf8").scalar(None).is_null()   # nullable by default
+
+# A boolean reads one vocabulary, case-insensitive and trimmed: true/t/yes/y/on/1, false/f/no/n/off/0.
+flag = DataType("boolean")
+assert flag.scalar(" Yes ").as_py() is True and flag.scalar("off").as_py() is False
+with pytest.raises(ValueError):
+    flag.scalar("n/a")
+# Truthiness reads text by the same false set; other text is present, so true.
+assert not Scalar.from_("no") and Scalar.from_("n/a")
 ```
 
 ## Build a row
@@ -268,6 +276,12 @@ assert amount.scalar("12.5").as_py() == Decimal("12.50")
 assert amount.scalar(Decimal("12.5")).as_py() == Decimal("12.50")
 with pytest.raises(ValueError, match="got f64"):
     amount.scalar(12.5)                                # a float is inexact
+# One text grammar: `_` groups digits ahead of the point; a comma, NaN and a digit past the scale are refused.
+assert amount.scalar("1_250.5").as_py() == Decimal("1250.50")
+assert amount.scalar(" .5 ").as_py() == Decimal("0.50")
+for refused in ("1,250.50", "NaN", "12.505"):
+    with pytest.raises(ValueError):
+        amount.scalar(refused)
 
 assert (Scalar.decimal(1, 0) / Scalar.decimal(2, 0)) == Scalar.decimal(5, 1)
 with pytest.raises(ArithmeticError):
@@ -314,8 +328,10 @@ assert DataType("timezone").scalar("Asia/Calcutta").as_py() == "Asia/Kolkata"
 
 ## Strings, bytes, codes and identifiers
 
-A bound counts stored bytes; a registered code is its own datatype with its
-own validity; a UUID column reads every spelling to one value.
+A bound counts stored bytes; a registered code is its own datatype, which
+admits its shape - whether a value is real (a check digit that closes) is a
+rank the core keeps, never a refusal; a UUID column reads every spelling to one
+value.
 
 ```python
 import uuid
@@ -339,9 +355,10 @@ assert ccy.scalar("USDT").as_py() == "USDT"            # a ticker, up to eight b
 with pytest.raises(ValueError, match="at most 8 bytes"):
     ccy.scalar("BABYDOGES")
 assert ccy.scalar("USD") != Scalar.from_("USD")        # a code is not a string
-with pytest.raises(ValueError, match="check digit"):
-    DataType("isin").scalar("US0378331006")
 assert DataType("isin").scalar("US0378331005").as_py() == "US0378331005"
+assert DataType("isin").scalar("US0378331006").as_py() == "US0378331006"  # a digit off: a lower rank
+with pytest.raises(ValueError):
+    DataType("isin").scalar("US037833100")             # eleven characters: not an ISIN
 # A currency pair: every spelling a feed writes, one stored `CCY/CCY`.
 assert DataType("forex").code_width == 7
 assert DataType("forex").scalar("eurusd").as_py() == "EUR/USD"

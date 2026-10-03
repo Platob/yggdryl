@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nolegdividendperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdividendperiods",
-          "FIX:tag": "42366"
-        }
-      },
-      {
         "name": "legdividendperiods",
         "dtype": {
           "type": "null"

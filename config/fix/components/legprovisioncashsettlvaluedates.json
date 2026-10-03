@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "nolegprovisioncashsettlvaluedatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisioncashsettlvaluedatebusinesscenters",
-          "FIX:tag": "40935"
-        }
-      },
-      {
         "name": "legprovisioncashsettlvaluedatebusinesscenters",
         "dtype": {
           "type": "null"

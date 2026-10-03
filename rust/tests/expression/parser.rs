@@ -10,6 +10,80 @@
 mod grammar {
 
     use yggdryl::expression::{Expression, Term};
+    use yggdryl::{DataType, Scalar};
+
+    /// The value a typed literal holds.
+    fn literal_value(text: &str) -> Scalar {
+        let term: Term = text
+            .parse()
+            .unwrap_or_else(|error| panic!("{text}: {error}"));
+        term.as_literal()
+            .unwrap_or_else(|| panic!("{text}: not a literal"))
+            .value()
+            .clone()
+    }
+
+    #[test]
+    fn a_typed_literal_reads_its_text_as_the_datatype_reads_it() {
+        // A flag reads the one table a column of text is cast through.
+        assert_eq!(literal_value("boolean 'yes'"), Scalar::from(true));
+        assert_eq!(literal_value("boolean ' TRUE '"), Scalar::from(true));
+        assert_eq!(literal_value("bool 'N'"), Scalar::from(false));
+        assert_eq!(literal_value("bool 'off'"), Scalar::from(false));
+        // An integer reads a signed, trimmed spelling and keeps the width.
+        assert_eq!(literal_value("int32 ' 5 '"), Scalar::from(5_i32));
+        assert_eq!(literal_value("int64 '+5'"), Scalar::from(5_i64));
+        assert_eq!(literal_value("uint8 ' 200 '"), Scalar::from(200_u8));
+        // A float reads what a column of text is cast through.
+        assert_eq!(literal_value("float64 ' 1.5 '"), Scalar::from(1.5_f64));
+        assert_eq!(literal_value("float32 '1e3'"), Scalar::from(1000.0_f32));
+        assert_eq!(literal_value("float64 'inf'"), Scalar::from(f64::INFINITY));
+        // A decimal reads an exponent and surrounding blanks at the declared
+        // scale.
+        assert_eq!(
+            literal_value("decimal128(10,2) '1e2'"),
+            Scalar::decimal128(10_000, 2)
+        );
+        assert_eq!(
+            literal_value("decimal128(10,2) ' 1.50 '"),
+            Scalar::decimal128(150, 2)
+        );
+        // A coefficient past 128 bits is a decimal256's, read exactly and
+        // printed back as the text it was written from.
+        let wide: Term = "decimal256(76,2) '340282366920938463463374607431768211456.25'"
+            .parse()
+            .unwrap();
+        let literal = wide.as_literal().unwrap();
+        assert_eq!(literal.dtype(), &DataType::decimal256(76, 2).unwrap());
+        assert!(
+            wide.to_string()
+                .contains("340282366920938463463374607431768211456.25"),
+            "{wide}"
+        );
+        assert_eq!(wide.to_string().parse::<Term>().unwrap(), wide);
+    }
+
+    #[test]
+    fn a_typed_literal_refuses_text_its_datatype_cannot_hold_where_it_was_written() {
+        for text in [
+            "boolean 'maybe'",
+            "int8 '1000'",
+            "int32 '1.0'",
+            "int32 'x'",
+            "uint8 '-1'",
+            "float64 'x'",
+            "decimal128(10,2) '1.555'",
+            // A coefficient past what the width holds was read as zero once.
+            "decimal128(38,0) '340282366920938463463374607431768211456'",
+        ] {
+            let error = text.parse::<Term>().unwrap_err().to_string();
+            assert!(error.contains("at byte "), "{text}: {error}");
+        }
+        // The refusal names the table a flag is read from and the text.
+        let error = "boolean 'maybe'".parse::<Term>().unwrap_err().to_string();
+        assert!(error.contains("yes/no"), "{error}");
+        assert!(error.contains("maybe"), "{error}");
+    }
 
     /// A typed decimal literal reads through the one decimal text door:
     /// every exact spelling at any width, printed as the shortest text, and

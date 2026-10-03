@@ -31,7 +31,7 @@ use std::sync::Arc;
 
 use crate::http::{Body, Method, Request, Response, Server, Status};
 use crate::soap::{self, Fault, FaultCode};
-use crate::{Result, Url};
+use crate::{Format, MimeType, Result, Url};
 
 use super::response::{ACTOR, XmlaError, fault, write_fault};
 use super::service::{Service, code};
@@ -96,8 +96,13 @@ impl Service {
             .with_header("content-type", soap::CONTENT_TYPE)?
             .with_header(NEGOTIATION.0, NEGOTIATION.1)?;
         if let Some(content_type) = request.headers().get("content-type") {
+            // The media type, read as RFC 9110 reads it: a case-insensitive
+            // `type/subtype`, `application/xmla+xml` and any `+xml` suffix an
+            // XML document's.
             let base = content_type.split(';').next().unwrap_or("").trim();
-            if !base.contains("xml") {
+            let is_xml = MimeType::from_content_type(base)
+                .is_ok_and(|mime| mime == MimeType::XMLA || mime.format() == Some(Format::Xml));
+            if !is_xml {
                 let refused = refusal(format!(
                     "expected an XML content type for a SOAP message, got {base}"
                 ))?;

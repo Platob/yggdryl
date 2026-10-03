@@ -21,6 +21,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::is_iceberg_mime_type;
 use super::metadata::TableMetadata;
+use crate::integer::integer_from_text_as;
 use crate::{Error, MimeType, Result, Url};
 
 /// Where a commit writes its files before they reach the table.
@@ -807,6 +808,7 @@ fn data_mime_type_layer(
         metadata,
         IcebergOptions::DATA_MIME_TYPE_KEY,
         "a data MIME type of parquet, avro, orc, or puffin",
+        |text| text.parse().ok(),
         is_iceberg_mime_type,
     )
 }
@@ -821,6 +823,7 @@ fn compact_after_commits_layer(
         metadata,
         IcebergOptions::COMPACT_AFTER_COMMITS_KEY,
         "a whole number of commits",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -835,6 +838,7 @@ fn commit_retries_layer(
         metadata,
         IcebergOptions::COMMIT_RETRIES_KEY,
         "a whole number of retries",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -849,6 +853,7 @@ fn commit_min_backoff_layer(
         metadata,
         IcebergOptions::COMMIT_MIN_BACKOFF_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -863,6 +868,7 @@ fn commit_max_backoff_layer(
         metadata,
         IcebergOptions::COMMIT_MAX_BACKOFF_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -877,6 +883,7 @@ fn commit_total_timeout_layer(
         metadata,
         IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -891,6 +898,7 @@ fn target_file_size_layer(
         metadata,
         IcebergOptions::TARGET_FILE_SIZE_KEY,
         "a positive byte count",
+        integer_from_text_as,
         |bytes| *bytes > 0,
     )
 }
@@ -905,6 +913,7 @@ fn read_parallelism_layer(
         metadata,
         IcebergOptions::READ_PARALLELISM_KEY,
         "a positive reader-thread count",
+        integer_from_text_as,
         |threads| *threads >= 1,
     )
 }
@@ -919,6 +928,7 @@ fn write_parallelism_layer(
         metadata,
         IcebergOptions::WRITE_PARALLELISM_KEY,
         "a positive writer-thread count",
+        integer_from_text_as,
         |threads| *threads >= 1,
     )
 }
@@ -933,6 +943,7 @@ fn write_staging_layer(
         metadata,
         IcebergOptions::WRITE_STAGING_KEY,
         "off or a local folder",
+        |text| text.parse().ok(),
         |staging| staging.folder().is_none_or(Url::is_local),
     )
 }
@@ -947,6 +958,7 @@ fn read_parallel_min_files_layer(
         metadata,
         IcebergOptions::READ_PARALLEL_MIN_FILES_KEY,
         "a whole number of files",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -961,6 +973,7 @@ fn read_parallel_min_file_size_layer(
         metadata,
         IcebergOptions::READ_PARALLEL_MIN_FILE_SIZE_KEY,
         "a whole number of bytes",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -970,18 +983,23 @@ fn read_parallel_min_file_size_layer(
 /// An explicit value wins without reading the property at all, which is what
 /// lets a caller shadow a stored value that does not parse. `None` means
 /// neither layer spoke, and the getter's default answers.
-fn layered<T: std::str::FromStr>(
+///
+/// `read` is the reader of the type the key holds - a count's is the one
+/// integer reader, a MIME type's its own - so no key keeps a text parse of
+/// its own.
+fn layered<T>(
     explicit: Option<T>,
     metadata: &TableMetadata,
     key: &'static str,
     expected: &str,
+    read: impl Fn(&str) -> Option<T>,
     accept: impl Fn(&T) -> bool,
 ) -> Result<Option<T>> {
     if explicit.is_some() {
         return Ok(explicit);
     }
     match stored(metadata, key)? {
-        Some((key, text)) => parsed(key, text, expected, accept).map(Some),
+        Some((key, text)) => parsed(key, text, expected, read, accept).map(Some),
         None => Ok(None),
     }
 }
@@ -1011,14 +1029,15 @@ fn stored<'metadata>(
 }
 
 /// Parse one configured value, or say why the text is not one.
-fn parsed<T: std::str::FromStr>(
+fn parsed<T>(
     key: SmolStr,
     text: &str,
     expected: &str,
+    read: impl Fn(&str) -> Option<T>,
     accept: impl Fn(&T) -> bool,
 ) -> Result<T> {
-    match text.parse::<T>() {
-        Ok(value) if accept(&value) => Ok(value),
+    match read(text) {
+        Some(value) if accept(&value) => Ok(value),
         _ => Err(Error::InvalidMetadataValue {
             key,
             reason: format_smolstr!("expected {expected}, got {text:?}"),

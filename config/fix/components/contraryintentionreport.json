@@ -79,17 +79,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -97,17 +86,6 @@
         "nullable": false,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "noexpiration",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "noexpiration",
-          "FIX:tag": "981"
         }
       },
       {
@@ -128,17 +106,6 @@
         "nullable": false,
         "metadata": {
           "FIX:component": "instrument"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {

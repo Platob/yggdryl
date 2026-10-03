@@ -1134,6 +1134,229 @@ order: struct[3], required
     }
 }
 
+/// Text that enters a flag or an integer parameter of the structural document
+/// is read by the reader of that type, whichever door it crosses: serde's, which
+/// JSON goes through, and the value conversion YAML, TOML and a host mapping go
+/// through.
+mod spellings {
+    use yggdryl::Scalar;
+    use yggdryl::{DataType, Field, StructType};
+
+    /// A dictionary field's document, `nullable` and `dictionary_is_ordered`
+    /// spelled as the arguments say, under the decimal-text id `7`.
+    fn dictionary_document(nullable: &str, ordered: &str) -> String {
+        format!(
+            r#"{{"name":"status","dtype":{{"type":"dictionary","key":{{"type":"int16"}},"value":{{"type":"string"}}}},"nullable":{nullable},"dictionary_id":"7","dictionary_is_ordered":{ordered}}}"#
+        )
+    }
+
+    /// The document of a map under a required `entries` field, its
+    /// `keys_sorted` replaced by `spelling`, or dropped when there is none.
+    fn map_document(spelling: Option<&str>) -> String {
+        let entries = StructType::from_fields([
+            DataType::utf8().required_field("key"),
+            DataType::Int64.nullable_field("value"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("entries");
+        let template = DataType::map(entries, false).unwrap().into_json().unwrap();
+        assert!(template.contains(r#""keys_sorted":false"#), "{template}");
+        match spelling {
+            Some(spelling) => template.replace(
+                r#""keys_sorted":false"#,
+                &format!(r#""keys_sorted":{spelling}"#),
+            ),
+            None => template.replace(r#","keys_sorted":false"#, ""),
+        }
+    }
+
+    fn through_value(document: &str) -> yggdryl::Result<Field> {
+        Field::from_value(yggdryl::json::from_utf8(document).unwrap())
+    }
+
+    #[test]
+    fn a_flag_reads_every_spelling_the_boolean_reader_reads_through_both_doors() {
+        for (spelling, expected) in [
+            ("true", true),
+            (r#""yes""#, true),
+            (r#""Y""#, true),
+            (r#""on""#, true),
+            (r#""1""#, true),
+            ("false", false),
+            (r#""no""#, false),
+            (r#"" Off ""#, false),
+            (r#""0""#, false),
+            (r#""f""#, false),
+        ] {
+            let document = dictionary_document(spelling, spelling);
+            let serde = Field::from_json(&document)
+                .unwrap_or_else(|error| panic!("json {spelling}: {error}"));
+            let value = through_value(&document)
+                .unwrap_or_else(|error| panic!("value {spelling}: {error}"));
+            assert_eq!(serde, value, "{spelling}");
+            assert_eq!(value.is_nullable(), expected, "{spelling}");
+            assert_eq!(
+                value.dictionary_is_ordered().unwrap_or_default(),
+                expected,
+                "{spelling}"
+            );
+            assert_eq!(value.dictionary_id(), Some(7), "{spelling}");
+        }
+    }
+
+    #[test]
+    fn a_flag_no_boolean_spells_is_refused_by_both_doors_by_its_path() {
+        for spelling in [r#""maybe""#, r#""""#, "1", "0", "2.5", "null"] {
+            let document = dictionary_document(spelling, "false");
+            assert!(Field::from_json(&document).is_err(), "json {spelling}");
+            let refused = through_value(&document).expect_err(spelling);
+            assert!(
+                refused.to_string().contains("$.nullable"),
+                "{spelling}: {refused}"
+            );
+        }
+        for spelling in [r#""maybe""#, r#""""#, "1", "2.5"] {
+            let document = dictionary_document("true", spelling);
+            assert!(Field::from_json(&document).is_err(), "json {spelling}");
+            // A stated flag is read or refused, never dropped as `false`.
+            let refused = through_value(&document).expect_err(spelling);
+            assert!(
+                refused.to_string().contains("$.dictionary_is_ordered"),
+                "{spelling}: {refused}"
+            );
+        }
+        // An unstated flag is `false`, and `nullable` is required.
+        let unstated = r#"{"name":"status","dtype":{"type":"dictionary","key":{"type":"int16"},"value":{"type":"string"}},"nullable":true,"dictionary_id":"7"}"#;
+        assert_eq!(
+            Field::from_json(unstated).unwrap(),
+            through_value(unstated).unwrap()
+        );
+        let required = r#"{"name":"id","dtype":{"type":"int64"}}"#;
+        assert!(Field::from_json(required).is_err());
+        assert!(through_value(required).is_err());
+    }
+
+    #[test]
+    fn keys_sorted_reads_the_boolean_reader_through_both_doors_and_is_required() {
+        for (spelling, expected) in [
+            ("true", true),
+            (r#""yes""#, true),
+            (r#""on""#, true),
+            ("false", false),
+            (r#""N""#, false),
+            (r#""0""#, false),
+        ] {
+            let document = map_document(Some(spelling));
+            let serde = DataType::from_json(&document)
+                .unwrap_or_else(|error| panic!("json {spelling}: {error}"));
+            let value = DataType::from_value(yggdryl::json::from_utf8(&document).unwrap())
+                .unwrap_or_else(|error| panic!("value {spelling}: {error}"));
+            assert_eq!(serde, value, "{spelling}");
+            assert_eq!(
+                matches!(value, DataType::SortedMap(_)),
+                expected,
+                "{spelling}"
+            );
+        }
+        // An ordering claim about the data is never defaulted: text no boolean
+        // spells, a number, null and absence are refused.
+        for spelling in [Some(r#""maybe""#), Some("1"), Some("null"), None] {
+            let document = map_document(spelling);
+            assert!(DataType::from_json(&document).is_err(), "json {spelling:?}");
+            let refused = DataType::from_value(yggdryl::json::from_utf8(&document).unwrap())
+                .expect_err("a refused flag");
+            assert!(
+                refused.to_string().contains("$.keys_sorted"),
+                "{spelling:?}: {refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dictionary_id_is_a_native_i64_and_reads_text_by_the_integer_reader() {
+        // Wider than 32 bits: the id the JSON path always carried.
+        let mut field = Field::new(
+            "status",
+            DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
+            true,
+        );
+        field
+            .set_dictionary_options(9_007_199_254_740_993, false)
+            .unwrap();
+        assert_eq!(
+            Field::from_value(field.clone().into_value()).unwrap(),
+            field
+        );
+        assert_eq!(
+            Field::from_yaml(&field.clone().into_yaml().unwrap()).unwrap(),
+            field
+        );
+        assert_eq!(
+            Field::from_toml(&field.clone().into_toml().unwrap()).unwrap(),
+            field
+        );
+
+        let document = |id: &str| {
+            format!(
+                r#"{{"name":"status","dtype":{{"type":"dictionary","key":{{"type":"int16"}},"value":{{"type":"string"}}}},"nullable":true,"dictionary_id":{id}}}"#
+            )
+        };
+        for id in [r#""7""#, r#"" 7 ""#, r#""+7""#, "7"] {
+            let document = document(id);
+            let serde =
+                Field::from_json(&document).unwrap_or_else(|error| panic!("json {id}: {error}"));
+            assert_eq!(serde.dictionary_id(), Some(7), "{id}");
+            assert_eq!(serde, through_value(&document).unwrap(), "{id}");
+        }
+        for id in [r#""7.0""#, r#""1e3""#, r#""0x10""#, r#""1_000""#, r#""""#] {
+            let document = document(id);
+            assert!(Field::from_json(&document).is_err(), "json {id}");
+            assert!(through_value(&document).is_err(), "value {id}");
+        }
+    }
+
+    #[test]
+    fn an_integer_parameter_reads_text_at_its_own_width() {
+        let decimal = |precision: Scalar, scale: Scalar| {
+            DataType::from_value(
+                Scalar::from_mapping([
+                    (Scalar::from("type"), Scalar::from("decimal128")),
+                    (Scalar::from("precision"), precision),
+                    (Scalar::from("scale"), scale),
+                ])
+                .unwrap(),
+            )
+        };
+        // Blanks and a sign are not part of the number.
+        assert_eq!(
+            decimal(Scalar::from(" 10 "), Scalar::from("+2")).unwrap(),
+            DataType::decimal128(10, 2).unwrap()
+        );
+        assert_eq!(
+            decimal(Scalar::from(10), Scalar::from(2)).unwrap(),
+            DataType::decimal128(10, 2).unwrap()
+        );
+        // A width the parameter cannot hold is refused by what it is, never
+        // wrapped; text that is no integer is refused by the same name.
+        let refused = decimal(Scalar::from("300"), Scalar::from(2))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("$.precision"), "{refused}");
+        assert!(refused.contains("a decimal precision"), "{refused}");
+        assert!(refused.contains("an out-of-range value"), "{refused}");
+        let refused = decimal(Scalar::from("abc"), Scalar::from(2))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("a decimal precision"), "{refused}");
+        assert!(refused.contains("\"abc\""), "{refused}");
+        let refused = decimal(Scalar::from(10), Scalar::from("200"))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("a decimal scale"), "{refused}");
+    }
+}
+
 mod aliases {
     use yggdryl::{DataType, Field};
 

@@ -1,7 +1,9 @@
 //! Native Node.js view of [`CoreBookEvent`], [`CoreSnapshotEvent`] and the
 //! [`CoreBookIterator`] walk.
 
-use napi::bindgen_prelude::{Array, BigInt, Either, Env, Function, Null, Result, Unknown};
+use napi::bindgen_prelude::{
+    Array, BigInt, ClassInstance, Either, Either3, Env, Function, Null, Result, Unknown,
+};
 use napi_derive::napi;
 use yggdryl::Side as CoreSide;
 use yggdryl::graph::{
@@ -10,8 +12,9 @@ use yggdryl::graph::{
 };
 
 use super::market_data::JsMarketData;
-use super::operation::{JsBookRef, JsExecutionEvent};
+use super::operation::JsBookRef;
 use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of};
+use crate::expression::{JsFilter, JsTerm, filter_from_input};
 use crate::{Failed, Pulled, exact_i64, exact_u64, javascript_failure, napi_error, or_null};
 
 /// One price level of a book's side, as the plain object JavaScript reads.
@@ -52,10 +55,13 @@ fn market_data_list<'a>(entries: impl Iterator<Item = &'a CoreMarketData>) -> Ve
     entries.cloned().map(JsMarketData::from_core).collect()
 }
 
-/// One coherent view of a market at one exact nanosecond instant: every
-/// live entry of both sides, the deltas applied since the book before it,
-/// the executions at that instant, and the price levels of each side.
-/// Immutable: `withOperations` and every verb answer a new book.
+/// One coherent view of a market at one exact nanosecond instant: on a
+/// complete book every live entry of both sides and the price levels of
+/// each, and on every book the deltas applied since the book before it and
+/// the top of book it settled on. A walk emits a book whole only at a
+/// snapshot tick and every other book as its deltas alone, which
+/// `withPrevious` over the complete book before it rebuilds. Immutable:
+/// `withOperations` and every verb answer a new book.
 #[napi(js_name = "BookEvent")]
 #[derive(Clone)]
 pub struct JsBookEvent {
@@ -71,44 +77,69 @@ impl JsBookEvent {
 
 #[napi]
 impl JsBookEvent {
-    /// An empty book for `symbol` at `currunix` nanoseconds since the epoch.
+    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
+    /// the epoch, keyed by that ticker; an empty `symbol` keys the book
+    /// `XX0000000000`, the ISIN that states none, and states no ticker.
     #[napi(constructor)]
     pub fn new(currunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
         let currunix = instant_of(currunix, "currunix")?;
         Ok(Self::from_core(CoreBookEvent::new(currunix, symbol)))
     }
 
-    /// Every entry alive on the book, each a `MarketData`: the bid side's,
-    /// best price first and every entry stating no price last, then the ask
-    /// side's the same way.
+    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
+    /// `key` is its crosscode - an instrument's ISIN, a ticker, or
+    /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
+    /// The empty base a code's first book, stating its deltas alone,
+    /// rebuilds over with `withPrevious`.
+    #[napi(factory)]
+    pub fn keyed(currunix: Either<BigInt, f64>, key: String) -> Result<Self> {
+        let currunix = instant_of(currunix, "currunix")?;
+        Ok(Self::from_core(CoreBookEvent::keyed(currunix, key)))
+    }
+
+    /// Whether the book holds its sides - every entry alive on it - rather
+    /// than only the deltas it applied since the book before it: a book a
+    /// caller builds, one a walk emits at a snapshot tick, and one rebuilt
+    /// by `withPrevious` are complete.
+    #[napi(getter)]
+    pub fn is_complete(&self) -> bool {
+        self.inner.is_complete()
+    }
+
+    /// Every entry alive on the book, each once and a `MarketData`: the bid
+    /// side's, best price first and every entry stating no price last, then
+    /// the ask side's the same way but those resting on the bid too - a
+    /// two-sided quote is one entry, listed with the bids. Empty on a book
+    /// stating its deltas alone.
     #[napi]
     pub fn alive(&self) -> Vec<JsMarketData> {
         market_data_list(self.inner.alive())
     }
 
-    /// The deltas applied since the book before this one, each a
-    /// `MarketData`: the bid side's in the order they were applied, then the
-    /// ask side's.
+    /// The entries alive on the side `side` names - read through the `Side`
+    /// vocabulary - each a `MarketData`, best price first and every entry
+    /// stating no price last - a two-sided quote on both sides. Empty for a
+    /// side that is neither a bid nor an ask, or on a book stating its
+    /// deltas alone.
+    #[napi]
+    pub fn alive_on(&self, side: Either<String, f64>) -> Result<Vec<JsMarketData>> {
+        Ok(market_data_list(self.inner.alive_on(side_of(side)?)))
+    }
+
+    /// The orders and quotes applied since the book before this one, each a
+    /// `MarketData`, in the order applied across both sides: what a book
+    /// stating its deltas alone states, and what `withPrevious` replays
+    /// over the book before it.
     #[napi]
     pub fn deltas(&self) -> Vec<JsMarketData> {
         market_data_list(self.inner.deltas())
     }
 
-    /// The executions at this book's instant.
-    #[napi]
-    pub fn executions(&self) -> Vec<JsExecutionEvent> {
-        self.inner
-            .executions()
-            .iter()
-            .cloned()
-            .map(JsExecutionEvent::from_core)
-            .collect()
-    }
-
     /// One limit per price level of the side `side` names - read through
     /// the `Side` vocabulary - best first and the one unpriced limit last,
     /// each naming its entries' `curruuid`s in position order; empty for a
-    /// side that is neither a bid nor an ask.
+    /// side that is neither a bid nor an ask, and on a book stating its
+    /// deltas alone.
     #[napi]
     pub fn limits(&self, side: Either<String, f64>) -> Result<Vec<BookLimit>> {
         Ok(self
@@ -191,8 +222,10 @@ impl JsBookEvent {
     }
 
     /// This book with every operation of one atomic group applied: each an
-    /// order, quote, execution or trade event, a snapshot control, or a
-    /// `MarketData` holding one.
+    /// order or quote event, a snapshot control, or a `MarketData` holding
+    /// one, folded; an execution or a trade event is pruned and changes
+    /// nothing, since a fill moves a book through its order's or quote's
+    /// report. A book stating its deltas alone is refused at `$.alive`.
     #[napi(
         ts_args_type = "operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>"
     )]
@@ -308,14 +341,23 @@ pub struct JsBookIterator {
 impl JsBookIterator {
     /// Opens a book walk over the items `pull` hands over - any leaf or
     /// `MarketData`, sorted by their own event order; `snapshotMillis === 0`
-    /// disables grid snapshots.
+    /// disables grid snapshots, so a book is emitted whole only at a full
+    /// refresh.
+    ///
+    /// The walk folds orders, quotes and snapshot controls and prunes every
+    /// other input where it is pulled. `filter` - a `Filter`, a `Term` or
+    /// the text of a predicate over the `marketdata` row - narrows it
+    /// further, bound once here; it never admits an execution or a trade.
+    /// Not given, every booked input is kept.
     #[napi(factory, js_name = "_bookIteratorNative", skip_typescript)]
     pub fn new_native(
         env: Env,
         pull: Function<'_, (), Option<AnyMarketData<'static>>>,
         snapshot_millis: f64,
+        filter: Option<Either3<ClassInstance<'_, JsFilter>, ClassInstance<'_, JsTerm>, String>>,
     ) -> Result<Self> {
         let snapshot_millis = exact_u64(snapshot_millis, "snapshotMillis")?;
+        let filter = filter.map(filter_from_input).transpose()?;
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();
         // The core stage takes a typed error, not a native one, so a
@@ -343,7 +385,10 @@ impl JsBookIterator {
                     })),
             )
         };
-        let inner = CoreBookIterator::new(source, snapshot_millis).map_err(napi_error)?;
+        let mut inner = CoreBookIterator::new(source, snapshot_millis).map_err(napi_error)?;
+        if let Some(filter) = filter {
+            inner = inner.with_filter(filter).map_err(napi_error)?;
+        }
         Ok(Self { inner, failed })
     }
 

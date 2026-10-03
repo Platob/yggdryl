@@ -2131,6 +2131,18 @@ fn max_attempts_is_read_from_the_variable_then_the_profile_and_a_count_that_is_n
         offline("attempts-word", &[("AWS_MAX_ATTEMPTS", "many")]).max_attempts(),
         None
     );
+    assert_eq!(
+        offline("attempts-plus", &[("AWS_MAX_ATTEMPTS", "+3")]).max_attempts(),
+        Some(3),
+        "the integer reader every count reads takes a sign"
+    );
+    for spelling in ["3.5", "-2", "-0", "4294967296", "1e2"] {
+        assert_eq!(
+            offline("attempts-no-count", &[("AWS_MAX_ATTEMPTS", spelling)]).max_attempts(),
+            None,
+            "{spelling:?} is no count of attempts"
+        );
+    }
 }
 
 #[test]
@@ -2613,8 +2625,10 @@ fn the_sts_host_of_a_partition_is_built_on_its_own_suffixes() {
 
 #[cfg(feature = "internals")]
 mod internal {
+    use std::time::Duration;
+
     use yggdryl::aws::Session;
-    use yggdryl::internals::aws_session::imds_endpoint;
+    use yggdryl::internals::aws_session::{imds_endpoint, imds_timeout};
 
     use crate::mod_::scratch;
 
@@ -2679,5 +2693,54 @@ mod internal {
             None,
             "a session consulting no environment reaches no metadata service"
         );
+    }
+
+    #[test]
+    fn the_metadata_timeout_reads_a_length_from_the_variable_then_the_profile() {
+        let timeout = |pairs: &[(&str, &str)], config: &str| imds_timeout(&reaching(pairs, config));
+        assert_eq!(
+            timeout(&[], ""),
+            Some(Duration::from_secs(1)),
+            "nothing stated is the service's own default"
+        );
+        for (spelling, expected) in [
+            ("5", Duration::from_secs(5)),
+            ("2.5", Duration::from_millis(2500)),
+            ("3s", Duration::from_secs(3)),
+            ("250ms", Duration::from_millis(250)),
+            ("1e1", Duration::from_secs(10)),
+        ] {
+            assert_eq!(
+                timeout(&[("AWS_METADATA_SERVICE_TIMEOUT", spelling)], ""),
+                Some(expected),
+                "{spelling:?}"
+            );
+        }
+        assert_eq!(
+            timeout(&[], "[default]\nmetadata_service_timeout = 7\n"),
+            Some(Duration::from_secs(7)),
+            "the profile's"
+        );
+        assert_eq!(
+            timeout(
+                &[("AWS_METADATA_SERVICE_TIMEOUT", "2")],
+                "[default]\nmetadata_service_timeout = 7\n"
+            ),
+            Some(Duration::from_secs(2)),
+            "the variable beats the profile"
+        );
+    }
+
+    #[test]
+    fn a_metadata_timeout_that_is_no_bound_is_the_default_and_never_a_panic() {
+        // Zero bounds nothing, a negative or a word is no length, and a
+        // length no `Duration` holds used to abort the process.
+        for spelling in ["0", "-1", "soon", "1e30", "1e30ms", "nan", "inf", "1m"] {
+            assert_eq!(
+                imds_timeout(&reaching(&[("AWS_METADATA_SERVICE_TIMEOUT", spelling)], "")),
+                Some(Duration::from_secs(1)),
+                "{spelling:?}"
+            );
+        }
     }
 }

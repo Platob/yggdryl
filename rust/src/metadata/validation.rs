@@ -486,7 +486,7 @@ pub(crate) fn parse_string_enum(value: &str) -> Result<StringEnum> {
 }
 
 pub(crate) fn parse_field_id(value: &str) -> Result<i32> {
-    value.parse().map_err(|_| Error::InvalidMetadataValue {
+    crate::integer::integer_from_text_as(value).ok_or_else(|| Error::InvalidMetadataValue {
         key: SmolStr::new_static(PARQUET_FIELD_ID_KEY),
         reason: SmolStr::new_static("must be a signed 32-bit decimal integer"),
     })
@@ -496,19 +496,22 @@ pub(super) fn validate_reserved_text(key: &str, value: &str) -> Result<()> {
     validate_property_part(key, "value", value)
 }
 
-/// Parse a reserved boolean metadata value.
+/// Read a reserved boolean metadata value at its intake.
 ///
-/// Reserved booleans are stored in exactly one canonical spelling so a reader
-/// never has to guess between `true`, `True`, `1`, and `yes`.
-pub(crate) fn parse_reserved_bool(key: &str, value: &str) -> Result<bool> {
-    match value {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        other => Err(Error::InvalidMetadataValue {
-            key: SmolStr::new(key),
-            reason: crate::text::expected_got("true or false", format_args!("{other:?}")),
-        }),
-    }
+/// The text is read by the boolean reader every flag in the crate shares, so
+/// `yes`, `True` and `1` are readings; the caller stores the one canonical
+/// spelling, which is why nothing past intake reads a flag as text again.
+fn parse_reserved_bool(key: &str, value: &str) -> Result<bool> {
+    crate::boolean::bool_from_text(value).ok_or_else(|| Error::InvalidMetadataValue {
+        key: SmolStr::new(key),
+        reason: crate::text::expected_got(
+            crate::boolean::BOOLEAN_SPELLINGS,
+            format_args!(
+                "{:?}",
+                crate::text::elide_to(value, crate::text::ERROR_TEXT_LIMIT)
+            ),
+        ),
+    })
 }
 
 pub(super) fn validate_property_part(key: &str, label: &str, value: &str) -> Result<()> {

@@ -66,6 +66,60 @@ mod grammar {
     }
 }
 
+mod comparison {
+    //! `Comparison::from_str`: the operator table the parser reads.
+
+    use yggdryl::expression::Comparison;
+
+    #[test]
+    fn a_comparison_reads_every_operator_the_grammar_reads() {
+        for (text, comparison) in [
+            ("=", Comparison::Eq),
+            (" = ", Comparison::Eq),
+            ("<>", Comparison::NotEq),
+            ("!=", Comparison::NotEq),
+            ("<", Comparison::Lt),
+            ("<=", Comparison::LtEq),
+            (">", Comparison::Gt),
+            (">=", Comparison::GtEq),
+            ("is distinct from", Comparison::IsDistinctFrom),
+            ("IS DISTINCT FROM", Comparison::IsDistinctFrom),
+            ("is not distinct from", Comparison::IsNotDistinctFrom),
+            ("is  not\tdistinct from", Comparison::IsNotDistinctFrom),
+        ] {
+            assert_eq!(
+                text.parse::<Comparison>().expect(text),
+                comparison,
+                "{text:?}"
+            );
+        }
+        for comparison in Comparison::ALL {
+            assert_eq!(
+                comparison.as_str().parse::<Comparison>().unwrap(),
+                comparison
+            );
+        }
+        for text in [
+            "approximately",
+            "==",
+            "=<",
+            "",
+            "is",
+            "is distinct",
+            "= 1",
+            "a = b",
+        ] {
+            let refused = text.parse::<Comparison>().expect_err(text).to_string();
+            assert!(
+                refused.contains("comparison")
+                    || refused.contains("end of the expression")
+                    || refused.contains("expected"),
+                "{text:?}: {refused}"
+            );
+        }
+    }
+}
+
 /// The seven epoch functions: one plural spelling each, as Spark's Iceberg
 /// DDL writes them, beside the four calendar parts they are not. `minutes`
 /// alone takes a second argument, the step it always states.

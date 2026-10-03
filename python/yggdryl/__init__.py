@@ -292,6 +292,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
+from .isin_registry import IsinRegistry
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
@@ -350,6 +351,7 @@ __all__ = [
     "IOBase",
     "Identifier",
     "Identifiers",
+    "IsinRegistry",
     "IOCursor",
     "IPC_DICTIONARY_IDS_KEY",
     "Int16Field",

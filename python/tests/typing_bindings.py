@@ -1748,6 +1748,12 @@ fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back
 fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
     [fix_read_text], snapshot_millis=0
 )
+fix_book_rows_filtered: pa.RecordBatchReader = fix_reader.book_arrow_reader(
+    [fix_read_text], 0, "side = 'BUYS'"
+)
+fix_book_rows_filter_term: pa.RecordBatchReader = fix_reader.book_arrow_reader(
+    [fix_read_text], filter=Filter("marketdatakind = 'QUOT'")
+)
 fix_reader_market_metadata: bool = fix_reader.market_metadata
 fix_reader_bare: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, market_metadata=False)
 fix_market_data: graph.MarketDataRowIterator = fix_reader.market_data([fix_read_text])
@@ -1849,8 +1855,9 @@ fix_ingested: dict[str, Any] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
 )
 fix_globbed: dict[str, Any] = fix_registry_from_fields.add_cfb_files(
-    Path("cblocks"), "*.cfb"
+    Path("cblocks") / "*.cfb"
 )
+fix_folder_folded: dict[str, Any] = fix_registry_from_fields.add_cfb_files(Path("cblocks"))
 fix_snapshot_folded: dict[str, Any] = fix_registry_from_fields.add_json_file(
     Path("dictionaries") / "venue.json"
 )
@@ -2125,7 +2132,11 @@ graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
 )
 graph_book_alive: list[graph.MarketData] = graph_book_with_operations.alive
 graph_book_deltas: list[graph.MarketData] = graph_book_with_operations.deltas
-graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
+graph_book_alive_on: list[graph.MarketData] = graph_book_with_operations.alive_on(Side.BUYS)
+graph_book_alive_on_text: list[graph.MarketData] = graph_book_with_operations.alive_on("SELL")
+graph_book_complete: bool = graph_book_with_operations.is_complete
+graph_book_keyed: graph.BookEvent = graph.BookEvent.keyed(graph_order_event.currunix, "XX0000000000")
+graph_book_rebuilt: graph.BookEvent | None = graph_book_with_operations.with_previous(graph_book_keyed)
 graph_book_limits: list[Scalar] = graph_book_with_operations.limits(Side.BUYS)
 graph_book_best_price: Scalar | None = graph_book_with_operations.best_price("BUYS")
 graph_book_best_quantity: Scalar | None = graph_book_with_operations.best_quantity(Side.BUYS)
@@ -2164,9 +2175,9 @@ graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reade
 )
 graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
 graph_view_names: tuple[str, ...] = MARKET_VIEWS
-graph_view_plan: Plan = graph.MarketData.plan("orders", ["identifiers['fix:clordid'].value as clordid"])
+graph_view_plan: Plan = graph.MarketData.plan("orders", ["identifiers['clordid'] as clordid"])
 graph_view_plan_path: Plan = graph.MarketData.plan(
-    "trades", (yggdryl.FieldPath("identifiers['fix:orderid'].value as orderid"),)
+    "trades", (yggdryl.FieldPath("identifiers['orderid'] as orderid"),)
 )
 graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="10:1:C-1")
 graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
@@ -2188,7 +2199,7 @@ graph_candles: list[graph.Candle] = list(graph_candle_walk)
 graph_candles_again: list[graph.Candle] = graph.candles([graph_book], "1m", "Europe/Zurich")
 graph_candle_field: Field = graph.Candle.field()
 graph_candle: graph.Candle = graph.Candle.from_scalar(
-    {"crosscode": "IBM", "start": 0, "end": 60_000_000_000, "books": 1, "executions": 0, "volume": 0}
+    {"crosscode": "IBM", "start": 0, "end": 60_000_000_000, "books": 1}
 )
 graph_candle_crosscode: str = graph_candle.crosscode
 graph_candle_ticker: str | None = graph_candle.ticker
@@ -2197,7 +2208,6 @@ graph_candle_end: int = graph_candle.end
 graph_candle_bid: dict[str, Scalar] | None = graph_candle.bid
 graph_candle_spread: dict[str, Scalar] | None = graph_candle.spread
 graph_candle_bidqty: Scalar | None = graph_candle.bidqty
-graph_candle_volume: Scalar = graph_candle.volume
 graph_candle_books: int = graph_candle.books
 graph_candle_scalar: Scalar = graph_candle.into_scalar()
 graph_candle_read: graph.Candle = graph.Candle.from_scalar(graph_candle_scalar)
@@ -2210,6 +2220,13 @@ graph_book_iterator: graph.BookIterator = graph.BookIterator(
     [graph_order_event, graph_data], snapshot_millis=0
 )
 graph_book_iterator_books: list[graph.BookEvent] = list(graph_book_iterator)
+graph_book_iterator_filtered: graph.BookIterator = graph.BookIterator(
+    [graph_order_event], 0, "side = 'BUYS'"
+)
+graph_book_iterator_filter_term: graph.BookIterator = graph.BookIterator(
+    [graph_order_event], filter=Term("side = 'BUYS'")
+)
+graph_book_iterator_unfiltered: graph.BookIterator = graph.BookIterator([graph_order_event], filter=None)
 
 graph_event_iterator: graph.EventIterator = graph.EventIterator(
     [graph_order_event, graph_book], sorted=True, snapshot_ns=None
@@ -2266,7 +2283,9 @@ assert graph_quote_event_booked.book == graph_book_ref
 assert graph_trade_executions == [graph_fill]
 assert graph_trade_restated == graph_trade
 assert graph_book_alive[0] == graph.MarketData(graph_order_event) and len(graph_book_deltas) == 2
-assert graph_book_executions == [] and not graph_book_crossed
+assert graph_book_complete and not graph_book_crossed
+assert graph_book_alive_on == [graph.MarketData(graph_order_event)]
+assert graph_book_keyed.crosscode == "3:0:XX0000000000" and graph_book_keyed.is_complete
 assert len(graph_book_limits) == 1 and graph_book_depth is not None
 assert graph_book_best_price is not None and graph_book_best_quantity is not None
 assert graph_book_kind is MarketDataKind.BOOK
@@ -2671,8 +2690,8 @@ typed_record_options = RecordOptions("text/csv", separator=";", header=True)
 typed_text_options = TextOptions(rowheader="^(?<level>[A-Z]+) ", autotype=True)
 typed_absent_options = TextOptions(rowheader=...)
 
-identifier: yggdryl.Identifier = yggdryl.Identifier("fix", "orderid", "O-1")
-identifier_security: yggdryl.Identifier = yggdryl.Identifier("base", "isin", "US0378331005")
+identifier: yggdryl.Identifier = yggdryl.Identifier("orderid", "O-1")
+identifier_security: yggdryl.Identifier = yggdryl.Identifier("isin", "US0378331005")
 identifier_keyed: yggdryl.Identifier | None = yggdryl.Identifier.from_key("ullink.InstrumentId", "dbi;X")
 identifier_parts: tuple[str, str, str, str] = (
     identifier.src,
@@ -2682,9 +2701,25 @@ identifier_parts: tuple[str, str, str, str] = (
 )
 identifiers: yggdryl.Identifiers = yggdryl.Identifiers([identifier, identifier_security])
 identifiers_value: str | None = identifiers.get("isin")
-identifiers_from: str | None = identifiers.get_from("fix", "orderid")
+identifiers_from: str | None = identifiers.get_from("orderid")
 identifiers_of_kind: list[yggdryl.Identifier] = identifiers.of_kind("isin")
 identifiers_listed: list[yggdryl.Identifier] = list(identifiers)
 assert identifiers_value == "US0378331005" and identifiers_from == "O-1" and len(identifiers_listed) == 2
 assert identifier_keyed is not None and identifier_keyed.src == "ullink" and identifier_parts[1] == "orderid"
-assert identifier_parts[3] == "fix:orderid"
+assert identifier_parts[3] == "orderid"
+identifiers_dict: dict[str, str] = identifiers.into_dict()
+identifiers_from_dict: yggdryl.Identifiers = yggdryl.Identifiers.from_dict({"ullink:isin": "US0378331005"})
+identifiers_derived: bool = identifiers_from_dict.is_derived("isin")
+assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not identifiers_derived
+isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
+isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
+isin_registry_row: dict[str, Any] | None = isin_registry.get_by_ric("HOLN.S")
+isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
+isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
+isin_registry_bound: int = isin_registry.max_instruments
+isin_registry_reader: pa.RecordBatchReader = isin_registry.into_arrow_reader()
+isin_registry_loaded: int = yggdryl.IsinRegistry().extend_from_arrow_reader(isin_registry.into_arrow_reader())
+isin_registry_codec: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, isin_registry=isin_registry)
+isin_registry_shared: yggdryl.IsinRegistry | None = isin_registry_codec.isin_registry
+assert isin_registry_merged and isin_registry_row is not None and isin_registry_bound == 8
+assert isin_registry_loaded == 1 and isin_registry_shared == isin_registry and len(isin_registry) == 1

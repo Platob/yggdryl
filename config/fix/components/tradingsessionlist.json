@@ -35,17 +35,6 @@
         }
       },
       {
-        "name": "notradingsessions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "notradingsessions",
-          "FIX:tag": "386"
-        }
-      },
-      {
         "name": "tradingsessions",
         "dtype": {
           "type": "null"

@@ -9,11 +9,11 @@
 //! against it shares the answers, and a change to the dictionary forgets
 //! them.
 //!
-//! Three tables, each keyed by what its answer is a fact of, each bounded at
-//! [`Memo::CAPACITY`] entries past which an answer is still given and simply
-//! not remembered - a dictionary is a bounded vocabulary, and a capture
-//! spelling more distinct keys or values than that is spelling junk, which
-//! the entries keep and the row types as it can.
+//! Each table is keyed by what its answer is a fact of, and each is bounded
+//! at [`Memo::CAPACITY`] entries past which an answer is still given and
+//! simply not remembered - a dictionary is a bounded vocabulary, and a
+//! capture spelling more distinct keys or values than that is spelling junk,
+//! which the entries keep and the row types as it can.
 //!
 //! The tables are shared by every thread the codec reads on, and each
 //! thread keeps its own mirror of the answers it has read: a line asks its
@@ -31,7 +31,7 @@ use smol_str::SmolStr;
 use super::FixId;
 use super::registry::FixMap;
 use crate::xxhash::Xxh64;
-use crate::{Field, Metadata};
+use crate::{Field, IdKey, IdSource, IdType, Metadata};
 
 /// A table keyed by text, hashed by the crate's own function: a key is a
 /// bridge's spelling or a wire value, read a million times per run.
@@ -57,6 +57,64 @@ pub struct Memo {
     wire_values: Mutex<Translations>,
     /// What the dictionary holds under one key.
     names: Mutex<TextMap<SmolStr, Lookup>>,
+    /// What a party's role or source text reads as, by the set document it
+    /// is read through and the slot it fills.
+    parties: Mutex<PartyWords>,
+    /// The key an entry no dictionary field maps is read under, by the
+    /// identifier names its level declares.
+    identifier_keys: Mutex<IdentifierKeys>,
+}
+
+/// Every party word read, by the address of the set's document - `0` where
+/// the dictionary states no set - and the slot, then by the trimmed text.
+///
+/// Bounded per document and slot at [`Memo::CAPACITY`] texts: a role or a
+/// source is a code set's handful of spellings.
+type PartyWords = FixMap<(usize, PartySlot), TextMap<SmolStr, PartyWord>>;
+
+/// Every key read off an unmapped entry, by the `FIX:identifiers` text its
+/// level declares - empty for none - then by whether a dictionary field is
+/// tagged by the key (`[untagged, tagged]`), then by the key's text.
+///
+/// Bounded at [`Memo::CAPACITY`] declarations, each at as many keys: the
+/// declarations are the dictionary's, and a bridge spells a bounded set of
+/// keys.
+type IdentifierKeys = TextMap<SmolStr, [TextMap<SmolStr, Option<IdKey>>; 2]>;
+
+/// What a party's role or source text is read for: a party's
+/// `PartyRole(452)`, its `PartyIDSource(447)`, or an account's
+/// `AcctIDSource(660)`.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PartySlot {
+    /// A party's `PartyRole(452)`.
+    Role,
+    /// A party's `PartyIDSource(447)`.
+    PartySource,
+    /// An account's `AcctIDSource(660)`.
+    AccountSource,
+}
+
+impl PartySlot {
+    /// What a bare wire code no set names is spelled under in this slot,
+    /// `partyrole99`, so it never reads as a word of its own.
+    pub(super) const fn prefix(self) -> &'static str {
+        match self {
+            Self::Role => "partyrole",
+            Self::PartySource => "partyidsource",
+            Self::AccountSource => "acctidsource",
+        }
+    }
+}
+
+/// What a party's role or source text reads as, the slot's own answer:
+/// `None` where the word it reads is no type or no source, which refuses
+/// the party.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PartyWord {
+    /// The type a role reads as.
+    Role(Option<IdType>),
+    /// The source a party's or an account's source reads as.
+    Source(Option<IdSource>),
 }
 
 /// Every translation a field has answered, by the field's address.
@@ -149,6 +207,8 @@ struct Mirror {
     translations: FixMap<u64, Translations>,
     wire_values: FixMap<u64, Translations>,
     names: FixMap<u64, TextMap<SmolStr, Lookup>>,
+    parties: FixMap<u64, PartyWords>,
+    identifier_keys: FixMap<u64, IdentifierKeys>,
 }
 
 /// How many memos one thread mirrors at once: past it the oldest is
@@ -184,6 +244,8 @@ impl Memo {
             translations: Mutex::new(Translations::default()),
             wire_values: Mutex::new(Translations::default()),
             names: Mutex::new(HashMap::with_hasher(Xxh64::new())),
+            parties: Mutex::new(PartyWords::default()),
+            identifier_keys: Mutex::new(HashMap::with_hasher(Xxh64::new())),
         }
     }
 
@@ -196,6 +258,8 @@ impl Memo {
         held(&self.translations).clear();
         held(&self.wire_values).clear();
         held(&self.names).clear();
+        held(&self.parties).clear();
+        held(&self.identifier_keys).clear();
         self.id
             .store(MEMOS.fetch_add(1, Ordering::Relaxed), Ordering::Relaxed);
     }
@@ -389,6 +453,142 @@ impl Memo {
         });
         answer
     }
+
+    /// What the trimmed `text` reads as in `slot`, read through the set
+    /// `document` - where the dictionary states one - answered by `read`
+    /// the first time and remembered.
+    ///
+    /// Keyed by the document's address, as [`Self::wire_value`] is.
+    pub(super) fn party_word(
+        &self,
+        slot: PartySlot,
+        document: Option<&str>,
+        text: &str,
+        read: impl FnOnce() -> PartyWord,
+    ) -> PartyWord {
+        let key = (
+            document.map_or(0, |document| document.as_ptr() as usize),
+            slot,
+        );
+        let id = self.id();
+        let mirrored = MIRROR.with(|mirror| {
+            mirror
+                .borrow()
+                .parties
+                .get(&id)
+                .and_then(|table| table.get(&key))
+                .and_then(|table| table.get(text))
+                .cloned()
+        });
+        if let Some(answer) = mirrored {
+            return answer;
+        }
+        let known = held(&self.parties)
+            .get(&key)
+            .and_then(|table| table.get(text))
+            .cloned();
+        let answer = match known {
+            Some(answer) => answer,
+            None => {
+                let answer = read();
+                remember_word(held(&self.parties).entry(key).or_default(), text, &answer);
+                answer
+            }
+        };
+        MIRROR.with(|mirror| {
+            let mut mirror = mirror.borrow_mut();
+            let table = table_of(&mut mirror.parties, id, PartyWords::default);
+            remember_word(table.entry(key).or_default(), text, &answer);
+        });
+        answer
+    }
+
+    /// The key an unmapped entry's `key` is read under against the
+    /// `declared` identifier names of its level - where a dictionary field
+    /// is `tagged` by it, those alone - answered by `read` the first time
+    /// and remembered: `None` where it names no identifier.
+    ///
+    /// Keyed by the declaration's text rather than its address, so two
+    /// components declaring the same names share their answers.
+    pub(super) fn identifier_key(
+        &self,
+        declared: Option<&str>,
+        tagged: bool,
+        key: &str,
+        read: impl FnOnce() -> Option<IdKey>,
+    ) -> Option<IdKey> {
+        let declared = declared.unwrap_or("");
+        let slot = usize::from(tagged);
+        let id = self.id();
+        let mirrored = MIRROR.with(|mirror| {
+            mirror
+                .borrow()
+                .identifier_keys
+                .get(&id)
+                .and_then(|table| table.get(declared))
+                .and_then(|tables| tables[slot].get(key))
+                .cloned()
+        });
+        if let Some(answer) = mirrored {
+            return answer;
+        }
+        let known = held(&self.identifier_keys)
+            .get(declared)
+            .and_then(|tables| tables[slot].get(key))
+            .cloned();
+        let answer = match known {
+            Some(answer) => answer,
+            None => {
+                let answer = read();
+                remember_key(
+                    &mut held(&self.identifier_keys),
+                    declared,
+                    slot,
+                    key,
+                    &answer,
+                );
+                answer
+            }
+        };
+        MIRROR.with(|mirror| {
+            let mut mirror = mirror.borrow_mut();
+            let table = table_of(&mut mirror.identifier_keys, id, || {
+                HashMap::with_hasher(Xxh64::new())
+            });
+            remember_key(table, declared, slot, key, &answer);
+        });
+        answer
+    }
+}
+
+/// Remembers one party word under its text, while the table has room.
+fn remember_word(table: &mut TextMap<SmolStr, PartyWord>, text: &str, answer: &PartyWord) {
+    if table.len() < Memo::CAPACITY {
+        table.insert(SmolStr::new(text), answer.clone());
+    }
+}
+
+/// Remembers one key's reading under its declaration and its text, while
+/// both tables have room.
+fn remember_key(
+    tables: &mut IdentifierKeys,
+    declared: &str,
+    slot: usize,
+    key: &str,
+    answer: &Option<IdKey>,
+) {
+    if !tables.contains_key(declared) {
+        if tables.len() >= Memo::CAPACITY {
+            return;
+        }
+        let fresh = || HashMap::with_hasher(Xxh64::new());
+        tables.insert(SmolStr::new(declared), [fresh(), fresh()]);
+    }
+    if let Some(tables) = tables.get_mut(declared)
+        && tables[slot].len() < Memo::CAPACITY
+    {
+        tables[slot].insert(SmolStr::new(key), answer.clone());
+    }
 }
 
 #[cfg(feature = "internals")]
@@ -403,9 +603,9 @@ pub mod internals {
     //! exists under the `internals` feature alone.
     use std::sync::Arc;
 
-    use crate::Field;
+    use crate::{Field, IdKey};
 
-    pub use super::{Facts, Memo};
+    pub use super::{Facts, Memo, PartySlot, PartyWord};
 
     /// A dictionary that has answered nothing yet.
     #[must_use]
@@ -426,6 +626,30 @@ pub mod internals {
         codes: impl FnOnce() -> Option<Arc<str>>,
     ) -> Arc<Facts> {
         memo.facts(source, codes)
+    }
+
+    /// What the trimmed `text` reads as in `slot` through the set
+    /// `document`, `read` answering the first time.
+    pub fn party_word(
+        memo: &Memo,
+        slot: PartySlot,
+        document: Option<&str>,
+        text: &str,
+        read: impl FnOnce() -> PartyWord,
+    ) -> PartyWord {
+        memo.party_word(slot, document, text, read)
+    }
+
+    /// The key an unmapped entry's `key` is read under against `declared`,
+    /// `read` answering the first time.
+    pub fn identifier_key(
+        memo: &Memo,
+        declared: Option<&str>,
+        tagged: bool,
+        key: &str,
+        read: impl FnOnce() -> Option<IdKey>,
+    ) -> Option<IdKey> {
+        memo.identifier_key(declared, tagged, key, read)
     }
 
     /// The code document these facts resolved to, as the shared handle the

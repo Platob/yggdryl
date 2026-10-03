@@ -1615,12 +1615,17 @@ test('sortIndicesBy reads every spelling of the keys as one', () => {
 
 test('sortIndicesBy refuses what names no key, before any row is read', () => {
   const quotes = keyedQuotes()
-  // The record's flag is read under either spelling: a boolean it must be.
+  // The record's flag is read under either spelling, a boolean or the text
+  // the crate's one boolean table reads; anything else is refused by key.
   assert.deepEqual(
     quotes.sortIndicesBy([{ term: 'price', nullsFirst: true }]).asJs(),
     quotes.sortIndicesBy([{ term: 'price', nulls_first: true }]).asJs(),
   )
-  assert.throws(() => quotes.sortIndicesBy([{ term: 'price', nullsFirst: 'yes' }]), /\$\.nullsFirst/)
+  assert.deepEqual(
+    quotes.sortIndicesBy([{ term: 'price', nullsFirst: 'yes' }]).asJs(),
+    quotes.sortIndicesBy([{ term: 'price', nullsFirst: true }]).asJs(),
+  )
+  assert.throws(() => quotes.sortIndicesBy([{ term: 'price', nullsFirst: 'maybe' }]), /\$\.nullsFirst/)
   assert.throws(() => quotes.sortIndicesBy([{ descending: true }]), /names the term it orders by/)
   assert.throws(() => quotes.sortIndicesBy('tier'))
   assert.throws(() => quotes.sortIndicesBy([]), /at least one `order by` key/)

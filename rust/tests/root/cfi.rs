@@ -68,9 +68,43 @@ mod merge {
     #[test]
     fn one_instrument_fills_position_by_position_and_two_keep_this_one() {
         assert_eq!(filled("ESVXXX", "ESXUFR"), "ESVUFR");
-        assert_eq!(filled("ESVUFR", "ESNUFR"), "ESXUFR");
+        assert_eq!(
+            filled("ESVUFR", "ESNUFR"),
+            "ESVUFR",
+            "a contradicted letter keeps the lead"
+        );
+        assert_eq!(filled("ESNXXX", "ESVUFR"), "ESNXXX");
         assert_eq!(filled("ESVUFR", "DBFNFB"), "ESVUFR");
         assert_eq!(filled("JFTXFX", "JFTXXN"), "JFTXFN");
+    }
+
+    #[test]
+    fn refined_fills_the_leads_unknown_letters_from_one_instrument_and_nothing_else() {
+        let refined =
+            |lead: &str, other: &str| Cfi::refined(lead, other).map(|code| code.to_string());
+        for (lead, other, expected) in [
+            ("ESXXXX", "ESVUFR", Some("ESVUFR")),
+            ("ESVUFR", "ESXXXX", Some("ESVUFR")),
+            ("ESVXXX", "ESXUFR", Some("ESVUFR")),
+            ("ESVUFR", "ESVUFR", Some("ESVUFR")),
+            ("JFTXFX", "JFTXXN", Some("JFTXFN")),
+            ("XXXXXX", "ESVUFR", Some("ESVUFR")),
+            ("ESZUFR", "ESVTFR", Some("ESVTFR")),
+            ("ESVUFR", "XXXXXX", Some("ESVUFR")),
+            ("ESXXXX", "EXXXXX", Some("ESXXXX")),
+            ("XXXXXX", "XXXXXX", None),
+            ("XXXXXX", "EXXXXX", None),
+            ("ESVUFR", "ESNUFR", None),
+            ("ESVTFR", "ESVUFR", None),
+            ("ESXXXX", "DBXXXX", None),
+            ("ESXXXX", "EPXXXX", None),
+        ] {
+            assert_eq!(
+                refined(lead, other).as_deref(),
+                expected,
+                "{lead} refined by {other}"
+            );
+        }
     }
 }
 

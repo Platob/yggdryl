@@ -180,12 +180,12 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
-| `isin` | - | `isin` | ISO 6166, twelve bytes closed by a check digit |
-| `cusip` | - | `cusip` | CUSIP, nine bytes closed by a check digit |
-| `sedol` | - | `sedol` | SEDOL, seven bytes closed by a check digit |
+| `isin` | - | `isin` | ISO 6166, twelve bytes of its shape, ranked by its check digit and prefix |
+| `cusip` | - | `cusip` | CUSIP, nine bytes of its shape, ranked by its check digit |
+| `sedol` | - | `sedol` | SEDOL, seven bytes of its shape, ranked by its check digit |
 | `bbg` | - | `bbg` | a Bloomberg identifier, at most 32 bytes |
 | `ric` | - | `ric` | a Refinitiv Identification Code, one token of at most 32 bytes |
-| `figi` | - | `figi` | ANSI X9.145, twelve bytes closed by a check digit |
+| `figi` | - | `figi` | ANSI X9.145, twelve bytes of its shape, ranked by its check digit |
 | `forex` | - | `forex` | an ISO 4217 currency pair, `CCY/CCY`, seven bytes |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |

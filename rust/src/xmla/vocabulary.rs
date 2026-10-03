@@ -615,10 +615,8 @@ impl PropertyList {
         // enumeration or count read here, and is refused rather than unset.
         self.get(property::TIMEOUT)
             .map(|value| {
-                value
-                    .trim()
-                    .parse::<u32>()
-                    .map_err(|_| unknown("Timeout", value, "a count of seconds"))
+                crate::integer::integer_from_text_as::<u32>(value)
+                    .ok_or_else(|| unknown("Timeout", value, "a count of seconds"))
             })
             .transpose()
     }

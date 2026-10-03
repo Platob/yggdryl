@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -99,17 +88,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "nocrosslegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocrosslegs",
-          "FIX:tag": "1829"
         }
       },
       {
@@ -233,17 +211,6 @@
         }
       },
       {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
-        }
-      },
-      {
         "name": "preallocgrp",
         "dtype": {
           "type": "null"
@@ -282,17 +249,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "commissiondata"
-        }
-      },
-      {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
         }
       },
       {
