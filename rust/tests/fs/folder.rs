@@ -61,7 +61,7 @@ mod fs {
     fn every_listed_and_globbed_location_names_the_host_its_folder_does() {
         let folder = logs(TREE);
         let host = folder.url().hostname().map(str::to_owned);
-        assert_eq!(host.as_deref(), Some(yggdryl::HOSTNAME.as_str()));
+        assert_eq!(host.as_deref(), Some("localhost"));
         let listed = folder.ls(true, true).collect::<Result<Vec<_>>>().unwrap();
         let globbed = folder
             .glob("**/*.log", false)
@@ -73,8 +73,7 @@ mod fs {
             let url = entry.url().expect("a bound entry has a URL");
             assert_eq!(url.hostname(), host.as_deref(), "{url}");
             assert!(
-                url.to_string()
-                    .starts_with(&format!("memory://{}/logs/", yggdryl::HOSTNAME.as_str())),
+                url.to_string().starts_with("memory://localhost/logs/"),
                 "{url}"
             );
         }

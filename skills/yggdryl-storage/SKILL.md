@@ -175,14 +175,17 @@ Install and cross-language conventions are in `yggdryl`.
     `.send()`'s answer has none. Every page lays out as one Arrow batch
     through `Pages::into_arrow_reader`, `.intoArrowReader`, or Python's
     `.read_arrow()`.
-18. **No host is made up.** `HOSTNAME` (Rust `yggdryl::HOSTNAME`, Python
-    `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`) is the machine's name, read
-    once. A buffer (`mem://<host>/<pid>/<address>`) and a filesystem
-    answering in this process (`memory://<host>/...`) name it; a local file
-    names none (`file:///path`, and `file://localhost/path` is that path);
-    a store names its bucket or endpoint, never this machine. Children,
-    `ls` and `glob` keep their parent's host - compare against `HOSTNAME`,
-    never a literal, since every machine answers its own.
+18. **No host is made up.** A local file names none (`file:///path`; no
+    host is added where none was given, since Windows reads a named one as
+    a share, and on Unix `file://localhost/path` and `file://<HOSTNAME>/path`
+    read as that same path). A buffer (`mem://localhost/<pid>/<address>`)
+    and a filesystem answering in this process (`memory://localhost/...`)
+    name `localhost`, the one name the crate writes for this machine; a
+    store names its bucket or endpoint, never this machine. Children, `ls`
+    and `glob` keep their parent's host. `HOSTNAME` (Rust
+    `yggdryl::HOSTNAME`, Python `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`)
+    is the machine's own name, read once: intake reads it as this machine,
+    and no URL names it.
 
 ## Pitfalls
 

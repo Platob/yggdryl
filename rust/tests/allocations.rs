@@ -6830,9 +6830,8 @@ fn located_lines_render_and_project_one_shared_crosscode() {
 /// reader's: the reader's own cost is what is left, and that is linear.
 ///
 /// It last moved, by five, when the staging location's URL stopped being
-/// formatted and parsed as text: it is built from its parts, the machine's
-/// host shared rather than copied, so the count is the same on every machine
-/// whatever its name's length.
+/// formatted and parsed as text: it is built from its parts under the static
+/// host `localhost`, so the count is the same on every machine.
 const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 18), (1_024, 21)];
 
 /// What the read itself costs past the copy: nine, and nothing a line.

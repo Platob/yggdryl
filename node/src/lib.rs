@@ -441,9 +441,10 @@ impl JsDifferenceIterator {
     }
 }
 
-/// The machine this process runs on, read once by the core: the host an
-/// in-process location and a buffer's identity name. `HOSTNAME` is where a
-/// caller reads it; this is the half that carries the text across.
+/// The machine this process runs on, read once by the core: intake reads
+/// `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+/// it - in-process storage names `localhost`. `HOSTNAME` is where a caller
+/// reads it; this is the half that carries the text across.
 #[napi(js_name = "_hostnameNative", skip_typescript)]
 pub fn hostname_native() -> &'static str {
     yggdryl::HOSTNAME.as_str()

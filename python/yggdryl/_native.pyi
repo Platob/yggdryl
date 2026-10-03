@@ -8808,8 +8808,9 @@ ULBRIDGE_ROWHEADER: str
 IPC_DICTIONARY_IDS_KEY: str
 DEFAULT_STREAM_BATCH_SIZE: int
 DEFAULT_FETCH_BYTE_SIZE: int
-# The machine this process runs on, read once: the host an in-process
-# location and a buffer's identity name.
+# The machine this process runs on, read once by the core: intake reads
+# `file://<HOSTNAME>/x` as the local path, and no URL the core writes
+# names it - in-process storage names `localhost`.
 HOSTNAME: str
 NULL_PARTITION: str
 DEFAULT_RECORD_BATCH_ROW_SIZE: int

@@ -6837,8 +6837,9 @@ binding.yaml = yaml
   )
 }
 
-// The machine this process runs on, read once by the core: the host an
-// in-process location and a buffer's identity name.
+// The machine this process runs on, read once by the core: intake reads
+// `file://<HOSTNAME>/x` as the local path, and no URL the core writes names
+// it - in-process storage names `localhost`.
 binding.HOSTNAME = binding._hostnameNative()
 delete binding._hostnameNative
 
