@@ -2107,6 +2107,58 @@ pub struct ZipPath
   pub fn verification_uri, verification_uri_complete, user_code, expires_in, interval
   impl Display
 
+### yggdryl::s3tables  [rust/src/s3tables/mod.rs]
+  (behind the `s3tables` feature, which implies `s3` and `iceberg`: the catalog of an Amazon S3 Tables table bucket - its namespaces, its tables, and the metadata location a commit moves under a version token; every verb exactly one request, a listing one per page of 250; every request an `http::Request` signed by `Request::with_sigv4(session, "s3tables", region)` and sent over the session's HTTP client - a refused key read by that door, a session answering no set refused before any request; the values are descriptions and never shadow the warehouse's `Table`/`Namespace`/`Tables`/`Namespaces`, the verbs the crate's `create_*`/`get_*`/`remove_*` beside the service's own `rename_table` and `update_table_metadata_location`; Rust only)
+  pub struct S3Tables  (Clone shares the session; Debug renders no credential: the stated endpoint holds no user information, the session masks its own)
+  pub fn new(session: Session) -> Self
+  pub fn with_region(mut self, region: impl Into<String>) -> Self  (over the ARN's and the session's; blank states none)
+  pub fn try_with_endpoint_url(mut self, url: impl AsRef<str>) -> Result<Self>  (over the session's and the partition's host, read once; blank states none; not http or https, no host, a query, a fragment or user information refused as Error::Parse, the user information never repeated)
+  pub fn session(&self) -> &Session
+  pub fn region_of(&self, bucket: Option<&Arn>) -> Result<String>  (stated on the client, else the table bucket ARN's, else the session's; none refused naming how to state one; one that is no host label refused as Error::Parse naming where it came from)
+  pub fn endpoint_url(&self, region: &str) -> Result<String>  (stated, else `Session::service_endpoint("s3tables", region)`: the session's configured endpoint, else `https://s3tables[-fips].{region}.{suffix}` with the session's FIPS and dual-stack switches; a stated or configured endpoint beside either switch refused with the service's own `Invalid Configuration: ... and custom endpoint are not supported`)
+
+  pub fn create_table_bucket(&self, name: &str) -> Result<Arn>  (1 `PUT /buckets`; a name not 3 to 63 of 0-9, a-z and `-` refused before any request; `ConflictException` is Error::Conflict)
+  pub fn get_table_bucket(&self, bucket: &Arn) -> Result<TableBucket>  (1 `GET`; `NotFoundException` is Error::Absent; an ARN whose service is not `s3tables` or whose resource is not `bucket/<name>` refused before any request)
+  pub fn table_buckets(&self) -> TableBuckets
+  pub fn remove_table_bucket(&self, bucket: &Arn) -> Result<()>  (1 `DELETE`; `NotFoundException` is success)
+  pub fn create_namespace(&self, bucket: &Arn, namespace: &str) -> Result<()>  (1 `PUT`; a name not 1 to 255 of 0-9, a-z and `_` refused before any request)
+  pub fn get_namespace(&self, bucket: &Arn, namespace: &str) -> Result<NamespaceSummary>
+  pub fn namespaces(&self, bucket: &Arn) -> NamespaceSummaries
+  pub fn remove_namespace(&self, bucket: &Arn, namespace: &str) -> Result<()>
+  pub fn create_table(&self, bucket: &Arn, namespace: &str, name: &str, schema: Option<&Field>) -> Result<TableVersion>  (1 `PUT`; a schema sent as `metadata.iceberg.schemaV2` - as Iceberg expresses it, a column with no field id numbered above the highest present - with its `PARTITION:by` as `partitionSpec` and its `SORT:by` as `writeOrder` where it declares one)
+  pub fn get_table(&self, bucket: &Arn, namespace: &str, name: &str) -> Result<TableDescription>  (1 `GET /get-table`)
+  pub fn tables(&self, bucket: &Arn, namespace: Option<&str>) -> TableSummaries
+  pub fn rename_table(&self, bucket: &Arn, namespace: &str, name: &str, new_namespace: Option<&str>, new_name: Option<&str>, version_token: Option<&str>) -> Result<()>  (a rename naming no target, or the table's own, refused before any request)
+  pub fn remove_table(&self, bucket: &Arn, namespace: &str, name: &str, version_token: Option<&str>) -> Result<()>
+  pub fn get_table_metadata_location(&self, bucket: &Arn, namespace: &str, name: &str) -> Result<TableMetadataLocation>
+  pub fn update_table_metadata_location(&self, bucket: &Arn, namespace: &str, name: &str, version_token: &str, metadata_location: &Url) -> Result<TableVersion>  (the commit: 1 `PUT`, never sent again; a token the table has moved past is the service's `409 ConflictException` as Error::Remote; an empty version token refused before any request, here and in a rename or a removal)
+
+  pub struct TableBucket  [rust/src/s3tables/bucket.rs]  (Clone, Debug, PartialEq, Eq)
+  pub fn arn(&self) -> &Arn
+  pub fn name(&self) -> &str
+  pub fn owner_account_id(&self) -> &str
+  pub fn created_at(&self) -> DateTime64
+
+  pub struct NamespaceSummary  [rust/src/s3tables/namespace.rs]  (Clone, Debug, PartialEq, Eq; what `GetNamespace` and a listing answer, the model's own name)
+  pub fn name, created_by, owner_account_id (&str), created_at (DateTime64)
+
+  pub struct TableDescription  [rust/src/s3tables/table.rs]  (Clone, Debug, PartialEq, Eq; what `GetTable` describes)
+  pub fn arn(&self) -> &Arn
+  pub fn name, namespace, version_token, format (&str)
+  pub fn metadata_location(&self) -> Option<&Url>  (none for a table created without a schema that nothing has committed to)
+  pub fn warehouse_location(&self) -> &Url
+  pub fn created_at, modified_at (DateTime64)
+  pub struct TableSummary  (one entry of a `tables` listing: arn, name, namespace, created_at, modified_at - no token and no location, which only `GetTable` answers)
+  pub struct TableVersion  (what a creation and a commit answer)
+  pub fn arn(&self) -> &Arn
+  pub fn version_token(&self) -> &str
+  pub struct TableMetadataLocation
+  pub fn version_token(&self) -> &str
+  pub fn metadata_location(&self) -> Option<&Url>
+  pub fn warehouse_location(&self) -> &Url
+
+  pub struct TableBuckets / NamespaceSummaries / TableSummaries  [rust/src/s3tables/listing.rs]  (lazy Iterator<Item = Result<TableBucket>> / Result<NamespaceSummary> / Result<TableSummary>, FusedIterator: nothing sent when built, one request per page as it is drained; an entry that does not read, or a continuation token answered twice, is the one refusal in its place after the entries before it, and the walk over; an address the model refuses is the one item)
+
 ### yggdryl::http  [rust/src/http/mod.rs]
   Behind the non-default `http` feature, which `aws` and `s3` imply. HTTP behind IOBase: one synchronous
   HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages, the `message/http`

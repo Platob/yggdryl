@@ -918,3 +918,113 @@ cargo bench --features "iceberg s3" -p yggdryl --bench media -- 's3/' --quick
 ```bash
 YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
 ```
+
+#### The table bucket's catalog
+
+`yggdryl::s3tables::S3Tables` is the client of that catalog: the control plane of a table bucket, which holds namespaces, each holding Iceberg tables. It creates, describes, lists and removes the three levels, and it moves a table's metadata location - which is what a commit to one of these tables is, since the service names the current metadata file rather than a version hint beside it. A table's files stay the [S3 backend's](../holder/index.md#object-stores) to read and write, at the warehouse `s3:` location the catalog answers. The client is behind the `s3tables` feature, which implies `s3` and `iceberg`. Every request it sends is an `http::Request` signed by [`Request::with_sigv4`](../holder/index.md#aws-identity) for the `s3tables` service as an `aws::Session` answers, to `Session::service_endpoint("s3tables", region)` unless the client states its own; the service takes no anonymous request, so a session that answers no credential set is refused before anything is sent. Rust only.
+
+```text
+S3Tables::new(session)                                    // reads nothing, reaches nothing
+tables.with_region(region)                                // over the ARN's and the session's
+tables.try_with_endpoint_url(url) -> Result<S3Tables>     // over the session's, read once
+tables.region_of(Some(&bucket)) -> Result<String>         // stated, else the ARN's, else the session's
+tables.endpoint_url(region) -> Result<String>             // https://s3tables[-fips].{region}.{suffix}
+
+tables.create_table_bucket(name) -> Result<Arn>
+tables.get_table_bucket(&bucket) -> Result<TableBucket>
+tables.table_buckets() -> TableBuckets                    // lazy: Iterator<Item = Result<TableBucket>>
+tables.remove_table_bucket(&bucket) -> Result<()>
+
+tables.create_namespace(&bucket, namespace) -> Result<()>
+tables.get_namespace(&bucket, namespace) -> Result<NamespaceSummary>
+tables.namespaces(&bucket) -> NamespaceSummaries          // lazy: Iterator<Item = Result<NamespaceSummary>>
+tables.remove_namespace(&bucket, namespace) -> Result<()>
+
+tables.create_table(&bucket, namespace, name, Some(&schema)) -> Result<TableVersion>
+tables.get_table(&bucket, namespace, name) -> Result<TableDescription>
+tables.tables(&bucket, Some(namespace)) -> TableSummaries // lazy: Iterator<Item = Result<TableSummary>>
+tables.rename_table(&bucket, namespace, name, new_namespace, new_name, version_token) -> Result<()>
+tables.remove_table(&bucket, namespace, name, version_token) -> Result<()>
+
+tables.get_table_metadata_location(&bucket, namespace, name) -> Result<TableMetadataLocation>
+tables.update_table_metadata_location(&bucket, namespace, name, version_token, &location)
+    -> Result<TableVersion>                               // the commit, under the token last read
+```
+
+The values are descriptions rather than handles - `TableDescription` is what `GetTable` answers, `NamespaceSummary` and `TableSummary` the model's own names for a namespace reading and a listing's entries - so none of them shadows the [warehouse's](../holder/index.md) `Table` and `Namespace`.
+
+Every verb is one request and a listing is one per page of 250, asked for when the page before it is drained; building a client or a listing sends nothing. A read or a removal that meets a `5xx`, a `429`, an error type botocore reads as throttling (`ThrottlingException` under a `400`) or a transport failure is sent again under the HTTP client's attempts; a `PUT` that creates, renames or commits is sent once, because the service may have acted on the one it did not answer - a throttled one included, where botocore would send it again. A request the service refuses because the key that signed it lapsed or is not recognized (`ExpiredTokenException`, `UnrecognizedClientException`) is signed and sent once more, only when the session then answers another set.
+
+| Verb | Request |
+| --- | --- |
+| `create_table_bucket` | `PUT /buckets` |
+| `get_table_bucket` | `GET /buckets/{arn}` |
+| `table_buckets` | `GET /buckets`, one per page |
+| `remove_table_bucket` | `DELETE /buckets/{arn}` |
+| `create_namespace` | `PUT /namespaces/{arn}` |
+| `get_namespace` | `GET /namespaces/{arn}/{namespace}` |
+| `namespaces` | `GET /namespaces/{arn}`, one per page |
+| `remove_namespace` | `DELETE /namespaces/{arn}/{namespace}` |
+| `create_table` | `PUT /tables/{arn}/{namespace}` |
+| `get_table` | `GET /get-table` |
+| `tables` | `GET /tables/{arn}`, one per page |
+| `rename_table` | `PUT /tables/{arn}/{namespace}/{name}/rename` |
+| `remove_table` | `DELETE /tables/{arn}/{namespace}/{name}` |
+| `get_table_metadata_location` | `GET /tables/{arn}/{namespace}/{name}/metadata-location` |
+| `update_table_metadata_location` | `PUT /tables/{arn}/{namespace}/{name}/metadata-location` |
+
+A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket, an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and an endpoint stated or configured beside the session's FIPS or dual-stack switch, which the service's endpoint rules refuse as `Invalid Configuration`. An endpoint carrying user information is refused where it is read, and no refusal and no `Debug` repeats it. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Arn;
+    use yggdryl::aws::{Credentials, Session};
+    use yggdryl::s3tables::S3Tables;
+
+    // A session that states everything consults nothing: no file, no variable, no socket.
+    let session = Session::new()
+        .with_environment(false)
+        .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "a-secret"));
+    let tables = S3Tables::new(session.clone());
+
+    // A table bucket is where its ARN says it is, and the region names the host.
+    let lake = Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")?;
+    let region = tables.region_of(Some(&lake))?;
+    assert_eq!(region, "eu-west-3");
+    assert_eq!(tables.endpoint_url(&region)?, "https://s3tables.eu-west-3.amazonaws.com");
+
+    // What the service's own model refuses costs no request: a table bucket's
+    // name holds no upper case, and an Amazon S3 bucket is not a table bucket.
+    assert!(tables.create_table_bucket("Lake").is_err());
+    let objects = Arn::from_str("arn:aws:s3:::lake")?;
+    assert!(tables.get_table_bucket(&objects).is_err());
+
+    // A listing is built without a request, and that refusal is its one item.
+    let mut namespaces = tables.namespaces(&objects);
+    assert!(matches!(namespaces.next(), Some(Err(_))));
+    assert!(namespaces.next().is_none());
+
+    // A custom endpoint beside the FIPS switch is the service's own refusal.
+    let gateway = S3Tables::new(session.with_use_fips_endpoint(true))
+        .try_with_endpoint_url("http://localhost:4566")?;
+    assert!(gateway.endpoint_url(&region).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches the S3 Tables catalog.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches the S3 Tables catalog.
+    ```
+
+An ignored test runs a table's whole life - a bucket, a namespace read and listed, a table with a schema read and listed, a commit, a rename, and every removal - against the live service, for an operator who names a signed-in profile; it removes whatever it made before it reports, and reports a bucket it could not look for.
+
+```bash
+YGGDRYL_S3TABLES_PROFILE=<profile> cargo test -p yggdryl --features s3tables --test s3tables live -- --ignored --nocapture
+```

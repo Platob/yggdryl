@@ -48,6 +48,13 @@ http3 = ["http2", "dep:h3", "dep:h3-quinn", "dep:quinn", "dep:rcgen"]
 # request signs with what it answers.
 aws = ["http", "dep:hmac", "dep:ring", "dep:sha2"]
 s3 = ["aws", "dep:md-5"]
+# Amazon S3 Tables: the control plane of a table bucket - its namespaces, its
+# tables, and the metadata location each table's commits move under a version
+# token. Not default, and it adds no crate: the client is a signed REST-JSON
+# one over the HTTP session `aws` already holds. It implies `s3`, because a
+# table's files live at an `s3:` warehouse location, and `iceberg`, because
+# what it catalogs are Iceberg tables and their schemas.
+s3tables = ["s3", "iceberg"]
 # The crate's own modules, reachable by `rust/tests/` alone. Every test lives
 # in `tests/`, and the handful that pin something a caller cannot reach - a
 # signing step, a format reader, a canonical rewrite - turn this on. No

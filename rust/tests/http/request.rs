@@ -320,6 +320,16 @@ fn a_request_message_round_trips_through_bytes() {
     );
     // Parsing, rendering and binding cost no request.
     assert_eq!(absolute.stats().requests, 0);
+
+    // An IPv6 literal keeps its brackets in the host it asks for.
+    for (url, host) in [
+        ("http://[::1]:4566/x", "[::1]:4566"),
+        ("https://[2001:db8::7]/x", "[2001:db8::7]"),
+    ] {
+        let rendered = Request::get(url).unwrap().into_bytes().unwrap();
+        let expected = format!("GET /x HTTP/1.1\r\nhost: {host}\r\n\r\n");
+        assert_eq!(String::from_utf8_lossy(&rendered), expected, "{url}");
+    }
 }
 
 #[test]

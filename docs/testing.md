@@ -73,6 +73,7 @@ everything it declares.
     cargo test -p yggdryl --all-features --test mime_type
     cargo test -p yggdryl --all-features --test parquet
     cargo test -p yggdryl --all-features --test s3
+    cargo test -p yggdryl --all-features --test s3tables
     cargo test -p yggdryl --all-features --test serie
     cargo test -p yggdryl --all-features --test soap
     cargo test -p yggdryl --all-features --test text

@@ -1826,12 +1826,19 @@ fn rows_at(body: &Scalar, path: &FieldPath) -> Option<usize> {
 }
 
 /// The `Host` header a URL asks for: the host, with the port when it is
-/// not the scheme's default.
+/// not the scheme's default - an IPv6 literal in its brackets, as RFC 3986
+/// writes it and the transport sends it, so a signature over this host is
+/// a signature over the one sent.
 pub(crate) fn host_header(url: &Url) -> String {
     let host = url.hostname().unwrap_or_default();
+    let host = if host.contains(':') {
+        format!("[{host}]")
+    } else {
+        host.to_owned()
+    };
     match url.authority().port() {
         Some(port) if Some(port) != url.default_port() => format!("{host}:{port}"),
-        _ => host.to_owned(),
+        _ => host,
     }
 }
 

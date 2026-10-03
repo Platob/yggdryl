@@ -2226,7 +2226,11 @@ impl std::fmt::Debug for Session {
             .field("assumed_role", &knobs.role)
             .field("sso", &knobs.sso)
             .field("credential_process", &knobs.credential_process)
-            .field("endpoint_url", &knobs.endpoint_url)
+            // An endpoint may carry user information; it is never rendered.
+            .field(
+                "endpoint_url",
+                &knobs.endpoint_url.as_deref().map(crate::fs::mask_uri),
+            )
             .field("config_file", &knobs.config_file)
             .field("credentials_file", &knobs.credentials_file)
             .field("directory", &knobs.directory)

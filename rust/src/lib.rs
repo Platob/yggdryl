@@ -120,6 +120,8 @@ pub mod ric;
 pub mod runend;
 #[cfg(feature = "s3")]
 pub mod s3;
+#[cfg(feature = "s3tables")]
+pub mod s3tables;
 mod scalar;
 mod scheme;
 pub mod securityid;
