@@ -1507,7 +1507,12 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   before it is yielded - its files opened by their leading key's manifest
   bound so files that follow one another are never merged; its root, and
   `read_arrow_field`, declare the order that proves only where the spec's
-  identity columns lead the order ascending and the metadata holds one spec.
+  identity columns lead the order ascending and the metadata holds one spec,
+  a transform the last key declared, and a key the stored values order (an
+  identity partition column, a transform) only where the root reads its
+  column as stored. With no partition to sort the transport is the scan
+  itself, nothing landed; `read_serie` behind a `select` or a bound lands the
+  shaped stream once and carries the declaration without reading it again.
   The scan doors, compaction and a merge's stored side keep plan order.
 - A write through `IOMedia` commits once when its source ends unless
   `commit_batch_num` paces it: every partition's rows held as spilled chunks

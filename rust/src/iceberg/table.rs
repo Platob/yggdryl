@@ -1392,7 +1392,7 @@ impl<H: IOBase> IcebergTable<H> {
         options: &RecordOptions,
     ) -> Result<BatchReader> {
         let (rows, late) = self.read_rows(scope, options)?;
-        let reader = rows.into_arrow_reader();
+        let reader = rows.into_arrow_reader()?;
         if late {
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
         }
@@ -1417,8 +1417,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// is held at once. A key the root does not read is not sorted on, nor
     /// is any key after it. A table with no such key - unsorted, or sorted
     /// only by its identity partition columns - streams its files in group
-    /// order and holds nothing. A plan holding a file of another partition
-    /// spec than the default reads in plan order and proves nothing.
+    /// order and holds nothing, and its transport face is its scan, landing
+    /// nothing. A plan holding a file of another partition spec than the
+    /// default reads in plan order and proves nothing.
     ///
     /// The root declares what the stream proves ([`Self::read_order`]),
     /// which [`IOMedia::read_arrow_field`] declares too.
@@ -1426,7 +1427,7 @@ impl<H: IOBase> IcebergTable<H> {
         &self,
         scope: Filter,
         options: &RecordOptions,
-    ) -> Result<(crate::SerieReader, bool)> {
+    ) -> Result<(super::scan::Partitions, bool)> {
         let stored = self.schema()?.clone();
         let filter = options.filter();
         let late = crate::expression::filter_after_select(
@@ -1484,27 +1485,23 @@ impl<H: IOBase> IcebergTable<H> {
             // stops where its limit does rather than decoding ahead of it.
             parallel.parallelism = 1;
         }
-        let root = std::sync::Arc::new(super::scan::declaring(landing.clone(), proven)?);
+        let root = super::scan::declaring(landing.clone(), proven)?;
+        let declared_read_root = super::scan::read_root(&root, &stored, &pushed)?;
         let partitions = super::scan::Partitions::new(
             groups,
             super::scan::GroupScan {
                 target: given.then(|| landing.clone()),
                 root: landing,
                 read_root,
+                declared_read_root,
                 predicates,
                 parallel,
                 renamed: columns_renamed(metadata),
             },
             sorting,
-            std::sync::Arc::clone(&root),
+            std::sync::Arc::new(root),
         );
-        // Lazy, so no record is verified again on its way out: every group
-        // was proven in its order where it was held - `keeps_order` read it
-        // chunk by chunk and edge by edge, or `into_sort_by` laid it out -
-        // and the groups arrive in tuple order, which is the order's own
-        // leading keys wherever the root declares one.
-        let rows = crate::SerieReader::from_landed_iter(root, partitions)?;
-        Ok((rows, late))
+        Ok((partitions, late))
     }
 
     /// The root an options-driven read lands its rows under, declaring no
@@ -3136,9 +3133,9 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     ///
     /// One partition is held at a time, spilled under the process bound,
     /// and decoded only once the one before it has been yielded. A read the
-    /// options shape - a `select`, a row bound - is
-    /// [`Self::read_arrow_reader`]'s stream landed again, its declared order
-    /// checked batch by batch as any stream's is.
+    /// options shape - a `select`, a `where` after it, a row bound - is
+    /// [`Self::read_arrow_reader`]'s stream landed once, the order it
+    /// declares carried as proven rather than read batch by batch again.
     fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
         let owned;
         let options = match options {
@@ -3154,12 +3151,39 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         // Under `*` the whole `where` clause was pushed into the plan, so the
         // rows need nothing past what the read itself yields.
         if options.select().is_all() && !bounded {
-            return Ok(self.read_rows(Filter::always_true(), options)?.0);
+            return Ok(self
+                .read_rows(Filter::always_true(), options)?
+                .0
+                .into_serie_reader()?);
         }
-        Ok(crate::SerieReader::from_arrow_reader(
-            None,
-            self.read_scoped(Filter::always_true(), options)?,
+        // The selector, a `where` after it and the bounds are Arrow's, so
+        // what they shape lands once, under its root without the order, and
+        // each record is relabelled under the root declaring it. Lazy, so no
+        // record is read against that order again: it was proven before
+        // them - its keys are the ones the selector publishes unchanged
+        // (`proven_order`) - and a `where` keeps its rows in their order, a
+        // bound a run of them.
+        let shaped = self.read_scoped(Filter::always_true(), options)?;
+        let declared = crate::arrow::field_from_arrow_schema(
+            crate::media::DEFAULT_ROOT_NAME,
+            shaped.schema().as_ref(),
+        )?;
+        let plain = declared.clone().with_metadata_removed("SORT:by");
+        let landed = crate::SerieReader::from_arrow_reader(
+            Some(&plain),
+            shaped,
             crate::ArrowCastOptions::default(),
+        )?;
+        if !declared.as_sort().declares_order() {
+            return Ok(landed);
+        }
+        let root = std::sync::Arc::new(declared);
+        let relabel = std::sync::Arc::clone(&root);
+        Ok(crate::SerieReader::from_landed_iter(
+            root,
+            landed.map(move |record| {
+                record.map(|record| record.into_relabeled(std::sync::Arc::clone(&relabel)))
+            }),
         )?)
     }
 

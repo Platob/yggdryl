@@ -994,8 +994,8 @@ mod iceberg {
 
     /// A `select` keeps the part of the order whose columns it publishes
     /// unchanged: dropping `ts` leaves the partition column declared, each
-    /// partition's rows in its files' order, and the stream re-landed
-    /// behind the selector proves that declaration batch by batch.
+    /// partition's rows in its files' order, and the stream landed behind
+    /// the selector carries that declaration.
     #[test]
     fn a_select_keeps_the_part_of_the_order_it_publishes() {
         use yggdryl::IOMedia;
@@ -1090,6 +1090,136 @@ mod iceberg {
         let rows = sequential.1;
         assert_eq!(rows.len(), 36);
         assert!(rows.windows(2).all(|pair| pair[0] <= pair[1]), "{rows:?}");
+    }
+
+    /// Drain `reader` landed again under the root its schema declares - the
+    /// door that reads a declared order before it believes it - and answer
+    /// its rows.
+    fn relanded(reader: BatchReader) -> Vec<(String, i64, i64)> {
+        let landed = yggdryl::SerieReader::from_arrow_reader(
+            None,
+            reader,
+            yggdryl::ArrowCastOptions::default(),
+        )
+        .unwrap();
+        quote_rows(&records_of(landed))
+    }
+
+    /// A partition is sorted on the column a transform key reads, so the
+    /// key holds across its rows and no key after it does: two rows of one
+    /// `truncate(ts, 10)` bucket keep their `ts` order whatever their ids.
+    /// The declaration ends at the transform - partitioned or not - and the
+    /// transport, landed again under it, proves it.
+    #[test]
+    fn a_transform_key_is_the_last_key_a_record_read_declares() {
+        use yggdryl::IOMedia;
+
+        let schema = quotes_schema(&["venue", "truncate(ts, 10)", "id"]);
+        let table = quotes_table(
+            "ordered-transform",
+            &schema,
+            None,
+            &[&[("XNAS", 11, 1), ("XLON", 3, 2), ("XNAS", 10, 5)]],
+        );
+        let declared = Some(r#"["venue","truncate(ts, 10)"]"#);
+        let reader = table.read_serie(None).unwrap();
+        assert_eq!(reader.field().get_metadata("SORT:by"), declared);
+        assert_eq!(ids_of(&quote_rows(&records_of(reader))), [2, 5, 1]);
+        let options = table.record_options().unwrap();
+        assert_eq!(
+            table
+                .read_arrow_field(&options)
+                .unwrap()
+                .get_metadata("SORT:by"),
+            declared
+        );
+        let rows = relanded(table.read_arrow_reader(&options).unwrap());
+        assert_eq!(ids_of(&rows), [2, 5, 1]);
+
+        let mut unpartitioned = IcebergTable::create(
+            LocalFolder::new(root("ordered-transform-whole")).unwrap(),
+            FormatVersion::V2,
+            quotes_schema(&["truncate(ts, 10)", "id"]),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        unpartitioned
+            .commit_append(quotes(&[("XNAS", 11, 1), ("XNAS", 10, 5)]))
+            .unwrap();
+        let reader = unpartitioned.read_serie(None).unwrap();
+        assert_eq!(
+            reader.field().get_metadata("SORT:by"),
+            Some(r#"["truncate(ts, 10)"]"#)
+        );
+        assert_eq!(ids_of(&quote_rows(&records_of(reader))), [5, 1]);
+        let options = unpartitioned.record_options().unwrap();
+        let rows = relanded(unpartitioned.read_arrow_reader(&options).unwrap());
+        assert_eq!(ids_of(&rows), [5, 1]);
+    }
+
+    /// Partitions arrive in the order of their stored tuples, which a
+    /// declared field reading the partition column as another datatype
+    /// does not keep - `9` before `10` is `"10"` before `"9"` as text - so
+    /// such a read declares no order from that key on.
+    #[test]
+    fn a_partition_key_read_as_another_datatype_is_not_declared() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let schema = quotes_schema(&["ts", "id"]);
+        let spec = PartitionSpec::identity(1, &schema, &["ts"]).unwrap();
+        let mut table = IcebergTable::create(
+            LocalFolder::new(root("ordered-retyped")).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        table
+            .commit_append(quotes(&[("XNAS", 10, 1), ("XNAS", 9, 2)]))
+            .unwrap();
+        // Stored as it is, the partition column orders the read.
+        let reader = table.read_serie(None).unwrap();
+        assert_eq!(
+            reader.field().get_metadata("SORT:by"),
+            Some(r#"["ts","id"]"#)
+        );
+        assert_eq!(ids_of(&quote_rows(&records_of(reader))), [2, 1]);
+
+        let mut text = StructType::from_fields([
+            DataType::utf8().required_field("venue"),
+            DataType::utf8().required_field("ts"),
+            DataType::Int64.required_field("id"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut text, 1).unwrap();
+        let options = table.record_options().unwrap().with_field(text);
+        let reader = table.read_serie(Some(&options)).unwrap();
+        assert_eq!(reader.field().get_metadata("SORT:by"), None);
+        let mut instants = Vec::new();
+        for record in reader {
+            let batch = record.unwrap().into_arrow_batch().unwrap();
+            let column = Arc::clone(batch.column_by_name("ts").unwrap());
+            let column = column.as_any().downcast_ref::<StringArray>().unwrap();
+            instants.extend((0..column.len()).map(|row| column.value(row).to_owned()));
+        }
+        assert_eq!(instants, ["9", "10"]);
+        assert_eq!(
+            table
+                .read_arrow_field(&options)
+                .unwrap()
+                .get_metadata("SORT:by"),
+            None
+        );
+        let landed = yggdryl::SerieReader::from_arrow_reader(
+            None,
+            table.read_arrow_reader(&options).unwrap(),
+            yggdryl::ArrowCastOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(landed.map(|record| record.unwrap().len()).sum::<usize>(), 2);
     }
 }
 

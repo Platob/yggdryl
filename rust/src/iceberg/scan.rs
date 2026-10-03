@@ -1561,6 +1561,14 @@ fn compare_tuples(left: &[Scalar], right: &[Scalar], nulls_first: &[bool]) -> st
 /// ascending - an unpartitioned table vacuously. Anywhere else each
 /// partition is sorted on its own, and the stream across them proves no
 /// order at all.
+///
+/// Two keys are read off what the table stores rather than off the landed
+/// rows, so each holds only where `landing` reads its column as the table
+/// stores it: a column a group holds constant, ordered by the stored tuples
+/// the groups arrive in, and a transform, whose group was sorted on the
+/// column it reads. A transform is the last key declared: the image of a
+/// sorted column keeps its order, but ties within one image are in the
+/// column's order, not the next key's.
 pub(super) fn proven_order(
     spec: &PartitionSpec,
     order: &SortOrder,
@@ -1588,7 +1596,8 @@ pub(super) fn proven_order(
     let mut proven = Vec::with_capacity(keys.len());
     let mut sorting = 0;
     for (field, key) in order.fields.iter().zip(keys) {
-        if !constant_in_group(spec, schema, field.source_id) {
+        let constant = constant_in_group(spec, schema, field.source_id);
+        if !constant {
             if sorting == sorted {
                 break;
             }
@@ -1597,9 +1606,29 @@ pub(super) fn proven_order(
         if key.term().bind(landing).is_err() || !publishes_unchanged(select, key.term()) {
             break;
         }
+        let transformed = field.transform != Transform::Identity;
+        if (constant || transformed) && !lands_as_stored(landing, schema, field.source_id) {
+            break;
+        }
         proven.push(key);
+        if transformed && !constant {
+            break;
+        }
     }
     proven
+}
+
+/// Whether `landing` reads the column `source_id` names as `schema` stores
+/// it: the same path, the same datatype.
+fn lands_as_stored(landing: &Field, schema: &Field, source_id: i32) -> bool {
+    let Ok((path, source)) = super::partition::source_path(schema, source_id) else {
+        return false;
+    };
+    let mut landed = Some(landing);
+    for name in &path {
+        landed = landed.and_then(|field| field.dtype().get_field_by_name(name));
+    }
+    landed.is_some_and(|landed| landed.dtype() == source.dtype())
 }
 
 /// Whether `select` publishes every column `term` reads as it is stored,
@@ -1648,6 +1677,10 @@ pub(super) struct GroupScan {
     pub(super) root: Field,
     /// That root plus the columns the filters read.
     pub(super) read_root: Field,
+    /// The read root of the root that declares what the read proves: what
+    /// the transport face casts each file's batches into, so they cross
+    /// under that root's schema.
+    pub(super) declared_read_root: Field,
     /// The column pushdown handed to each file, when the caller gave one.
     pub(super) target: Option<Field>,
     /// The conjuncts, indexed by every part's residual list.
@@ -1670,6 +1703,10 @@ pub(super) struct GroupScan {
 /// else sorted out of core and merged. At most one group is held at once.
 /// Every record is relabelled under `root`, which declares what the read
 /// proves.
+///
+/// Two faces: [`Self::into_serie_reader`], the records, and
+/// [`Self::into_arrow_reader`], the transport - which, where no group needs
+/// a sort, is the scan itself and lands nothing.
 pub(super) struct Partitions {
     /// The groups not yet opened, in the order they are yielded.
     groups: std::vec::IntoIter<Vec<ScanPart>>,
@@ -1756,6 +1793,49 @@ impl Partitions {
         self.groups = Vec::new().into_iter();
         self.open = None;
     }
+
+    /// The read's records, under `root`.
+    ///
+    /// Lazy, so no record is verified again on its way out: every group
+    /// was proven in its order where it was held - `keeps_order` read it
+    /// chunk by chunk and edge by edge, or `into_sort_by` laid it out - and
+    /// the groups arrive in tuple order, which is the order's own leading
+    /// keys wherever the root declares one ([`proven_order`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root does not project into Arrow.
+    pub(super) fn into_serie_reader(self) -> crate::arrow::Result<crate::SerieReader> {
+        crate::SerieReader::from_landed_iter(Arc::clone(&self.root), self)
+    }
+
+    /// The read as transport, under `root`'s schema.
+    ///
+    /// Where no group needs a sort the batches are the scan's own - the
+    /// groups' files in group order, each batch reconciled to `root` and
+    /// never landed, so nothing is proven or copied that a scan does not
+    /// prove or copy. Otherwise the held groups' records, as batches.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root does not project into Arrow.
+    pub(super) fn into_arrow_reader(self) -> crate::arrow::Result<BatchReader> {
+        if !self.sorting.is_empty() {
+            return Ok(self.into_serie_reader()?.into_arrow_reader());
+        }
+        let Self {
+            groups, scan, root, ..
+        } = self;
+        Ok(reader(
+            groups.flatten().collect(),
+            Arc::unwrap_or_clone(root),
+            scan.declared_read_root,
+            scan.target,
+            scan.predicates,
+            &scan.parallel,
+            scan.renamed,
+        )?)
+    }
 }
 
 impl Iterator for Partitions {
@@ -1772,7 +1852,7 @@ impl Iterator for Partitions {
             };
             match pulled {
                 Some(Ok(record)) => {
-                    return Some(record.relabeled(Arc::clone(&self.root)).map_err(Into::into));
+                    return Some(Ok(record.into_relabeled(Arc::clone(&self.root))));
                 }
                 Some(Err(error)) => {
                     self.fuse();

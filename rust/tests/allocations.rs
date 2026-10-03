@@ -10198,6 +10198,184 @@ fn a_declared_stream_proves_each_batch_and_each_edge_and_never_a_row() {
     }
 }
 
+/// A venue-partitioned Iceberg table of `files` commits, each one data
+/// file of XNAS quotes covering a later stretch of `ts` than the one
+/// before, read on one thread: sorted by `venue, ts, id` where `sorted`,
+/// else declaring no order.
+#[cfg(feature = "iceberg")]
+fn iceberg_quotes(
+    label: &str,
+    files: i64,
+    sorted: bool,
+) -> (
+    yggdryl::iceberg::IcebergTable<yggdryl::local::LocalFolder>,
+    std::path::PathBuf,
+) {
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergOptions, IcebergTable, PartitionSpec, SortOrder, assign_field_ids,
+    };
+
+    let mut path = yggdryl::local::LocalFolder::temporary()
+        .expect("a temporary folder")
+        .path()
+        .expect("a local path");
+    path.push(format!(
+        "yggdryl-allocations-{label}-{files}-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&path);
+    let mut schema = Field::new(
+        "row",
+        DataType::from(
+            StructType::from_fields([
+                Field::new("venue", DataType::utf8(), false),
+                Field::new("ts", DataType::Int64, false),
+                Field::new("id", DataType::Int64, false),
+            ])
+            .expect("three children"),
+        ),
+        false,
+    );
+    if sorted {
+        schema
+            .as_sort_mut()
+            .set_by_texts(["venue", "ts", "id"])
+            .expect("the keys");
+    }
+    assign_field_ids(&mut schema, 1).expect("numbered");
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("a spec");
+    let folder = yggdryl::local::LocalFolder::new(&path).expect("a folder");
+    let mut table = if sorted {
+        IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec)
+    } else {
+        IcebergTable::create_sorted(
+            folder,
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+            SortOrder::unsorted(),
+        )
+    }
+    .expect("a table");
+    table.set_options(
+        IcebergOptions::new()
+            .try_with_read_parallelism(1)
+            .expect("one thread"),
+    );
+    let arrow_schema = schema.into_arrow_schema().expect("a schema");
+    for file in 0..files {
+        let rows: Vec<i64> = (0..64).map(|row| file * 1_000 + row).collect();
+        let batch = arrow_array::RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(arrow_array::StringArray::from(vec!["XNAS"; rows.len()])),
+                Arc::new(arrow_array::Int64Array::from(rows.clone())),
+                Arc::new(arrow_array::Int64Array::from(rows)),
+            ],
+        )
+        .expect("a batch");
+        table
+            .commit_append(yggdryl::arrow::batch_reader(
+                Arc::clone(&arrow_schema),
+                [batch],
+            ))
+            .expect("a commit");
+    }
+    (table, path)
+}
+
+/// Pull every batch `reader` yields.
+#[cfg(feature = "iceberg")]
+fn drained(reader: yggdryl::arrow::BatchReader) {
+    for batch in reader {
+        black_box(batch.expect("a batch"));
+    }
+}
+
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_record_read_needing_no_sort_is_its_scan_as_transport() {
+    // A table declaring no order sorts no partition, so its record read's
+    // batches are its scan's - reconciled, never landed - and a file more
+    // costs the record read exactly what it costs the scan: whatever the
+    // read spends grouping the plan is spent once, not per file.
+    use yggdryl::IOMedia;
+
+    let mut scans = Vec::new();
+    let mut reads = Vec::new();
+    for files in [2, 3] {
+        let (table, path) = iceberg_quotes("transport", files, false);
+        let options = table.record_options().expect("options");
+        // Once each outside the count, so no first use is charged.
+        drained(table.scan(None).expect("a scan"));
+        drained(table.read_arrow_reader(&options).expect("a read"));
+        scans.push(counted(|| drained(table.scan(None).expect("a scan"))).0);
+        reads.push(counted(|| drained(table.read_arrow_reader(&options).expect("a read"))).0);
+        let _ = std::fs::remove_dir_all(path);
+    }
+    assert_eq!(
+        reads[1] - reads[0],
+        scans[1] - scans[0],
+        "a file more, read as records ({reads:?}) and scanned ({scans:?})"
+    );
+}
+
+#[cfg(feature = "iceberg")]
+#[test]
+fn an_iceberg_serie_read_behind_a_select_lands_its_rows_once_and_reads_no_order() {
+    // The selector is Arrow's, so a record read behind one lands the
+    // stream the selector shapes: once, under its root without the order,
+    // which the rows carry as proven - never checked batch by batch and
+    // edge by edge again. A file more costs exactly what one landing of the
+    // shaped transport costs it.
+    use yggdryl::IOMedia;
+    use yggdryl::media::IORecordOptions;
+
+    let mut series = Vec::new();
+    let mut landings = Vec::new();
+    for files in [2, 3] {
+        let (table, path) = iceberg_quotes("shaped", files, true);
+        let shaped = table
+            .record_options()
+            .expect("options")
+            .with_select("venue, ts, id")
+            .expect("a select");
+        let root = table
+            .read_serie(Some(&shaped))
+            .expect("a read")
+            .field()
+            .clone();
+        assert_eq!(root.get_metadata("SORT:by"), Some(r#"["venue","ts","id"]"#));
+        let plain = root.with_metadata_removed("SORT:by");
+        let read = || {
+            for record in table.read_serie(Some(&shaped)).expect("a read") {
+                black_box(record.expect("a record"));
+            }
+        };
+        let landed_once = || {
+            let reader = yggdryl::SerieReader::from_arrow_reader(
+                Some(&plain),
+                table.read_arrow_reader(&shaped).expect("a read"),
+                ArrowCastOptions::default(),
+            )
+            .expect("a landing");
+            for record in reader {
+                black_box(record.expect("a record"));
+            }
+        };
+        read();
+        landed_once();
+        series.push(counted(read).0);
+        landings.push(counted(landed_once).0);
+        let _ = std::fs::remove_dir_all(path);
+    }
+    assert_eq!(
+        series[1] - series[0],
+        landings[1] - landings[0],
+        "a file more, read as series ({series:?}) and the transport landed once ({landings:?})"
+    );
+}
+
 #[test]
 fn a_merge_join_over_declared_sides_builds_no_table_and_costs_nothing_per_key() {
     // Both sides sorted by the key and declaring it: the probe rows walk the

@@ -2203,11 +2203,16 @@ impl Serie {
     /// answers through - the record's leaf copied once, its field swapped.
     /// Anything but a record is itself.
     pub(crate) fn relabeled(&self, field: Arc<Field>) -> Result<Self> {
-        let mut relabelled = self.clone();
-        if let Self::Struct(held) = &mut relabelled {
+        Ok(self.clone().into_relabeled(field))
+    }
+
+    /// [`Self::relabeled`], consuming this record: a leaf nothing else
+    /// holds has its field swapped where it stands, allocating nothing.
+    pub(crate) fn into_relabeled(mut self, field: Arc<Field>) -> Self {
+        if let Self::Struct(held) = &mut self {
             Arc::make_mut(held).set_field(field);
         }
-        Ok(relabelled)
+        self
     }
 
     /// Whether the declared order `by` holds across the rows `written` and
