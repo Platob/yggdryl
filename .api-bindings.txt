@@ -268,6 +268,40 @@
     candles(books: Iterable[BookEvent | MarketData], interval: CandleOptions | int | str, timezone: Timezone | str | Any | None = None) -> list[Candle]: list(CandleIterator(books, CandleOptions(interval, timezone)))
   iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static into_field()
+  warehouse: Catalog, FolderCatalog, FolderNamespace, MediaTable, MemoryCatalog, MemoryNamespace, Namespace, Namespaces, SystemWarehouse, Table, Tables, Warehouse; every name re-exported at the package root
+    the catalog abstraction over yggdryl::warehouse: Catalog, Namespace and Table are IOBase subclasses over Holder::Catalog, Holder::Namespace and Holder::Table, type(object) the implementation doing the work; a path is a WarehousePath - a dotted text the plan grammar reads (`lake."eu west".trades`), or a sequence of parts taken as spelled; properties are WarehouseProperties - a mapping of str to str, int, float or bool - and every constructor and creator taking properties=None takes **keywords too, each one more entry of that bag
+  warehouse.Catalog
+    statics: from_url(url, properties=None, **keywords) - the `type` property (`memory`, `folder`) and the `name` property, else the URL's last segment; an s3tables URL names a catalog this build has not got
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), namespace_levels, namespaces, tables, children, get(name), resolve(path), table(path), namespace(path), create_namespace(name, properties=None, **keywords), create_table(name, field, properties=None, **keywords)
+    protocol: str is the dotted path; equality and hash over the description, the implementation and the path; kind() is "catalog", iterdir() the children as handles, every byte verb a refusal
+  warehouse.MemoryCatalog
+    constructor: MemoryCatalog(name, *, description=None, objects=None, properties=None, **keywords) - objects registered in order, a second object at one path a conflict
+  warehouse.FolderCatalog
+    constructor: FolderCatalog(name, location, *, description=None, levels=1, properties=None, **keywords) - location an IOBase, a Url, a str or a path; a folder a namespace while levels remain, a tabular leaf or a table-format folder a table
+  warehouse.Namespace
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), namespaces, tables, children, get(name), resolve(path), create_namespace(name, properties=None, **keywords), create_table(name, field, properties=None, **keywords)
+    protocol: as Catalog; kind() is "namespace"
+  warehouse.MemoryNamespace
+    constructor: MemoryNamespace(path, *, description=None, objects=None, properties=None, **keywords) - path at least two parts, the catalog's name first
+  warehouse.FolderNamespace
+    constructor: FolderNamespace(path, location, *, description=None, levels=0, properties=None, **keywords)
+  warehouse.Table
+    instance: name, path, description, modified, properties, update_properties(properties=None, **keywords), field() (the declared row schema, else the one its rows carry), storage ("table", "directory", or the leaf's media type); every IOBase record verb reads and writes its rows
+    protocol: as Catalog; kind() is "table" for a table-format folder, else the location's own
+  warehouse.MediaTable
+    constructor: MediaTable(path, location, *, field=None, dtype=None, description=None, layout=None, properties=None, **keywords) - field renamed after the table, dtype a required field of that name, layout "leaf", "folder" or "format", else what the location is
+  warehouse.Namespaces
+    instance: __getitem__ (a KeyError names the path), __contains__, __iter__ (the names), __len__, keys, values, items, get(name, default=None), create(name, properties=None, **keywords), open_or_create(name, properties=None, **keywords)
+    protocol: a lazy mapping view over one level; unhashable; keys() lists once per call and values() opens each named object
+  warehouse.Tables
+    instance: __getitem__, __contains__, __iter__, __len__, keys, values, items, get(name, default=None), create(name, field, properties=None, **keywords), open_or_create(name, field, properties=None, **keywords), append(name, data, *, options=None, **properties), overwrite(name, data, *, options=None, **properties) - data anything SerieReader.from_ reads, the properties set on a copy of options by their own RecordOptions setters, else of the table's own
+    protocol: as Namespaces
+  warehouse.Warehouse
+    constructor: Warehouse() - no catalogs
+    instance: register(object) (a catalog, or a namespace or table under memory levels it builds), replace(object), unregister(path), catalogs, catalog(name), get(path), table(path), namespace(path), properties_for(url) - the properties of the innermost registered object whose location holds the URL
+    protocol: equality over the registered catalogs; unhashable
+  warehouse.SystemWarehouse
+    statics: register, replace, unregister, catalogs, catalog, get, table, namespace, properties_for - the process's one Warehouse, under one lock, opened with the `local` memory catalog holding the temporary, home and config folders as namespaces; what a plan's `from catalog.namespace.table` resolves against
   avro
     exports: Block, BlockIterator, Container, Schema, blocks, dumps, dumps_single, loads, loads_single
     decode limits: max_depth, max_input_bytes, max_nodes; blocks is a fused lazy iterator
@@ -813,6 +847,32 @@
     instance: bytesRewritten, clone, compare, equals, filesAfter, filesBefore, stableHash
   http
     statics: Headers, Pages, Request, Response, Server, Session, delete, get, head, patch, post, put, request, session
+  warehouse
+    statics: Catalog, Namespace, Table, Namespaces, Tables, Warehouse, SystemWarehouse, MemoryCatalog, FolderCatalog, MemoryNamespace, FolderNamespace, MediaTable - the five implementation names constructors over the kinds' static constructors (`new warehouse.FolderCatalog(name, location, options)` is `Catalog.folder(...)`), callable with or without `new`; the module is frozen and the warehouse values are reached through it alone
+    types: ObjectPathInput (a dotted text the plan grammar reads, or an array of parts taken as spelled), ObjectInput (a Catalog, Namespace or Table), ObjectOptions ({ description, properties, levels, field, dtype, layout, objects }, each read by the implementation that has it and refused by name elsewhere), LocationInput (an IOBase, a Url, a URL, a string or a path), PropertiesInput (a plain object of string, number or boolean values)
+  warehouse.Catalog
+    statics: memory(name, options?), folder(name, location, options?), fromUrl(url, properties?) - the `type` property (`memory`, `folder`) and the `name` property, else the URL's last segment
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), namespaceLevels, namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?), equals, toString
+    protocol: toString is the dotted path; equals over the description, the implementation and the path; IOBase.from(catalog) is the handle - kind "catalog", children as its listing, every byte verb a refusal
+  warehouse.Namespace
+    statics: memory(path, options?), folder(path, location, options?)
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), namespaces(), tables(), children(), get(name), resolve(path), table(path), namespace(path), createNamespace(name, properties?), createTable(name, field, properties?), equals, toString
+  warehouse.Table
+    statics: media(path, location, options?)
+    instance: name, path, kind, implementation, description, url, modified, properties, updateProperties(properties), storage, layout, declaredField, field(), equals, toString; IOBase.from(table) reads and writes its rows
+  warehouse.Namespaces
+    instance: get(name), has(name), keys() (a lazy ObjectNames iterator), size, create(name, properties?), openOrCreate(name, properties?), values(), entries(), [Symbol.iterator] (the names); values and entries open each named object through get, one at a time
+  warehouse.Tables
+    instance: get(name), has(name), keys(), size, create(name, field, properties?), openOrCreate(name, field, properties?), append(name, data, options?, properties?), overwrite(name, data, options?, properties?), values(), entries(), [Symbol.iterator] - data anything BatchReader.from reads, options a RecordOptions or a property bag set on a copy of the table's own
+  warehouse.ObjectIterator
+    instance: next, [Symbol.iterator] - what children() answers, one object per step, nothing prefetched
+  warehouse.ObjectNames
+    instance: next, [Symbol.iterator] - what keys() answers, one name per step, nothing prefetched
+  warehouse.Warehouse
+    constructor: new Warehouse() - no catalogs
+    instance: register(object), replace(object), unregister(path), catalogs, catalog(name), get(path), table(path), namespace(path), propertiesFor(url)
+  warehouse.SystemWarehouse
+    statics: register, replace, unregister, catalogs, catalog, get, table, namespace, propertiesFor - the process's one Warehouse, opened with the `local` memory catalog holding the temporary, home and config folders as namespaces
     yggdryl::http as a namespace: every exchange is synchronous, as every handle read is, and new IOBase('https://...') holds the resource a URL names
   http.Session
     constructor: new Session(baseUrl?, { headers, auth, timeout, httpVersion, options }?) - httpVersion 'auto', '1.1', 2 or 3; options are HttpOptions properties by name

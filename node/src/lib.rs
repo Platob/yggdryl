@@ -61,6 +61,7 @@ mod timeinforce;
 mod uri;
 mod value;
 mod version;
+mod warehouse;
 
 use std::cmp::Ordering;
 use std::sync::{Arc, Mutex};
@@ -126,6 +127,10 @@ pub use text::options::JsTextOptions;
 pub use timezone::{JsTimezone, TimezoneAlias};
 pub use uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry};
 pub use version::JsVersion;
+pub use warehouse::{
+    JsSystemWarehouse, JsWarehouse, JsWarehouseCatalog, JsWarehouseNamespace,
+    JsWarehouseNamespaces, JsWarehouseTable, JsWarehouseTables, ObjectOptions,
+};
 pub use window_serie::JsWindowSerie;
 
 /// Read a structural JSON document from the object or the text a caller holds.

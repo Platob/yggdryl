@@ -2536,6 +2536,7 @@ pub enum Holder
   ZipNode(crate::zip::ZipNode), ZipPath(crate::zip::ZipPath), ZipLeaf(crate::zip::ZipLeaf)
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
   Uri(Uri)  (an identifier holding what it names, resolved through from_url on first use; From<Uri>, From<Url>, From<Urn>, From<Arn>)
+  Catalog(Box<crate::Catalog>), Namespace(Box<crate::Namespace>), Table(Box<crate::Table>)  (the warehouse objects as handles: a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are `Error::NotAtomic`, a table every verb its implementation's; From<Catalog>, From<Namespace>, From<Table>, From<Object>)
   pub fn exists(&self) -> bool  (each role's own answer; a buffer always, a wrapper its handle's)
   pub const fn buffer(buffer: Buffer) -> Self
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -2554,6 +2555,178 @@ pub enum Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
+
+### yggdryl::warehouse  [rust/src/warehouse/mod.rs]  (one abstraction for every place that answers "which tables are there, and how do I read one": the four traits, the four enums, the registry and its process-wide instance; every name re-exported at the crate root)
+pub struct Warehouse  (the catalogs, in registration order; Clone, Default, Eq, Hash)
+  pub const fn new() -> Self
+  pub fn register(&mut self, object: impl Into<Object>) -> Result<()>  (a catalog by its name; a namespace or a table at its path, memory catalogs and namespaces created along it; conflict when the name is taken, refused by name under an object that lists its own store)
+  pub fn replace(&mut self, object: impl Into<Object>) -> Result<Option<Object>>
+  pub fn unregister(&mut self, path: impl IntoObjectPath) -> Result<Object>
+  pub fn catalogs(&self) -> &[Catalog]
+  pub fn catalog(&self, name: &str) -> Result<&Catalog>
+  pub fn get(&self, path: impl IntoObjectPath) -> Result<Object>
+  pub fn table(&self, path: impl IntoObjectPath) -> Result<Table>
+  pub fn namespace(&self, path: impl IntoObjectPath) -> Result<Namespace>
+  pub fn properties_for(&self, url: &Url) -> Properties  (the effective properties of the deepest registered object whose URL holds `url` on a path boundary)
+
+### yggdryl::warehouse::object  [rust/src/warehouse/object.rs]
+pub trait ObjectValue: std::fmt::Debug + Send + Sync  (what every object a warehouse path reaches answers)
+  fn name(&self) -> &str
+  fn path(&self) -> &[SmolStr]
+  fn kind(&self) -> IOKind
+  fn description(&self) -> Option<&str>
+  fn url(&self) -> Option<&Url>
+  fn modified(&self) -> Option<i64>
+  fn properties(&self) -> Result<Properties>  (effective: the parent's, then the store's, then the stated)
+  fn update_properties(&self, updates: &Properties, removes: &[SmolStr]) -> Result<()>  (the default refuses, naming the implementation)
+pub enum Object  (Catalog(Catalog), Namespace(Namespace), Table(Table); non_exhaustive; Clone, Eq, Hash over the description, Display the dotted path; From each enum and each generic implementation; ObjectValue by delegation)
+  pub fn as_object(&self) -> &dyn ObjectValue
+  pub fn as_catalog(&self) -> Option<&Catalog>
+  pub fn as_namespace(&self) -> Option<&Namespace>
+  pub fn as_table(&self) -> Option<&Table>
+  pub fn into_table(self) -> Result<Table>  (absence at the path when a catalog or a namespace sits there)
+  pub fn into_namespace(self) -> Result<Namespace>
+  pub fn into_holder(self) -> Holder
+pub trait IntoObjectPath  (the one path intake: dotted text through the location grammar, the empty text the root, parts as they are; a URL or a `with` clause refused at `$.path`; for &str, String, &String, Location, &Location, Vec<SmolStr>, &[SmolStr], &Vec<SmolStr>, &[&str], Vec<&str>, [&str; N], &[&str; N])
+  fn into_object_path(self) -> Result<Vec<SmolStr>>
+pub struct Objects  (the children of a namespace, one at a time, fused after the first failure; Iterator<Item = Result<Object>>, FromIterator, Default)
+  pub fn empty() -> Self
+  pub fn new(entries: impl Iterator<Item = Result<Object>> + Send + Sync + 'static) -> Self
+  pub fn failing(error: Error) -> Self
+  pub fn into_listing(self, recursive: bool) -> crate::Listing
+
+### yggdryl::warehouse::catalog  [rust/src/warehouse/catalog.rs]
+pub trait CatalogValue: NamespaceValue  (the first namespace layer)
+  fn namespace_levels(&self) -> Option<usize>
+pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>); non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
+  pub fn from_url(url: &Url, properties: &Properties) -> Result<Self>  (the `type` property first - `memory`, `folder` - then the scheme; named by the `name` property else the location's last segment)
+  pub fn as_catalog(&self) -> &dyn CatalogValue
+  pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
+  pub fn table(&self, path: impl IntoObjectPath) -> Result<Table>
+  pub fn namespace(&self, path: impl IntoObjectPath) -> Result<Namespace>
+  pub fn namespaces(&self) -> Namespaces<'_>
+  pub fn tables(&self) -> Tables<'_>
+
+### yggdryl::warehouse::namespace  [rust/src/warehouse/namespace.rs]
+pub trait NamespaceValue: ObjectValue  (a container of namespaces and tables)
+  fn children(&self) -> Objects
+  fn get(&self, name: &str) -> Result<Object>
+  fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace>  (the default refuses by name)
+  fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>  (the default refuses by name)
+pub enum Namespace  (Memory(MemoryNamespace), Folder(Box<FolderNamespace>); non_exhaustive; ObjectValue and NamespaceValue by delegation; IOBase and IOMedia as a container of handles; Display the dotted path)
+  pub fn as_namespace(&self) -> &dyn NamespaceValue
+  pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
+  pub fn namespaces(&self) -> Namespaces<'_>
+  pub fn tables(&self) -> Tables<'_>
+pub struct Names  (the names of one collection level, one at a time, fused; Iterator<Item = Result<SmolStr>>)
+  pub fn empty() -> Self
+  pub fn new(entries: impl Iterator<Item = Result<SmolStr>> + Send + Sync + 'static) -> Self
+  pub fn failing(error: Error) -> Self
+pub struct Namespaces<'a>  (the namespaces one level below a catalog or a namespace, as a lazy view; dotted names descend)
+  pub fn get(&self, name: &str) -> Result<Namespace>
+  pub fn create(&self, name: &str, properties: &Properties) -> Result<Namespace>
+  pub fn open_or_create(&self, name: &str, properties: &Properties) -> Result<Namespace>
+  pub fn contains(&self, name: &str) -> Result<bool>
+  pub fn iter(&self) -> Names
+  pub fn len(&self) -> Result<usize>
+  pub fn is_empty(&self) -> Result<bool>
+pub struct Tables<'a>  (the tables one level below, the same shape; the write helpers open or create through `create_table` and write through the table's record surface)
+  pub fn get(&self, name: &str) -> Result<Table>
+  pub fn create(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>
+  pub fn open_or_create(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table>
+  pub fn open_or_create_from_arrow_reader(&self, name: &str, batches: &BatchReader, properties: &Properties) -> Result<Table>
+  pub fn contains(&self, name: &str) -> Result<bool>
+  pub fn iter(&self) -> Names
+  pub fn len(&self) -> Result<usize>
+  pub fn is_empty(&self) -> Result<bool>
+  pub fn append_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table>
+  pub fn append_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: &RecordOptions) -> Result<Table>
+  pub fn overwrite_arrow_reader(&self, name: &str, batches: BatchReader) -> Result<Table>
+  pub fn overwrite_arrow_reader_with_options(&self, name: &str, batches: BatchReader, options: &RecordOptions) -> Result<Table>
+
+### yggdryl::warehouse::table  [rust/src/warehouse/table.rs]
+pub trait TableValue: ObjectValue + IOBase  (a table: rows any record read and write reaches)
+  fn field(&self) -> Result<Field>
+  fn storage(&self) -> String
+pub enum Table  (Media(Box<MediaTable>); non_exhaustive; ObjectValue and TableValue by delegation; IOBase and IOMedia delegated whole; Display the dotted path)
+  pub fn as_table(&self) -> &dyn TableValue
+  pub fn as_io(&self) -> &dyn IOBase
+  pub fn as_io_mut(&mut self) -> &mut dyn IOBase
+
+### yggdryl::warehouse::properties  [rust/src/warehouse/properties.rs]
+pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order)
+  pub const fn new() -> Self
+  pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
+  pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self
+  pub fn set(&mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>)
+  pub fn remove(&mut self, name: &str) -> Option<SmolStr>
+  pub fn get(&self, name: &str) -> Option<&str>
+  pub fn contains(&self, name: &str) -> bool
+  pub fn iter(&self) -> impl ExactSizeIterator<Item = (&str, &str)> + DoubleEndedIterator + '_
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn knob<T: FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>>
+  pub fn inherit(&self, parent: &Self) -> Self  (the parent's entries with this bag's own replacing them by name)
+
+### yggdryl::warehouse::system  [rust/src/warehouse/system.rs]
+pub struct SystemWarehouse  (the process's one `Warehouse` under a lock taken per call, a poisoned lock recovered; starts with the memory catalog `local` of the folder namespaces `temporary`, `home` and `config`)
+  pub fn with<R>(read: impl FnOnce(&Warehouse) -> R) -> R
+  pub fn with_mut<R>(change: impl FnOnce(&mut Warehouse) -> R) -> R
+  pub fn register(object: impl Into<Object>) -> Result<()>
+  pub fn replace(object: impl Into<Object>) -> Result<Option<Object>>
+  pub fn unregister(path: impl IntoObjectPath) -> Result<Object>
+  pub fn catalogs() -> Vec<Catalog>
+  pub fn catalog(name: &str) -> Result<Catalog>
+  pub fn get(path: impl IntoObjectPath) -> Result<Object>
+  pub fn table(path: impl IntoObjectPath) -> Result<Table>
+  pub fn namespace(path: impl IntoObjectPath) -> Result<Namespace>
+  pub fn properties_for(url: &Url) -> Properties
+
+### yggdryl::warehouse::memory  [rust/src/warehouse/memory.rs]
+pub struct MemoryCatalog  (registered objects of any implementation, in order, with no storage; CatalogValue with `namespace_levels` None; creates nothing)
+  pub fn new(name: impl Into<SmolStr>) -> Self
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self
+  pub fn with_object(mut self, object: impl Into<Object>) -> Result<Self>
+  pub fn registered(&self) -> &[Object]
+pub struct MemoryNamespace  (the same one level down; a path of at least two parts)
+  pub fn new(path: impl IntoObjectPath) -> Result<Self>
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self
+  pub fn with_object(mut self, object: impl Into<Object>) -> Result<Self>
+  pub fn registered(&self) -> &[Object]
+
+### yggdryl::warehouse::folder  [rust/src/warehouse/folder.rs]
+pub enum FolderLayout  (Leaf, Folder, Format: how a table a folder catalog lists holds its rows; Display)
+  pub const fn as_str(self) -> &'static str
+pub struct FolderCatalog  (a container read as a catalog: folders namespaces while levels remain, else tables read as the rows beneath them; a table format's folder a table at any depth, decided by one listing of its `metadata/` and never a read; a leaf a table when a record medium reads its media type; named by the file name less every extension a media type claims; nothing cached but the container handle)
+  pub const DEFAULT_LEVELS: usize = 1
+  pub fn new(name: impl Into<SmolStr>, url: impl Into<crate::Uri>) -> Result<Self>
+  pub fn bound(name: impl Into<SmolStr>, holder: Holder) -> Self
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self
+  pub const fn with_levels(mut self, levels: usize) -> Self
+  pub const fn levels(&self) -> usize
+pub struct FolderNamespace  (a folder under a folder catalog, or standing alone at a path of at least two parts, with `levels` namespace levels under it, none by default)
+  pub fn new(path: impl IntoObjectPath, url: impl Into<crate::Uri>) -> Result<Self>
+  pub fn bound(path: impl IntoObjectPath, holder: Holder) -> Result<Self>
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self
+  pub const fn with_levels(mut self, levels: usize) -> Self
+  pub const fn levels(&self) -> usize
+
+### yggdryl::warehouse::media  [rust/src/warehouse/media.rs]
+pub struct MediaTable  (a table over any location a record medium reads: a path, the identifier of its storage, stated properties, a description, a `FolderLayout` and at most one declared field named after the table; the handle opened on first use with `Holder::from_url` under the effective properties and composed as its name declares; `record_options` applies the declared field and the table name, `read_arrow_field` answers the declared field first, every other verb delegates; a Format layout refused by name without the `iceberg` feature)
+  pub fn new(path: impl IntoObjectPath, uri: impl Into<Uri>) -> Result<Self>
+  pub fn bound(path: impl IntoObjectPath, holder: Holder) -> Result<Self>
+  pub fn with_field(mut self, field: Field) -> Self
+  pub fn with_dtype(mut self, dtype: DataType) -> Result<Self>
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn with_properties(mut self, properties: Properties) -> Self
+  pub const fn with_layout(mut self, layout: FolderLayout) -> Self
+  pub const fn layout(&self) -> FolderLayout
+  pub const fn declared_field(&self) -> Option<&Field>
+  pub const fn uri(&self) -> Option<&Uri>
 
 ### yggdryl::root::iobase  [rust/src/iobase.rs]
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
@@ -7111,11 +7284,12 @@ pub enum Location
   pub const fn url(url: Url) -> Self
   pub fn parts<I, S>(parts: I) -> Self where
   pub fn parse(text: &str) -> Result<Self>
-  pub fn with_property(mut self, name: impl Into<String>, value: impl Into<String>) -> Self
-  pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self where
+  pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
+  pub fn with_properties<K, V>(mut self, properties: impl IntoIterator<Item = (K, V)>) -> Self where
   pub const fn location(&self) -> &Location
-  pub fn properties(&self) -> &[(String, String)]
+  pub const fn properties(&self) -> &Properties  (the `with (...)` clause as the one property bag, serialized as a JSON object in order)
   pub fn property(&self, name: &str) -> Option<&str>
+  pub fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>>  (Properties::knob)
   pub enum Source
   pub enum Verb
   pub const fn as_str(self) -> &'static str

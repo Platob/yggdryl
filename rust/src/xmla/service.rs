@@ -942,12 +942,7 @@ impl Service {
         let Some(url) = table.url() else {
             return Err(Error::absent("table", format_smolstr!("{table}")));
         };
-        Ok(Target::url(url.clone()).with_properties(
-            target
-                .properties()
-                .iter()
-                .map(|(name, value)| (name.clone(), value.clone())),
-        ))
+        Ok(Target::url(url.clone()).with_properties(target.properties()))
     }
 
     /// The table a dotted path names: `table` under the default catalog,

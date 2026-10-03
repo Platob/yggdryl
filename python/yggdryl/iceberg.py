@@ -11,9 +11,6 @@ takes, typed against the table's stored schema.
 from __future__ import annotations
 
 from ._native import (
-    Catalog,
-    Namespace,
-    Namespaces,
     Compaction,
     DataFile,
     IcebergOptions,
@@ -22,9 +19,12 @@ from ._native import (
     PartitionSpec,
     ScanPlan,
     SchemaUpdate,
+    IcebergCatalog as Catalog,
+    IcebergNamespace as Namespace,
+    IcebergNamespaces as Namespaces,
+    IcebergTable as Table,
+    IcebergTables as Tables,
     Snapshot,
-    Table,
-    Tables,
     assign_field_ids,
     can_promote,
     schema_from_json,

@@ -74,6 +74,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Field, Result};
 
 pub use bind::Bound;
+pub(crate) use display::{write_identifier, write_text_literal};
 pub use filter::{Filter, IntoFilter};
 pub use literal::Literal;
 pub use parser::needs_quoting;

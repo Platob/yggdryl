@@ -4578,8 +4578,8 @@ const { icebergBatchReader, icebergCallOptions, intoField } = installRecords({
   RecordOptions,
   SerieReader,
   TextOptions,
-  Table: binding.Table,
-  Tables: binding.Tables,
+  Table: binding.IcebergTable,
+  Tables: binding.IcebergTables,
 })
 binding.intoField = intoField
 
@@ -4821,8 +4821,8 @@ Object.defineProperties(IOBase.prototype, {
 // A retained snapshot is read with the vocabulary the rest of the package
 // already speaks: filters are the pairs `childrenWhere` takes, in any of the
 // three ways JavaScript spells a set of them.
-const nativeScanAt = binding.Table.prototype.scanAt
-Object.defineProperty(binding.Table.prototype, 'scanAt', {
+const nativeScanAt = binding.IcebergTable.prototype.scanAt
+Object.defineProperty(binding.IcebergTable.prototype, 'scanAt', {
   configurable: true,
   value(snapshotId, filters, schema, options) {
     return nativeScanAt.call(
@@ -4838,7 +4838,11 @@ Object.defineProperty(binding.Table.prototype, 'scanAt', {
 // Property updates arrive as whatever spells string pairs - an object, a Map,
 // or entries - through the same normalization Field metadata updates use.
 // Every level of the hierarchy that carries properties widens the same way.
-for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
+for (const Owner of [
+  binding.IcebergTable,
+  binding.IcebergCatalog,
+  binding.IcebergNamespace,
+]) {
   const nativeUpdateProperties = Owner.prototype.updateProperties
   Object.defineProperty(Owner.prototype, 'updateProperties', {
     configurable: true,
@@ -4856,12 +4860,12 @@ for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
 // core's own `SchemaUpdate` and the native commit is the core's, so this
 // wrapper only adds the chaining Node-API cannot spell: each call returns the
 // builder, and `commit()` carries the table the chain started from.
-const nativeUpdateSchema = binding.Table.prototype._updateSchemaNative
+const nativeUpdateSchema = binding.IcebergTable.prototype._updateSchemaNative
 const nativeCommitSchemaUpdate =
-  binding.Table.prototype._commitSchemaUpdateNative
-delete binding.Table.prototype._updateSchemaNative
-delete binding.Table.prototype._commitSchemaUpdateNative
-Object.defineProperty(binding.Table.prototype, 'updateSchema', {
+  binding.IcebergTable.prototype._commitSchemaUpdateNative
+delete binding.IcebergTable.prototype._updateSchemaNative
+delete binding.IcebergTable.prototype._commitSchemaUpdateNative
+Object.defineProperty(binding.IcebergTable.prototype, 'updateSchema', {
   configurable: true,
   value() {
     const table = this
@@ -4904,8 +4908,8 @@ Object.defineProperty(binding.Table.prototype, 'updateSchema', {
 // and rows are typed by the table the write lands in - which a create-on-write
 // does not have yet, so the rows declare it.
 for (const name of ['append', 'overwrite']) {
-  const native = binding.Catalog.prototype[name]
-  Object.defineProperty(binding.Catalog.prototype, name, {
+  const native = binding.IcebergCatalog.prototype[name]
+  Object.defineProperty(binding.IcebergCatalog.prototype, name, {
     configurable: true,
     value(tableName, data, options, properties) {
       const tables = this.tables
@@ -4921,14 +4925,16 @@ for (const name of ['append', 'overwrite']) {
 }
 
 // `yggdryl::iceberg` is a module in the core, so it is one here too: a table
-// format sits on top of the record encodings rather than beside them.
+// format sits on top of the record encodings rather than beside them. The
+// native classes carry the `Iceberg` prefix, so the plain names are the
+// warehouse's; under this namespace they keep the names they always had.
 const nativeSchemaFromJson = binding.icebergSchemaFromJsonNative
 const iceberg = Object.freeze({
-  Catalog: binding.Catalog,
-  Namespace: binding.Namespace,
-  Namespaces: binding.Namespaces,
-  Tables: binding.Tables,
-  Table: binding.Table,
+  Catalog: binding.IcebergCatalog,
+  Namespace: binding.IcebergNamespace,
+  Namespaces: binding.IcebergNamespaces,
+  Tables: binding.IcebergTables,
+  Table: binding.IcebergTable,
   Compaction: binding.Compaction,
   IcebergOptions: binding.IcebergOptions,
   ManifestFile: binding.ManifestFile,
@@ -4954,11 +4960,15 @@ const iceberg = Object.freeze({
 // The Iceberg values are reached through the namespace and nowhere else, so a
 // table format has exactly one spelling here, as it does in the core.
 for (const name of [
-  'Catalog',
   'Compaction',
   'DataFile',
   'DifferenceIterator',
+  'IcebergCatalog',
+  'IcebergNamespace',
+  'IcebergNamespaces',
   'IcebergOptions',
+  'IcebergTable',
+  'IcebergTables',
   'JsCatalog',
   'JsCompaction',
   'JsDataFile',
@@ -4975,8 +4985,6 @@ for (const name of [
   'JsSnapshotRef',
   'JsTable',
   'JsTables',
-  'Namespace',
-  'Namespaces',
   'ManifestFile',
   'PartitionField',
   'PartitionSpec',
@@ -4984,8 +4992,6 @@ for (const name of [
   'SchemaUpdate',
   'Snapshot',
   'SnapshotRef',
-  'Table',
-  'Tables',
   'icebergAssignFieldIdsNative',
   'icebergCanPromoteNative',
   'icebergSchemaFromJsonNative',
@@ -5178,6 +5184,147 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
       for (const name of this.keys()) yield [name, this.get(name)]
     },
   })
+}
+
+// `yggdryl::warehouse` is a module in the core, so it is one here too: the
+// objects a path reaches, the views over one level of them, the registry a
+// path resolves against and the process's one registry. The objects are one
+// class per kind - `Catalog`, `Namespace`, `Table` - with a static
+// constructor per implementation and `implementation` naming the one an
+// object answers through; the implementation names of the other bindings
+// are offered as constructors over those statics, so `new
+// warehouse.FolderCatalog(name, location)` reads as it does elsewhere, and a
+// catalog built either way is a `Catalog` (`instanceof warehouse.Catalog`).
+const warehouse = (() => {
+  const { Catalog, Namespace, Table, Namespaces, Tables, Warehouse, SystemWarehouse } =
+    binding
+
+  // The names iterator and the children iterator are a JS iterable and
+  // iterator at once, as the Iceberg names iterator is: the native half
+  // returns one item or null, and this maps that onto the standard protocol
+  // without prefetching or collecting.
+  for (const Iterator of [binding.ObjectNames, binding.ObjectIterator]) {
+    const nativeNext = Iterator.prototype.next
+    Iterator.prototype.next = function next() {
+      const item = nativeNext.call(this)
+      return item === null ? { value: undefined, done: true } : { value: item, done: false }
+    }
+    Object.defineProperty(Iterator.prototype, Symbol.iterator, {
+      configurable: true,
+      value: function items() {
+        return this
+      },
+    })
+  }
+
+  // The collection views are Map-like: `keys()` is a lazy native iterator,
+  // and the loader supplies the protocol plus `values()` and `entries()` so
+  // `for...of tables` and spreading both work. `values` and `entries` open
+  // each named object through `get`, one at a time.
+  for (const Collection of [Namespaces, Tables]) {
+    Object.defineProperty(Collection.prototype, Symbol.iterator, {
+      configurable: true,
+      value: function keys() {
+        return this.keys()[Symbol.iterator]()
+      },
+    })
+    // A name is opened as the one part it is, so a name the grammar would
+    // have to quote - `eu west` - reaches its object as the store spells it.
+    Object.defineProperty(Collection.prototype, 'values', {
+      configurable: true,
+      value: function* values() {
+        for (const name of this.keys()) yield this.get([name])
+      },
+    })
+    Object.defineProperty(Collection.prototype, 'entries', {
+      configurable: true,
+      value: function* entries() {
+        for (const name of this.keys()) yield [name, this.get([name])]
+      },
+    })
+  }
+
+  // A table write takes what every record write takes: the rows as anything
+  // `BatchReader.from` reads, and the options as the handle writes take them
+  // - a `RecordOptions`, or a property bag set by each property's own setter
+  // on a copy of the options given, else of the table's own.
+  for (const name of ['append', 'overwrite']) {
+    const native = Tables.prototype[name]
+    Object.defineProperty(Tables.prototype, name, {
+      configurable: true,
+      value(tableName, data, options, properties) {
+        if (optionProperties.isPropertyBag(options)) {
+          properties = options
+          options = undefined
+        }
+        if (properties !== undefined && properties !== null) {
+          const base = options ?? IOBase.from(this.get(tableName)).recordOptions()
+          options = optionProperties.withProperties(base, RecordOptions, 'RecordOptions', properties)
+        }
+        return native.call(this, tableName, BatchReader.from(data), options)
+      },
+    })
+  }
+
+  // An implementation's name as a constructor over the kind's static
+  // constructor: callable with or without `new`, answering the kind's class.
+  function implementation(name, build) {
+    const Implementation = function (...args) {
+      return build(...args)
+    }
+    Object.defineProperty(Implementation, 'name', { value: name })
+    return Implementation
+  }
+
+  return Object.freeze({
+    Warehouse,
+    SystemWarehouse,
+    Catalog,
+    Namespace,
+    Table,
+    Namespaces,
+    Tables,
+    MemoryCatalog: implementation('MemoryCatalog', (name, options) =>
+      Catalog.memory(name, options),
+    ),
+    FolderCatalog: implementation('FolderCatalog', (name, location, options) =>
+      Catalog.folder(name, location, options),
+    ),
+    MemoryNamespace: implementation('MemoryNamespace', (path, options) =>
+      Namespace.memory(path, options),
+    ),
+    FolderNamespace: implementation('FolderNamespace', (path, location, options) =>
+      Namespace.folder(path, location, options),
+    ),
+    MediaTable: implementation('MediaTable', (path, location, options) =>
+      Table.media(path, location, options),
+    ),
+  })
+})()
+
+// The warehouse values are reached through the namespace and nowhere else,
+// so the warehouse has exactly one spelling here, as it does in the core.
+for (const name of [
+  'Catalog',
+  'JsObjectIterator',
+  'JsObjectNames',
+  'JsSystemWarehouse',
+  'JsWarehouse',
+  'JsWarehouseCatalog',
+  'JsWarehouseNamespace',
+  'JsWarehouseNamespaces',
+  'JsWarehouseTable',
+  'JsWarehouseTables',
+  'Namespace',
+  'Namespaces',
+  'ObjectIterator',
+  'ObjectNames',
+  'SystemWarehouse',
+  'Table',
+  'Tables',
+  'Warehouse',
+]) {
+  delete binding[name]
 }
 
 // `yggdryl::fix` is a module in the core, so it is one here too: the
@@ -6748,6 +6895,7 @@ binding.graph = graph
 binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
+binding.warehouse = warehouse
 binding.xml = xml
 binding.yaml = yaml
 

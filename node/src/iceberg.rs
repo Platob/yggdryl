@@ -1476,7 +1476,7 @@ impl JsPartitionSpec {
 }
 
 /// An Iceberg table reached entirely through one container handle.
-#[napi(js_name = "Table")]
+#[napi(js_name = "IcebergTable")]
 pub struct JsTable {
     inner: CoreTable<Holder>,
 }
@@ -2450,7 +2450,7 @@ pub struct ScanPlanCounts {
 /// names the folder `nyc/taxis` under the warehouse handle, and constructing
 /// one touches nothing at all. There is no service in between, so two catalogs
 /// over the same folder see the same tables.
-#[napi(js_name = "Catalog")]
+#[napi(js_name = "IcebergCatalog")]
 pub struct JsCatalog {
     inner: CoreCatalog<Holder>,
 }
@@ -2601,7 +2601,7 @@ impl JsCatalog {
 /// `catalog.namespaces.get('sales').tables.get('orders')` - and every
 /// collection question has exactly one home: a namespace is a resource, and
 /// the map verbs live on its collections, never on it.
-#[napi(js_name = "Namespace")]
+#[napi(js_name = "IcebergNamespace")]
 pub struct JsNamespace {
     catalog: Reference<JsCatalog>,
     name: String,
@@ -2686,7 +2686,7 @@ impl JsNamespace {
 /// `size` for the whole collection, `create` and `openOrCreate` to add one.
 /// None of it is cached - every answer is storage's, asked when the question
 /// is - so a view built before a namespace existed finds it afterwards.
-#[napi(js_name = "Namespaces")]
+#[napi(js_name = "IcebergNamespaces")]
 pub struct JsNamespaces {
     catalog: Reference<JsCatalog>,
     /// The parent namespace's dotted name; `null` is the warehouse root.
@@ -2864,7 +2864,7 @@ impl JsIcebergNames {
 /// names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
 /// descends. Every answer comes from storage at call time, so the view is
 /// never stale.
-#[napi(js_name = "Tables")]
+#[napi(js_name = "IcebergTables")]
 pub struct JsTables {
     catalog: Reference<JsCatalog>,
     /// The owning namespace's dotted name; `None` is the warehouse root.

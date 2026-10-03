@@ -848,7 +848,11 @@ impl PyIcebergOptions {
 /// dotted entry points - [`table`][Self::table] and
 /// [`namespace`][Self::namespace] - are kept because a dotted identifier is a
 /// real Iceberg spelling and deserves one call.
-#[pyclass(name = "Catalog", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "IcebergCatalog",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
 pub(crate) struct PyCatalog {
     inner: Catalog<Holder>,
 }
@@ -1027,7 +1031,7 @@ impl PyCatalog {
 }
 
 /// An Iceberg table reached entirely through one container handle.
-#[pyclass(name = "Table", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(name = "IcebergTable", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyTable {
     inner: Table<Holder>,
 }
@@ -3196,7 +3200,11 @@ impl PyDataFile {
 /// [`namespaces`][Self::namespaces], so access chains -
 /// `catalog.namespaces["sales"].tables["orders"]` - and every collection
 /// operation has exactly one home.
-#[pyclass(name = "Namespace", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "IcebergNamespace",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
 pub(crate) struct PyNamespace {
     catalog: Py<PyCatalog>,
     name: String,
@@ -3300,7 +3308,11 @@ impl PyNamespace {
 /// namespace. Two views over the same catalog observe each other's writes,
 /// and a view stays valid across creation and deletion because every answer
 /// comes from storage at call time.
-#[pyclass(name = "Namespaces", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "IcebergNamespaces",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
 pub(crate) struct PyNamespaces {
     catalog: Py<PyCatalog>,
     /// The parent namespace's dotted name; `None` is the warehouse root.
@@ -3597,7 +3609,11 @@ impl PyTableIterator {
 /// first write, from the incoming rows' own schema. At the root, names may be
 /// fully dotted - `catalog.tables["sales.eu.orders"]` descends. Every answer
 /// comes from storage at call time, so the view is never stale.
-#[pyclass(name = "Tables", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "IcebergTables",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
 pub(crate) struct PyTables {
     catalog: Py<PyCatalog>,
     /// The owning namespace's dotted name; `None` is the warehouse root.

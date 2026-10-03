@@ -1375,3 +1375,223 @@ mod provider {
         );
     }
 }
+
+/// What the warehouse costs the store: describing and resolving registered
+/// objects nothing, a folder namespace's children one listing plus one
+/// listing of `metadata/` per folder entry, a path one listing per level it
+/// descends, and a read through `Holder::Table` exactly what the same read
+/// on the table's own handle costs.
+mod warehouse {
+    use yggdryl::holder::Holder;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::{
+        Catalog, FolderCatalog, IOBase, IOMedia, MediaTable, MimeType, NamespaceValue, Table,
+        TableValue, Url, Warehouse,
+    };
+
+    use crate::counting_filesystem::{CountingFileSystem, counted_folder};
+
+    /// A counted store laid out as a catalog: a root leaf, a namespace of a
+    /// leaf and a folder table, and an empty namespace.
+    fn store() -> (std::sync::Arc<CountingFileSystem>, yggdryl::fs::FsFolder) {
+        let (filesystem, folder) = counted_folder("market");
+        for leaf in ["trades.csv", "eu/fills.csv", "eu/lake/part-0.csv"] {
+            folder
+                .child_by_path(leaf)
+                .expect("a child")
+                .write_all_bytes(b"symbol,price\nAAPL,187.5\n")
+                .expect("written");
+        }
+        folder
+            .child_by_path("empty/.keep")
+            .expect("a child")
+            .write_all_bytes(b"")
+            .expect("written");
+        (filesystem, folder)
+    }
+
+    #[test]
+    fn describing_registering_and_resolving_registered_objects_touch_nothing() {
+        let (filesystem, folder) = store();
+        let mut warehouse = Warehouse::new();
+        let registered = filesystem.costs(|| {
+            warehouse
+                .register(FolderCatalog::bound("market", Holder::FsFolder(folder)))
+                .expect("registered");
+            warehouse
+                .register(Table::from(
+                    MediaTable::new(
+                        "lake.eu.trades",
+                        Url::from_str("file:///lake/eu/trades.csv").expect("a URL"),
+                    )
+                    .expect("a table"),
+                ))
+                .expect("registered");
+        });
+        let resolved = filesystem.costs(|| {
+            warehouse.get("market").expect("the catalog");
+            warehouse.table("lake.eu.trades").expect("the table");
+            warehouse.namespace("lake.eu").expect("the namespace");
+            assert!(
+                warehouse
+                    .properties_for(&Url::from_str("file:///lake/eu/trades.csv").expect("a URL"))
+                    .is_empty()
+            );
+        });
+        assert_eq!([registered, resolved], ["none", "none"]);
+    }
+
+    #[test]
+    fn a_folder_namespaces_children_cost_one_listing_and_one_per_folder_entry() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound("market", Holder::FsFolder(folder)));
+        let root = filesystem.costs(|| {
+            // Two folders and a leaf: the root listing, then for each folder
+            // entry its kind and the listing of its `metadata/`, the one
+            // question that tells a table format from a plain folder.
+            assert_eq!(catalog.children().count(), 3);
+        });
+        let eu = catalog.namespace("eu").expect("the namespace");
+        let under = filesystem.costs(|| {
+            assert_eq!(eu.children().count(), 2);
+        });
+        let first = filesystem.costs(|| {
+            // Taking the first child lists once and classifies one entry.
+            assert!(catalog.children().next().is_some());
+        });
+        // The lists are the contract; the `file_info` is the `fs` backend's
+        // own answer to a listed leaf's role, asked once per leaf.
+        assert_eq!(
+            [root, under, first],
+            ["file_info=1 list=3", "file_info=1 list=2", "list=2"],
+            "root, under a namespace, first child"
+        );
+    }
+
+    #[test]
+    fn a_path_costs_one_listing_per_level_it_descends() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound("market", Holder::FsFolder(folder)));
+        let one = filesystem.costs(|| {
+            catalog.table("trades").expect("the root table");
+        });
+        let two = filesystem.costs(|| {
+            catalog.table("eu.fills").expect("the table under eu");
+        });
+        let absent = filesystem.costs(|| {
+            assert!(catalog.table("eu.nowhere").expect_err("absent").is_absent());
+        });
+        // One listing per level, one listing of `metadata/` per folder level
+        // passed through, and the matched leaf's role asked once.
+        assert_eq!(
+            [one, two, absent],
+            ["file_info=1 list=1", "file_info=1 list=3", "list=3"],
+            "one level, two levels, two levels to an absence"
+        );
+    }
+
+    #[test]
+    fn a_read_through_a_table_handle_costs_what_the_tables_own_handle_costs() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound(
+            "market",
+            Holder::FsFolder(folder.clone()),
+        ));
+        let options = RecordOptions::for_mime_type(&MimeType::CSV).expect("CSV options");
+        let leaf = || folder.child_by_path("eu/fills.csv").expect("the leaf");
+        // The leaf as a listing hands it out, which is what the table holds:
+        // a listed leaf already carries what the listing said of it.
+        let listed = || {
+            folder
+                .child_by_path("eu")
+                .expect("eu")
+                .ls(false, false)
+                .map(|entry| entry.expect("an entry"))
+                .find(|entry| entry.url().and_then(Url::file_name) == Some("fills.csv"))
+                .expect("the listed leaf")
+        };
+
+        // The listing hands the table the leaf it found, composed as its name
+        // declares; the table holds that handle and a read through it is a
+        // read on it.
+        let held = Holder::from(catalog.table("eu.fills").expect("the table"));
+        let direct = listed().into_declared_media();
+        let through_handle = filesystem.costs(|| {
+            assert_eq!(held.read_arrow_reader(&options).expect("a read").count(), 1);
+        });
+        let on_the_leaf = filesystem.costs(|| {
+            assert_eq!(
+                direct.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        assert_eq!(
+            [through_handle.as_str(), on_the_leaf.as_str()],
+            [
+                "file_info=1 open_input_stream=1",
+                "file_info=1 open_input_stream=1"
+            ],
+            "through the table's handle, on the listed leaf it holds"
+        );
+        let field_through = filesystem.costs(|| {
+            catalog
+                .table("eu.fills")
+                .expect("the table")
+                .field()
+                .expect("the schema");
+        });
+        let field_direct = filesystem.costs(|| {
+            // What the path costs - the root listing, the `metadata/` listing
+            // that tells `eu` from a table format, the listing of `eu`, and
+            // the matched leaf's role asked once - then the schema.
+            folder.ls(false, false).count();
+            folder
+                .child_by_path("eu/metadata")
+                .expect("metadata")
+                .ls(false, false)
+                .count();
+            let leaf = listed();
+            assert!(!leaf.is_container());
+            leaf.into_declared_media()
+                .read_arrow_field(&options)
+                .expect("the schema");
+        });
+        assert_eq!(
+            [field_through.as_str(), field_direct.as_str()],
+            [
+                "file_info=2 list=3 open_input_stream=1",
+                "file_info=2 list=3 open_input_stream=1"
+            ],
+            "the schema through a resolved path, on the leaf"
+        );
+
+        // A clone starts unresolved: its first verb rebuilds the handle from
+        // the leaf's binding as a location, and costs what that located
+        // handle costs - one role resolution the leaf in hand had paid.
+        let rebuilt = Holder::from(catalog.table("eu.fills").expect("the table").clone());
+        let bound = leaf().bound_location().expect("bound").clone();
+        let through_clone = filesystem.costs(|| {
+            assert_eq!(
+                rebuilt.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        let on_the_location = filesystem.costs(|| {
+            // Composing the located leaf as its name declares is part of what
+            // the clone's first verb does, so it is measured beside the read.
+            let located = yggdryl::fs::located(bound).into_declared_media();
+            assert_eq!(
+                located.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        assert_eq!(
+            [through_clone.as_str(), on_the_location.as_str()],
+            [
+                "file_info=3 open_input_stream=1",
+                "file_info=3 open_input_stream=1"
+            ],
+            "through a clone's rebuilt handle, on the located leaf"
+        );
+    }
+}

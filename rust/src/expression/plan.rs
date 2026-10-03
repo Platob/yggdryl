@@ -58,7 +58,7 @@ use super::Expression;
 use super::filter::{Filter, IntoFilter};
 use super::selector::{IntoSelector, Selector};
 use super::term::Term;
-use crate::{Error, Field, Result, SortOptions, Url};
+use crate::{Error, Field, Properties, Result, SortOptions, Url};
 
 /// Where a target is: a URL, or the parts of a catalog path.
 #[derive(
@@ -156,8 +156,8 @@ impl From<Url> for Location {
 )]
 pub struct Target {
     location: Location,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    properties: Vec<(String, String)>,
+    #[serde(default, skip_serializing_if = "Properties::is_empty")]
+    properties: Properties,
 }
 
 impl Target {
@@ -166,7 +166,7 @@ impl Target {
     pub const fn new(location: Location) -> Self {
         Self {
             location,
-            properties: Vec::new(),
+            properties: Properties::new(),
         }
     }
 
@@ -199,25 +199,20 @@ impl Target {
     /// A property already set is replaced in place, so a target never
     /// carries one name twice.
     #[must_use]
-    pub fn with_property(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        let (name, value) = (name.into(), value.into());
-        match self.properties.iter_mut().find(|(held, _)| *held == name) {
-            Some(held) => held.1 = value,
-            None => self.properties.push((name, value)),
-        }
+    pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self {
+        self.properties.set(name, value);
         self
     }
 
     /// Return this target with every property of an iterator.
     #[must_use]
-    pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self
+    pub fn with_properties<K, V>(mut self, properties: impl IntoIterator<Item = (K, V)>) -> Self
     where
-        K: Into<String>,
-        V: Into<String>,
+        K: Into<SmolStr>,
+        V: Into<SmolStr>,
     {
-        properties.into_iter().fold(self, |target, (name, value)| {
-            target.with_property(name, value)
-        })
+        self.properties.extend(properties);
+        self
     }
 
     /// The location.
@@ -228,29 +223,24 @@ impl Target {
 
     /// The properties, in the order they were written.
     #[must_use]
-    pub fn properties(&self) -> &[(String, String)] {
+    pub const fn properties(&self) -> &Properties {
         &self.properties
     }
 
     /// One property by name.
     #[must_use]
     pub fn property(&self, name: &str) -> Option<&str> {
-        self.properties
-            .iter()
-            .find(|(held, _)| held == name)
-            .map(|(_, value)| value.as_str())
+        self.properties.get(name)
     }
 
-    /// Read one property as the type a knob has.
+    /// Read one property as the type a knob has: [`Properties::knob`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.with.<name>` when the value is
+    /// set and does not parse.
     pub fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
-        self.property(name)
-            .map(|value| {
-                value.trim().parse().map_err(|_| Error::InvalidRecord {
-                    path: format_smolstr!("$.with.{name}"),
-                    reason: crate::text::expected_got(expected, format_args!("{value:?}")),
-                })
-            })
-            .transpose()
+        self.properties.knob(name, expected)
     }
 
     /// Write the `with (...)` clause, when there is one.
@@ -258,16 +248,7 @@ impl Target {
         if self.properties.is_empty() {
             return Ok(());
         }
-        formatter.write_str(" with (")?;
-        for (index, (name, value)) in self.properties.iter().enumerate() {
-            if index != 0 {
-                formatter.write_str(", ")?;
-            }
-            super::display::write_identifier(formatter, name)?;
-            formatter.write_str(" = ")?;
-            super::display::write_text_literal(formatter, value)?;
-        }
-        formatter.write_str(")")
+        write!(formatter, " with ({})", self.properties)
     }
 }
 
@@ -1454,7 +1435,7 @@ mod arrow {
         /// [`Holder::from_url`] carries the rule.
         pub fn holder(&self, base: Option<&Url>) -> Result<Holder> {
             let url = self.location.url(base)?;
-            Holder::from_url(&url, self.properties.iter().map(|(k, v)| (k, v)))
+            Holder::from_url(&url, &self.properties)
         }
 
         /// The record options a read or write through `holder` runs with,

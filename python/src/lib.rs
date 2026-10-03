@@ -60,6 +60,7 @@ mod timeinforce;
 mod timezone;
 mod uri;
 mod version;
+mod warehouse;
 mod window_serie;
 
 /// The extension's allocator: decoded Arrow buffers are large and short
@@ -707,6 +708,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     http::register(module)?;
     coding::handles::register(module)?;
     media::handles::register(module)?;
+    warehouse::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;

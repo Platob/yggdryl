@@ -9,7 +9,7 @@ import {
   Url,
   Scalar,
   iceberg,
-  type Catalog,
+  type IcebergCatalog as Catalog,
   type Compaction,
   type PartitionInput,
   type DataFile,
@@ -23,7 +23,7 @@ import {
   type SchemaUpdate,
   type Snapshot,
   type SnapshotRef,
-  type Table,
+  type IcebergTable as Table,
 } from '..'
 import {
   IcebergOptions,

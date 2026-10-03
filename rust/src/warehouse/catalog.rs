@@ -1,0 +1,255 @@
+//! A catalog: the first namespace layer, what a warehouse registers by name,
+//! and the enum that says which implementation answers it.
+
+use std::fmt;
+
+use smol_str::{SmolStr, format_smolstr};
+
+use super::namespace::{Namespaces, Tables, container_object_io, resolve_under};
+use super::object::path_text;
+use super::{
+    FolderCatalog, IntoObjectPath, MemoryCatalog, Namespace, NamespaceValue, Object, ObjectValue,
+    Objects, Properties, Table,
+};
+use crate::arrow::BatchReader;
+use crate::media::RecordOptions;
+use crate::{Error, Field, IOBase, IOKind, IOMedia, Result, Url};
+
+/// The first namespace layer: what a warehouse registers by name.
+pub trait CatalogValue: NamespaceValue {
+    /// How many namespace levels may sit under it: `Some(1)` for a folder
+    /// catalog read as `catalog.schema.table`, `None` where namespaces nest
+    /// to any depth.
+    fn namespace_levels(&self) -> Option<usize>;
+}
+
+/// The implementation a catalog answers through.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Catalog {
+    /// Registered objects, in order, with no storage.
+    Memory(MemoryCatalog),
+    /// A container read as namespaces and tables.
+    ///
+    /// Boxed: a located catalog carries its location and its stated
+    /// properties, several times the size of a memory one.
+    Folder(Box<FolderCatalog>),
+}
+
+impl Catalog {
+    /// The catalog a URL names, under `properties`, touching no storage.
+    ///
+    /// The explicit `type` property decides first - `memory`, or `folder` -
+    /// and otherwise the scheme does: every location a byte backend holds is
+    /// a folder catalog over the container it names. The catalog is called
+    /// what the `name` property says, else the location's last segment. A
+    /// property this door does not read travels on to every handle under
+    /// the catalog.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.with.type` naming a type this
+    /// build does not answer, and at `$.with.name` when no name can be read.
+    pub fn from_url(url: &Url, properties: &Properties) -> Result<Self> {
+        let kind = properties.get("type").map(str::trim);
+        match kind {
+            None | Some("folder" | "memory") => {}
+            Some(other @ ("hadoop" | "rest" | "xmla")) => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.with.type"),
+                    reason: format_smolstr!(
+                        "expected `memory` or `folder`, got `{other}`; this build has no \
+                         catalog of that type"
+                    ),
+                });
+            }
+            Some(other) => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.with.type"),
+                    reason: format_smolstr!("expected `memory` or `folder`, got {other:?}"),
+                });
+            }
+        }
+        if kind.is_none() && url.scheme().is_s3_tables() {
+            return Err(Error::unsupported(
+                "holding an S3 Tables catalog in this build",
+                url.scheme().as_str(),
+            ));
+        }
+        let name = match properties.get("name") {
+            Some(name) if !name.is_empty() => SmolStr::new(name),
+            _ => catalog_name(url)?,
+        };
+        if kind == Some("memory") {
+            return Ok(Self::Memory(
+                MemoryCatalog::new(name).with_properties(properties.clone()),
+            ));
+        }
+        Ok(Self::Folder(Box::new(
+            FolderCatalog::new(name, url.clone())?.with_properties(properties.clone()),
+        )))
+    }
+
+    /// The implementation's own name: `MemoryCatalog`, `FolderCatalog`.
+    pub(crate) const fn implementation_name(&self) -> &'static str {
+        match self {
+            Self::Memory(_) => "MemoryCatalog",
+            Self::Folder(_) => "FolderCatalog",
+        }
+    }
+
+    /// Borrow the implementation through the contract every catalog answers.
+    pub fn as_catalog(&self) -> &dyn CatalogValue {
+        match self {
+            Self::Memory(catalog) => catalog,
+            Self::Folder(catalog) => catalog.as_ref(),
+        }
+    }
+
+    /// The object a path of parts below this catalog names, descending
+    /// through [`NamespaceValue::get`] one part at a time.
+    ///
+    /// # Errors
+    ///
+    /// Returns what the level that fails answers.
+    pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object> {
+        resolve_under(self, path.into_object_path()?)
+    }
+
+    /// The table a path of parts below this catalog names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Absent`] naming the path when nothing - or a
+    /// namespace - is there, and what the descent answers otherwise.
+    pub fn table(&self, path: impl IntoObjectPath) -> Result<Table> {
+        self.resolve(path)?.into_table()
+    }
+
+    /// The namespace a path of parts below this catalog names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Absent`] naming the path when nothing - or a table -
+    /// is there, and what the descent answers otherwise.
+    pub fn namespace(&self, path: impl IntoObjectPath) -> Result<Namespace> {
+        self.resolve(path)?.into_namespace()
+    }
+
+    /// The namespaces one level down, as a lazy view.
+    #[must_use]
+    pub fn namespaces(&self) -> Namespaces<'_> {
+        Namespaces::of(self)
+    }
+
+    /// The tables one level down, as a lazy view.
+    #[must_use]
+    pub fn tables(&self) -> Tables<'_> {
+        Tables::of(self)
+    }
+}
+
+impl ObjectValue for Catalog {
+    fn name(&self) -> &str {
+        self.as_catalog().name()
+    }
+
+    fn path(&self) -> &[SmolStr] {
+        self.as_catalog().path()
+    }
+
+    fn kind(&self) -> IOKind {
+        self.as_catalog().kind()
+    }
+
+    fn description(&self) -> Option<&str> {
+        self.as_catalog().description()
+    }
+
+    fn url(&self) -> Option<&Url> {
+        self.as_catalog().url()
+    }
+
+    fn modified(&self) -> Option<i64> {
+        self.as_catalog().modified()
+    }
+
+    fn properties(&self) -> Result<Properties> {
+        self.as_catalog().properties()
+    }
+
+    fn update_properties(&self, updates: &Properties, removes: &[SmolStr]) -> Result<()> {
+        self.as_catalog().update_properties(updates, removes)
+    }
+}
+
+impl NamespaceValue for Catalog {
+    fn children(&self) -> Objects {
+        self.as_catalog().children()
+    }
+
+    fn get(&self, name: &str) -> Result<Object> {
+        self.as_catalog().get(name)
+    }
+
+    fn create_namespace(&self, name: &str, properties: &Properties) -> Result<Namespace> {
+        self.as_catalog().create_namespace(name, properties)
+    }
+
+    fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table> {
+        self.as_catalog().create_table(name, field, properties)
+    }
+}
+
+impl CatalogValue for Catalog {
+    fn namespace_levels(&self) -> Option<usize> {
+        self.as_catalog().namespace_levels()
+    }
+}
+
+impl fmt::Display for Catalog {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        super::object::write_path(formatter, self.path())
+    }
+}
+
+impl From<MemoryCatalog> for Catalog {
+    fn from(catalog: MemoryCatalog) -> Self {
+        Self::Memory(catalog)
+    }
+}
+
+impl From<FolderCatalog> for Catalog {
+    fn from(catalog: FolderCatalog) -> Self {
+        Self::Folder(Box::new(catalog))
+    }
+}
+
+container_object_io!(Catalog);
+
+/// What a location names a catalog after: its last non-empty path segment,
+/// its escapes decoded, else its host or its bucket.
+fn catalog_name(url: &Url) -> Result<SmolStr> {
+    let segment = url
+        .path_segments()
+        .rev()
+        .find(|segment| !segment.is_empty())
+        .map(
+            |segment| match crate::uri::percent_decode(segment, "a catalog's name") {
+                Ok(decoded) => SmolStr::new(decoded),
+                Err(_) => SmolStr::new(segment),
+            },
+        )
+        .or_else(|| url.hostname().or_else(|| url.bucket()).map(SmolStr::new));
+    segment.ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new_static("$.with.name"),
+        reason: format_smolstr!(
+            "expected a `name` property, or a URL whose last segment names the catalog, got {url}"
+        ),
+    })
+}
+
+/// The absence of a catalog called `name`.
+pub(crate) fn no_catalog(name: &str) -> Error {
+    Error::absent("catalog", path_text(&[SmolStr::new(name)]))
+}
