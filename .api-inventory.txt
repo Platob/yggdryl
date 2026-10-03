@@ -3126,6 +3126,7 @@ pub fn dtype(&self) -> Result<DataType>
   pub fn inferred_scalar_field(&self) -> Result<Field>
   pub fn inferred_array_field(&self) -> Result<Field>
   pub fn inferred_struct_field(&self) -> Result<Field>
+  pub fn inferred_record_field(&self) -> Result<Field>  (rows of named records as inferred_struct_field; any other value its inferred field through into_struct_field)
 
 ### yggdryl::ipc  [rust/src/ipc/mod.rs]
 pub const DEFAULT_ROOT_NAME: &str = "row";
@@ -3343,6 +3344,7 @@ pub struct Workbook
   pub fn into_bytes(&self) -> Result<Vec<u8>>
 
 ### yggdryl::media  [rust/src/media/mod.rs]
+  pub const DEFAULT_VALUE_NAME: &str = "value"  (the child name a value wraps into a struct under when none is declared)
 pub enum Media
   pub fn open(handle: Holder) -> Result<Self>
   pub fn open_as(handle: Holder, base: &MimeType) -> Result<Self>
@@ -5238,6 +5240,10 @@ pub trait EnumRepr: ArrowNativeType + Copy + Default + Into<u16> + Into<i64> + T
   pub fn as_fields(&self) -> Option<&[Field]>
   pub fn with_fields<I>(&self, fields: I) -> Result<Self>
   pub fn is_struct(&self) -> bool
+  pub fn is_struct(&self) -> bool  (DataType: the Struct shape at any nullability)
+  pub fn into_struct_type(&self) -> Result<DataType>  (DataType: itself when a struct, else struct<value: self> with the child nullable, bounded)
+  pub fn into_struct_field(&self) -> Result<Field>  (Field: itself at any nullability with metadata kept, else a required DEFAULT_ROOT_NAME root whose one child is self unchanged, bounded)
+  pub fn into_struct_scalar(&self) -> Scalar  (Scalar: a Struct as is, else Struct({DEFAULT_VALUE_NAME: self}); infallible)
   pub fn fields(&self) -> &[Field]
   pub fn field_len(&self) -> usize
   pub fn get_field_at(&self, index: usize) -> Option<&Field>

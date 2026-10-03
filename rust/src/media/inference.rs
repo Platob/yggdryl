@@ -40,6 +40,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::media::{DEFAULT_ROOT_NAME, DEFAULT_VALUE_NAME};
 use crate::{DataType, Error, Field, Result, Scalar, StructType, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
@@ -67,7 +68,11 @@ impl Scalar {
     ///
     /// The stable name is `value`; a null value names a nullable Null field.
     pub fn inferred_scalar_field(&self) -> Result<Field> {
-        Ok(Field::new("value", self.dtype()?, self.is_null()))
+        Ok(Field::new(
+            DEFAULT_VALUE_NAME,
+            self.dtype()?,
+            self.is_null(),
+        ))
     }
 
     /// Infer the exact item Field for one outer Sequence.
@@ -130,9 +135,30 @@ impl Scalar {
                 "named Record rows did not infer one Serie item Field",
             ))
         })?;
-        let root = item.with_name("row").with_nullable(false);
+        let root = item.with_name(DEFAULT_ROOT_NAME).with_nullable(false);
         root.validate_struct_root()?;
         Ok(root)
+    }
+
+    /// Infer the one non-null Struct root this value is a record under.
+    ///
+    /// Rows are [`Self::inferred_struct_field`]'s; a single value is its
+    /// [`Self::inferred_scalar_field`] wrapped by [`Field::into_struct_field`]
+    /// and named `row` - a named record its own struct, a leaf the `value`
+    /// child of one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error either inference answers, or the wrap's refusal
+    /// where the value nests past the shared limit.
+    pub fn inferred_record_field(&self) -> Result<Field> {
+        if self.as_serie().is_some() {
+            self.inferred_struct_field()
+        } else {
+            self.inferred_scalar_field()?
+                .into_struct_field()
+                .map(|root| root.with_name(DEFAULT_ROOT_NAME))
+        }
     }
 
     /// Name this value's datatype, refusing to recurse past the shared limit.

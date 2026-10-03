@@ -663,6 +663,34 @@ impl DataType {
         }
     }
 
+    /// Reports whether this datatype is the Struct shape.
+    pub fn is_struct(&self) -> bool {
+        matches!(self, Self::Struct(_))
+    }
+
+    /// This datatype as a struct: itself when it already is one, else the
+    /// one-child `struct<value: self>`, the child nullable so that a null
+    /// value wraps too.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `$` when the wrap would nest past
+    /// [`DataType::PARSE_RECURSION_LIMIT`] or past the node budget a schema
+    /// walk allows; a struct is answered as it is and checks nothing.
+    pub fn into_struct_type(&self) -> Result<DataType> {
+        if self.is_struct() {
+            return Ok(self.clone());
+        }
+        if let Some(refusal) = crate::default::nesting_exceeds(self, 1, &mut 1) {
+            return Err(refusal.refuse("DataType", "$"));
+        }
+        Ok(Self::from(StructType::from_fields([Field::new(
+            crate::media::DEFAULT_VALUE_NAME,
+            self.clone(),
+            true,
+        )])?))
+    }
+
     /// Returns this datatype with its direct children replaced.
     ///
     /// The layout is kept exactly - a serie stays a serie, a map stays a map with
@@ -736,7 +764,29 @@ impl Field {
     /// Returns whether this field is a struct, and therefore usable as a
     /// record schema root.
     pub fn is_struct(&self) -> bool {
-        self.dtype().as_fields().is_some()
+        self.dtype().is_struct()
+    }
+
+    /// This field as a record root: itself when it is a struct, its
+    /// nullability and metadata kept, else the required
+    /// [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) struct whose one
+    /// child is this field unchanged - the root a non-record column crosses
+    /// into a table under.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming this field when the wrap would nest past
+    /// [`DataType::PARSE_RECURSION_LIMIT`] or past the node budget a schema
+    /// walk allows; a struct is answered as it is and checks nothing.
+    pub fn into_struct_field(&self) -> Result<Field> {
+        if self.is_struct() {
+            return Ok(self.clone());
+        }
+        if let Some(refusal) = crate::default::nesting_exceeds(self.dtype(), 1, &mut 1) {
+            return Err(refusal.refuse("Field", self.name()));
+        }
+        Ok(DataType::from(StructType::from_fields([self.clone()])?)
+            .required_field(crate::media::DEFAULT_ROOT_NAME))
     }
 
     /// Returns the struct children of this field, or an empty slice.
@@ -2026,6 +2076,21 @@ impl Struct {
 impl fmt::Display for Struct {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{:?}", self.as_map())
+    }
+}
+
+impl Scalar {
+    /// This value as a named record: a [`Scalar::Struct`] as it is, else the
+    /// one-entry `{value: self}` - the named input shape the wrapped field's
+    /// `scalar` canonicalizes - a null becoming `{value: null}`.
+    pub fn into_struct_scalar(&self) -> Scalar {
+        match self {
+            Self::Struct(_) => self.clone(),
+            other => Self::Struct(Struct::new(BTreeMap::from([(
+                SmolStr::new_static(crate::media::DEFAULT_VALUE_NAME),
+                other.clone(),
+            )]))),
+        }
     }
 }
 

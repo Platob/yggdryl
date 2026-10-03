@@ -37,7 +37,7 @@ pub(crate) fn field_from_schema(schema: &Schema, root_name: &str) -> Result<Fiel
         return Ok(Field::new(name, dtype, false));
     }
     let (dtype, nullable) = dtype_from(&schema.node, schema, &mut visiting)?;
-    let value = Field::new("value", dtype, nullable);
+    let value = Field::new(crate::media::DEFAULT_VALUE_NAME, dtype, nullable);
     Ok(Field::new(
         root_name,
         DataType::from(StructType::from_fields([value])?),
@@ -421,5 +421,15 @@ pub mod internals {
     /// spell.
     pub fn schema_json_from_field(field: &Field) -> Result<Scalar> {
         super::schema_json_from_field(field)
+    }
+
+    /// Read an Avro schema as the root `Field` the record surface reads under.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the schema uses a construct the record
+    /// surface does not cover.
+    pub fn field_from_schema(schema: &crate::avro::Schema, root_name: &str) -> Result<Field> {
+        super::field_from_schema(schema, root_name)
     }
 }

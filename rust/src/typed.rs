@@ -312,10 +312,6 @@ mod shared {
 
     use crate::{DataType, DataTypeId, Field, Scalar};
 
-    /// The name every shared field carries - the name an inferred scalar field
-    /// carries too, so a value typed either way is the same column.
-    const SHARED_NAME: &str = "value";
-
     /// How many parameterized leaf datatypes the interned table holds.
     ///
     /// Past this many distinct datatypes the table answers `None` rather than
@@ -348,7 +344,7 @@ mod shared {
             table[usize::from(id.as_u8())] = DataType::from_str(id.as_str())
                 .ok()
                 .filter(|dtype| dtype.id() == id)
-                .map(|dtype| Field::new(SHARED_NAME, dtype, true));
+                .map(|dtype| Field::new(crate::media::DEFAULT_VALUE_NAME, dtype, true));
         }
         table
     });
@@ -448,8 +444,11 @@ mod shared {
         if table.len() >= INTERN_LIMIT {
             return None;
         }
-        let field: &'static Field =
-            Box::leak(Box::new(Field::new(SHARED_NAME, dtype.clone(), true)));
+        let field: &'static Field = Box::leak(Box::new(Field::new(
+            crate::media::DEFAULT_VALUE_NAME,
+            dtype.clone(),
+            true,
+        )));
         table.insert(dtype.clone(), field);
         Some(field)
     }

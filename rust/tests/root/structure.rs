@@ -300,3 +300,160 @@ mod partition_by {
         );
     }
 }
+
+mod struct_pair {
+    use yggdryl::{DataType, Field, Scalar, StructType};
+
+    /// `levels` struct levels around `int64`, each holding one child `x`.
+    fn chain(levels: usize) -> DataType {
+        let mut dtype = DataType::Int64;
+        for _ in 0..levels {
+            dtype =
+                DataType::from(StructType::from_fields([Field::new("x", dtype, false)]).unwrap());
+        }
+        dtype
+    }
+
+    #[test]
+    fn a_wrap_past_the_recursion_limit_is_refused_naming_the_root_and_the_limit() {
+        // The deepest datatype a field holds: a serie whose own walk reaches
+        // depth 63, one short of the limit, so the field stands and the wrap
+        // does not. (A struct field answers itself, so the field is a serie.)
+        let deepest = DataType::serie(chain(62).required_field("item"));
+        let field = deepest.clone().required_field("deep");
+        field.validate_bounded().unwrap();
+        let error = field.into_struct_field().unwrap_err().to_string();
+        assert!(
+            error.contains("deep: schema nesting exceeds the hard limit of 64"),
+            "{error}"
+        );
+        let error = deepest.into_struct_type().unwrap_err().to_string();
+        assert!(
+            error.contains("$: schema nesting exceeds the hard limit of 64"),
+            "{error}"
+        );
+        // One level less is a wrap that stands.
+        let wrapped = DataType::serie(chain(61).required_field("item"))
+            .required_field("deep")
+            .into_struct_field()
+            .unwrap();
+        wrapped.validate_bounded().unwrap();
+    }
+
+    #[test]
+    fn a_wrap_over_a_shared_subtree_is_refused_within_the_node_budget() {
+        // Twenty levels of `struct<a: X, b: X>` over one shared `Arc` per
+        // level: 2^21 - 1 logical nodes in twenty allocations, past the
+        // million-node budget, which a depth check alone would never reach.
+        // (Each `from_fields` validates its children, so the fixture itself
+        // costs the sum of the levels' subtrees, about four million visits.)
+        let mut dtype = DataType::Int64;
+        for _ in 0..20 {
+            dtype = DataType::from(
+                StructType::from_fields([
+                    Field::new("a", dtype.clone(), false),
+                    Field::new("b", dtype, false),
+                ])
+                .unwrap(),
+            );
+        }
+        let shared = DataType::serie(dtype.required_field("item"));
+        let error = shared
+            .clone()
+            .required_field("shared")
+            .into_struct_field()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("shared: schema exceeds the 1000000 node safety limit"),
+            "{error}"
+        );
+        let error = shared.into_struct_type().unwrap_err().to_string();
+        assert!(
+            error.contains("$: schema exceeds the 1000000 node safety limit"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_datatype_wraps_as_a_nullable_value_and_a_struct_answers_itself() {
+        let wrapped = DataType::Int64.into_struct_type().unwrap();
+        assert_eq!(
+            wrapped,
+            DataType::from(
+                StructType::from_fields([DataType::Int64.nullable_field("value")]).unwrap()
+            )
+        );
+        assert!(wrapped.as_fields().unwrap()[0].is_nullable());
+
+        let again = wrapped.into_struct_type().unwrap();
+        assert_eq!(again, wrapped);
+        assert!(std::ptr::eq(
+            again.as_fields().unwrap().as_ptr(),
+            wrapped.as_fields().unwrap().as_ptr()
+        ));
+    }
+
+    #[test]
+    fn a_field_wraps_as_the_one_child_of_a_required_row() {
+        let mut leaf = DataType::utf8().nullable_field("venue");
+        leaf.set_metadata([("comment", "where it trades")]).unwrap();
+        let root = leaf.into_struct_field().unwrap();
+        assert_eq!(root.name(), "row");
+        assert!(!root.is_nullable());
+        assert_eq!(root.metadata_len(), 0);
+        assert_eq!(root.field_len(), 1);
+        assert_eq!(root.get_field_at(0).unwrap(), &leaf);
+
+        let mut record = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        )
+        .nullable_field("line");
+        record.set_metadata([("comment", "a record")]).unwrap();
+        let itself = record.into_struct_field().unwrap();
+        assert_eq!(itself, record);
+        assert!(itself.is_nullable());
+        assert_eq!(itself.get_metadata("comment"), Some("a record"));
+    }
+
+    #[test]
+    fn a_scalar_wraps_under_value_and_canonicalizes_under_the_wrapped_type() {
+        assert_eq!(
+            Scalar::from(5_i64).into_struct_scalar(),
+            Scalar::from_struct([("value", Scalar::from(5_i64))]).unwrap()
+        );
+        assert_eq!(
+            Scalar::Null.into_struct_scalar(),
+            Scalar::from_struct([("value", Scalar::Null)]).unwrap()
+        );
+        let record = Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap();
+        assert_eq!(record.into_struct_scalar(), record);
+
+        let canonical = DataType::Int64
+            .into_struct_type()
+            .unwrap()
+            .scalar(Scalar::from(5_i64).into_struct_scalar())
+            .unwrap();
+        assert_eq!(canonical, Scalar::from_sequence([Scalar::from(5_i64)]));
+    }
+
+    #[test]
+    fn is_struct_names_the_struct_shape_alone() {
+        let record = DataType::from(
+            StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        );
+        assert!(record.is_struct());
+        assert!(record.clone().required_field("row").is_struct());
+        assert!(!DataType::Int64.is_struct());
+        assert!(!DataType::serie(record.clone().required_field("item")).is_struct());
+        let entries = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("key"),
+                record.required_field("value"),
+            ])
+            .unwrap(),
+        )
+        .required_field("entries");
+        assert!(!DataType::map(entries, false).unwrap().is_struct());
+    }
+}
