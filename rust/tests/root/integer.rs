@@ -20,7 +20,7 @@ fn integer_markers_cover_every_signed_and_unsigned_width() {
 mod reading {
     //! The one integer grammar, read through the value door.
 
-    use yggdryl::{DataType, EnumValue, MarketDataKind, Scalar, Side, State};
+    use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
 
     #[test]
     fn the_value_door_reads_an_enum_member_as_its_stored_code() {
