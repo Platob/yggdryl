@@ -5071,11 +5071,13 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
 
     def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
-        return [
-            (row["partunix"].value, row["currunix"].value)
-            for batch in table.read_arrow_reader(select=["partunix", "currunix"])
-            for row in batch.to_pylist(maps_as_pydicts="strict")
-        ]
+        # The two instants as their nanosecond counts, in the order read.
+        keys: list[tuple[int, int]] = []
+        for batch in table.read_arrow_reader(select=["partunix", "currunix"]):
+            partunix = batch.column("partunix").cast(pa.int64()).to_pylist()
+            currunix = batch.column("currunix").cast(pa.int64()).to_pylist()
+            keys.extend(zip(partunix, currunix))
+        return keys
 
     quarter = 900 * 1_000_000_000
     instants = ordered(text)
