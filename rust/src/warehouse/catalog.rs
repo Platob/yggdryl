@@ -13,7 +13,7 @@ use super::{
 };
 use crate::arrow::BatchReader;
 use crate::media::RecordOptions;
-use crate::{Error, Field, IOBase, IOKind, IOMedia, Result, Url};
+use crate::{Arn, Error, Field, IOBase, IOKind, IOMedia, Result, Scheme, Uri, Url};
 
 /// The first namespace layer: what a warehouse registers by name.
 pub trait CatalogValue: NamespaceValue {
@@ -46,14 +46,20 @@ pub enum Catalog {
 }
 
 impl Catalog {
-    /// The catalog a URL names, under `properties`, touching no storage.
+    /// The catalog a location names, under `properties`, touching no
+    /// storage.
+    ///
+    /// `location` is a [`Url`], or any identifier that locates one
+    /// ([`Uri::locator`]): a URN, an ARN. A table bucket's ARN,
+    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>`, locates
+    /// `s3tables://<name>` and is kept beside it as the bucket's ARN, so the
+    /// region and the account it states are never asked for again.
     ///
     /// The explicit `type` property decides first - `memory`, `folder`, or
     /// `hadoop`, an Iceberg warehouse folder, PyIceberg's spelling - and
-    /// otherwise the scheme does: an `s3tables://<bucket>` location - what a
-    /// table bucket's ARN locates - is that bucket's
-    /// [`S3TablesCatalog`](crate::s3tables::S3TablesCatalog) under the
-    /// `s3tables` feature, and every location a byte backend holds is a
+    /// otherwise the scheme does: an `s3tables://<bucket>` location is that
+    /// bucket's [`S3TablesCatalog`](crate::s3tables::S3TablesCatalog) under
+    /// the `s3tables` feature, and every location a byte backend holds is a
     /// folder catalog over the container it names. The catalog is called
     /// what the `name` property says, else the location's last segment, or
     /// its bucket. A property this door does not read travels on to every
@@ -61,14 +67,27 @@ impl Catalog {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] at `$.with.type` naming a type this
-    /// build does not answer, and at `$.with.name` when no name can be read.
-    pub fn from_url(url: &Url, properties: &Properties) -> Result<Self> {
+    /// Returns the locator's refusal of an identifier that names no
+    /// location, [`Error::InvalidRecord`] at `$.with.type` naming a type
+    /// this build does not answer, and at `$.with.name` when no name can be
+    /// read.
+    pub fn from_url(location: impl AsRef<Uri>, properties: &Properties) -> Result<Self> {
         /// The types this build answers, as a refusal lists them.
         #[cfg(feature = "iceberg")]
         const TYPES: &str = "`memory`, `folder` or `hadoop`";
         #[cfg(not(feature = "iceberg"))]
         const TYPES: &str = "`memory` or `folder`";
+        let location = location.as_ref();
+        // An ARN is read once, for what it locates and for itself: a table
+        // bucket's states the region and the account its location does not.
+        let arn = (location.scheme() == &Scheme::ARN)
+            .then(|| Arn::from_uri(location.clone()))
+            .transpose()?;
+        let located = match &arn {
+            Some(arn) => arn.locator()?,
+            None => location.locator()?,
+        };
+        let url = &located;
         let kind = properties.get("type").map(str::trim);
         let not_built = |other: &str| Error::InvalidRecord {
             path: SmolStr::new_static("$.with.type"),
@@ -105,7 +124,7 @@ impl Catalog {
         #[cfg(feature = "s3tables")]
         if kind.is_none() && url.scheme().is_s3_tables() {
             return Ok(Self::S3Tables(Box::new(
-                crate::s3tables::S3TablesCatalog::from_location(name, url, properties)?,
+                crate::s3tables::S3TablesCatalog::from_location(name, url, arn, properties)?,
             )));
         }
         if kind == Some("memory") {

@@ -407,6 +407,40 @@ fn a_publication_in_doubt_that_took_is_the_commit() {
 }
 
 #[test]
+fn a_pointed_table_neither_lists_nor_removes_its_folder() {
+    let (filesystem, pointer, mut table) = created("kept");
+    table.commit_append(rows(&[("XNAS", 1)])).unwrap();
+    let name = table.metadata_file_name().unwrap();
+
+    // The catalog keeps the table: its folder is neither listed nor
+    // removed, however the table is asked, and nothing reaches the store.
+    let mut listed = None;
+    let mut removed = None;
+    let costs = filesystem.costs(|| {
+        listed = Some(table.ls(true, false).collect::<Vec<_>>());
+        removed = Some(table.remove(true));
+    });
+    assert_eq!(costs, "none");
+    let listed = listed.unwrap();
+    assert_eq!(listed.len(), 1, "one refusal");
+    let error = listed.into_iter().next().unwrap().unwrap_err();
+    assert!(error.to_string().contains("listing the files"), "{error}");
+    let error = removed.unwrap().unwrap_err();
+    assert!(
+        error.to_string().contains("drop it through that catalog"),
+        "{error}"
+    );
+
+    // The table is where it was, and still reads.
+    assert!(holds(&filesystem, &format!("kept/metadata/{name}")));
+    assert_eq!(
+        pointer.named().map(|url| url.to_string()),
+        Some(table.metadata_location().unwrap())
+    );
+    assert_eq!(ids(&table), [1]);
+}
+
+#[test]
 fn a_pointer_naming_no_document_opens_nothing() {
     let (_, folder) = counted_folder("unnamed");
     let pointer = Arc::new(MemoryPointer::default());

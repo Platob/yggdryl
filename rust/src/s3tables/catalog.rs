@@ -11,7 +11,8 @@
 //! properties - whose current document a [`MetadataPointer`] over
 //! `GetTableMetadataLocation` and `UpdateTableMetadataLocation` names. A
 //! warehouse location takes `PutObject` and `GetObject`; nothing here lists
-//! it or deletes from it.
+//! it or deletes from it, and a table's own `ls` and `remove` are refused -
+//! [`S3Tables::remove_table`] drops one.
 //!
 //! # The request count
 //!
@@ -169,18 +170,25 @@ impl S3TablesCatalog {
 
     /// The catalog a `s3tables://<bucket>` location names, under
     /// `properties`: what [`Catalog::from_url`](crate::Catalog::from_url)
-    /// answers for one.
+    /// answers for one, `located` the table bucket's ARN when the location
+    /// was given as it.
     ///
     /// Who signs is [`Session::from_properties`] over them - with
     /// PyIceberg's `s3tables.`-prefixed names read after the bare ones, so
     /// `s3tables.profile-name` is a profile - and `s3tables.region` and
-    /// `s3tables.endpoint` are the client's region and endpoint. A location
-    /// states no account and no region, so the bucket's ARN is the
+    /// `s3tables.endpoint` are the client's region and endpoint. The
+    /// bucket's ARN is the one the location was given as, else the
     /// `s3tables.warehouse` or `warehouse` property where one names the
-    /// bucket, else built from the `account_id` property and the client's
-    /// region, else found by name among the caller's own table buckets on
-    /// first use.
-    pub(crate) fn from_location(name: SmolStr, url: &Url, properties: &Properties) -> Result<Self> {
+    /// bucket - the two refused where they disagree - else built from the
+    /// `account_id` property and the client's region, else found by name
+    /// among the caller's own table buckets on first use, since a bare
+    /// location states no account and no region.
+    pub(crate) fn from_location(
+        name: SmolStr,
+        url: &Url,
+        located: Option<Arn>,
+        properties: &Properties,
+    ) -> Result<Self> {
         if !url.path_segments().all(str::is_empty) {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.url"),
@@ -221,9 +229,15 @@ impl S3TablesCatalog {
                     "expected the ARN of the table bucket {bucket}, got {text:?}"
                 )));
             }
+            if let Some(located) = located.as_ref().filter(|located| **located != arn) {
+                return Err(refuse(format_smolstr!(
+                    "expected the ARN the location states, {located}, got {text:?}"
+                )));
+            }
             stated = Some(arn);
             break;
         }
+        let stated = located.or(stated);
         let account = properties
             .get(ACCOUNT_PROPERTY)
             .map(str::trim)

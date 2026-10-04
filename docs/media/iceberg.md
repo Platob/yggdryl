@@ -832,20 +832,20 @@ IcebergTable::open_pointed(root, pointer) -> Result<IcebergTable<H>>         // 
 IcebergTable::create_pointed(root, format_version, schema, spec, pointer)    // version 0, published under the token read
 ```
 
-A pointed table reads the one document the pointer names, its location taken relative to the root's, and writes each next one as `metadata/{version:05}-{uuid}.metadata.json` - the name Iceberg's own catalogs write, the first `00000` - which it publishes under the token the last reading or publication answered, so a commit is its files, one document and one publication, with nothing read first. The pointer is the compare-and-swap plain storage lacks: a publication refused because the pointer moved reads it again, one answer and one document, and an append or a metadata-only commit applies again onto the winner under the retry budget the folder contract keeps, while an overwrite, a merge or a compaction is a `CommitConflict` at once - unless the pointer still names the document it planned against, a token moved by a change that wrote no document, which it publishes again under the new token. A publication that fails otherwise is in doubt, so the pointer is read once more and a pointer naming the attempt is the commit made. Nothing is listed, no hint is written or read, and nothing is removed on any path: a failed commit's files and its document stay, unreferenced. `metadata_version` is the number the document's name states, and the table's path, equality and hash are what they are under the folder contract - the pointer is not its identity. Rust only: a binding reaches a pointed table through the [S3 Tables catalog](#iceberg-on-amazon-s3-tables).
+A pointed table reads the one document the pointer names, its location taken relative to the root's, and writes each next one as `metadata/{version:05}-{uuid}.metadata.json` - the name Iceberg's own catalogs write, the first `00000` - which it publishes under the token the last reading or publication answered, so a commit is its files, one document and one publication, with nothing read first. The pointer is the compare-and-swap plain storage lacks: a publication refused because the pointer moved reads it again, one answer and one document, and an append or a metadata-only commit applies again onto the winner under the retry budget the folder contract keeps, while an overwrite, a merge or a compaction is a `CommitConflict` at once - unless the pointer still names the document it planned against, a token moved by a change that wrote no document, which it publishes again under the new token. A publication that fails otherwise is in doubt, so the pointer is read once more and a pointer naming the attempt is the commit made. No read and no commit lists the folder, writes or reads a hint, or removes a file: a failed commit's files and its document stay, unreferenced. The table's own `ls` and `remove` are refused as `Error::Unsupported`, touching nothing, because the catalog that keeps the pointer keeps the table: it is dropped through that catalog, never by deleting the files the catalog's document names. `metadata_version` is the number the document's name states, and the table's path, equality and hash are what they are under the folder contract - the pointer is not its identity. Rust only: a binding reaches a pointed table through the [S3 Tables catalog](#iceberg-on-amazon-s3-tables).
 
 ### Iceberg on Amazon S3 Tables
 
-An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect.
+An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect, and a table's `remove` is refused rather than deleting its files: `S3Tables::remove_table` drops it.
 
 `create_table` runs the steps `IcebergCatalog`'s runs, against the control plane: the schema as Iceberg states it (`into_scheme_compat`), numbered above the highest identifier it carries, partitioned by `PartitionSpec::from_schema` - a derived `PARTITION:by` entry included - and sorted by its `SORT:by`; then `CreateTable` registers the table with no schema, `GetTableMetadataLocation` answers its warehouse and token, and its first document is written and published under that token, so the document the table keeps is the crate's own rather than one the service wrote. A first document that is not published removes the registration again under its token, which a publication that took has moved past. Both catalogs create at the format version the create's `format-version` property states, else the lowest that states the schema: 3 where it holds a nanosecond timestamp, a variant or an unknown column, 2 otherwise. The service keeps no properties for a bucket or a namespace, so theirs are what was stated; a table's ride its metadata, as on any Iceberg table.
 
-`Catalog::from_url` answers one for an `s3tables://<bucket>` location, which is what a table bucket's ARN locates - its region and account dropped. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use. A location naming a table below a bucket is refused at `$.url`, an ARN naming another bucket at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name.
+`Catalog::from_url` answers one for the table bucket's ARN, or for the `s3tables://<bucket>` location the ARN locates. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the one the location was given as - read once, its region and account kept - else the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use, since a bare `s3tables://<bucket>` states neither. A location naming a table below a bucket is refused at `$.url`, a `warehouse` ARN naming another bucket, or another ARN than the one the location was given as, at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name. A catalog, a namespace and a table print the properties they were stated with `Debug`, every credential's value `<redacted>`.
 
 | Operation | Requests |
 | --- | --- |
 | building the catalog, a namespace or a table description | none |
-| the bucket's ARN, named by its location alone | 1 `ListTableBuckets` per page, once |
+| the bucket's ARN, named by `s3tables://<bucket>` alone | 1 `ListTableBuckets` per page, once |
 | `children()` of the catalog | 1 `ListNamespaces` per page |
 | `get` of a namespace | 1 `GetNamespace` |
 | `create_namespace` | 1 `CreateNamespace` |
@@ -862,7 +862,7 @@ The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake contr
     ```rust
     use yggdryl::aws::{Credentials, Session};
     use yggdryl::s3tables::{S3Tables, S3TablesCatalog};
-    use yggdryl::{Arn, Catalog, CatalogValue, ObjectValue, Properties, Url};
+    use yggdryl::{Arn, Catalog, CatalogValue, ObjectValue, Properties};
 
     // A session that states everything consults nothing: no file, no variable, no socket.
     let session = Session::new()
@@ -875,16 +875,16 @@ The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake contr
     assert_eq!(catalog.namespace_levels(), Some(1));
     assert_eq!(catalog.url().map(ToString::to_string).as_deref(), Some("s3tables://lake"));
 
-    // An ARN locates its bucket's catalog with its account and region dropped:
-    // a `warehouse` property states the ARN, so no listing finds it.
-    let location = Url::from_location(&lake.to_string())?;
+    // Named by its ARN, the catalog keeps the region and the account the ARN
+    // states: no listing asks for them, and the secret stated prints redacted.
     let properties = Properties::new()
-        .with_property("warehouse", lake.to_string())
-        .with_property("region", "eu-west-3");
-    let Catalog::S3Tables(bucket) = Catalog::from_url(&location, &properties)? else {
-        unreachable!("an s3tables location is an S3 Tables catalog");
+        .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+        .with_property("secret_access_key", "a-secret");
+    let Catalog::S3Tables(bucket) = Catalog::from_url(&lake, &properties)? else {
+        unreachable!("a table bucket's ARN is an S3 Tables catalog");
     };
     assert_eq!(bucket.bucket_arn()?, &lake);
+    assert!(!format!("{bucket:?}").contains("a-secret"));
     ```
 
 === "Python"
@@ -892,11 +892,10 @@ The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake contr
     ```python
     from yggdryl import Catalog
 
-    # A table bucket's ARN locates its catalog with its account and region
-    # dropped: the region is stated, and `warehouse` states the ARN, so no
-    # listing of the caller's own buckets finds it.
+    # A table bucket's ARN is its catalog: the region and the account it
+    # states are kept, so no listing of the caller's own buckets asks for them.
     lake = "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"
-    catalog = Catalog.from_url(lake, region="eu-west-3", warehouse=lake)
+    catalog = Catalog.from_url(lake)
     assert type(catalog) is Catalog
     assert catalog.name == "lake"
     assert catalog.namespace_levels == 1
@@ -908,11 +907,10 @@ The counts are pinned in `rust/tests/s3tables/catalog.rs` against the fake contr
     const assert = require('node:assert/strict')
     const { warehouse } = require('yggdryl')
 
-    // A table bucket's ARN locates its catalog with its account and region
-    // dropped: the region is stated, and `warehouse` states the ARN, so no
-    // listing of the caller's own buckets finds it.
+    // A table bucket's ARN is its catalog: the region and the account it
+    // states are kept, so no listing of the caller's own buckets asks for them.
     const lake = 'arn:aws:s3tables:eu-west-3:123456789012:bucket/lake'
-    const catalog = warehouse.Catalog.fromUrl(lake, { region: 'eu-west-3', warehouse: lake })
+    const catalog = warehouse.Catalog.fromUrl(lake)
     assert.equal(catalog.implementation, 'Catalog')
     assert.equal(catalog.name, 'lake')
     assert.equal(catalog.namespaceLevels, 1)

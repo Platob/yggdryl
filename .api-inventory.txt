@@ -2712,7 +2712,7 @@ pub struct Objects  (the children of a namespace, one at a time, fused after the
 pub trait CatalogValue: NamespaceValue  (the first namespace layer)
   fn namespace_levels(&self) -> Option<usize>
 pub enum Catalog  (Memory(MemoryCatalog), Folder(Box<FolderCatalog>), Iceberg(Box<IcebergCatalog>) under `iceberg`, S3Tables(Box<S3TablesCatalog>) under `s3tables`; non_exhaustive; ObjectValue, NamespaceValue, CatalogValue by delegation; IOBase and IOMedia as a container of handles; Display the name)
-  pub fn from_url(url: &Url, properties: &Properties) -> Result<Self>  (the `type` property first - `memory`, `folder`, or `hadoop` under `iceberg` - then the scheme, an `s3tables://<bucket>` location the bucket's `S3TablesCatalog` under `s3tables` and refused without it; named by the `name` property else the location's last segment, else its host)
+  pub fn from_url(location: impl AsRef<Uri>, properties: &Properties) -> Result<Self>  (a URL, or an identifier read through `Uri::locator` once - a table bucket's ARN kept beside the `s3tables://<bucket>` it locates; the `type` property first - `memory`, `folder`, or `hadoop` under `iceberg` - then the scheme, an `s3tables://<bucket>` location the bucket's `S3TablesCatalog` under `s3tables` and refused without it; named by the `name` property else the location's last segment, else its host)
   pub fn as_catalog(&self) -> &dyn CatalogValue
   pub fn resolve(&self, path: impl IntoObjectPath) -> Result<Object>
   pub fn table(&self, path: impl IntoObjectPath) -> Result<Table>
@@ -2768,7 +2768,7 @@ pub enum Table  (Media(Box<MediaTable>), Iceberg(Box<IcebergTable<Handle>>) unde
   pub fn with_properties(self, properties: Properties) -> Self  (the stated properties the handle opens with: what a target's `with (...)` clause states for the table it names)
 
 ### yggdryl::warehouse::properties  [rust/src/warehouse/properties.rs]
-pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order)
+pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order; Debug a map with `<redacted>` for the value of a name spelled with `secret`, `token`, `key`, `password`, `credential`, `auth`, `signature`, `sas`, `connection_string` or `service_account`)
   pub const fn new() -> Self
   pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
   pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self
@@ -3333,7 +3333,7 @@ pub const FIRST_PARTITION_ID: i32 = 1000;
   pub fn into_json(self) -> Result<Scalar>
   pub fn into_v1_json(self) -> Result<Scalar>
 
-### yggdryl::iceberg::pointer  [rust/src/iceberg/pointer.rs]  (what names a table's current metadata document when its folder does not; a pointed table reads the one document named, writes each next as `metadata/{version:05}-{uuid}.metadata.json` from 00000 and publishes it under the token held - nothing listed, no hint, nothing removed; a refused publication rebases an append or a metadata-only commit and is a CommitConflict for an overwrite, a merge or a compaction)
+### yggdryl::iceberg::pointer  [rust/src/iceberg/pointer.rs]  (what names a table's current metadata document when its folder does not; a pointed table reads the one document named, writes each next as `metadata/{version:05}-{uuid}.metadata.json` from 00000 and publishes it under the token held - no read or commit listing, writing a hint or removing, the table's own `ls` and `remove` refused; a refused publication rebases an append or a metadata-only commit and is a CommitConflict for an overwrite, a merge or a compaction)
 pub trait MetadataPointer: std::fmt::Debug + Send + Sync
   fn current(&self) -> Result<PointerState>  (the document named now - none before the first - and the token a publication is conditioned on)
   fn publish(&self, token: &str, location: &Url) -> Result<PointerState>  (a pointer no longer at `token` is a failure is_conflict answers; any other failure leaves the publication in doubt)
@@ -3378,7 +3378,7 @@ pub fn tag(snapshot_id: i64) -> Self
   pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
 
 ### yggdryl::iceberg::table  [rust/src/iceberg/table.rs]
-pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`)
+pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`; a pointed table's IOBase `ls` and `remove` refused as Error::Unsupported, touching nothing - its catalog keeps it)
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
   pub fn open(root: H) -> Result<Self>

@@ -5628,7 +5628,7 @@ class Catalog(IOBase):
     @classmethod
     def from_url(
         cls,
-        url: Url | str | PathLike[str],
+        url: Uri | str | PathLike[str],
         properties: WarehouseProperties | None = None,
         **keywords: object,
     ) -> Catalog: ...

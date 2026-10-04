@@ -124,7 +124,7 @@ fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
     #[cfg(not(feature = "s3tables"))]
     {
         let error = Catalog::from_url(
-            &Url::from_str("s3tables://lake").expect("a URL"),
+            Url::from_str("s3tables://lake").expect("a URL"),
             &Properties::new(),
         )
         .expect_err("no S3 Tables catalog in this build");
@@ -134,14 +134,14 @@ fn from_url_refuses_a_type_this_build_has_no_catalog_for_and_a_nameless_url() {
         );
     }
     let error = Catalog::from_url(
-        &Url::from_str("file:///").expect("a URL"),
+        Url::from_str("file:///").expect("a URL"),
         &Properties::new(),
     )
     .expect_err("no segment to name it by");
     assert!(error.to_string().contains("$.with.name"), "{error}");
     assert_eq!(
         Catalog::from_url(
-            &Url::from_str("s3://bucket").expect("a URL"),
+            Url::from_str("s3://bucket").expect("a URL"),
             &Properties::new().with_property("type", "memory")
         )
         .expect("the host names it")

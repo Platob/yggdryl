@@ -25,7 +25,7 @@ pub(crate) enum Site {
     /// with - a catalog service's warehouse, reached as the catalog is - in
     /// the region the owner knows it is in, the object's effective
     /// properties read over both.
-    #[cfg(feature = "s3")]
+    #[cfg(feature = "s3tables")]
     Store {
         url: Url,
         session: crate::aws::Session,
@@ -53,7 +53,7 @@ impl Site {
         match self {
             Self::Url(url) => url,
             Self::Bound(bound) => bound.diagnostic_url(),
-            #[cfg(feature = "s3")]
+            #[cfg(feature = "s3tables")]
             Self::Store { url, .. } => url,
         }
     }
@@ -63,7 +63,7 @@ impl Site {
         match self {
             Self::Url(url) => Holder::from_url(url, properties),
             Self::Bound(bound) => Ok(crate::fs::located(bound.clone())),
-            #[cfg(feature = "s3")]
+            #[cfg(feature = "s3tables")]
             Self::Store {
                 url,
                 session,
@@ -87,7 +87,7 @@ impl PartialEq for Site {
         match (self, other) {
             (Self::Url(left), Self::Url(right)) => left == right,
             (Self::Bound(left), Self::Bound(right)) => left.same_location(right),
-            #[cfg(feature = "s3")]
+            #[cfg(feature = "s3tables")]
             (Self::Store { url: left, .. }, Self::Store { url: right, .. }) => left == right,
             _ => false,
         }
@@ -104,7 +104,7 @@ impl Hash for Site {
                 bound.diagnostic_url().hash(state);
                 bound.path().hash(state);
             }
-            #[cfg(feature = "s3")]
+            #[cfg(feature = "s3tables")]
             Self::Store { url, .. } => url.hash(state),
         }
     }

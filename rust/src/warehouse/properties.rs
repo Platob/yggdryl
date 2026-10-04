@@ -20,7 +20,14 @@ use crate::integer::{INTEGER_SPELLINGS, integer_from_text_as};
 use crate::{Error, Result};
 
 /// An ordered bag of name/value pairs, one value per name.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+///
+/// `Debug` renders `<redacted>` for the value of every name that may hold a
+/// credential - one spelled with `secret`, `token`, `key`, `password`,
+/// `credential`, `auth`, `signature`, `sas`, `connection_string` or
+/// `service_account` in any case - so a catalog, a namespace, a table or a
+/// handle holding a bag prints no secret; `Display` and serde are the data
+/// forms and carry every value as it is.
+#[derive(Clone, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Properties {
     entries: Vec<(SmolStr, SmolStr)>,
 }
@@ -196,6 +203,61 @@ impl<K: Into<SmolStr>, V: Into<SmolStr>> Extend<(K, V)> for Properties {
         for (name, value) in iter {
             self.set(name, value);
         }
+    }
+}
+
+/// The words the doors that read a bag spell a credential's name with:
+/// `secret_access_key`, `s3tables.session-token`, `account_key`, `sse_key`,
+/// `client_secret`, `basic_auth`, `header.Authorization`, `sas`.
+const CREDENTIAL_WORDS: [&str; 10] = [
+    "secret",
+    "token",
+    "key",
+    "password",
+    "credential",
+    "auth",
+    "signature",
+    "sas",
+    "connection_string",
+    "service_account",
+];
+
+/// Whether a property of this name may hold a credential: its name holds
+/// one of [`CREDENTIAL_WORDS`] in any case. The rule reads the name alone
+/// and errs towards a credential, since it decides only what `Debug` hides.
+fn is_credential(name: &str) -> bool {
+    CREDENTIAL_WORDS.iter().any(|word| {
+        name.as_bytes()
+            .windows(word.len())
+            .any(|window| window.eq_ignore_ascii_case(word.as_bytes()))
+    })
+}
+
+impl fmt::Debug for Properties {
+    /// Every name with its value, in the bag's order - `<redacted>` for the
+    /// value of a name that may hold a credential.
+    ///
+    /// ```
+    /// use yggdryl::Properties;
+    ///
+    /// let bag = Properties::new()
+    ///     .with_property("region", "eu-west-3")
+    ///     .with_property("s3tables.session-token", "IQoJb3JpZ2luX2Vj");
+    /// assert_eq!(
+    ///     format!("{bag:?}"),
+    ///     r#"{"region": "eu-west-3", "s3tables.session-token": <redacted>}"#
+    /// );
+    /// ```
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut map = formatter.debug_map();
+        for (name, value) in self {
+            if is_credential(name) {
+                map.entry(&name, &format_args!("<redacted>"));
+            } else {
+                map.entry(&name, &value);
+            }
+        }
+        map.finish()
     }
 }
 

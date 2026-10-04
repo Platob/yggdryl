@@ -345,6 +345,17 @@ fn next_pointed_version(held: &Opened) -> Result<u32> {
     })
 }
 
+/// Refuse `operation` on the folder of a table a [`MetadataPointer`] names:
+/// the catalog that keeps the pointer keeps the table, and its warehouse
+/// location need take neither a listing nor a delete.
+fn kept_by_catalog<H: IOBase>(root: &H, operation: &'static str) -> Error {
+    Error::unsupported(
+        operation,
+        root.url()
+            .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string),
+    )
+}
+
 /// Report a pointer that names no document for the table at `root`.
 fn missing_pointed<H: IOBase>(root: &H) -> Error {
     invalid(format_smolstr!(
@@ -3256,7 +3267,24 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
     // the table that folder holds.
     crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, parent,
-        child_by_path, ls);
+        child_by_path);
+
+    /// The files below the table: its folder's listing under the folder
+    /// contract.
+    ///
+    /// A table a [`MetadataPointer`] names lists nothing: its catalog's
+    /// warehouse location need not take a listing, and the table is read
+    /// through the one document its pointer names, so the listing is one
+    /// refusal saying so.
+    fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
+        if self.pointer.is_some() {
+            return crate::Listing::failing(kept_by_catalog(
+                &self.root,
+                "listing the files of a table its catalog keeps",
+            ));
+        }
+        self.root.ls(recursive, include_private)
+    }
 
     /// Stream nothing: the files below a table - its metadata, its manifests,
     /// its data - are its storage, not its bytes, so the root folder's stream
@@ -3339,11 +3367,24 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
     /// location instead. The handle itself stays usable and lazy, per the
     /// contract.
     ///
+    /// A table a [`MetadataPointer`] names is not its folder's to remove:
+    /// the catalog that keeps the pointer keeps the table, and removing the
+    /// files below it would leave the catalog naming a document that is
+    /// gone. Such a table is refused, touching nothing, and dropped through
+    /// its catalog - `S3Tables::remove_table` for an Amazon S3 Tables table.
+    ///
     /// # Errors
     ///
-    /// Returns the backing store's delete failure, or a refusal naming the
-    /// location when it still has children and `recursive` is not set.
+    /// Returns the backing store's delete failure, a refusal naming the
+    /// location when it still has children and `recursive` is not set, and
+    /// [`Error::Unsupported`] for a table a pointer names.
     fn remove(&mut self, recursive: bool) -> Result<()> {
+        if self.pointer.is_some() {
+            return Err(kept_by_catalog(
+                &self.root,
+                "removing a table its catalog keeps; drop it through that catalog",
+            ));
+        }
         self.root.remove(recursive)
     }
 }

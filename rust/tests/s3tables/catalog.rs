@@ -16,8 +16,8 @@ use crate::server::FakeS3;
 use yggdryl::iceberg::FormatVersion;
 use yggdryl::s3tables::S3TablesCatalog;
 use yggdryl::{
-    ArrowCastOptions, Catalog, CatalogValue, DataType, Field, IOMedia, NamespaceValue, ObjectValue,
-    Properties, Serie, StructType, Table, TableValue, TimeUnit, Timezone, Url,
+    ArrowCastOptions, Catalog, CatalogValue, DataType, Field, IOBase, IOMedia, NamespaceValue,
+    ObjectValue, Properties, Serie, StructType, Table, TableValue, TimeUnit, Timezone, Url,
 };
 
 /// Fifteen minutes in nanoseconds: one partition's span.
@@ -257,6 +257,22 @@ fn a_table_bucket_is_a_catalog_whose_tables_commit_through_the_control_plane() {
         Some(r#"["part"]"#)
     );
 
+    // The catalog keeps the table: its own listing and removal are refused
+    // rather than reaching the store, and the service still names it.
+    let mut kept = reopened;
+    let error = kept.remove(true).expect_err("kept by the catalog");
+    assert!(
+        error.to_string().contains("drop it through that catalog"),
+        "{error}"
+    );
+    let listed: Vec<_> = kept.ls(true, false).collect();
+    assert!(
+        listed.len() == 1 && listed[0].is_err(),
+        "one refusal, got {} entries",
+        listed.len()
+    );
+    assert_eq!(read(&kept), read(&table));
+
     // Nothing ever listed the store or removed from it, and no hint was
     // written: four documents, and the files each commit named.
     assert_eq!(forbidden(&store), Vec::<String>::new());
@@ -435,11 +451,53 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
     assert_eq!(catalog.namespace_levels(), Some(1));
     assert_eq!(fake.request_count(), 0);
     let Catalog::S3Tables(bucket) = &catalog else {
-        panic!("expected an S3 Tables catalog, got {catalog:?}");
+        panic!("expected an S3 Tables catalog");
     };
     assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
     assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
     assert_eq!(fake.lines(), ["GET /buckets?maxBuckets=250"]);
+
+    // The catalog prints none of the secrets it was stated.
+    let shown = format!("{catalog:?}");
+    assert!(!shown.contains(SECRET_KEY), "a secret in {shown}");
+    assert!(shown.contains("<redacted>"), "{shown}");
+
+    // Named by its ARN, the location keeps the region and the account the
+    // ARN states: the catalog is the same bucket, and no request asks for
+    // either - as text, as an `Arn`, or as a `Uri`.
+    fake.clear_requests();
+    let named = Catalog::from_url(
+        yggdryl::Uri::from_str(&arn).expect("an identifier"),
+        &properties,
+    )
+    .expect("a catalog");
+    assert_eq!(named.name(), "lake");
+    for named in [
+        named,
+        Catalog::from_url(yggdryl::Arn::from_str(&arn).expect("an ARN"), &properties)
+            .expect("a catalog"),
+    ] {
+        let Catalog::S3Tables(bucket) = named else {
+            panic!("expected an S3 Tables catalog");
+        };
+        assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
+        assert_eq!(
+            bucket.url().map(ToString::to_string).as_deref(),
+            Some("s3tables://lake")
+        );
+    }
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
+
+    // A `warehouse` property beside it must name that ARN.
+    let error = Catalog::from_url(
+        yggdryl::Uri::from_str(&arn).expect("an identifier"),
+        &properties
+            .clone()
+            .with_property("warehouse", arn.replacen(REGION, "ap-south-2", 1).as_str()),
+    )
+    .expect_err("two ARNs of one bucket");
+    assert!(error.to_string().contains("$.with.warehouse"), "{error}");
+    assert!(error.to_string().contains("the location states"), "{error}");
 
     // An account, or the ARN itself, states it with no request at all.
     fake.clear_requests();
@@ -471,7 +529,7 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
     .expect_err("another bucket");
     assert!(error.to_string().contains("$.with.warehouse"), "{error}");
     let error = Catalog::from_url(
-        &Url::from_str("s3tables://lake/t-a1").expect("a table's location"),
+        Url::from_str("s3tables://lake/t-a1").expect("a table's location"),
         &properties,
     )
     .expect_err("a table, not a bucket");

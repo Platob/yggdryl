@@ -949,6 +949,14 @@ impl fmt::Display for Uri {
     }
 }
 
+/// Every identifier is a `Uri`, this one included, so a door taking
+/// `impl AsRef<Uri>` takes all four.
+impl AsRef<Self> for Uri {
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
 impl<'a> IntoIterator for &'a Uri {
     type Item = &'a str;
     type IntoIter = PathSegments<'a>;

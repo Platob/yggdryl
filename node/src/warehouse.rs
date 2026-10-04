@@ -350,8 +350,10 @@ impl JsWarehouseCatalog {
         ts_args_type = "url: Url | string, properties?: Record<string, string | number | boolean> | null"
     )]
     pub fn from_url(url: UrlInput<'_>, properties: Option<Object<'_>>) -> Result<Self> {
-        let url = url_from_input(url)?;
-        CoreCatalog::from_url(&url, &properties_from_input(properties)?)
+        // The identifier as named, located by the core: a table bucket's
+        // ARN states the region and the account its location does not.
+        let location = identifier_from_input(url)?;
+        CoreCatalog::from_url(&location, &properties_from_input(properties)?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1304,6 +1306,16 @@ fn url_from_input(value: UrlInput<'_>) -> Result<yggdryl::Url> {
     match value {
         Either::A(url) => Ok(url.inner.clone()),
         Either::B(text) => yggdryl::Url::from_location(&text).map_err(napi_error),
+    }
+}
+
+/// The identifier an input names, as named: a door that reads more off an
+/// identifier than where it is - a table bucket's ARN states its region and
+/// its account - locates it itself.
+fn identifier_from_input(value: UrlInput<'_>) -> Result<yggdryl::Uri> {
+    match value {
+        Either::A(url) => Ok(url.inner.clone().into_uri()),
+        Either::B(text) => yggdryl::Uri::from_str(&text).map_err(napi_error),
     }
 }
 

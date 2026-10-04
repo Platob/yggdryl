@@ -15,10 +15,13 @@
 //! reads the one document the pointer names and nothing else, writes each
 //! next document as `metadata/{version:05}-{uuid}.metadata.json` - the name
 //! Iceberg's own catalogs give one, the first numbered `00000` - and
-//! publishes it under the token the pointer last answered. Nothing is
-//! listed, no hint is written, and nothing is removed: a document or a file
-//! a failed commit wrote stays where it is, unreferenced, for the store's
-//! own maintenance to collect.
+//! publishes it under the token the pointer last answered. No read and no
+//! commit lists the folder, writes a hint or removes a file: a document or a
+//! file a failed commit wrote stays where it is, unreferenced, for the
+//! store's own maintenance to collect. The table's own
+//! [`ls`](crate::IOBase::ls) and [`remove`](crate::IOBase::remove) are
+//! refused, touching nothing: the catalog that keeps the pointer keeps the
+//! table, and drops it.
 //!
 //! ```
 //! use std::sync::{Arc, Mutex};

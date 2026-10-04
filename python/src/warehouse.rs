@@ -31,7 +31,7 @@ use crate::iobase::{PyIOBase, describe};
 use crate::iomedia::{
     batch_reader_from_any, core_record_options_from_value, fold_record_properties,
 };
-use crate::uri::core_url_from_value;
+use crate::uri::{core_uri_from_value, core_url_from_value};
 use crate::{python_hash, value_error};
 
 /// Which implementation a warehouse object answers through: the class a
@@ -531,12 +531,14 @@ macro_rules! object_members {
 pub(crate) struct PyCatalog;
 
 object_members!(PyCatalog, catalog_of, {
-    /// The catalog a URL names, under `properties`, touching no storage.
+    /// The catalog a location names, under `properties`, touching no storage.
     ///
-    /// The `type` property decides first - `memory` or `folder` - and
-    /// otherwise every location a byte backend holds is a folder catalog over
-    /// the container it names, called what the `name` property says, else
-    /// the location's last segment.
+    /// `url` is a URL, a path, or an identifier that locates one - a table
+    /// bucket's ARN is kept beside the `s3tables://<name>` it locates, so its
+    /// region and account are never asked for. The `type` property decides
+    /// first - `memory` or `folder` - and otherwise every location a byte
+    /// backend holds is a folder catalog over the container it names, called
+    /// what the `name` property says, else the location's last segment.
     #[classmethod]
     #[pyo3(signature = (url, properties = None, **keywords))]
     fn from_url(
@@ -546,9 +548,11 @@ object_members!(PyCatalog, catalog_of, {
         properties: Option<&Bound<'_, PyAny>>,
         keywords: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let url = core_url_from_value(url)?;
+        // The identifier as named, located by the core: an ARN states more
+        // than the location it locates.
+        let location = core_uri_from_value(url)?;
         let properties = properties_from_args(properties, keywords)?;
-        let catalog = Catalog::from_url(&url, &properties).map_err(value_error)?;
+        let catalog = Catalog::from_url(&location, &properties).map_err(value_error)?;
         describe(py, Holder::from(catalog))
     }
 
