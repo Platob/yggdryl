@@ -291,7 +291,7 @@ impl FixCodec {
         Ok(Arc::new(RowReader {
             root: Resolved::of(Arc::new(carrier.clone())),
             columns,
-            codec: self.clone(),
+            codec: self.reading(),
             options: Arc::new(TextOptions::new()),
         }))
     }
@@ -308,9 +308,11 @@ impl FixCodec {
     /// columns](FixMsg::carried) travel with the message the walk moves, so
     /// the `body` a row was cut from and the `sourceurl` it names still
     /// belong to the message that came out of that line whatever order the
-    /// walk answers in. A refused message type never enters the walk,
-    /// exactly as in `lifecycle`, and takes its row with it. Batches close as
-    /// `arrow_reader` closes them, on the bytes each row lands as.
+    /// walk answers in. The rows are read as already cleaned, as
+    /// `lifecycle` reads what it is handed: a message type the parse that
+    /// wrote the table refused never reached a row, and one it admitted is
+    /// walked. Batches close as `arrow_reader` closes them, on the bytes
+    /// each row lands as.
     ///
     /// A row that is not a message is excluded with a deduplicated warning
     /// and the walk goes on without it; the source reader's own failure is

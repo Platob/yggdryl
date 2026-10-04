@@ -217,9 +217,9 @@ fn identifier_target(
 /// Every identifier answers through the core's `locator`, which is the one
 /// door a name and a location share - and what `Url::from_location` is for
 /// text a caller typed. This is where it happens, so each role below - a
-/// container, an object's site - decides only what to do with the location,
-/// never how to read one.
-fn location_target(
+/// container, an object's site, a registry's store - decides only what to do
+/// with the location, never how to read one.
+pub(crate) fn location_target(
     value: LocationInput<'_>,
 ) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Url>> {
     Ok(match identifier_target(value)? {

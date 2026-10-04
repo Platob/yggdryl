@@ -216,8 +216,8 @@ def _identifiers_into_dict() -> object:
     return IDENTIFIERS.into_dict()
 
 
-def _registry_get_by_ric() -> object:
-    return REGISTRY.get_by_ric("HOLN.S")
+def _registry_get() -> object:
+    return REGISTRY.get("CH0012214059")
 
 
 def _registry_get_by_ticker() -> object:
@@ -284,7 +284,7 @@ def main() -> None:
         _measure("book imbalance/10", _book_imbalance, args.iterations)
         _measure(f"identifiers from_dict/{len(IDENTIFIERS)}", _identifiers_from_dict, args.iterations)
         _measure(f"identifiers into_dict/{len(IDENTIFIERS)}", _identifiers_into_dict, args.iterations)
-        _measure("isin registry get_by_ric", _registry_get_by_ric, args.iterations)
+        _measure("isin registry get", _registry_get, args.iterations)
         _measure("isin registry get_by_ticker", _registry_get_by_ticker, args.iterations)
         _measure("view plan orders+lift", _view_plan, args.iterations)
         _measure(f"view apply orders/{count}", _view_apply, folds)

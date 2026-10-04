@@ -2907,7 +2907,11 @@ export declare class FixCodec {
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
    * A codec over the registry the process environment names,
-   * `FixRegistry.fromEnv()`, pinned by the options the constructor takes.
+   * `FixRegistry.fromEnv()`, sharing the instrument registry it names
+   * too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
+   * - pinned by the options the constructor takes. The one constructor
+   * that attaches the process's own; `new FixCodec(...)` attaches none,
+   * and a commit of what the walks learned is always the caller's.
    */
   static fromEnv(options?: FixCodecOptions | undefined | null): FixCodec
   /** The dictionary this codec resolves against, sharing it. */
@@ -5582,35 +5586,55 @@ export type JsIOResult = IOResult
 
 /**
  * A table of instruments keyed by ISIN - each row the instrument's CFI
- * code, its market, its ticker and one code per `SecurityIDSource(22)`
- * type - that a lifecycle learns into and fills from. Mutable and shared:
- * equal only to itself; its rows cross out as an Arrow stream.
+ * code, its country of issue, its currency pair, its market, its ticker
+ * and trading currency and one code per `SecurityIDSource(22)` type - that
+ * a lifecycle learns into and fills from, and a parse fills from. Bound to
+ * the store it was loaded from, committed back only where it moved.
+ * Mutable and shared: equal only to itself; its rows cross out as an Arrow
+ * stream.
  */
 export declare class IsinRegistry {
   /**
    * An empty registry holding at most `maxInstruments` instruments, the
-   * core's 16,384 when unstated; learning skips a new ISIN past the bound
-   * and loading refuses it.
+   * core's 16,384 when unstated, bound to no store; learning skips a new
+   * ISIN past the bound and loading refuses it.
    */
   constructor(maxInstruments?: number | undefined | null)
   /**
-   * A registry read from `location` - an `IOBase` or anything a location
-   * is read from: an Arrow IPC file, Parquet, a folder of either, an
-   * object store - its columns named by the registry's own names or any
-   * spelling of an identifier type (`RIC`, `BloombergSymbol`,
-   * `ISINCode`), rows of one ISIN folded by `updunix`; a missing store is
-   * the empty registry.
+   * A registry bound to the store `location` names and loaded from it:
+   * a URL of any scheme this build holds, a path or an `IOBase` - an
+   * Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an
+   * object store - under the `properties` a `with (...)` clause would
+   * state, its columns named by the registry's own names or any spelling
+   * of an identifier type; a store holding nothing yet is an empty first
+   * run, laid out by the first `commit`. Clean after the load.
    */
-  static fromHandle(location: LocationInput, maxInstruments?: number | undefined | null): IsinRegistry
+  static fromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
+  /**
+   * The registry the process environment names, loaded on the first
+   * call and shared with every later one and with `FixCodec.fromEnv`:
+   * an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
+   * names - a URL of any scheme, a path, `~` the home - else
+   * `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
+   * `commit` lays out; with no home, an empty registry bound to nothing.
+   * A failed load throws and is retried by the next call.
+   */
+  static fromEnv(): IsinRegistry
+  /**
+   * Installs `registry` as the one every later `fromEnv` answers - this
+   * very table, shared - before anything resolves one; throws once the
+   * default has resolved or been installed.
+   */
+  static installEnv(registry: IsinRegistry): void
   /**
    * A registry read from a `BatchReader` - `BatchReader.from` widens an
-   * Arrow JS table, a batch or IPC bytes into one - as `fromHandle` reads
-   * a holder's rows.
+   * Arrow JS table, a batch or IPC bytes into one - its columns named as
+   * `fromUrl` reads them; bound to no store, and clean.
    */
   static fromArrowReader(reader: BatchReader, maxInstruments?: number | undefined | null): IsinRegistry
   /**
-   * Folds the rows `location` holds in, by the update rule; how many rows
-   * it read.
+   * Folds the rows `location` holds in, by the update rule, leaving the
+   * registry bound to the store it was; how many rows it read.
    */
   extendFromHandle(location: LocationInput): number
   /**
@@ -5623,16 +5647,23 @@ export declare class IsinRegistry {
    * order: a snapshot taken under the lock, which a learn while it
    * streams does not move. Write it with an `IOBase`'s
    * `writeArrowReader` - an overwrite saves a snapshot, a merge by `isin`
-   * upserts.
+   * upserts - or `commit` the registry.
    */
   intoArrowReader(): BatchReader
+  /**
+   * Writes the table to the store it is bound to, only where it moved
+   * since it was loaded or last committed: one overwrite of the whole
+   * snapshot, a leaf rewritten, a folder's parts replaced by one, an
+   * Iceberg table replaced in one atomic snapshot, an emptied registry
+   * clearing the store. The `IOResult` of the write, empty for a clean
+   * registry, which touches the store with no call. Throws on a registry
+   * bound to no store.
+   */
+  commit(): IOResult
+  /** Whether the table moved since it was loaded or last committed. */
+  get isDirty(): boolean
   /** The row of `isin` as a plain object of its columns, or `null`. */
   get(isin: string): Record<string, unknown> | null
-  /**
-   * The row the RIC `ric` names, as a plain object of its columns, or
-   * `null`.
-   */
-  getByRic(ric: string): Record<string, unknown> | null
   /**
    * The row the ticker `ticker` names on `market`, as a plain object of
    * its columns, or `null`: the one row listing the ticker whose market
@@ -5643,10 +5674,12 @@ export declare class IsinRegistry {
   getByTicker(ticker: string, market?: string | undefined | null): Record<string, unknown> | null
   /**
    * Folds one row - an object of column names to cells, `isin` required
-   * - into the row of its ISIN by the update rule: a column the row
-   * lacks is filled, one it holds is replaced by a statement at or after
-   * the row's `updunix` and kept against an older one, a refining CFI
-   * code refines whatever the time. Whether anything moved.
+   * - into the row of its ISIN by the update rule: a stated valid value
+   * fills a column the row lacks and replaces one it holds that
+   * differs, whatever the time, a code that is no real value of its
+   * type dropped; a compatible CFI code refines the held one and a
+   * contradicting one replaces it; a ticker or a listing code stated on
+   * another market switches the listing whole. Whether anything moved.
    */
   merge(entry: Record<string, unknown>): boolean
   /** Removes the row of `isin`, answering it as a plain object, or `null`. */
@@ -5659,15 +5692,17 @@ export declare class IsinRegistry {
   get maxInstruments(): number
   /**
    * Learns what a message states about its instrument - keyed by its
-   * stated ISIN, else by its stated RIC, which only fills - dated at its
-   * `currunix`. Whether anything moved.
+   * stated real ISIN, dated at its `currunix`: its CFI code, its market,
+   * its ticker, its currency, the pair it states and its real
+   * equivalents. Whether anything moved.
    */
   learn(message: FixMsg): boolean
   /**
    * Fills what a message leaves unsaid about its instrument from the row
-   * its ISIN, else its RIC, names - each equivalent as a `derived`
-   * identifier, the listing codes and the ticker on its own market, its
-   * CFI code where the row's refines it - never its wire. Whether
+   * its ISIN names, else its ticker on its market - each equivalent and
+   * the pair as a `derived` identifier, the ticker on its own market,
+   * its CFI code where the row's refines it, the currency on the same
+   * stated market under the row's ticker - never its wire. Whether
    * anything moved.
    */
   fill(message: FixMsg): boolean
@@ -5675,7 +5710,7 @@ export declare class IsinRegistry {
   enrich(message: FixMsg): boolean
   /** Whether `other` is this registry - the same shared table. */
   equals(other: IsinRegistry): boolean
-  /** Render `IsinRegistry(len=…, maxInstruments=…)`. */
+  /** Render `IsinRegistry(len=…, maxInstruments=…, dirty=…)`. */
   toString(): string
 }
 export type JsIsinRegistry = IsinRegistry

@@ -8312,7 +8312,7 @@ fn identifier_reads_and_inline_inserts_allocate_nothing() {
 
 /// An ISIN registry learns a statement of a known instrument that says
 /// nothing new, fills an element that leaves nothing unsaid and looks a row
-/// up by its ISIN or its RIC without allocating, whatever its size.
+/// up by its ISIN without allocating, whatever its size.
 #[test]
 fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
     use yggdryl::graph::{Market, OrderEvent};
@@ -8358,9 +8358,6 @@ fn an_isin_registry_reads_and_learns_a_known_instrument_without_allocating() {
         });
         free(&format!("a row by its ISIN at {size} instruments"), || {
             assert!(registry.get(black_box(isin.as_str())).is_some());
-        });
-        free(&format!("a row by its RIC at {size} instruments"), || {
-            assert!(registry.get_by_ric(black_box("R7.X")).is_some());
         });
     }
 }
@@ -8556,8 +8553,11 @@ fn an_isin_registry_learns_a_new_instrument_into_its_row_inline() {
 /// A snapshot stream shares the table rather than copying it: opening one
 /// costs the same five allocations at 64 instruments as at 4,096 - the
 /// reader, its schema and its field - and draining it lays each row out
-/// once, seven allocations a row (the named row and its canonical run) plus
-/// one doubling of the batch's row vector each time the rows double.
+/// once, eight allocations a row - the named row, a B-tree of its forty
+/// cells inserted in column order, which takes six leaf nodes behind one
+/// `Arc` where the thirty-seven cells of the row before `countrycode`,
+/// `forexcode` and `currency` were added took five, and its canonical run -
+/// plus one doubling of the batch's row vector each time the rows double.
 #[test]
 fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     // The row's Arrow projection is built once per process, on first use.
@@ -8578,16 +8578,18 @@ fn an_isin_registry_snapshot_stream_is_constant_to_open_and_reads_by_row() {
     for size in [64, 256] {
         assert_eq!(
             drain(2 * size) - drain(size),
-            7 * size + 1,
-            "{size} more rows cost other than seven a row"
+            8 * size + 1,
+            "{size} more rows cost other than eight a row"
         );
     }
 }
 
 /// Reloading rows the registry already holds - a golden file read again -
 /// costs each batch the same whatever its rows: one cast plan for the
-/// stream, the landing per batch, and a code cell adopted as the landing
-/// proved it, so a row that moves nothing allocates nothing.
+/// stream, the landing per batch - one narrowing per column of the forty,
+/// three more than the thirty-seven before `countrycode`, `forexcode` and
+/// `currency` were added - and a code cell adopted as the landing proved
+/// it, so a row that moves nothing allocates nothing.
 #[test]
 fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     let mut each_at = Vec::new();
@@ -8618,7 +8620,7 @@ fn an_isin_registry_reloads_known_rows_at_a_cost_per_batch() {
     }
     assert_eq!(
         each_at,
-        [47, 47],
+        [50, 50],
         "a batch of 64 and of 512 known rows: a cost per row"
     );
 }

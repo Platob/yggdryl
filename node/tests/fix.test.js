@@ -2146,12 +2146,22 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     console.log('ok')
   `
     const { execFileSync } = require('node:child_process')
-    const output = execFileSync(
-      process.execPath,
-      ['-e', script, require.resolve('yggdryl'), SEED],
-      { encoding: 'utf8' },
-    )
-    assert.equal(output.trim(), 'ok')
+    // `FixCodec.fromEnv` resolves the process's instrument registry too, so
+    // the child's environment names a scratch store, never the real home.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fix-env-'))
+    try {
+      const output = execFileSync(
+        process.execPath,
+        ['-e', script, require.resolve('yggdryl'), SEED],
+        {
+          encoding: 'utf8',
+          env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_ISIN_REGISTRY_URI: path.join(home, 'isin') + path.sep },
+        },
+      )
+      assert.equal(output.trim(), 'ok')
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   })
 
   test('a reader parses every frame shape the core reads', () => {

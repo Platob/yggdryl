@@ -2653,7 +2653,10 @@ impl PyFixCodec {
     /// threads. A worker that warns takes the GIL to reach Python's
     /// `logging`, so the thread waiting on that worker must not hold it:
     /// held, the two wait on each other for good. One thread never showed
-    /// it, because the worker was this thread.
+    /// it, because the worker was this thread. A parse door also takes the
+    /// instrument registry's lock as it opens, and a registry verb run
+    /// detached under that lock may warn, so no door takes the lock with
+    /// the GIL held either.
     fn released<T, F>(py: Python<'_>, door: F) -> T
     where
         F: FnOnce() -> T + Send,
@@ -2671,18 +2674,33 @@ impl PyFixCodec {
     const __hash__: Option<Py<PyAny>> = None;
 
     /// A codec over the registry the process environment names,
-    /// `FixRegistry.from_env()`, pinned by the keywords the constructor
-    /// takes.
+    /// `FixRegistry.from_env()`, sharing the instrument registry it names
+    /// too, `IsinRegistry.from_env()` - unless the `isin_registry` pin
+    /// names another - pinned by the keywords the constructor takes. The
+    /// one constructor that attaches the process's own; `FixCodec(...)`
+    /// attaches none, and a commit of what the walks learned is always the
+    /// caller's.
     #[classmethod]
     #[pyo3(signature = (**pins))]
     fn from_env<'py>(
         cls: &Bound<'py, PyType>,
         pins: Option<&Bound<'py, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let py = cls.py();
         let registry = CoreFixRegistry::from_env()
             .map(|registry| PyFixRegistry::from_arc(Arc::clone(registry)))
             .map_err(value_error)?;
-        cls.call((registry,), pins)
+        let pins = match pins {
+            Some(pins) => pins.copy()?,
+            None => PyDict::new(py),
+        };
+        if !pins.contains("isin_registry")? {
+            let instruments = py
+                .detach(|| yggdryl::IsinRegistry::from_env().map(PyIsinRegistry::from_shared))
+                .map_err(value_error)?;
+            pins.set_item("isin_registry", instruments)?;
+        }
+        cls.call((registry,), Some(&pins))
     }
 
     #[staticmethod]
@@ -3033,9 +3051,9 @@ impl PyFixCodec {
     }
 
     /// One captured line, whatever it is wrapped in: its messages.
-    fn parse_line(&self, row: &[u8]) -> PyResult<PyFixMessages> {
-        self.inner
-            .parse_line(row)
+    fn parse_line(&self, py: Python<'_>, row: &[u8]) -> PyResult<PyFixMessages> {
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_line(row))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3047,35 +3065,36 @@ impl PyFixCodec {
     /// a time. A line that is not a row at all is passed over with a
     /// warning to `logging` and the stream reads on; an item that is not
     /// bytes raises `TypeError` and ends it.
-    fn parse_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+    fn parse_lines(&self, py: Python<'_>, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(lines, line_bytes)?;
         let failed = pulled.failed.clone();
+        let inner = &self.inner;
         Ok(PyFixMessages::pulling(
-            self.inner.parse_lines(pulled),
+            Self::released(py, || inner.parse_lines(pulled)),
             failed,
         ))
     }
 
     /// One numeric frame, read by the pairs it states.
-    fn parse_fix_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
-        self.inner
-            .parse_fix_line(body)
+    fn parse_fix_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_fix_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
-    fn parse_ullink_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
-        self.inner
-            .parse_ullink_line(body)
+    fn parse_ullink_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_ullink_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One FIXML row, whose fields are XML attributes.
-    fn parse_fixml_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
-        self.inner
-            .parse_fixml_line(body)
+    fn parse_fixml_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_fixml_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3085,13 +3104,13 @@ impl PyFixCodec {
     /// Taken by value because the borrowed pairs the core reads point into
     /// these strings, so they have to outlive the call rather than the caller.
     #[allow(clippy::needless_pass_by_value)]
-    fn parse_pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
+    fn parse_pairs(&self, py: Python<'_>, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
-        self.inner
-            .parse_pairs(borrowed)
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_pairs(borrowed))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3128,9 +3147,10 @@ impl PyFixCodec {
     /// A `direction` capture is named so it cannot silently fill a field of
     /// that name, and is not otherwise read: only `parse_text_arrow_reader`
     /// has a column to put a direction in.
-    fn parse_text_line(&self, line: &PyTextLine) -> PyResult<PyFixMessages> {
-        self.inner
-            .parse_text_line(line.as_core())
+    fn parse_text_line(&self, py: Python<'_>, line: &PyTextLine) -> PyResult<PyFixMessages> {
+        let inner = &self.inner;
+        let line = line.as_core();
+        Self::released(py, || inner.parse_text_line(line))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3143,14 +3163,19 @@ impl PyFixCodec {
     /// `ValueError` where it is met and the stream continues; an item that is
     /// not a `TextLine`, or a failure of the iterable itself, raises as
     /// itself and ends it.
-    fn parse_text_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+    fn parse_text_lines(
+        &self,
+        py: Python<'_>,
+        lines: &Bound<'_, PyAny>,
+    ) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(lines, |held| {
             let held = held.cast::<PyTextLine>().map_err(PyErr::from)?;
             Ok(held.borrow().as_core().clone())
         })?;
         let failed = pulled.failed.clone();
+        let inner = &self.inner;
         Ok(PyFixMessages::pulling(
-            self.inner.parse_text_lines(pulled),
+            Self::released(py, || inner.parse_text_lines(pulled)),
             failed,
         ))
     }

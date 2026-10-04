@@ -442,12 +442,15 @@ assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist()
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - else its RIC, which only fills - its
-CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
-what later messages of that instrument leave unsaid, as `derived` identifiers
-and the CFI and ticker facts, never the wire. A codec without one learns into
-a registry of each walk's own; `isin_registry=` shares one across walks run one
-after another, and any `IOBase` saves and loads it.
+A lifecycle learns each message's ISIN - the one key - its CFI code, country,
+market, ticker, currency, pair and security codes into an `IsinRegistry`, and
+fills what later messages of that instrument leave unsaid, as `derived`
+identifiers and the ticker, CFI and currency facts, never the wire; a parse
+through the same codec fills derived identifiers from the table its door
+fixed. A codec without one learns into a registry of each walk's own;
+`isin_registry=` shares one across walks run one after another, bound to a
+store with `from_url` and written back with `commit()` only where it moved,
+and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
 
 ```python
 from pathlib import Path
@@ -458,16 +461,18 @@ from yggdryl.fix import FixCodec, FixRegistry
 instruments = IsinRegistry()
 codec = FixCodec(FixRegistry.from_handle(Path("config/fix")), isin_registry=instruments)
 
-# The first walk states Holcim's ISIN, RIC and CFI code.
-stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|"]
+# The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
+stated = [b"8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"]
 list(codec.lifecycle(codec.parse_lines(stated)))
-assert instruments.get_by_ric("HOLN.S")["isin"] == "CH0012214059"
+assert instruments.get("CH0012214059")["ric"] == "HOLN.S"
 
-# A later walk naming only the RIC is filled from what the first learned.
-[later] = codec.lifecycle(codec.parse_lines([b"8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"]))
-assert later.isincode == "CH0012214059" and later.securityids.is_derived("isin")
+# A later parse naming only the ticker on the market takes the ISIN from the
+# table, derived; the walk fills the CFI code as a market fact.
+[parsed] = codec.parse_lines([b"8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|"])
+assert parsed.isincode == "CH0012214059" and parsed.securityids.is_derived("isin")
+[later] = codec.lifecycle([parsed])
 assert later.cficode is not None and later.cficode.as_py() == "ESVUFR"
-# The table is an Arrow stream: a golden file loads with `from_handle`.
+# The table is an Arrow stream: a golden file loads with `from_url`.
 assert IsinRegistry.from_arrow_reader(instruments.into_arrow_reader()).get("CH0012214059") is not None
 ```
 

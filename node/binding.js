@@ -5651,7 +5651,7 @@ binding.FixCodec.prototype.writeArrowReader = function writeArrowReader(source, 
 // native `BatchReader`, as every `fromArrowReader` takes one.
 {
   const NativeIsinRegistry = binding.IsinRegistry
-  for (const name of ['get', 'getByRic', 'remove']) {
+  for (const name of ['get', 'remove']) {
     const native = NativeIsinRegistry.prototype[name]
     NativeIsinRegistry.prototype[name] = {
       [name](key) {

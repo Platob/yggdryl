@@ -38,9 +38,11 @@ impl Isin {
     pub const NONE: &str = "XX0000000000";
 
     /// The two-letter prefixes ISO 6166 gives an agency rather than a
-    /// country: the ECB's `EU`, the DSB's `EZ` for derivatives, and the
-    /// international and substitute agencies `XA` to `XS`.
-    const AGENCY_PREFIXES: [&str; 9] = ["EU", "EZ", "XA", "XB", "XC", "XD", "XF", "XK", "XS"];
+    /// country: the ECB's `EU`, the DSB's `EZ` for derivatives, the
+    /// international and substitute agencies `XA` to `XS`, and `XT` for a
+    /// referential instrument - a digital token, a crypto-asset.
+    const AGENCY_PREFIXES: [&str; 10] =
+        ["EU", "EZ", "XA", "XB", "XC", "XD", "XF", "XK", "XS", "XT"];
 
     /// Validate and construct a securities identification number: twelve
     /// ASCII bytes of the number's shape, upper-cased.
@@ -183,15 +185,16 @@ impl Isin {
     /// Whether `text` opens with a prefix some agency numbers under: an
     /// ISO 3166 country code [`StringEnum::COUNTRIES`] lists, or one of the
     /// agency prefixes - the ECB's `EU`, the DSB's `EZ`, the international
-    /// `XS` and its neighbours. `ZZ`, which ISO 6166 gives a derivative no
-    /// agency has numbered yet, and the user-assigned `XX` are listed
-    /// nowhere.
+    /// `XS` and its neighbours, `XT` for a referential instrument. `ZZ`,
+    /// which ISO 6166 gives a derivative no agency has numbered yet, and
+    /// the user-assigned `XX` are listed nowhere.
     ///
     /// ```
     /// use yggdryl::Isin;
     ///
     /// assert!(Isin::is_listed_prefix("US0378331005"));
     /// assert!(Isin::is_listed_prefix("EZN11TD1F7K3"));
+    /// assert!(Isin::is_listed_prefix("XT0000000000"));
     /// assert!(!Isin::is_listed_prefix("ZZ0000000008"));
     /// assert!(!Isin::is_listed_prefix("XX0000000001"));
     /// ```

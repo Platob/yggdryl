@@ -7030,33 +7030,48 @@ class IsinRegistry:
     """A table of instruments keyed by ISIN, shared behind one lock.
 
     Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved it happened), detailed ``cficode``, the ``miccode`` its
-    listing facts belong to, its ``ticker`` and one code per
-    ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns into it -
-    keyed by a stated ISIN, else a stated RIC, which only fills - and fills
-    from it what a message leaves unsaid; the latest statement leads column
-    by column and an older one only fills. Equal only to itself; never
-    hashed or pickled: its rows cross out as an Arrow stream.
+    that last moved it happened, a stamp), detailed ``cficode``, its
+    ``countrycode`` of issue, its ``forexcode`` pair, the ``miccode`` its
+    listing facts belong to, its ``ticker`` and trading ``currency`` and one
+    code per ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
+    into it - keyed by a stated real ISIN - and fills from it what a message
+    leaves unsaid, a parse fills derived identifiers from it, and a valid
+    stated value fills and replaces whatever the time. Bound to the store it
+    was loaded from (``from_url``, ``from_env``) and committed back only
+    where it moved (``commit``). Equal only to itself; never hashed or
+    pickled: its rows cross out as an Arrow stream.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
     def __init__(self, max_instruments: int = 16384) -> None: ...
     @staticmethod
-    def from_handle(location: object, max_instruments: int = 16384) -> IsinRegistry:
-        """A registry read from a holder: an Arrow IPC file, Parquet, a folder of either, an object store."""
+    def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
+        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
+        ...
+    @staticmethod
+    def from_env() -> IsinRegistry:
+        """The process's own registry, resolved once from ``YGGDRYL_ISIN_REGISTRY_URI``, else ``~/.config/yggdryl/isin/``, and shared with ``FixCodec.from_env``."""
+        ...
+    @staticmethod
+    def install_env(registry: IsinRegistry) -> None:
+        """Installs the registry every later ``from_env`` answers, before anything resolves one."""
         ...
     @staticmethod
     def from_arrow_reader(reader: object, max_instruments: int = 16384) -> IsinRegistry:
-        """A registry read from any Arrow stream."""
+        """A registry read from any Arrow stream, bound to no store."""
         ...
     def extend_from_handle(self, location: object) -> int: ...
     def extend_from_arrow_reader(self, reader: object) -> int: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader:
         """The rows as a snapshot stream in ISIN order, under the registry's row field."""
         ...
+    def commit(self) -> IOResult:
+        """Writes the table to the store it is bound to, only where it moved: one overwrite of the snapshot; a clean registry costs no call."""
+        ...
+    @property
+    def is_dirty(self) -> bool: ...
     def get(self, isin: str) -> dict[str, Any] | None: ...
-    def get_by_ric(self, ric: str) -> dict[str, Any] | None: ...
     def get_by_ticker(self, ticker: str, market: str | None = None) -> dict[str, Any] | None:
         """The row the ticker names on ``market``: the one row listing it whose
         market is ``market``, or whose market or ``market`` is unstated; two
