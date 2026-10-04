@@ -345,10 +345,11 @@ impl JsBookIterator {
     /// disables grid snapshots, so a book is emitted whole only at a full
     /// refresh.
     ///
-    /// The walk folds orders, quotes and snapshot controls and prunes every
-    /// other input where it is pulled. `filter` - a `Filter`, a `Term` or
-    /// the text of a predicate over the `marketdata` row - narrows it
-    /// further, bound once here; it never admits an execution or a trade.
+    /// The walk folds orders, quotes and snapshot controls, records an
+    /// execution among its instant's deltas and prunes every other input
+    /// where it is pulled. `filter` - a `Filter`, a `Term` or the text of a
+    /// predicate over the `marketdata` row - narrows it further, bound once
+    /// here; it never admits a pruned kind.
     /// Not given, every booked input is kept.
     #[napi(factory, js_name = "_bookIteratorNative", skip_typescript)]
     pub fn new_native(

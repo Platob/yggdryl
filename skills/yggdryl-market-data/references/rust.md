@@ -440,9 +440,9 @@ assert_eq!((whole.alive().count(), whole.get_curruuid()), (2, last.get_curruuid(
 let gridded = BookIterator::new(stream.clone().into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(gridded.len(), 3);
 assert!(gridded.iter().all(BookEvent::is_complete));
-// A filter narrows what folds, and never admits an execution.
+// A filter narrows what folds: the execution's instant alone.
 let filtered = BookIterator::new(stream.into_iter(), 0)?.with_filter("marketdatakind = 'EXEC'")?;
-assert_eq!(filtered.count(), 0);
+assert_eq!(filtered.count(), 1);
 
 // The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 let mut listed = OrderEvent::at(T);

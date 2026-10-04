@@ -945,7 +945,8 @@ declare module './index' {
      * Stream sorted messages through native market data and books into
      * nested Arrow batches, one book per book key and instant. A positive
      * snapshot width is epoch aligned. Orders, quotes and `W`/`X` book
-     * messages fold; an execution or a trade never reaches a book. `filter`,
+     * messages fold; an execution is recorded among its instant's deltas and
+     * a trade never reaches a book. `filter`,
      * a predicate over the `marketdata` row, narrows what the books fold and
      * never admits a pruned kind; not given, every booked leaf is kept.
      */
@@ -5427,9 +5428,10 @@ export interface OperationEventConstructor<T> {
  * The public `BookIterator` constructor: its items pulled lazily from the
  * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
  * streams are; a failure behind the iterable is thrown as itself. Orders,
- * quotes and snapshot controls fold, and every other input is pruned;
- * `filter`, a predicate over the `marketdata` row bound once, narrows what
- * the books fold and never admits an execution or a trade.
+ * quotes and snapshot controls fold, an execution is recorded among its
+ * instant's deltas, and every other input is pruned; `filter`, a predicate
+ * over the `marketdata` row bound once, narrows what the books fold and
+ * never admits a pruned kind.
  */
 export interface BookIteratorConstructor {
   new (

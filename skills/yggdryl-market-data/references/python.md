@@ -362,8 +362,8 @@ assert (len(whole.alive), whole.curruuid) == (2, last.curruuid), "depth persists
 # A 500 ms grid states the whole living book at each crossed tick.
 gridded = list(graph.BookIterator(stream, snapshot_millis=500))
 assert len(gridded) == 3 and all(book.is_complete for book in gridded)
-# A filter narrows what folds, and never admits an execution.
-assert list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'")) == []
+# A filter narrows what folds: the execution's instant alone.
+assert len(list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'"))) == 1
 # The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 [keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
 assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)

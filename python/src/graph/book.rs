@@ -285,11 +285,12 @@ impl PyBookIterator {
     /// their own event order; `snapshot_millis == 0` disables grid
     /// snapshots, so a book is emitted whole only at a full refresh.
     ///
-    /// The walk folds orders, quotes and snapshot controls and prunes every
-    /// other input where it is pulled. `filter` - a `Filter`, a `Term`, an
-    /// `Expression` or the text of a predicate over the `marketdata` row -
-    /// narrows it further, bound once here; it never admits an execution or
-    /// a trade. `None` keeps every booked input.
+    /// The walk folds orders, quotes and snapshot controls, records an
+    /// execution among its instant's deltas and prunes every other input
+    /// where it is pulled. `filter` - a `Filter`, a `Term`, an `Expression`
+    /// or the text of a predicate over the `marketdata` row - narrows it
+    /// further, bound once here; it never admits a pruned kind. `None`
+    /// keeps every booked input.
     #[new]
     #[pyo3(signature = (items, snapshot_millis=0, filter=None))]
     fn new(

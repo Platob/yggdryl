@@ -334,8 +334,8 @@ assert.deepEqual([whole.alive().length, whole.curruuid], [2, last.curruuid], 'de
 const gridded = [...new graph.BookIterator(stream, 500)]
 assert.equal(gridded.length, 3)
 assert.ok(gridded.every((book) => book.isComplete))
-// A filter narrows what folds, and never admits an execution.
-assert.equal([...new graph.BookIterator(stream, 0, "marketdatakind = 'EXEC'")].length, 0)
+// A filter narrows what folds: the execution's instant alone.
+assert.equal([...new graph.BookIterator(stream, 0, "marketdatakind = 'EXEC'")].length, 1)
 // The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 const [keyless] = new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL' })])
 assert.deepEqual([keyless.crosscode, keyless.ticker], ['3:0:XX0000000000', null])

@@ -19,7 +19,8 @@ and its ``spread``, ``is_locked`` and ``imbalance``; ``is_complete`` says
 whether it holds its sides, and ``with_previous`` makes a book stating its
 deltas alone whole over the book before it, ``BookEvent.keyed`` the empty
 one. :class:`BookIterator` folds a sorted stream of orders, quotes and
-snapshot controls into books - an execution or a trade is pruned, and a
+snapshot controls into books - an execution recorded among its instant's
+deltas, a trade pruned - and a
 ``filter`` narrows the walk further;
 :class:`EventIterator` chains a stream of leaves to the live element each
 follows. :class:`CandleIterator` folds a sorted stream of books into

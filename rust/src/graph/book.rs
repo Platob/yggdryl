@@ -3374,10 +3374,12 @@ delegate_event!(
 ///
 /// The walk folds what
 /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) admits -
-/// orders, quotes and snapshot controls - and prunes every other input
-/// where it is pulled, a FIX message's leaves once it is split: a pruned
-/// input touches no book, no instant and no grid, so an instant only an
-/// execution or a trade reached emits no book. [`Self::with_filter`]
+/// orders, quotes and snapshot controls - records an execution among the
+/// deltas of its instant, moving no side, and prunes every other input
+/// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+/// does not admit where it is pulled, a FIX message's leaves once it is
+/// split: a pruned input touches no book, no instant and no grid, so an
+/// instant only a trade reached emits no book. [`Self::with_filter`]
 /// narrows the walk further.
 pub struct BookIterator<I>
 where
@@ -3467,9 +3469,9 @@ where
     /// the [`MarketData::field`] row, bound once here and answered by the
     /// expression engine over one batch per 1,024 booked inputs the walk
     /// pulls ahead. The kind rule prunes first, so a filter narrows what a
-    /// book folds and never admits what
-    /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does
-    /// not. A filter that keeps every row installs nothing, and the walk
+    /// book folds and records and never admits what
+    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+    /// does not. A filter that keeps every row installs nothing, and the walk
     /// pulls one input at a time again.
     ///
     /// ```
