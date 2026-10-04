@@ -702,25 +702,26 @@ impl<R: BufRead> SheetRows<R> {
 
     /// Fold one event into the cursor's state.
     fn step(&mut self, event: &Event<'_>, position: usize, main: bool) -> Result<Step> {
-        if self.place == Place::Outside && !matches!(event, Event::Eof) {
-            if let Some(frame) = self.frame.as_mut() {
-                return match frame.event(event, main) {
-                    Ok(Capture::Continue) => Ok(Step::Continue),
-                    Ok(Capture::SheetData { empty }) => {
-                        self.saw_data = true;
-                        if !empty {
-                            self.place = Place::Rows;
-                            if self.table_parts_only {
-                                // The same event loop resumes the frame reader
-                                // after sheetData, where tableParts is stated.
-                                self.skipping = 1;
-                            }
+        if self.place == Place::Outside
+            && !matches!(event, Event::Eof)
+            && let Some(frame) = self.frame.as_mut()
+        {
+            return match frame.event(event, main) {
+                Ok(Capture::Continue) => Ok(Step::Continue),
+                Ok(Capture::SheetData { empty }) => {
+                    self.saw_data = true;
+                    if !empty {
+                        self.place = Place::Rows;
+                        if self.table_parts_only {
+                            // The same event loop resumes the frame reader
+                            // after sheetData, where tableParts is stated.
+                            self.skipping = 1;
                         }
-                        Ok(Step::Continue)
                     }
-                    Err(error) => Err(self.refuse_outside(error, position)),
-                };
-            }
+                    Ok(Step::Continue)
+                }
+                Err(error) => Err(self.refuse_outside(error, position)),
+            };
         }
         if self.foreign_depth > 0 {
             match event {
@@ -888,13 +889,13 @@ impl<R: BufRead> SheetRows<R> {
                 self.row = row;
                 // Rows header geometry anchors at its first physical cell,
                 // then includes every later explicit row, even a null tail.
-                if self.geometry_levels.is_some() {
-                    if let Some(held) = self.observed_dimension {
-                        self.observed_dimension = Some(super::cell::CellRange::new(
-                            held.start(),
-                            CellRef::new(row.max(held.end().row()), held.end().column()),
-                        ));
-                    }
+                if self.geometry_levels.is_some()
+                    && let Some(held) = self.observed_dimension
+                {
+                    self.observed_dimension = Some(super::cell::CellRange::new(
+                        held.start(),
+                        CellRef::new(row.max(held.end().row()), held.end().column()),
+                    ));
                 }
                 self.next_row = row + 1;
                 self.next_column = 0;

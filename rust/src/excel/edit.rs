@@ -260,15 +260,15 @@ impl PartRestore {
                 path: self.member.clone(),
             });
         }
-        if let (ExpectedPart::Relationships(expected), Some(current)) = (&self.expected, current) {
-            if expected.as_ref() != current.as_ref() {
-                self.bytes = workbook.restored_relationships(
-                    &self.member,
-                    expected,
-                    current,
-                    self.bytes.as_deref(),
-                )?;
-            }
+        if let (ExpectedPart::Relationships(expected), Some(current)) = (&self.expected, current)
+            && expected.as_ref() != current.as_ref()
+        {
+            self.bytes = workbook.restored_relationships(
+                &self.member,
+                expected,
+                current,
+                self.bytes.as_deref(),
+            )?;
         }
         Ok(())
     }

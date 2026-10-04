@@ -233,9 +233,10 @@ class TestCandleIterator:
         assert candle.books == 2
         assert candle.as_py()["askopen"] is None
 
-    def test_a_walk_folds_no_execution_so_a_fill_moves_no_candle(self) -> None:
-        # A book prunes an execution before it routes it: an instant only a
-        # fill reached emits no book, so it opens no bucket and counts no book.
+    def test_a_walk_records_a_fill_whose_book_moves_no_price(self) -> None:
+        # A book records an execution: an instant only a fill reached emits a
+        # book stating it alone, which opens its bucket and counts one book
+        # at the top of book the fill left standing.
         fill = graph.ExecutionEvent(
             90 * SECOND,
             crosscode="E-1",
@@ -245,7 +246,11 @@ class TestCandleIterator:
             lastqty=4,
             state="FILLED",
         )
-        assert candles([*ONE_MINUTE, fill], "1m") == candles(ONE_MINUTE, "1m")
+        [first, filled] = candles([*ONE_MINUTE, fill], "1m")
+        assert [first] == candles(ONE_MINUTE, "1m")
+        assert (filled.start, filled.end, filled.books) == (60 * SECOND, 120 * SECOND, 1)
+        assert reading(filled.bid) == ohlc("101", "101", "101", "101")
+        assert reading(filled.ask) == ohlc("103.5", "103.5", "103.5", "103.5")
 
     def test_candles_from_delta_books_equal_candles_from_complete_books(self) -> None:
         # A candle reads a book's top of book, which every book states whether

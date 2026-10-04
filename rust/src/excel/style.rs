@@ -837,12 +837,12 @@ impl StylePatch {
     ) -> CellStyle {
         let mut patched = style.clone();
         let font = &mut patched.font;
-        if let Some(name) = &self.font_name {
-            if *name != font.name {
-                font.name = name.clone();
-                // A named face no longer follows the theme's fonts.
-                font.scheme = None;
-            }
+        if let Some(name) = &self.font_name
+            && *name != font.name
+        {
+            font.name = name.clone();
+            // A named face no longer follows the theme's fonts.
+            font.scheme = None;
         }
         if let Some(size) = self.font_size {
             font.size = size;

@@ -110,7 +110,7 @@ impl Selection<'_> {
                 .into_iter()
                 .for_each(|id| visit(id, ReferenceUse::Scalar)),
             Self::Ifs { pairs } => {
-                for pair in pairs.chunks_exact(2).rev() {
+                for pair in pairs.as_chunks::<2>().0.iter().rev() {
                     if let Some(test) = pair[0] {
                         visit(test, ReferenceUse::Scalar);
                     }
@@ -119,7 +119,7 @@ impl Selection<'_> {
             Self::Switch {
                 expression, pairs, ..
             } => {
-                for pair in pairs.chunks_exact(2).rev() {
+                for pair in pairs.as_chunks::<2>().0.iter().rev() {
                     if let Some(key) = pair[0] {
                         visit(key, ReferenceUse::Scalar);
                     }
@@ -1203,18 +1203,18 @@ impl Parser {
             ));
         }
         let function = Function::lookup(&name);
-        if let Some(signature) = function.and_then(|function| function.info().signature) {
-            if !signature.arity.accepts(args.len()) {
-                return Err(error(
-                    at,
-                    format_smolstr!(
-                        "expected {} arguments for {}, got {}",
-                        signature.text,
-                        name,
-                        args.len()
-                    ),
-                ));
-            }
+        if let Some(signature) = function.and_then(|function| function.info().signature)
+            && !signature.arity.accepts(args.len())
+        {
+            return Err(error(
+                at,
+                format_smolstr!(
+                    "expected {} arguments for {}, got {}",
+                    signature.text,
+                    name,
+                    args.len()
+                ),
+            ));
         }
         if function == Some(Function::Sumproduct)
             && args
@@ -1244,34 +1244,34 @@ impl Parser {
                 }
                 Some(AtomKind::Semicolon) => {
                     let delimiter = self.take().expect("peeked array delimiter");
-                    if let Some(first) = rows.first() {
-                        if first.len() != row.len() {
-                            return Err(error(
-                                delimiter.at,
-                                format_smolstr!(
-                                    "expected {} columns in an array row, got {}",
-                                    first.len(),
-                                    row.len()
-                                ),
-                            ));
-                        }
+                    if let Some(first) = rows.first()
+                        && first.len() != row.len()
+                    {
+                        return Err(error(
+                            delimiter.at,
+                            format_smolstr!(
+                                "expected {} columns in an array row, got {}",
+                                first.len(),
+                                row.len()
+                            ),
+                        ));
                     }
                     rows.push(row.into_boxed_slice());
                     row = Vec::new();
                 }
                 Some(AtomKind::ArrayClose) => {
                     let close = self.take().expect("peeked array close");
-                    if let Some(first) = rows.first() {
-                        if first.len() != row.len() {
-                            return Err(error(
-                                close.at,
-                                format_smolstr!(
-                                    "expected {} columns in an array row, got {}",
-                                    first.len(),
-                                    row.len()
-                                ),
-                            ));
-                        }
+                    if let Some(first) = rows.first()
+                        && first.len() != row.len()
+                    {
+                        return Err(error(
+                            close.at,
+                            format_smolstr!(
+                                "expected {} columns in an array row, got {}",
+                                first.len(),
+                                row.len()
+                            ),
+                        ));
                     }
                     rows.push(row.into_boxed_slice());
                     self.close_group();

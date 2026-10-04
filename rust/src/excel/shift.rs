@@ -349,16 +349,16 @@ impl<'a> Shift<'a> {
             _ => None,
         });
         for token in tokens.iter() {
-            if let Token::Function { name, .. } = token {
-                if names.action(name).is_some() {
-                    // Function tokens do not yet distinguish a built-in
-                    // from a callable defined name. Preserve that binding
-                    // by refusing, rather than qualifying either blindly.
-                    return Err(Error::Unsupported {
-                        operation: "moving a callable name across worksheet scopes",
-                        filesystem: format_smolstr!("{}#{name} from {from} to {to}", location()),
-                    });
-                }
+            if let Token::Function { name, .. } = token
+                && names.action(name).is_some()
+            {
+                // Function tokens do not yet distinguish a built-in
+                // from a callable defined name. Preserve that binding
+                // by refusing, rather than qualifying either blindly.
+                return Err(Error::Unsupported {
+                    operation: "moving a callable name across worksheet scopes",
+                    filesystem: format_smolstr!("{}#{name} from {from} to {to}", location()),
+                });
             }
             let Token::Reference(Reference {
                 sheet: SheetSpec::Own,
@@ -1090,11 +1090,10 @@ fn shifted_with(
     let shape = formula.shape();
     let mut tokens: Option<Vec<Token>> = None;
     for (index, token) in shape.tokens.iter().enumerate() {
-        if let Token::Reference(reference) = token {
-            if let Some(adjusted) = adjust_reference(reference, host, shift, policy) {
-                tokens.get_or_insert_with(|| shape.tokens.to_vec())[index] =
-                    Token::Reference(adjusted);
-            }
+        if let Token::Reference(reference) = token
+            && let Some(adjusted) = adjust_reference(reference, host, shift, policy)
+        {
+            tokens.get_or_insert_with(|| shape.tokens.to_vec())[index] = Token::Reference(adjusted);
         }
     }
     tokens.map(|tokens| Formula::from_shape(shape.with_tokens(tokens)))
@@ -1225,19 +1224,17 @@ impl FormulaFragments<'_> {
                         continue;
                     }
                 };
-                if same_sheet(owner, from) {
-                    if let Some(boundary) = reference.target.hosts_in(block, (0, 0)) {
-                        self.divide(ranges, boundary)?;
-                    }
+                if same_sheet(owner, from)
+                    && let Some(boundary) = reference.target.hosts_in(block, (0, 0))
+                {
+                    self.divide(ranges, boundary)?;
                 }
                 if matches!(policy, ReferenceMove::All | ReferenceMove::CarriedSame)
                     && same_sheet(owner, to)
-                {
-                    if let Some(boundary) =
+                    && let Some(boundary) =
                         reference.target.hosts_in(block.moved_to(target), (0, 0))
-                    {
-                        self.divide(ranges, boundary)?;
-                    }
+                {
+                    self.divide(ranges, boundary)?;
                 }
             }
         }
@@ -1877,16 +1874,15 @@ fn partition_list(
                 }
             }
         }
-        if to_sheet.is_some_and(|owner| same_sheet(owner, to))
-            || (to_sheet.is_none() && same_sheet(from, to))
+        if (to_sheet.is_some_and(|owner| same_sheet(owner, to))
+            || (to_sheet.is_none() && same_sheet(from, to)))
+            && let Some(selected) = selected
         {
-            if let Some(selected) = selected {
-                let moved = translated(selected.start(), block, target).ok_or_else(|| Error::InvalidRecord {
+            let moved = translated(selected.start(), block, target).ok_or_else(|| Error::InvalidRecord {
                     path: SmolStr::new(path),
                     reason: format_smolstr!("expected the carried range {selected} to land inside the worksheet, got {target}"),
                 })?;
-                write(selected.moved_to(moved));
-            }
+            write(selected.moved_to(moved));
         }
     }
     Ok((!output.is_empty()).then_some(output))
@@ -1951,23 +1947,23 @@ fn check_partial_carried(
         target,
         ..
     } = shift
+        && !same_sheet(from, to)
     {
-        if !same_sheet(from, to) {
-            let overlap = if same_sheet(sheet, from) {
-                Some(*block)
-            } else if same_sheet(sheet, to) {
-                Some(block.moved_to(*target))
-            } else {
-                None
-            };
-            if let Some(area) = overlap {
-                if range.intersects(area) && !area.encloses(range) {
-                    return Err(Error::Unsupported {
-                        operation: "cross-sheet cut of a partial carried range",
-                        filesystem: format_smolstr!("{path}#{range}"),
-                    });
-                }
-            }
+        let overlap = if same_sheet(sheet, from) {
+            Some(*block)
+        } else if same_sheet(sheet, to) {
+            Some(block.moved_to(*target))
+        } else {
+            None
+        };
+        if let Some(area) = overlap
+            && range.intersects(area)
+            && !area.encloses(range)
+        {
+            return Err(Error::Unsupported {
+                operation: "cross-sheet cut of a partial carried range",
+                filesystem: format_smolstr!("{path}#{range}"),
+            });
         }
     }
     Ok(())
@@ -1993,12 +1989,11 @@ pub(crate) fn moved_list(
             (range.start().row(), range.start().column()),
             (range.end().row(), range.end().column()),
         );
-        if let Relocated::Moved(Some(owner), landed) = relocate(shift, sheet, place) {
-            if same_sheet(owner, to) {
-                if let Some(range) = landed.range() {
-                    moved.push(range_text(range));
-                }
-            }
+        if let Relocated::Moved(Some(owner), landed) = relocate(shift, sheet, place)
+            && same_sheet(owner, to)
+            && let Some(range) = landed.range()
+        {
+            moved.push(range_text(range));
         }
     }
     Ok((!moved.is_empty()).then(|| moved.join(" ")))
@@ -2138,24 +2133,24 @@ impl<'s, 'a> SheetEdits<'s, 'a> {
             target,
             ..
         } = *self.shift
+            && !same_sheet(from, to)
+            && same_sheet(self.sheet, from)
         {
-            if !same_sheet(from, to) && same_sheet(self.sheet, from) {
-                let range: CellRange = text.parse().map_err(|_| self.refused("hyperlink", text))?;
-                let (selected, _) = range.partition(block);
-                if let Some(selected) = selected.filter(|_| !block.encloses(range)) {
-                    if self.to_sheet.is_none() {
-                        return Ok(Some(text.to_owned()));
-                    }
-                    let moved = translated(selected.start(), block, target).ok_or_else(||
+            let range: CellRange = text.parse().map_err(|_| self.refused("hyperlink", text))?;
+            let (selected, _) = range.partition(block);
+            if let Some(selected) = selected.filter(|_| !block.encloses(range)) {
+                if self.to_sheet.is_none() {
+                    return Ok(Some(text.to_owned()));
+                }
+                let moved = translated(selected.start(), block, target).ok_or_else(||
                         Error::InvalidRecord {
                             path: format_smolstr!("{}#hyperlink", self.part),
                             reason: format_smolstr!(
                                 "expected hyperlink intersection {selected} to land inside the worksheet, got {target}"
                             ),
                         })?;
-                    self.transferred = true;
-                    return Ok(Some(range_text(selected.moved_to(moved))));
-                }
+                self.transferred = true;
+                return Ok(Some(range_text(selected.moved_to(moved))));
             }
         }
         self.ranges(text)
@@ -2240,10 +2235,9 @@ impl Edits for GatherX14 {
         if path.last().is_some_and(|name| name == "sqref")
             && path.len() >= 2
             && is_x14_host(&path[..path.len() - 1])
+            && let Some(last) = self.hosts.last_mut()
         {
-            if let Some(last) = self.hosts.last_mut() {
-                *last = Some(text.to_owned());
-            }
+            *last = Some(text.to_owned());
         }
         Ok(None)
     }
@@ -2403,10 +2397,10 @@ impl Edits for SheetEdits<'_, '_> {
             (_, "cfvo") => {
                 // A threshold stated as a formula - or as a number a cell
                 // reference spells - reads as the rule's formulas do.
-                if let Some(value) = get("val") {
-                    if let Some(moved) = self.formula(value)? {
-                        set.push(("val".into(), Some(moved)));
-                    }
+                if let Some(value) = get("val")
+                    && let Some(moved) = self.formula(value)?
+                {
+                    set.push(("val".into(), Some(moved)));
                 }
             }
             (_, "conditionalFormatting") | ("dataValidations", "dataValidation") => {
@@ -2516,20 +2510,19 @@ impl Edits for SheetEdits<'_, '_> {
                     if let Shift::Band {
                         axis: edited, band, ..
                     } = *self.shift
+                        && edited == axis
                     {
-                        if edited == axis {
-                            match band.index(index, axis.limit()) {
-                                None => {
-                                    if matches!(get("man"), Some("1" | "true")) {
-                                        self.manual_dropped += 1;
-                                    }
-                                    return Ok(Tag::Drop);
+                        match band.index(index, axis.limit()) {
+                            None => {
+                                if matches!(get("man"), Some("1" | "true")) {
+                                    self.manual_dropped += 1;
                                 }
-                                Some(moved) if moved != index => {
-                                    set.push(("id".into(), Some(moved.to_string())));
-                                }
-                                Some(_) => {}
+                                return Ok(Tag::Drop);
                             }
+                            Some(moved) if moved != index => {
+                                set.push(("id".into(), Some(moved.to_string())));
+                            }
+                            Some(_) => {}
                         }
                     }
                 }
@@ -3044,20 +3037,19 @@ impl Edits for GatherNotes<'_> {
             && path.last().is_some_and(|name| name == "ClientData")
             && matches!(&namespace, quick_xml::name::ResolveResult::Bound(value)
                 if value.as_ref() == super::workbook::VML_EXCEL_NAMESPACE.as_bytes())
+            && let Some(last) = self.cells.last_mut()
         {
-            if let Some(last) = self.cells.last_mut() {
-                if last.client_data {
-                    return Err(Error::InvalidRecord {
-                        path: self.part.into(),
-                        reason: "expected one ClientData for a VML shape".into(),
-                    });
-                }
-                last.client_data = true;
-                last.note = attributes
-                    .iter()
-                    .any(|(key, value)| key == "ObjectType" && value == "Note");
-                self.client_depth = Some(path.len());
+            if last.client_data {
+                return Err(Error::InvalidRecord {
+                    path: self.part.into(),
+                    reason: "expected one ClientData for a VML shape".into(),
+                });
             }
+            last.client_data = true;
+            last.note = attributes
+                .iter()
+                .any(|(key, value)| key == "ObjectType" && value == "Note");
+            self.client_depth = Some(path.len());
         }
         self.field = if self
             .client_depth
@@ -3077,10 +3069,9 @@ impl Edits for GatherNotes<'_> {
         if self
             .client_depth
             .is_some_and(|depth| path.len() == depth + 1)
+            && let Some(last) = self.cells.last_mut().filter(|note| note.note)
         {
-            if let Some(last) = self.cells.last_mut().filter(|note| note.note) {
-                last.capture(self.field, text, self.part)?;
-            }
+            last.capture(self.field, text, self.part)?;
         }
         Ok(None)
     }

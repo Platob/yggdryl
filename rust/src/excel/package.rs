@@ -1475,10 +1475,10 @@ fn document_splices(
                                 expanded.extend_from_slice(tag.name().as_ref());
                                 expanded.push(b'>');
                                 splices.push((start..end, expanded));
-                            } else if !all.is_empty() {
-                                if let Some(tag) = retagged(tag, &all, true, start)? {
-                                    splices.push((start..end, tag));
-                                }
+                            } else if !all.is_empty()
+                                && let Some(tag) = retagged(tag, &all, true, start)?
+                            {
+                                splices.push((start..end, tag));
                             }
                             namespaces.pop();
                             path.pop();
@@ -1526,23 +1526,21 @@ fn document_splices(
                             buffer.clear();
                             continue;
                         }
-                        if held.children == 0 {
-                            if let Some(text) = edits.text(&path, &held.text)? {
-                                let escaped = quick_xml::escape::partial_escape(&text);
-                                splices
-                                    .push((held.tag_range.end..start, escaped.as_bytes().to_vec()));
-                            }
+                        if held.children == 0
+                            && let Some(text) = edits.text(&path, &held.text)?
+                        {
+                            let escaped = quick_xml::escape::partial_escape(&text);
+                            splices.push((held.tag_range.end..start, escaped.as_bytes().to_vec()));
                         }
                         let mut all = held.set;
                         if let Tag::Set(more) = more {
                             all.extend(more);
                         }
-                        if !all.is_empty() {
-                            if let Some(tag) =
+                        if !all.is_empty()
+                            && let Some(tag) =
                                 retagged(&held.tag, &all, false, held.tag_range.start)?
-                            {
-                                splices.push((held.tag_range.clone(), tag));
-                            }
+                        {
+                            splices.push((held.tag_range.clone(), tag));
                         }
                     }
                 }
@@ -2000,11 +1998,10 @@ pub mod internals {
             _: &[(SmolStr, String)],
             namespace: quick_xml::name::ResolveResult<'_>,
         ) -> crate::Result<Tag> {
-            if let Some(expected) = self.namespace {
-                if !matches!(namespace, quick_xml::name::ResolveResult::Bound(namespace) if namespace.as_ref() == expected.as_bytes())
-                {
-                    return Ok(Tag::Keep);
-                }
+            if let Some(expected) = self.namespace
+                && !matches!(namespace, quick_xml::name::ResolveResult::Bound(namespace) if namespace.as_ref() == expected.as_bytes())
+            {
+                return Ok(Tag::Keep);
             }
             let name = path.last().map_or("", SmolStr::as_str);
             if self.dropped.contains(&name) {

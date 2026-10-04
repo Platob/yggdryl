@@ -619,102 +619,100 @@ impl Calculation {
             .host_at(tab, cell.reference())
             .expect("a formula has a proven host");
         let sheet = slot.parsed.get().expect("calculation parsed worksheets");
-        if sheet.scalar_formula_at(cell.reference()) {
-            if let Ok(expression) = cell
+        if sheet.scalar_formula_at(cell.reference())
+            && let Ok(expression) = cell
                 .formula()
                 .expect("register receives formulas")
                 .expression()
-            {
-                self.stack.push(DependencyFrame::Node {
-                    name: None,
-                    id: expression.root,
-                    usage: ReferenceUse::Scalar,
-                });
-                while let Some(frame) = self.stack.pop() {
-                    let (name, id, usage) = match frame {
-                        DependencyFrame::Node { name, id, usage } => (name, id, usage),
-                        DependencyFrame::LeaveName { name, usage } => {
-                            self.active_names.remove(&name);
-                            self.completed_names.insert((name, usage));
-                            continue;
-                        }
-                    };
-                    let arena = match name {
-                        Some(name) => resolver
-                            .name_expression(name)
-                            .expect("entry proved the immutable name arena"),
-                        None => expression,
-                    };
-                    #[cfg(feature = "internals")]
-                    {
-                        self.dependency_nodes += 1;
+        {
+            self.stack.push(DependencyFrame::Node {
+                name: None,
+                id: expression.root,
+                usage: ReferenceUse::Scalar,
+            });
+            while let Some(frame) = self.stack.pop() {
+                let (name, id, usage) = match frame {
+                    DependencyFrame::Node { name, id, usage } => (name, id, usage),
+                    DependencyFrame::LeaveName { name, usage } => {
+                        self.active_names.remove(&name);
+                        self.completed_names.insert((name, usage));
+                        continue;
                     }
-                    let node = &arena.nodes[id];
-                    if let Node::Call {
-                        function: Some(function),
-                        ..
-                    } = node
-                    {
-                        volatile |= function.info().volatile;
-                    }
-                    match node.evaluation_children() {
-                        EvaluationPolicy::Leaf => {
-                            if let Node::Reference(reference) = node {
-                                match resolver.resolve(ReferenceHost { name, ..host }, reference)? {
-                                    ResolvedReference::Range(range) => {
-                                        if let Ok(Some(area)) =
-                                            range.descriptor().selected(usage, host.at)
-                                        {
-                                            self.precedents
-                                                .extend(area.view(resolver.book).areas());
-                                        }
+                };
+                let arena = match name {
+                    Some(name) => resolver
+                        .name_expression(name)
+                        .expect("entry proved the immutable name arena"),
+                    None => expression,
+                };
+                #[cfg(feature = "internals")]
+                {
+                    self.dependency_nodes += 1;
+                }
+                let node = &arena.nodes[id];
+                if let Node::Call {
+                    function: Some(function),
+                    ..
+                } = node
+                {
+                    volatile |= function.info().volatile;
+                }
+                match node.evaluation_children() {
+                    EvaluationPolicy::Leaf => {
+                        if let Node::Reference(reference) = node {
+                            match resolver.resolve(ReferenceHost { name, ..host }, reference)? {
+                                ResolvedReference::Range(range) => {
+                                    if let Ok(Some(area)) =
+                                        range.descriptor().selected(usage, host.at)
+                                    {
+                                        self.precedents.extend(area.view(resolver.book).areas());
                                     }
-                                    ResolvedReference::Name(binding) => {
-                                        if !self.completed_names.contains(&(binding.id, usage))
-                                            && let Ok(named) = binding.expression()
-                                            && self.active_names.insert(binding.id)
-                                        {
-                                            self.stack.push(DependencyFrame::LeaveName {
-                                                name: binding.id,
-                                                usage,
-                                            });
-                                            self.stack.push(DependencyFrame::Node {
-                                                name: Some(binding.id),
-                                                id: named.root,
-                                                usage,
-                                            });
-                                        }
-                                    }
-                                    ResolvedReference::Error(_) | ResolvedReference::Held(_) => {}
                                 }
+                                ResolvedReference::Name(binding) => {
+                                    if !self.completed_names.contains(&(binding.id, usage))
+                                        && let Ok(named) = binding.expression()
+                                        && self.active_names.insert(binding.id)
+                                    {
+                                        self.stack.push(DependencyFrame::LeaveName {
+                                            name: binding.id,
+                                            usage,
+                                        });
+                                        self.stack.push(DependencyFrame::Node {
+                                            name: Some(binding.id),
+                                            id: named.root,
+                                            usage,
+                                        });
+                                    }
+                                }
+                                ResolvedReference::Error(_) | ResolvedReference::Held(_) => {}
                             }
                         }
-                        EvaluationPolicy::Strict(children) => {
-                            selective |= matches!(
-                                &children,
-                                super::formula::parser::Children::MixedCall { dynamic: true, .. }
-                                    | super::formula::parser::Children::GeometryPair(_, _)
-                            );
-                            children.visit_references(usage, |child, usage| {
-                                self.stack.push(DependencyFrame::Node {
-                                    name,
-                                    id: child,
-                                    usage,
-                                })
-                            });
-                        }
-                        EvaluationPolicy::Select(selection) => {
-                            selective = true;
-                            selection.visit_inputs_reverse(|input, usage| {
-                                self.stack.push(DependencyFrame::Node {
-                                    name,
-                                    id: input,
-                                    usage,
-                                });
-                            });
-                        }
-                        EvaluationPolicy::Held => {}
                     }
+                    EvaluationPolicy::Strict(children) => {
+                        selective |= matches!(
+                            &children,
+                            super::formula::parser::Children::MixedCall { dynamic: true, .. }
+                                | super::formula::parser::Children::GeometryPair(_, _)
+                        );
+                        children.visit_references(usage, |child, usage| {
+                            self.stack.push(DependencyFrame::Node {
+                                name,
+                                id: child,
+                                usage,
+                            })
+                        });
+                    }
+                    EvaluationPolicy::Select(selection) => {
+                        selective = true;
+                        selection.visit_inputs_reverse(|input, usage| {
+                            self.stack.push(DependencyFrame::Node {
+                                name,
+                                id: input,
+                                usage,
+                            });
+                        });
+                    }
+                    EvaluationPolicy::Held => {}
                 }
             }
         }
@@ -1053,40 +1051,40 @@ impl CalculationContext<'_, '_> {
                         return Ok(RangeProgress::Complete);
                     }
                 }
-                if dynamic {
-                    if cell.formula().is_some() && self.graph.pending(self.schedule, (slot.key, at))
-                    {
-                        let point = CellRange::new(at, at);
-                        self.graph.admit(
-                            self.schedule,
-                            dependent,
-                            slot.key,
-                            point,
-                            std::iter::once(at),
-                        )?;
-                        return Ok(RangeProgress::Paused(position));
-                    }
+                if dynamic
+                    && cell.formula().is_some()
+                    && self.graph.pending(self.schedule, (slot.key, at))
+                {
+                    let point = CellRange::new(at, at);
+                    self.graph.admit(
+                        self.schedule,
+                        dependent,
+                        slot.key,
+                        point,
+                        std::iter::once(at),
+                    )?;
+                    return Ok(RangeProgress::Paused(position));
                 }
                 next = position + 1;
-                if let RangeRead::Subtotal { exclude_hidden } = read {
-                    if !Self::subtotal_value_source(slot, at, cell, exclude_hidden) {
-                        continue;
-                    }
+                if let RangeRead::Subtotal { exclude_hidden } = read
+                    && !Self::subtotal_value_source(slot, at, cell, exclude_hidden)
+                {
+                    continue;
                 }
-                if let Some(value) = self.read(slot, at, Some(cell), read) {
-                    if visit(value, 1).is_break() {
-                        if dynamic {
-                            Self::admit_lookup_prefix(
-                                &mut *self.graph,
-                                &mut *self.schedule,
-                                dependent,
-                                slot.key,
-                                area,
-                                next,
-                            )?;
-                        }
-                        return Ok(RangeProgress::Complete);
+                if let Some(value) = self.read(slot, at, Some(cell), read)
+                    && visit(value, 1).is_break()
+                {
+                    if dynamic {
+                        Self::admit_lookup_prefix(
+                            &mut *self.graph,
+                            &mut *self.schedule,
+                            dependent,
+                            slot.key,
+                            area,
+                            next,
+                        )?;
                     }
+                    return Ok(RangeProgress::Complete);
                 }
             }
             if dense && next < length {
@@ -1206,10 +1204,10 @@ impl CalculationContext<'_, '_> {
             });
         }
         if mode == RangeRead::BlankPresence {
-            if let Some(cell) = cell {
-                if cell.error() == Some(super::cell::ExcelError::Unrecognized) {
-                    return Some(sheet.calculation_operand_at(cell));
-                }
+            if let Some(cell) = cell
+                && cell.error() == Some(super::cell::ExcelError::Unrecognized)
+            {
+                return Some(sheet.calculation_operand_at(cell));
             }
             let blank = cell.is_none_or(|cell| {
                 cell.error().is_none()
@@ -2627,16 +2625,14 @@ impl Registration {
                 }
                 let accepted =
                     name.as_ref() == local.as_bytes() && Self::in_namespace(namespace, namespaces)?;
-                if !accepted {
-                    if let Some(part) = strict_part {
-                        return Err(Error::Unsupported {
-                            operation: "cross-sheet transfer of an unproved x14 child",
-                            filesystem: format_smolstr!(
-                                "{part}#{}",
-                                String::from_utf8_lossy(name.as_ref())
-                            ),
-                        });
-                    }
+                if !accepted && let Some(part) = strict_part {
+                    return Err(Error::Unsupported {
+                        operation: "cross-sheet transfer of an unproved x14 child",
+                        filesystem: format_smolstr!(
+                            "{part}#{}",
+                            String::from_utf8_lossy(name.as_ref())
+                        ),
+                    });
                 }
                 Ok(accepted.then(|| format_smolstr!("{position}")))
             },
@@ -4264,13 +4260,13 @@ impl ThreadedNotes {
             let person = Self::required_guid(entry, &member, "personId")?;
             people.entry(person).or_insert(false);
             let reference = entry.attribute(b"ref")?;
-            if let Some(reference) = &reference {
-                if !reference.parse::<CellRef>().is_ok_and(|at| at.is_in_grid()) {
-                    return Err(Self::invalid(
-                        &member,
-                        format_smolstr!("expected a grid ref, got {reference}"),
-                    ));
-                }
+            if let Some(reference) = &reference
+                && !reference.parse::<CellRef>().is_ok_and(|at| at.is_in_grid())
+            {
+                return Err(Self::invalid(
+                    &member,
+                    format_smolstr!("expected a grid ref, got {reference}"),
+                ));
             }
             has_refs.push(reference.is_some());
             for mentions in entry.children_named(&[THREADED_NAMESPACE], "mentions")? {
@@ -4339,13 +4335,13 @@ impl ThreadedNotes {
                 let Some(id) = identity else {
                     continue;
                 };
-                if let Some(index) = ids.get(&id) {
-                    if parents[*index].is_some() || locations.insert(*index, note.at).is_some() {
-                        return Err(Self::invalid(
-                            &member,
-                            "expected one legacy placeholder per top-level threaded comment",
-                        ));
-                    }
+                if let Some(index) = ids.get(&id)
+                    && (parents[*index].is_some() || locations.insert(*index, note.at).is_some())
+                {
+                    return Err(Self::invalid(
+                        &member,
+                        "expected one legacy placeholder per top-level threaded comment",
+                    ));
                 }
             }
         }
@@ -5439,10 +5435,10 @@ impl Stated {
     }
 
     fn remember_slot(&mut self, slot: &Slot) {
-        if let Some(attempt) = &mut self.attempt {
-            if let Some(stamp) = attempt.sheet_stamp(slot) {
-                attempt.before.push(Before::Sheet(stamp));
-            }
+        if let Some(attempt) = &mut self.attempt
+            && let Some(stamp) = attempt.sheet_stamp(slot)
+        {
+            attempt.before.push(Before::Sheet(stamp));
         }
     }
 }
@@ -6316,10 +6312,9 @@ impl Workbook {
         if let Entry::Value {
             format: Some(code), ..
         } = &entry
+            && format.is_general()
         {
-            if format.is_general() {
-                wanted.number_format = code.clone();
-            }
+            wanted.number_format = code.clone();
         }
         let checkpoint = table.checkpoint();
         let entered = enter(sheet, table, at, entry, source, &wanted, system);
@@ -6909,12 +6904,11 @@ impl Workbook {
         let (styles, moved) = self.styles()?.rebind(restore.styles.iter())?;
         if !moved.is_empty() {
             for (part, bytes) in &mut overrides {
-                if *part == slot.part {
-                    if let Some(patched) =
+                if *part == slot.part
+                    && let Some(patched) =
                         Sheet::rewrite_style_ids(bytes, part, |id| moved.get(&id).copied())?
-                    {
-                        *bytes = Arc::from(patched);
-                    }
+                {
+                    *bytes = Arc::from(patched);
                 }
             }
         }
@@ -7255,35 +7249,34 @@ impl Workbook {
             path: format_smolstr!("{}!{range}", slot.name),
             reason,
         };
-        if let Band::Insert { at: index, count } = band {
-            if let Some(cell) = sheet.pushed_off(axis, index, count) {
-                return Err(Error::InvalidRecord {
-                    path: format_smolstr!("{}!{cell}", slot.name),
-                    reason: format_smolstr!(
-                        "expected the moved {} to stay within {} {}, got {cell} moving by {count}",
-                        axis.noun(),
-                        axis.limit(),
-                        axis.noun()
-                    ),
-                });
-            }
+        if let Band::Insert { at: index, count } = band
+            && let Some(cell) = sheet.pushed_off(axis, index, count)
+        {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("{}!{cell}", slot.name),
+                reason: format_smolstr!(
+                    "expected the moved {} to stay within {} {}, got {cell} moving by {count}",
+                    axis.noun(),
+                    axis.limit(),
+                    axis.noun()
+                ),
+            });
         }
-        if let Some(frame) = sheet.frame() {
-            if let Some(item) = frame
+        if let Some(frame) = sheet.frame()
+            && let Some(item) = frame
                 .items
                 .iter()
                 .find(|item| item.class == super::carried::Class::Blocking)
-            {
-                let (operation, named) = blocked(axis, band, &item.name);
-                return Err(Error::Unsupported {
-                    operation,
-                    filesystem: if named {
-                        part
-                    } else {
-                        format_smolstr!("{part}#{}", item.name)
-                    },
-                });
-            }
+        {
+            let (operation, named) = blocked(axis, band, &item.name);
+            return Err(Error::Unsupported {
+                operation,
+                filesystem: if named {
+                    part
+                } else {
+                    format_smolstr!("{part}#{}", item.name)
+                },
+            });
         }
         let cuts = |range: CellRange| {
             let (first, last) = axis.span(range);
@@ -7413,64 +7406,63 @@ impl Workbook {
                         item.name.as_str(),
                         "conditionalFormatting" | "dataValidations" | "extLst"
                     )
+                    && let Some(raw) = Registration::carried_item(frame, item)?
                 {
-                    if let Some(raw) = Registration::carried_item(frame, item)? {
-                        let rewritten =
-                            raw.formula_partition(&item.name, (&slot.name, None), shift, &part)?;
-                        if rewritten.len() == 1 && rewritten[0].xml == raw.xml {
-                            items.push(item.clone());
-                        } else {
-                            if !validated_cf {
-                                let mut changed_cf = item.name == "conditionalFormatting";
-                                if item.name == "extLst" {
-                                    let cf_extensions =
-                                        |registration: &Registration| -> Result<Vec<Registration>> {
-                                            let mut found = Vec::new();
-                                            for extension in registration.children_named(
-                                                &[super::NAMESPACE, super::STRICT_NAMESPACE],
-                                                "ext",
-                                            )? {
-                                                let Some(uri) = extension.root_attribute(b"uri")?
-                                                else {
-                                                    continue;
-                                                };
-                                                if super::carried::ShiftedExtension::from_uri(&uri)
+                    let rewritten =
+                        raw.formula_partition(&item.name, (&slot.name, None), shift, &part)?;
+                    if rewritten.len() == 1 && rewritten[0].xml == raw.xml {
+                        items.push(item.clone());
+                    } else {
+                        if !validated_cf {
+                            let mut changed_cf = item.name == "conditionalFormatting";
+                            if item.name == "extLst" {
+                                let cf_extensions =
+                                    |registration: &Registration| -> Result<Vec<Registration>> {
+                                        let mut found = Vec::new();
+                                        for extension in registration.children_named(
+                                            &[super::NAMESPACE, super::STRICT_NAMESPACE],
+                                            "ext",
+                                        )? {
+                                            let Some(uri) = extension.root_attribute(b"uri")?
+                                            else {
+                                                continue;
+                                            };
+                                            if super::carried::ShiftedExtension::from_uri(&uri)
                                                 == Some(super::carried::ShiftedExtension::ConditionalFormatting) {
                                                 found.push(extension);
                                             }
-                                            }
-                                            Ok(found)
-                                        };
-                                    let before = cf_extensions(&raw)?;
-                                    let after = if let Some(registration) = rewritten.first() {
-                                        cf_extensions(registration)?
-                                    } else {
-                                        Vec::new()
+                                        }
+                                        Ok(found)
                                     };
-                                    changed_cf = before.len() != after.len()
-                                        || before
-                                            .iter()
-                                            .zip(&after)
-                                            .any(|(before, after)| before.xml != after.xml);
-                                }
-                                if changed_cf {
-                                    Self::carried_cf_max(frame, &part)?;
-                                    validated_cf = true;
-                                }
+                                let before = cf_extensions(&raw)?;
+                                let after = if let Some(registration) = rewritten.first() {
+                                    cf_extensions(registration)?
+                                } else {
+                                    Vec::new()
+                                };
+                                changed_cf = before.len() != after.len()
+                                    || before
+                                        .iter()
+                                        .zip(&after)
+                                        .any(|(before, after)| before.xml != after.xml);
                             }
-                            let root = Registration::frame_root(frame)?;
-                            for entry in rewritten {
-                                let mut child = item.clone();
-                                child.bytes = entry
-                                    .fragment(&root.namespaces, &root.markup)?
-                                    .into_bytes()
-                                    .into();
-                                items.push(child);
+                            if changed_cf {
+                                Self::carried_cf_max(frame, &part)?;
+                                validated_cf = true;
                             }
-                            changed = true;
                         }
-                        continue;
+                        let root = Registration::frame_root(frame)?;
+                        for entry in rewritten {
+                            let mut child = item.clone();
+                            child.bytes = entry
+                                .fragment(&root.namespaces, &root.markup)?
+                                .into_bytes()
+                                .into();
+                            items.push(child);
+                        }
+                        changed = true;
                     }
+                    continue;
                 }
                 let rewritten = if matches!(shift, Shift::Move { .. })
                     && matches!(item.name.as_str(), "autoFilter" | "sortState")
@@ -8550,28 +8542,27 @@ impl Workbook {
                             }
                         }
                     }
-                } else if item.name == "extLst" {
-                    if let Some(held) = Registration::carried_item(&frame, item)? {
-                        for extension in held.children_named(main, "ext")? {
-                            if extension
-                                .root_attribute(b"uri")?
-                                .as_deref()
-                                .and_then(ShiftedExtension::from_uri)
-                                != Some(ShiftedExtension::ConditionalFormatting)
+                } else if item.name == "extLst"
+                    && let Some(held) = Registration::carried_item(&frame, item)?
+                {
+                    for extension in held.children_named(main, "ext")? {
+                        if extension
+                            .root_attribute(b"uri")?
+                            .as_deref()
+                            .and_then(ShiftedExtension::from_uri)
+                            != Some(ShiftedExtension::ConditionalFormatting)
+                        {
+                            continue;
+                        }
+                        for guid in Self::x14_cf_guids(&extension, destination_part)?.keys() {
+                            if selected_guid_owners
+                                .keys()
+                                .any(|old| forks.get(old).unwrap_or(old) == guid)
                             {
-                                continue;
-                            }
-                            for guid in Self::x14_cf_guids(&extension, destination_part)?.keys() {
-                                if selected_guid_owners
-                                    .keys()
-                                    .any(|old| forks.get(old).unwrap_or(old) == guid)
-                                {
-                                    return Err(Error::InvalidRecord {
-                                        path: format_smolstr!("{destination_part}#x14:cfRule"),
-                                        reason: "expected a GUID absent from the destination"
-                                            .into(),
-                                    });
-                                }
+                                return Err(Error::InvalidRecord {
+                                    path: format_smolstr!("{destination_part}#x14:cfRule"),
+                                    reason: "expected a GUID absent from the destination".into(),
+                                });
                             }
                         }
                     }
@@ -8803,16 +8794,15 @@ impl Workbook {
             {
                 if let Some(held) = Registration::carried_item(original, item)? {
                     for (guid, owner) in Self::legacy_cf_guids(&held, source_part)? {
-                        if let Some(x14_owner) = selected_guid_owners.get(&guid) {
-                            if !selected_legacy_guids.contains(&guid)
-                                || !Self::same_cf_owner(&owner, x14_owner, source_part)?
-                            {
-                                return Err(Error::InvalidRecord {
-                                    path: format_smolstr!("{source_part}#cfRule/x14:id"),
-                                    reason: "expected linked legacy and x14 rules to move together"
-                                        .into(),
-                                });
-                            }
+                        if let Some(x14_owner) = selected_guid_owners.get(&guid)
+                            && (!selected_legacy_guids.contains(&guid)
+                                || !Self::same_cf_owner(&owner, x14_owner, source_part)?)
+                        {
+                            return Err(Error::InvalidRecord {
+                                path: format_smolstr!("{source_part}#cfRule/x14:id"),
+                                reason: "expected linked legacy and x14 rules to move together"
+                                    .into(),
+                            });
                         }
                     }
                 }
@@ -9961,13 +9951,14 @@ impl Workbook {
             let destination = destination.as_ref().expect("cross-sheet destination");
             let source_notes = source.comments.as_ref().map(|(_, notes)| notes);
             let destination_notes = destination.comments.as_ref().map(|(_, notes)| notes);
-            if let (Some(source), Some(destination)) = (source_notes, destination_notes) {
-                if !selected.is_empty() && source.namespace != destination.namespace {
-                    return Err(Error::unsupported(
-                        "merging legacy comment parts from different SpreadsheetML namespaces",
-                        &source.member,
-                    ));
-                }
+            if let (Some(source), Some(destination)) = (source_notes, destination_notes)
+                && !selected.is_empty()
+                && source.namespace != destination.namespace
+            {
+                return Err(Error::unsupported(
+                    "merging legacy comment parts from different SpreadsheetML namespaces",
+                    &source.member,
+                ));
             }
             let mut names = destination_notes
                 .map(|notes| notes.author_names.clone())
@@ -10125,22 +10116,22 @@ impl Workbook {
         let mut retired = Vec::new();
         for (index, bundle, comments, drawing, threads) in &outputs {
             let desired_threads = threads.as_ref().map(|(member, _)| member.as_str());
-            if let Some((_, old)) = &bundle.threads {
-                if Some(old.member.as_str()) != desired_threads {
-                    retired.push(old.member.clone());
-                }
+            if let Some((_, old)) = &bundle.threads
+                && Some(old.member.as_str()) != desired_threads
+            {
+                retired.push(old.member.clone());
             }
             let desired_comments = comments.as_ref().map(|(member, _)| member.as_str());
             let desired_drawing = drawing.as_ref().map(|(member, _)| member.as_str());
-            if let Some((_, old)) = &bundle.comments {
-                if Some(old.member.as_str()) != desired_comments {
-                    retired.push(old.member.clone());
-                }
+            if let Some((_, old)) = &bundle.comments
+                && Some(old.member.as_str()) != desired_comments
+            {
+                retired.push(old.member.clone());
             }
-            if let Some((_, old)) = &bundle.drawing {
-                if Some(old.as_str()) != desired_drawing {
-                    retired.push(old.clone());
-                }
+            if let Some((_, old)) = &bundle.drawing
+                && Some(old.as_str()) != desired_drawing
+            {
+                retired.push(old.clone());
             }
             for (image, mime) in [
                 (
@@ -10376,23 +10367,23 @@ impl Workbook {
         // The band check already read its own sheet's relationships.
         let mut tables = HashMap::new();
         let mut table_owner = |member: SmolStr, key: SheetKey, bytes: Arc<[u8]>| -> Result<()> {
-            if let Some((previous, _)) = tables.insert(member.clone(), (key, bytes)) {
-                if previous != key {
-                    let name = |key| {
-                        self.slots
-                            .iter()
-                            .find(|slot| slot.key == key)
-                            .map_or("", |slot| slot.name.as_str())
-                    };
-                    return Err(Error::InvalidRecord {
-                        path: member,
-                        reason: format_smolstr!(
-                            "expected one worksheet owning the table part, got {} and {}",
-                            name(previous),
-                            name(key)
-                        ),
-                    });
-                }
+            if let Some((previous, _)) = tables.insert(member.clone(), (key, bytes))
+                && previous != key
+            {
+                let name = |key| {
+                    self.slots
+                        .iter()
+                        .find(|slot| slot.key == key)
+                        .map_or("", |slot| slot.name.as_str())
+                };
+                return Err(Error::InvalidRecord {
+                    path: member,
+                    reason: format_smolstr!(
+                        "expected one worksheet owning the table part, got {} and {}",
+                        name(previous),
+                        name(key)
+                    ),
+                });
             }
             Ok(())
         };
@@ -10559,15 +10550,15 @@ impl Workbook {
                 }
                 rewritten
             });
-            if sheet.revision() != revision {
-                if let Some(stamp) = stamp {
-                    self.stated
-                        .attempt
-                        .as_mut()
-                        .expect("the stamp came from this Batch")
-                        .before
-                        .push(Before::Sheet(stamp));
-                }
+            if sheet.revision() != revision
+                && let Some(stamp) = stamp
+            {
+                self.stated
+                    .attempt
+                    .as_mut()
+                    .expect("the stamp came from this Batch")
+                    .before
+                    .push(Before::Sheet(stamp));
             }
             if !lost.is_empty() {
                 restore.push(Step::Formulas {
@@ -11746,17 +11737,16 @@ impl Workbook {
                     cells,
                 });
             }
-            if let Some(frame) = sheet.frame() {
-                if frame
+            if let Some(frame) = sheet.frame()
+                && frame
                     .items
                     .iter()
                     .any(|item| shift::names_sheet_in(&item.bytes, name))
-                {
-                    restore.push(Step::Frame {
-                        key: slot.key,
-                        frame: Some(Box::new(frame.clone())),
-                    });
-                }
+            {
+                restore.push(Step::Frame {
+                    key: slot.key,
+                    frame: Some(Box::new(frame.clone())),
+                });
             }
         }
         if self
@@ -11797,14 +11787,14 @@ impl Workbook {
                     Some(Arc::clone(&bytes)),
                     Some(bytes),
                 ));
-                if let Some((member, bytes)) = entry.ownership(self)? {
-                    if !parts.iter().any(|held| held.member == member) {
-                        parts.push(PartRestore::new(
-                            member,
-                            Some(Arc::clone(&bytes)),
-                            Some(bytes),
-                        ));
-                    }
+                if let Some((member, bytes)) = entry.ownership(self)?
+                    && !parts.iter().any(|held| held.member == member)
+                {
+                    parts.push(PartRestore::new(
+                        member,
+                        Some(Arc::clone(&bytes)),
+                        Some(bytes),
+                    ));
                 }
             }
         }
@@ -12159,17 +12149,17 @@ impl Workbook {
                 held.caches.as_slice(),
             ),
         ] {
-            if !entries.is_empty() {
-                if let Some(bytes) = Registration::merge(
+            if !entries.is_empty()
+                && let Some(bytes) = Registration::merge(
                     &self.part_bytes(part)?,
                     part,
                     element,
                     key,
                     parent,
                     entries,
-                )? {
-                    restored.push((part.into(), bytes));
-                }
+                )?
+            {
+                restored.push((part.into(), bytes));
             }
         }
         Ok(restored)
@@ -12766,25 +12756,23 @@ impl Workbook {
         // not the incoming snapshot's. Translate their IDs before adopting
         // either the source or styles; unchanged XML bytes remain shared.
         let mut overlays = Vec::new();
-        if let Some((_, moved)) = &styles {
-            if !moved.is_empty() {
-                for slot in self
-                    .slots
-                    .iter()
-                    .filter(|slot| slot.kind == SheetKind::Worksheet)
+        if let Some((_, moved)) = &styles
+            && !moved.is_empty()
+        {
+            for slot in self
+                .slots
+                .iter()
+                .filter(|slot| slot.kind == SheetKind::Worksheet)
+            {
+                if let Some(bytes) = self
+                    .stated
+                    .overrides
+                    .get(&slot.part)
+                    .and_then(|held| held.bytes.as_ref())
+                    && let Some(patched) =
+                        Sheet::rewrite_style_ids(bytes, &slot.part, |id| moved.get(&id).copied())?
                 {
-                    if let Some(bytes) = self
-                        .stated
-                        .overrides
-                        .get(&slot.part)
-                        .and_then(|held| held.bytes.as_ref())
-                    {
-                        if let Some(patched) = Sheet::rewrite_style_ids(bytes, &slot.part, |id| {
-                            moved.get(&id).copied()
-                        })? {
-                            overlays.push((slot.part.clone(), Arc::from(patched)));
-                        }
-                    }
+                    overlays.push((slot.part.clone(), Arc::from(patched)));
                 }
             }
         }
@@ -13912,10 +13900,10 @@ impl Plan {
             }
             return Ok(());
         }
-        if let Some(default) = defaults.iter().find(|entry| entry.key == extension) {
-            if default.attribute(b"ContentType")?.as_deref() == Some(expected) {
-                return Ok(());
-            }
+        if let Some(default) = defaults.iter().find(|entry| entry.key == extension)
+            && default.attribute(b"ContentType")?.as_deref() == Some(expected)
+        {
+            return Ok(());
         }
         let entry = Registration::root(
             format!(
@@ -15566,10 +15554,10 @@ impl PivotPublication {
         let host = sheet.name.clone();
         let mut restore = Restore::new(workbook);
         let mut ranges = vec![self.geometry.range];
-        if let Some(previous) = self.previous {
-            if previous != self.geometry.range {
-                ranges.push(previous);
-            }
+        if let Some(previous) = self.previous
+            && previous != self.geometry.range
+        {
+            ranges.push(previous);
         }
         restore.push(
             workbook
@@ -15879,15 +15867,15 @@ impl Workbook {
                 path: format_smolstr!("{sheet}!{}", geometry.range),
             });
         }
-        if let Some(old) = old {
-            if self.pivots()?.iter().any(|pivot| {
+        if let Some(old) = old
+            && self.pivots()?.iter().any(|pivot| {
                 pivot.table_part != old.table_part && pivot.cache_id() == old.cache_id()
-            }) {
-                return Err(Error::Unsupported {
-                    operation: "refreshing a pivot whose cache is shared in this writer phase",
-                    filesystem: old.cache_part.clone(),
-                });
-            }
+            })
+        {
+            return Err(Error::Unsupported {
+                operation: "refreshing a pivot whose cache is shared in this writer phase",
+                filesystem: old.cache_part.clone(),
+            });
         }
         let captions = if let Some(old) = old {
             let table = Registration::root_named(
@@ -16081,35 +16069,44 @@ impl Workbook {
             })?,
         };
         let mut rendered = super::pivot::part::render(
-            spec, &bound, &computed, &display, geometry, cache_id, &captions, &formats,
+            spec,
+            &bound,
+            &computed,
+            &display,
+            geometry,
+            &captions,
+            super::pivot::part::PivotPartOptions {
+                cache_id,
+                formats: &formats,
+            },
         )?;
-        if let Some(old) = old {
-            if matches!(
+        if let Some(old) = old
+            && matches!(
                 old.origin(),
                 super::pivot::PivotOrigin::Read { editable: true, .. }
-            ) {
-                rendered.table = self.preserve_imported_pivot_part(
-                    &table_part,
-                    rendered.table,
-                    "pivotTableDefinition",
-                    &[
-                        "location",
-                        "pivotFields",
-                        "rowFields",
-                        "rowItems",
-                        "colItems",
-                        "dataFields",
-                    ],
-                    &["name", "rowGrandTotals", "colGrandTotals"],
-                )?;
-                rendered.cache = self.preserve_imported_pivot_part(
-                    &cache_part,
-                    rendered.cache,
-                    "pivotCacheDefinition",
-                    &["cacheSource", "cacheFields"],
-                    &["saveData", "refreshOnLoad", "recordCount"],
-                )?;
-            }
+            )
+        {
+            rendered.table = self.preserve_imported_pivot_part(
+                &table_part,
+                rendered.table,
+                "pivotTableDefinition",
+                &[
+                    "location",
+                    "pivotFields",
+                    "rowFields",
+                    "rowItems",
+                    "colItems",
+                    "dataFields",
+                ],
+                &["name", "rowGrandTotals", "colGrandTotals"],
+            )?;
+            rendered.cache = self.preserve_imported_pivot_part(
+                &cache_part,
+                rendered.cache,
+                "pivotCacheDefinition",
+                &["cacheSource", "cacheFields"],
+                &["saveData", "refreshOnLoad", "recordCount"],
+            )?;
         }
         for (member, bytes) in [
             (&table_part, rendered.table),

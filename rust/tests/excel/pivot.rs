@@ -1935,6 +1935,7 @@ mod native_general {
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("fixtures/pivot_layout_c2v3_native.json")).unwrap();
         assert_eq!(fixture["refresh_save_reopen_equal"], true);
+        assert_eq!(fixture["rust_equivalence_checked"], false);
         assert_eq!(fixture["column_item_classes"]["item"], 15);
         assert_eq!(fixture["column_item_classes"]["default"], 9);
         assert_eq!(fixture["column_item_classes"]["grand"], 3);
@@ -2008,13 +2009,60 @@ mod native_general {
                 .unwrap();
             output.write_all(&book.into_bytes().unwrap()).unwrap();
         }
+        let grid = fixture["value2"].as_array().unwrap();
+        assert_eq!(grid.len(), 8);
+        assert!(grid.iter().all(|row| row.as_array().unwrap().len() == 28));
+        for (row, column, label) in [
+            (0, 1, "Product"),
+            (0, 2, "Year"),
+            (1, 1, "Apples"),
+            (1, 7, "Sales Sum Apples"),
+            (1, 10, "Pears"),
+            (1, 16, "Sales Sum Pears"),
+            (1, 19, "(vide)"),
+            (1, 22, "Sales Sum (vide)"),
+            (1, 25, "Total Sales Sum"),
+            (4, 0, "East"),
+            (5, 0, "West"),
+            (6, 0, "(vide)"),
+        ] {
+            assert_eq!(grid[row][column]["value"].as_str(), Some(label));
+        }
+        // Default-native blanks sort last; authored `(blank)` sorts first.
+        // authored_blank_caption_matches_its_own_excel_refreshed_grid owns that
+        // order. Align native axis items here, retaining all bits/empty checks.
+        let native_rows = [0, 1, 2, 3, 6, 4, 5, 7];
+        // Blank leaf/subtotal, Apples leaves/subtotal, Pears leaves/subtotal, grand.
+        let native_column_groups = [6, 7, 0, 1, 2, 3, 4, 5, 8];
         for pass in 0..2 {
             let sheet = book.sheet("Case").unwrap();
-            let grid = fixture["value2"].as_array().unwrap();
-            assert_eq!(grid.len(), 8);
-            for (row_index, row) in grid.iter().enumerate() {
-                assert_eq!(row.as_array().unwrap().len(), 28);
-                for (column_index, expected) in row.as_array().unwrap().iter().enumerate() {
+            for (at, label) in [
+                ("B4", "(blank)"),
+                ("H4", "Apples"),
+                ("Q4", "Pears"),
+                ("A7", "(blank)"),
+                ("A8", "East"),
+                ("A9", "West"),
+            ] {
+                assert_eq!(
+                    sheet.scalar(at.parse().unwrap()).as_str(),
+                    Some(label),
+                    "pass={pass} {at}"
+                );
+            }
+            let mut compared = [[false; 28]; 8];
+            for (row_index, &native_row) in native_rows.iter().enumerate() {
+                for column_index in 0..28 {
+                    // Field-selector headers and row labels retain their columns.
+                    let native_column = if row_index == 0 || column_index == 0 {
+                        column_index
+                    } else {
+                        let data_column = column_index - 1;
+                        1 + native_column_groups[data_column / 3] * 3 + data_column % 3
+                    };
+                    assert!(!compared[native_row][native_column]);
+                    compared[native_row][native_column] = true;
+                    let expected = &grid[native_row][native_column];
                     let at = CellRef::new(2 + row_index as u32, column_index as u32);
                     match expected["variant"].as_str().unwrap() {
                         "float" => assert_eq!(
@@ -2024,12 +2072,13 @@ mod native_general {
                         ),
                         "empty" => assert_eq!(sheet.scalar(at), Scalar::Null, "pass={pass} {at}"),
                         // Locale-selected native captions/blank labels are checked
-                        // separately; this fixture pins numeric positions and bits.
+                        // separately; this fixture pins aligned numeric values and bits.
                         "str" => {}
                         other => panic!("unsupported native grid cell {other}"),
                     }
                 }
             }
+            assert!(compared.iter().flatten().all(|compared| *compared));
             if pass == 0 {
                 book = Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
             }

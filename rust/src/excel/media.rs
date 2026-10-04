@@ -156,15 +156,15 @@ fn addressed(
                 &merges,
             )?)
         };
-        if let Some(candidates) = &candidates {
-            if candidates.iter().any(|candidate| {
+        if let Some(candidates) = &candidates
+            && candidates.iter().any(|candidate| {
                 matches!(
                     &candidate.region.kind,
                     super::regions::ExcelRegionKind::Table { .. }
                 )
-            }) {
-                super::regions::require_single(candidates, None, &merges)?;
-            }
+            })
+        {
+            super::regions::require_single(candidates, None, &merges)?;
         }
         let occupied = candidates
             .as_deref()
@@ -845,14 +845,14 @@ impl<H: IOBase> IOMedia for Excel<H> {
     fn column_size(&self) -> Result<usize> {
         self.options.require_valid()?;
         let declared = self.options.field();
-        if self.options.header != RecordHeader::Infer {
-            if let Some(field) = &declared {
-                return Ok(if matches!(self.options.header, RecordHeader::Rows(_)) {
-                    RowsLayout::leaf_width(field)?
-                } else {
-                    field.field_len()
-                });
-            }
+        if self.options.header != RecordHeader::Infer
+            && let Some(field) = &declared
+        {
+            return Ok(if matches!(self.options.header, RecordHeader::Rows(_)) {
+                RowsLayout::leaf_width(field)?
+            } else {
+                field.field_len()
+            });
         }
         if !self.warm() && self.handle.is_container() {
             return Ok(crate::iomedia::container_field(

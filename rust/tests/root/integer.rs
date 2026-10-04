@@ -20,7 +20,34 @@ fn integer_markers_cover_every_signed_and_unsigned_width() {
 mod reading {
     //! The one integer grammar, read through the value door.
 
-    use yggdryl::{DataType, Scalar};
+    use yggdryl::{DataType, MarketDataKind, Scalar, Side, State};
+
+    #[test]
+    fn the_value_door_reads_an_enum_member_as_its_stored_code() {
+        // A member is held and stored as its code, so an integer column of
+        // a width that fits it takes the member as that code - what a table
+        // storing the column as a plain integer hands back - and one too
+        // narrow refuses it as it refuses any integer.
+        assert_eq!(
+            DataType::Int32.scalar(Scalar::State(State::New)).unwrap(),
+            Scalar::from(i32::from(State::New.code()))
+        );
+        assert_eq!(
+            DataType::UInt8.scalar(Scalar::Side(Side::Buy)).unwrap(),
+            Scalar::from(Side::Buy.code())
+        );
+        assert_eq!(
+            DataType::UInt16
+                .scalar(Scalar::MarketDataKind(MarketDataKind::Order))
+                .unwrap(),
+            Scalar::from(u16::from(MarketDataKind::Order.code()))
+        );
+        assert_eq!(
+            DataType::Int64.scalar(Scalar::State(State::New)).unwrap(),
+            Scalar::from(i64::from(State::New.code()))
+        );
+        assert!(DataType::Int8.scalar(Scalar::State(State::New)).is_err());
+    }
 
     #[test]
     fn the_value_door_reads_a_signed_whole_number_and_narrows_it_to_the_width() {

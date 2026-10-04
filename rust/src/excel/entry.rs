@@ -263,10 +263,10 @@ impl Entry {
                     .temporal_timezone()
                     .is_some_and(|zone| zone.is_naive());
                 let mut out = String::new();
-                if millis.is_some_and(|millis| millis < -2_208_988_800_000) {
-                    if let Ok(Some((serial, _))) = system.serial_of(value) {
-                        return entry_number(serial, false).to_string();
-                    }
+                if millis.is_some_and(|millis| millis < -2_208_988_800_000)
+                    && let Ok(Some((serial, _))) = system.serial_of(value)
+                {
+                    return entry_number(serial, false).to_string();
                 }
                 match (value.id().temporal_kind(), millis) {
                     (Some(TemporalKind::Date), Some(millis)) => {
@@ -626,7 +626,7 @@ pub(crate) fn date_value(
     system: DateSystem,
 ) -> Option<std::result::Result<f64, ExcelError>> {
     let text = text.trim();
-    let first = text.split(|c| c == '-' || c == '/').next().unwrap_or("");
+    let first = text.split(['-', '/']).next().unwrap_or("");
     if first.len() != 4 {
         return None;
     }

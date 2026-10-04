@@ -43,7 +43,7 @@ impl Arity {
     pub(crate) const fn accepts(self, count: usize) -> bool {
         count >= self.min as usize
             && count <= self.max as usize
-            && (count - self.min as usize) % self.step as usize == 0
+            && (count - self.min as usize).is_multiple_of(self.step as usize)
     }
 }
 

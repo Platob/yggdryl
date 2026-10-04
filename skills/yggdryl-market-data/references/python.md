@@ -322,9 +322,9 @@ with tempfile.TemporaryDirectory() as directory:
 ## Fold a sorted stream into books
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
-orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - pruning every
-execution and trade. A book is complete (`is_complete`) only at a snapshot
+orders and quotes into its sides and records executions among its deltas,
+yielding one `BookEvent` per recorded instant and book key - the instrument's
+ISIN, else its ticker, else `XX0000000000` - pruning every trade. A book is complete (`is_complete`) only at a snapshot
 tick; every other book states its deltas alone beside the top of book they
 settled on, and `with_previous` over the complete book before it rebuilds it
 whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -344,11 +344,11 @@ fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", side="BU
 stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
 books = list(graph.BookIterator(stream))
-assert len(books) == 2, "one book per instant that moved it; the execution folds into none"
+assert len(books) == 2, "one book per recorded instant; the execution moves no side"
 # No grid and no snapshot input: each book states its deltas alone and its top of book.
 last = books[1]
 assert not last.is_complete
-assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 1, [])
+assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 2, [])
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal("189.49")
 # Rebuilt whole: the first over the empty book its key starts from, the next over it.
@@ -362,8 +362,8 @@ assert (len(whole.alive), whole.curruuid) == (2, last.curruuid), "depth persists
 # A 500 ms grid states the whole living book at each crossed tick.
 gridded = list(graph.BookIterator(stream, snapshot_millis=500))
 assert len(gridded) == 3 and all(book.is_complete for book in gridded)
-# A filter narrows what folds, and never admits an execution.
-assert list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'")) == []
+# A filter can keep the execution alone, recorded without moving a side.
+assert len(list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'"))) == 1
 # The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 [keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
 assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)
@@ -505,9 +505,10 @@ assert chain.column("crosscode").to_pylist() == ["10:1:O-1001"]
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries into the sides and executions among the deltas - and
 `MarketData.from_arrow_reader` reads the books back. A `W` full refresh is a
-snapshot input, so its book is complete; the `X` after it states its delta.
+snapshot input, so its book is complete; the `X` after it states the bid's
+change and the execution as its deltas.
 
 ```python
 from decimal import Decimal
@@ -532,8 +533,8 @@ assert first is not None and first.is_complete
 assert last is not None
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
-# The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
-assert not last.is_complete and len(last.deltas) == 1
+# The bid's change and the execution (`269=2`) are deltas; only the bid moves a side.
+assert not last.is_complete and len(last.deltas) == 2
 ```
 
 ## Fold books into candles
@@ -635,8 +636,8 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`; an execution or a trade is
-  pruned, no error and no book. What `BookIterator` finds wrong in the data -
+  `with_operations` at `$.operations[i].kind`; an execution is recorded among
+  the deltas and moves no side, while a trade is pruned, no error and no book. What `BookIterator` finds wrong in the data -
   an operation dated before its book - it leaves out, and an order or a quote
   stating neither side it places nowhere (still the book's delta), each with a
   `logging` warning under `yggdryl.graph.book`, and no error.

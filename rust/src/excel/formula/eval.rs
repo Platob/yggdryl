@@ -17,6 +17,8 @@ use crate::excel::cell::{CellRange, CellRef, DateSystem, ExcelError, MAX_COLUMNS
 use crate::excel::entry;
 use crate::{Arithmetic, Scalar};
 
+type LiteralArray<'w> = (&'w Expr, &'w [Box<[usize]>]);
+
 /// Values required by a range consumer. Aggregates can avoid rendering
 /// referenced text, but errors and unresolved dependencies always remain visible.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -799,10 +801,8 @@ impl Evaluator {
                         .name_volatility
                         .pop()
                         .expect("each name has one return");
-                    if volatile {
-                        if let Some(parent) = self.name_volatility.last_mut() {
-                            *parent = true;
-                        }
+                    if volatile && let Some(parent) = self.name_volatility.last_mut() {
+                        *parent = true;
                     }
                     // A held outcome produced no volatile value. Reusing its
                     // refusal is safe and bounds still-unsupported alias DAGs.
@@ -1735,7 +1735,7 @@ impl Evaluator {
         name: Option<NameId>,
         node: usize,
         context: &impl Context<'w>,
-    ) -> Result<(&'w Expr, &'w [Box<[usize]>]), Held> {
+    ) -> Result<LiteralArray<'w>, Held> {
         let arena = context.expression(name)?;
         let Node::Array(rows) = &arena.nodes[node] else {
             unreachable!("array outcome names its parsed node")
@@ -2967,7 +2967,7 @@ impl Evaluator {
                 }
             }
             Selection::Ifs { pairs } => {
-                for pair in pairs.chunks_exact(2) {
+                for pair in pairs.as_chunks::<2>().0 {
                     let value = match input(pair[0])?.operand() {
                         Ok(value) => value,
                         Err(reason) => return Ok(held(reason)),
@@ -2994,7 +2994,7 @@ impl Evaluator {
                     Ok(value) => value,
                     Err(reason) => return Ok(held(reason)),
                 };
-                for pair in pairs.chunks_exact(2) {
+                for pair in pairs.as_chunks::<2>().0 {
                     let key = match input(pair[0])?.operand() {
                         Ok(value) => value,
                         Err(reason) => return Ok(held(reason)),
@@ -4092,7 +4092,7 @@ impl Evaluator {
         };
         let mut ranges = Vec::with_capacity(pairs.len() / 2);
         let mut criteria = Vec::with_capacity(pairs.len() / 2);
-        for pair in pairs.chunks_exact(2) {
+        for pair in pairs.as_chunks::<2>().0 {
             let range = self.take(base, pair[0].expect("strict policy proved range"));
             let range = match range.operand() {
                 Ok(Operand::Reference(id)) => id,
@@ -4215,14 +4215,10 @@ impl Evaluator {
                 return Ok(outcome);
             }
             if matched {
-                if result.is_none() {
-                    if let Err(error) = accumulator.push_count_n(span) {
-                        aggregate_error.get_or_insert(error);
-                    }
-                } else {
+                if let Some(result) = result {
                     let mut observed = None;
                     let progress = context.visit_range(
-                        result.expect("result checked"),
+                        result,
                         RangeRead::NumericDense,
                         cursor,
                         |value, run| {
@@ -4252,6 +4248,10 @@ impl Evaluator {
                         }
                         Ok(Operand::Reference(_)) => return Ok(held()),
                         Ok(Operand::Blank | Operand::Text(_) | Operand::Boolean(_)) => {}
+                    }
+                } else {
+                    if let Err(error) = accumulator.push_count_n(span) {
+                        aggregate_error.get_or_insert(error);
                     }
                 }
             }

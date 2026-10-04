@@ -20,6 +20,12 @@ pub(crate) const HIDE_VALUES_URI: &str = "{962EF5D1-5CA2-4c93-8EF4-DBF5C05439D2}
 pub(crate) const HIDE_VALUES_NAMESPACE: &str =
     "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
 
+/// Resolved package identifiers used by pivot XML, borrowed for this render.
+pub(crate) struct PivotPartOptions<'a> {
+    pub cache_id: u32,
+    pub formats: &'a [Option<u32>],
+}
+
 /// Three semantic XML members; OPC relationships/overrides stay with package.
 pub(crate) struct PivotPartBytes {
     pub table: Vec<u8>,
@@ -145,10 +151,10 @@ pub(crate) fn render(
     computed: &PivotComputed,
     display: &PivotDisplay,
     geometry: Geometry,
-    cache_id: u32,
     captions: &PivotCaptions,
-    formats: &[Option<u32>],
+    options: PivotPartOptions<'_>,
 ) -> Result<PivotPartBytes> {
+    let PivotPartOptions { cache_id, formats } = options;
     pivot_label("$.name", &spec.name)?;
     pivot_label("$.pivot.blankCaption", BLANK_CAPTION)?;
     let expected_height = geometry.header_rows + display.row_events.len() as u32;
@@ -233,15 +239,18 @@ pub(crate) fn render(
                 spec.rows[row].order,
                 computed.row_items[row].items(),
             ))
-        } else if let Some(axis) = column_cols.iter().position(|&axis| axis == column) {
-            Some((
-                "axisCol",
-                &display.column_fields[axis],
-                spec.columns[axis].order,
-                computed.column_items[axis].items(),
-            ))
         } else {
-            None
+            column_cols
+                .iter()
+                .position(|&axis| axis == column)
+                .map(|axis| {
+                    (
+                        "axisCol",
+                        &display.column_fields[axis],
+                        spec.columns[axis].order,
+                        computed.column_items[axis].items(),
+                    )
+                })
         };
         if let Some((axis, visible, order, items)) = axis {
             table.push_str(&format!("<pivotField axis=\"{axis}\" compact=\"0\" outline=\"0\" showAll=\"0\" sortType=\"{}\"><items count=\"{}\">",
@@ -868,8 +877,13 @@ pub(crate) fn display_cells(
             match event {
                 PivotEvent::Leaf { id, first_new } => {
                     let tuple = &computed.column_tuples[id];
-                    for axis in first_new..spec.columns.len() {
-                        let item = &computed.column_items[axis].items()[tuple[axis]];
+                    for (axis, &item_index) in tuple
+                        .iter()
+                        .enumerate()
+                        .take(spec.columns.len())
+                        .skip(first_new)
+                    {
+                        let item = &computed.column_items[axis].items()[item_index];
                         put_axis(
                             &mut cells,
                             &mut serials,
@@ -932,8 +946,13 @@ pub(crate) fn display_cells(
         match row_event {
             PivotEvent::Leaf { id, first_new } => {
                 let tuple = &computed.row_tuples[id];
-                for axis in first_new..spec.rows.len() {
-                    let item = &computed.row_items[axis].items()[tuple[axis]];
+                for (axis, &item_index) in tuple
+                    .iter()
+                    .enumerate()
+                    .take(spec.rows.len())
+                    .skip(first_new)
+                {
+                    let item = &computed.row_items[axis].items()[item_index];
                     put_axis(
                         &mut cells,
                         &mut serials,

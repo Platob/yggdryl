@@ -954,13 +954,14 @@ impl super::package::Edits for TotalsCapture<'_> {
         _: &quick_xml::events::BytesStart<'_>,
         raw: &[u8],
     ) -> Result<()> {
-        if path.len() == 3 && path[2] == "row" {
-            if let Some((offset, at)) = self.pending.take() {
-                if self.cells.cells[offset].is_some() {
-                    return Err(self.refuse(at, "expected one totals cell at this coordinate"));
-                }
-                self.cells.cells[offset] = Some(raw.to_vec());
+        if path.len() == 3
+            && path[2] == "row"
+            && let Some((offset, at)) = self.pending.take()
+        {
+            if self.cells.cells[offset].is_some() {
+                return Err(self.refuse(at, "expected one totals cell at this coordinate"));
             }
+            self.cells.cells[offset] = Some(raw.to_vec());
         }
         Ok(())
     }
@@ -2165,23 +2166,22 @@ impl super::package::Edits for TableBody<'_, '_> {
             && path[1] == "sheetData"
             && path[2] == "row"
             && self.closed_main
+            && let Some(row) = self.current_row.take()
         {
-            if let Some(row) = self.current_row.take() {
-                if self.totals_target {
-                    self.totals_written = true;
-                    self.totals_target = false;
-                } else if !self.clearing {
-                    if let Some(offset) = self.seen.iter().position(|seen| !seen) {
-                        return Err(self.refusal(
-                            CellRef::new(row, self.range.start().column() + offset as u32),
-                            "expected a present table body cell to overwrite",
-                        ));
-                    }
-                    self.written += 1;
-                    self.index += 1;
+            if self.totals_target {
+                self.totals_written = true;
+                self.totals_target = false;
+            } else if !self.clearing {
+                if let Some(offset) = self.seen.iter().position(|seen| !seen) {
+                    return Err(self.refusal(
+                        CellRef::new(row, self.range.start().column() + offset as u32),
+                        "expected a present table body cell to overwrite",
+                    ));
                 }
-                self.clearing = false;
+                self.written += 1;
+                self.index += 1;
             }
+            self.clearing = false;
         }
         Ok(None)
     }

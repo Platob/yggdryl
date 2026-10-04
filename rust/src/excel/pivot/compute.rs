@@ -215,14 +215,13 @@ impl PivotItems {
     ) -> Result<usize> {
         let candidate = Candidate::from_cell(cell, raw_serial, self.system, at)?;
         let key = candidate.fingerprint();
-        if let Some(existing) = self.buckets.get(&key) {
-            if let Some(index) = existing
+        if let Some(existing) = self.buckets.get(&key)
+            && let Some(index) = existing
                 .iter()
                 .copied()
                 .find(|&index| candidate.matches(&self.entries[index]))
-            {
-                return Ok(index);
-            }
+        {
+            return Ok(index);
         }
         let index = self.entries.len();
         self.entries.push(candidate.owned());
@@ -544,10 +543,10 @@ impl Group {
     }
 
     fn push(&mut self, input: ValueInput) {
-        if let ValueInput::Error(error) = input {
-            if !matches!(self.aggregate, Aggregate::Count | Aggregate::CountNumbers) {
-                self.source_error.get_or_insert(error);
-            }
+        if let ValueInput::Error(error) = input
+            && !matches!(self.aggregate, Aggregate::Count | Aggregate::CountNumbers)
+        {
+            self.source_error.get_or_insert(error);
         }
         if self.error.is_some() {
             return;

@@ -471,12 +471,11 @@ impl StyleSheet {
             if let Some(start) = start {
                 let qualified = start.name();
                 let name = local_name(qualified.as_ref());
-                if matches!(name, b"numFmt" | b"xf") {
-                    if let Some(id) = attribute(start, b"numFmtId", position)?
+                if matches!(name, b"numFmt" | b"xf")
+                    && let Some(id) = attribute(start, b"numFmtId", position)?
                         .and_then(|id| id.trim().parse::<u32>().ok())
-                    {
-                        sheet.highest_number_format = sheet.highest_number_format.max(id);
-                    }
+                {
+                    sheet.highest_number_format = sheet.highest_number_format.max(id);
                 }
                 match depth {
                     1 => {

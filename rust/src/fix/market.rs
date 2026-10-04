@@ -399,14 +399,17 @@ impl FixCodec {
     /// the stateful book iterator into bounded Arrow batches of
     /// [`MarketData::field`] rows, each a `book_event`.
     ///
-    /// A book folds orders, quotes and `W`/`X` book messages - the kinds
-    /// [`MarketDataKind::is_booked`] admits - and every other record is
+    /// A book folds orders, quotes and `W`/`X` book messages into its sides
+    /// and records every execution among its deltas - the kinds
+    /// [`MarketDataKind::is_recorded`] admits - and every other record is
     /// ignored before it is expanded: a fill moves a book through its
     /// order's or quote's report, which the parse splits off the execution,
-    /// so an execution, and a trade whose fills are executions, never reach
-    /// one. A quote is one entry resting on each leg it states, its bid and
-    /// its offer alike. A book message's leaves are pruned by the same rule,
-    /// so an entry reporting a trade (`269=2`) folds into no book. An
+    /// so the execution stands among the deltas of its instant and moves
+    /// nothing, and a trade, whose fills are the executions the parse split
+    /// off, never reaches one. A quote is one entry resting on each leg it
+    /// states, its bid and its offer alike. A book message's leaves are
+    /// pruned by the same rule, so an entry reporting a trade (`269=2`) is
+    /// recorded as the execution it is and places nothing. An
     /// admitted message is read as [`FixMarketIterator`] reads it: what it
     /// states that cannot stand is passed over with a warning, and the
     /// source's own failure follows the completed book prefix and fuses the
@@ -441,7 +444,7 @@ impl FixCodec {
         let admitted = messages
             .into_iter()
             .filter_map(|message| match message.into() {
-                Ok(message) => (contributes_to_market(&message) && message.msgcat().is_booked())
+                Ok(message) => (contributes_to_market(&message) && message.msgcat().is_recorded())
                     .then_some(Ok(message)),
                 failure => Some(failure),
             });

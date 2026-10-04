@@ -520,37 +520,37 @@ impl HeaderProbe {
             // conversion failures are located by the existing row reader.
             let declared_read = declared.is_some();
             let mut source_binding_error = None;
-            if labels.is_ok() {
-                if let Some(field) = declared {
-                    let bound = Header::resolve(
-                        self.range,
-                        extent,
-                        true,
-                        self.columns.iter().map(|(column, facts)| {
-                            Ok((
-                                *column,
-                                Some(std::borrow::Cow::Borrowed(
-                                    facts.first_label.as_deref().unwrap_or_default(),
-                                )),
-                            ))
-                        }),
-                    )
-                    .and_then(|header| {
-                        header.pairing(
-                            field,
-                            FlatBinding {
-                                sheet: &self.sheet,
-                                range: self.range,
-                                by_name: true,
-                                authoritative: matches!(extent, FlatExtent::Table(_)),
-                            },
-                        )?;
-                        Ok(header)
-                    });
-                    match bound {
-                        Ok(header) => source_header = Some(header),
-                        Err(error) => source_binding_error = Some(error),
-                    }
+            if labels.is_ok()
+                && let Some(field) = declared
+            {
+                let bound = Header::resolve(
+                    self.range,
+                    extent,
+                    true,
+                    self.columns.iter().map(|(column, facts)| {
+                        Ok((
+                            *column,
+                            Some(std::borrow::Cow::Borrowed(
+                                facts.first_label.as_deref().unwrap_or_default(),
+                            )),
+                        ))
+                    }),
+                )
+                .and_then(|header| {
+                    header.pairing(
+                        field,
+                        FlatBinding {
+                            sheet: &self.sheet,
+                            range: self.range,
+                            by_name: true,
+                            authoritative: matches!(extent, FlatExtent::Table(_)),
+                        },
+                    )?;
+                    Ok(header)
+                });
+                match bound {
+                    Ok(header) => source_header = Some(header),
+                    Err(error) => source_binding_error = Some(error),
                 }
             }
             let none_ok = if declared_read {
@@ -612,10 +612,10 @@ impl HeaderProbe {
             self.requested
         };
         let source = policy == RecordHeader::Source;
-        if declared.is_none() {
-            if let Some(error) = self.first_mismatch(source) {
-                return Err(error);
-            }
+        if declared.is_none()
+            && let Some(error) = self.first_mismatch(source)
+        {
+            return Err(error);
         }
         let header = if source {
             source_header.map(Ok).unwrap_or_else(|| {
@@ -1259,15 +1259,15 @@ impl RowsWriteLayout {
                     "expected {levels} header rows from {anchor} inside the Excel grid"
                 ),
             })?;
-        if let Some(rows) = rows {
-            if rows > (MAX_ROWS - after_header) as usize {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.header"),
-                    reason: format_smolstr!(
-                        "expected {levels} header rows and {rows} records from {anchor} inside the Excel grid"
-                    ),
-                });
-            }
+        if let Some(rows) = rows
+            && rows > (MAX_ROWS - after_header) as usize
+        {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.header"),
+                reason: format_smolstr!(
+                    "expected {levels} header rows and {rows} records from {anchor} inside the Excel grid"
+                ),
+            });
         }
         let mut layout = Self {
             root_nullable: root.is_nullable(),

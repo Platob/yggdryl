@@ -279,10 +279,10 @@ pub(crate) fn row_count<R: Read>(source: &Source, rows: SheetRows<BufReader<R>>)
             RecordHeader::Source | RecordHeader::None => count += 1,
             RecordHeader::Infer => return Err(super::options::ExcelOptions::ambiguous_error()),
             RecordHeader::Rows(levels) => {
-                if let Some(first) = anchor {
-                    if row.index >= first.saturating_add(levels) {
-                        count += 1;
-                    }
+                if let Some(first) = anchor
+                    && row.index >= first.saturating_add(levels)
+                {
+                    count += 1;
                 }
             }
         }

@@ -441,8 +441,8 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     # alive on it, each a quote filed under QUOT, and its levels best first,
     # each stating whether it trades. The update's book states its deltas
     # alone - no grid, no snapshot input - so it states no alive entry and no
-    # level, and a book holds no execution: the trade entry (`269=2`) is an
-    # execution no book folds, so the bid's change is its one delta.
+    # level; the trade entry (`269=2`) is an execution the book records
+    # beside the bid's change, moving no side.
     assert [row["alive"] is None for row in rows] == [False, True]
     assert rows[0]["alive"][0]["price"] == decimal.Decimal("100")
     assert rows[0]["alive"][0]["marketdatakind"] == MarketDataKind.QUOT
@@ -456,7 +456,11 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert [level["price"] for level in rows[0]["asklimits"]] == [decimal.Decimal("102")]
     assert (rows[1]["bidlimits"], rows[1]["asklimits"]) == (None, None)
     assert [row["executions"] for row in rows] == [None, None]
-    [delta] = rows[1]["deltas"]
+    deltas = rows[1]["deltas"]
+    assert sorted(delta["marketdatakind"] for delta in deltas) == sorted(
+        [MarketDataKind.EXEC, MarketDataKind.QUOT]
+    )
+    delta = next(delta for delta in deltas if delta["marketdatakind"] == MarketDataKind.QUOT)
     assert (delta["price"], delta["side"], delta["bookaction"]) == (decimal.Decimal("101"), Side.BUYS, "1")
     # An operation row names its entry under `mdentryid`.
     assert _row_kinds(delta["identifiers"]) == {"mdentryid": "B1"}
@@ -767,7 +771,7 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # first book came to state its deltas alone, and when a book came to be
     # keyed by its instrument's ISIN, holding it as its `isin`.
     books = list(graph.BookIterator(operations))
-    assert len(books) == 10
+    assert len(books) == 11
     assert not any(book.is_complete for book in books)
     last = books[-1]
     assert last.ticker == "2454"
@@ -776,11 +780,13 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     assert [delta.price for delta in last.deltas] == [None, None]
     assert last.currhashcode == 9_341_042_899_919_963_577
     # Every book is keyed by the ISIN its inputs state, else their ticker:
-    # the masked line's number keys its own book.
+    # the masked line's number keys its own book, and the trade capture's
+    # execution, of an instrument no order names, opens that instrument's.
     assert sorted({book.crosscode for book in books}) == [
         "3:0:CH0012005267",
         "3:0:CH0012214059",
         "3:0:CH0012221716",
+        "3:0:EZN11TD1F7K3",
         "3:0:TW0001605004",
         "3:0:TW0002454006",
         "3:0:XX0000000001",
@@ -823,9 +829,10 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     ]
     assert all(source.curruuid in fill.srcuuids for fill in fills)
 
-    # A book holds no execution - a fill moves a book through its order's
-    # report - so an instant only executions touched emits no book.
-    assert codec.book_arrow_reader(codec.lifecycle(messages), snapshot_millis=0).read_all().num_rows == 0
+    # A book records the executions of its instant among its deltas - a
+    # fill moves a book through its order's report, and the fills stand
+    # beside it - so the trade's instant emits one book stating them alone.
+    assert codec.book_arrow_reader(codec.lifecycle(messages), snapshot_millis=0).read_all().num_rows == 1
 
     rows = codec.market_arrow_reader(codec.lifecycle(messages)).read_all().to_pylist()
     assert len(rows) == 2
@@ -872,7 +879,7 @@ def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
             b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
             b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
             [Side.UNKN],
-            0,
+            1,
         ),
         (
             b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
@@ -888,8 +895,9 @@ def test_a_trade_side_stating_no_side_splits_into_a_fill_of_side_unknown(
     # The executions split once, at the parse (A12): a side stating no
     # Side(54) is still a fill, of side UNKN, said as a warning - never a
     # lost fill - and a trade stating no side at all splits into none. The
-    # report itself is no leaf of a book, and a book holds no execution, so
-    # neither emits a book.
+    # report itself is no leaf of a book; the fill it splits off is recorded
+    # by its book, so the first emits one book stating the fill alone and
+    # the second none.
     codec = _fixed_batch(seed_batch)
     trade, *split = codec.parse_line(body)
     assert (trade.state, trade.side) == (State.TRADE, Side.UNKN)
@@ -5337,3 +5345,127 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     assert fix.row_size() == written.written_rows
     assert len(fix.snapshots) == 2
     assert ordered(fix) == rows
+
+
+def test_the_medallion_pipeline_lands_every_stage_over_two_catalogs(
+    seed_batch: FixRegistry, tmp_path: pathlib.Path
+) -> None:
+    import datetime as dt
+
+    from tests import medallion
+    from yggdryl.iceberg import IcebergCatalog
+
+    # Two catalogs - two warehouse folders here, two table buckets live - and
+    # the capture split across two log objects under a glob.
+    bronze = IcebergCatalog.open_or_create("bronze", tmp_path / "bronze")
+    silver = IcebergCatalog.open_or_create("silver", tmp_path / "silver")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    captured = ULBRIDGE_LOG.read_bytes().splitlines(keepends=True)
+    (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
+    (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
+    codec = _fixed_batch(seed_batch, threads=None)
+
+    # The capture's day - lines at 03:xx, 14:xx, 16:xx and 23:xx UTC - as
+    # one window opening on a quarter hour, midnight.
+    utc = dt.timezone.utc
+    start = dt.datetime(2026, 8, 14, 0, 0, tzinfo=utc)
+    end = dt.datetime(2026, 8, 15, 0, 0, tzinfo=utc)
+    with pytest.raises(ValueError, match="UTC"):
+        medallion.window_filter(dt.datetime(2026, 8, 14, 0, 0), end)
+    with pytest.raises(ValueError, match="after"):
+        medallion.window_filter(end, start)
+
+    written = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, end)
+    assert list(written) == [
+        "bronze.log_messages",
+        "bronze.fix_messages",
+        "silver.fix_messages",
+        "silver.books",
+        "silver.orders",
+        "silver.quotes",
+        "silver.executions",
+    ]
+    assert written["bronze.log_messages"] == IOResult(144, 144)
+    for stage, result in written.items():
+        assert result.read_rows == result.written_rows, stage
+        assert result.skipped_rows == 0, stage
+    # Every stage reads what the one before it wrote, and the lifecycle
+    # writes what it read, the parse what it parsed - more rows than lines,
+    # a trade split into one execution per side and a batch into its entries.
+    parsed = written["bronze.fix_messages"].written_rows
+    assert parsed > 144
+    # The lifecycle walks the messages alone - a line holding none is
+    # excluded, a repeat within the dedup window folded - as the bridge
+    # capture test pins them - and writes each back under the table's
+    # schema, where an enum column is the plain integer its codes are.
+    assert written["silver.fix_messages"].written_rows == 39
+    refined = silver.table("record_keeping.fix_messages").read_serie().into_arrow_reader().read_all()
+    for column in ("state", "marketdatakind", "marketdatatype"):
+        assert refined.column(column).null_count == 0, column
+    books = written["silver.books"].written_rows
+    assert books > 0
+    # The three event tables are the books' deltas laid out by kind: every
+    # delta of every book lands in exactly one of them.
+    events = sum(written[f"silver.{name}"].written_rows for name in ("orders", "quotes", "executions"))
+    deltas = sum(
+        len(data.as_book_event().deltas)  # type: ignore[union-attr]
+        for data in MarketData.from_arrow_reader(
+            silver.table("record_keeping.books").read_serie(select="* exclude (partunix)").into_arrow_reader()
+        )
+    )
+    assert events == deltas > 0
+    assert written["silver.executions"].written_rows > 0, "executions are recorded among the deltas"
+
+    # Every table is laid out as the pipeline declares: the quarter-hour
+    # partition the table computes, the key, the sort, the books by their
+    # instrument's CFI code beside the quarter.
+    for catalog, name in (
+        (bronze, "log_messages"),
+        (bronze, "fix_messages"),
+        (silver, "fix_messages"),
+        (silver, "books"),
+        (silver, "orders"),
+        (silver, "quotes"),
+        (silver, "executions"),
+    ):
+        table = catalog.table(f"record_keeping.{name}")
+        assert isinstance(table, yggdryl.iceberg.IcebergTable), name
+        stored = table.schema
+        partitioned = '["partunix","cficode"]' if name == "books" else '["partunix"]'
+        assert stored.metadata["PARTITION:by"] == partitioned, name
+        assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]', name
+        assert not any(stored[column].nullable for column in medallion.REQUIRED), name
+        assert table.format_version == 3, name
+        rows = written[f"{catalog.name}.{name}"].written_rows
+        assert table.row_size() == rows, name
+        # A stage whose source holds no row - this capture states no quote -
+        # replaces nothing and commits nothing.
+        assert len(table.snapshots) == (1 if rows else 0), name
+    assert sorted(bronze.namespaces) == ["record_keeping"]
+    assert sorted(bronze.namespaces["record_keeping"].tables) == ["fix_messages", "log_messages"]
+    assert sorted(silver.namespaces["record_keeping"].tables) == [
+        "books",
+        "executions",
+        "fix_messages",
+        "orders",
+        "quotes",
+    ]
+
+    # Running every stage again over the window rewrites what it wrote: the
+    # same rows under one more snapshot, never the two runs together.
+    again = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, end)
+    assert again == written
+    for catalog, name in ((bronze, "log_messages"), (silver, "books"), (silver, "executions")):
+        table = catalog.table(f"record_keeping.{name}")
+        assert table.row_size() == written[f"{catalog.name}.{name}"].written_rows, name
+        assert len(table.snapshots) == 2, name
+
+    # A narrower window reads the quarters it covers alone and rewrites
+    # those partitions alone: the rows past it keep their files.
+    half = dt.datetime(2026, 8, 14, 19, 0, tzinfo=utc)
+    partial = medallion.run(bronze, silver, codec, IOBase(logs / "*.log"), start, half)
+    assert 0 < partial["bronze.log_messages"].written_rows < 144
+    assert bronze.table("record_keeping.log_messages").row_size() == 144
+    assert partial["silver.books"].written_rows <= books
+    assert silver.table("record_keeping.books").row_size() == books

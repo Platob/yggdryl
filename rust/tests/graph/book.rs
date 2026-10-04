@@ -1541,12 +1541,15 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
     assert_eq!(book, before);
 }
 
-/// A book folds what `MarketDataKind::is_booked` admits: an execution and
-/// a trade are pruned before the fold, so a group of nothing else changes
-/// nothing - the instant does not advance and the deltas stand - and one
-/// beside an order folds the order alone.
+/// A book folds what `MarketDataKind::is_booked` admits into its sides and
+/// records what `is_recorded` admits beyond it among its deltas: a trade
+/// is pruned before the fold, so a group of nothing else changes nothing -
+/// the instant does not advance and the deltas stand - and an execution
+/// moves no entry and no level - its fill moved the book through its
+/// order's own report - but advances the instant, stands among the deltas
+/// and dates the book's last execution.
 #[test]
-fn an_execution_or_a_trade_is_pruned_and_changes_nothing() {
+fn an_execution_is_recorded_among_the_deltas_and_a_trade_is_pruned() {
     let mut book = BookEvent::new(1, "IBM");
     book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
         .unwrap();
@@ -1561,22 +1564,40 @@ fn an_execution_or_a_trade_is_pruned_and_changes_nothing() {
     let fill = ExecutionEvent::try_from(execution.clone()).unwrap();
     let trade = TradeEvent::from_parts(&root, vec![fill]).unwrap();
 
-    book.add_operations([execution.clone(), MarketData::from(trade)])
-        .unwrap();
+    // A trade alone is pruned: nothing changes, the instant stands.
+    book.add_operations([MarketData::from(trade)]).unwrap();
     assert_eq!(book, before);
     assert_eq!(book.get_currunix(), 1);
     assert_eq!(codes(book.deltas()), ["10:1:O-1"]);
 
-    // Beside an order, the execution is pruned and the order alone folds.
+    // An execution alone is recorded: the instant advances to it, the
+    // deltas are the execution, and the entries and the levels stand.
+    book.add_operations([execution.clone()]).unwrap();
+    assert_eq!(book.get_currunix(), 10);
+    assert_eq!(codes(book.deltas()), ["8:1:E-1"]);
+    assert_eq!(codes(book.alive()), ["10:1:O-1"]);
+    assert_eq!(book.best_price(Side::Buy), before.best_price(Side::Buy));
+    assert_eq!(
+        book.best_quantity(Side::Buy),
+        before.best_quantity(Side::Buy)
+    );
+    assert_eq!(book.get_execunix(), execution.get_execunix());
+
+    // Beside an order, both stand among the deltas in the order applied,
+    // the order alone moves a side, and the execution's own instant dates
+    // the book's last execution.
+    let mut fill = operation("execution", "IBM", "E-2", 11, "Buy", "100", 1, "Filled");
+    op_mut(&mut fill).set_execunix(Some(11), true);
+    fill.finalize();
     book.add_operations([
-        execution,
-        operation("order", "IBM", "O-2", 10, "Sell", "101", 3, "New"),
+        fill,
+        operation("order", "IBM", "O-2", 11, "Sell", "101", 3, "New"),
     ])
     .unwrap();
-    assert_eq!(book.get_currunix(), 10);
-    assert_eq!(codes(book.deltas()), ["10:2:O-2"]);
+    assert_eq!(book.get_currunix(), 11);
+    assert_eq!(codes(book.deltas()), ["8:1:E-2", "10:2:O-2"]);
     assert_eq!(book.alive().count(), 2);
-    assert_eq!(book.get_execunix(), None);
+    assert_eq!(book.get_execunix(), Some(11));
 }
 
 #[test]
@@ -1608,9 +1629,12 @@ fn expiry_precedes_an_equal_time_source_and_an_execution_never_enters_live_expir
         books.iter().map(Event::get_currunix).collect::<Vec<_>>(),
         [1, 3]
     );
-    // The execution was pruned: no book holds it, alive or applied.
-    assert_eq!(codes(books[0].deltas()), ["10:1:O-1"]);
+    // The execution was recorded at its instant, resting on no side and
+    // scheduling no expiry: the first book states it among its deltas,
+    // and nothing holds it alive.
+    assert_eq!(codes(books[0].deltas()), ["10:1:O-1", "8:0:E-1"]);
     let whole = whole(&books);
+    assert_eq!(codes(whole[0].alive()), ["10:1:O-1"]);
     let replacement = alive(&whole[1], true).into_iter().next().unwrap();
     assert_eq!(replacement.get_price(), Some(decimal("101")));
     assert_eq!(
@@ -2076,8 +2100,9 @@ fn advancing_time_clears_previous_deltas_and_rejects_regression() {
     canonical.finalize();
     assert_eq!(book, canonical);
 
-    // An execution alone is pruned: the instant does not advance, so the
-    // deltas of the instant before stand.
+    // An execution alone is recorded: the instant advances to it, the
+    // deltas of the instant before go, and it stands as the one delta,
+    // resting on no side.
     book.add_operations([operation(
         "execution",
         "IBM",
@@ -2089,11 +2114,13 @@ fn advancing_time_clears_previous_deltas_and_rejects_regression() {
         "Filled",
     )])
     .unwrap();
-    assert_eq!(book.get_currunix(), 2);
-    assert_eq!(deltas(&book, false).len(), 1);
+    assert_eq!(book.get_currunix(), 3);
+    assert_eq!(codes(book.deltas()), ["8:1:E-2"]);
+    assert_eq!(deltas(&book, true).len(), 1);
+    assert!(deltas(&book, false).is_empty());
     book.add_operations([operation("quote", "IBM", "B-2", 3, "Buy", "101", 1, "New")])
         .unwrap();
-    assert_eq!(codes(book.deltas()), ["14:0:B-2"]);
+    assert_eq!(codes(book.deltas()), ["8:1:E-2", "14:0:B-2"]);
     let mut canonical_book = book.clone();
     canonical_book.finalize();
     assert_eq!(book.get_curruuid(), canonical_book.get_curruuid());
@@ -2310,7 +2337,8 @@ fn decimal_means_do_not_overflow_representable_results() {
 /// operation in a group of its own, or all in one `add_operations` group,
 /// the depth and the deltas state the same prices, quantities and names in
 /// the same order - never compared by identity, which the grouping is
-/// allowed to move - and the executions among them reach neither.
+/// allowed to move - and the executions among them stand among the deltas
+/// and reach no side.
 #[test]
 fn one_by_one_and_grouped_operations_build_the_same_depth_and_deltas() {
     let operations = || {
@@ -2343,11 +2371,13 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_and_deltas() {
 
     assert_eq!(alive(&one_by_one, true).len(), 1);
     assert_eq!(alive(&one_by_one, false).len(), 2);
-    assert_eq!(deltas(&one_by_one, true).len(), 3);
-    assert_eq!(deltas(&one_by_one, false).len(), 2);
+    assert_eq!(deltas(&one_by_one, true).len(), 4);
+    assert_eq!(deltas(&one_by_one, false).len(), 3);
     assert_eq!(
         codes(one_by_one.deltas()),
-        ["10:1:O-1", "14:0:Q-1", "14:0:A-1", "10:2:A-2", "14:0:Q-1"]
+        [
+            "10:1:O-1", "14:0:Q-1", "14:0:A-1", "10:2:A-2", "8:1:E-1", "14:0:Q-1", "8:2:E-2"
+        ]
     );
     for (arrived, in_group) in [
         (
@@ -2982,10 +3012,11 @@ fn alive_on_reads_one_side_best_first() {
 }
 
 /// A walk prunes an execution or a trade where it pulls it: an instant only
-/// an execution reached emits no book, and an execution of an instrument
-/// no order names opens no book.
+/// an execution reached emits the book of its instrument stating the
+/// execution among its deltas and moving nothing, and a trade is pruned,
+/// so an instrument only a trade names opens no book.
 #[test]
-fn a_book_walk_prunes_executions_before_routing_them() {
+fn a_book_walk_records_an_execution_in_its_book_and_prunes_a_trade() {
     let mut fill = operation("execution", "IBM", "E-1", 2, "Buy", "100", 1, "Filled");
     op_mut(&mut fill).set_execunix(Some(2), true);
     fill.finalize();
@@ -3012,20 +3043,30 @@ fn a_book_walk_prunes_executions_before_routing_them() {
             .iter()
             .map(|book| (book.get_currunix(), book.get_ticker().unwrap()))
             .collect::<Vec<_>>(),
-        [(1, "IBM"), (4, "IBM")]
+        [(1, "IBM"), (2, "IBM"), (4, "IBM")]
     );
-    assert!(books.iter().all(|book| {
-        book.alive()
-            .chain(book.deltas())
+    // The execution's book states it alone, as a delta book, dated by it;
+    // rebuilt over the book before it, it holds the order as before.
+    assert_eq!(codes(books[1].deltas()), ["8:1:E-1"]);
+    assert_eq!(books[1].get_execunix(), Some(2));
+    assert!(!books[1].is_complete());
+    let whole = whole(&books);
+    assert_eq!(codes(whole[1].alive()), ["10:1:O-1"]);
+    assert_eq!(codes(whole[2].alive()), ["10:1:O-1", "10:2:O-2"]);
+    assert!(
+        books
+            .iter()
+            .flat_map(|book| book.alive())
             .all(|entry| entry.kind() == MarketKind::OrderEvent)
-    }));
-    assert_eq!(books[1].get_execunix(), None);
+    );
+    assert_eq!(whole[2].get_execunix(), Some(2));
 }
 
 /// A filter narrows what a walk folds after the kind rule pruned it, so it
-/// never admits an execution; a filter keeping every row is no filter, and
-/// one naming a column the row does not carry, or answering no boolean, is
-/// refused where it is bound.
+/// never admits a trade, and it keeps or drops an execution as it keeps or
+/// drops an order; a filter keeping every row is no filter, and one naming
+/// a column the row does not carry, or answering no boolean, is refused
+/// where it is bound.
 #[test]
 fn a_filter_narrows_the_walk_and_never_widens_it() {
     let inputs = || {
@@ -3047,11 +3088,12 @@ fn a_filter_narrows_the_walk_and_never_widens_it() {
     let instants = |books: &[BookEvent]| books.iter().map(Event::get_currunix).collect::<Vec<_>>();
 
     let buys = walk("side = 'BUYS'");
-    assert_eq!(instants(&buys), [1, 4]);
-    assert_eq!(codes(whole(&buys)[1].alive()), ["14:0:B-2", "10:1:B-1"]);
-    assert!(walk("marketdatakind = 'EXEC'").is_empty());
+    assert_eq!(instants(&buys), [1, 3, 4]);
+    assert_eq!(codes(buys[1].deltas()), ["8:1:E-1"]);
+    assert_eq!(codes(whole(&buys)[2].alive()), ["14:0:B-2", "10:1:B-1"]);
+    assert_eq!(instants(&walk("marketdatakind = 'EXEC'")), [3]);
     assert_eq!(instants(&walk("marketdatakind = 'QUOT'")), [4]);
-    assert_eq!(instants(&walk("true")), [1, 2, 4]);
+    assert_eq!(instants(&walk("true")), [1, 2, 3, 4]);
 
     for refused in ["nope = 1", "price + 1"] {
         assert!(

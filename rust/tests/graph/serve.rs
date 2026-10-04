@@ -70,9 +70,9 @@ fn execution(unix: i64, ticker: &str, code: &str, side: Side, quantity: i64) -> 
 
 /// Two tickers across three minutes: `ACME` quoted on both sides in the
 /// first minute, requoted and executed in the second and requoted in the
-/// third; `BETA` quoted once in each of the first two minutes. Five books:
-/// the execution is pruned before the fold, so no book stands at its
-/// instant and no book holds it.
+/// third; `BETA` quoted once in each of the first two minutes. Six books:
+/// the execution is recorded at its instant, a book of `ACME` stating it
+/// alone among its deltas and holding it alive nowhere.
 fn operations() -> Vec<MarketData> {
     vec![
         quote(T0 + 5 * SECOND, "ACME", "AB1", Side::Buy, "100", 10),
@@ -455,18 +455,18 @@ fn the_readings_answer_over_a_store_that_kept_no_enum_identity() {
     let tickers = items(&service.tickers("books").unwrap());
     assert_eq!(tickers.len(), 2, "{tickers:?}");
     assert_eq!(text(&tickers[0], "ticker"), "ACME");
-    assert_eq!(member(&tickers[0], "books"), &Scalar::from(3_u64));
+    assert_eq!(member(&tickers[0], "books"), &Scalar::from(4_u64));
     assert_eq!(text(&tickers[1], "ticker"), "BETA");
 
     let candles = service.candles(&query()).unwrap();
     assert_eq!(candles.len(), 3);
-    assert_eq!(candles[1].books, 1);
+    assert_eq!(candles[1].books, 2);
 
     let book = service
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
+    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
 }
 
 #[test]
@@ -477,7 +477,7 @@ fn the_readings_answer_without_http() {
     assert_eq!(tickers.len(), 2);
     assert_eq!(text(&tickers[0], "ticker"), "ACME");
     assert_eq!(text(&tickers[1], "ticker"), "BETA");
-    assert_eq!(member(&tickers[0], "books"), &Scalar::from(3_u64));
+    assert_eq!(member(&tickers[0], "books"), &Scalar::from(4_u64));
 
     let candles = service.candles(&query()).unwrap();
     assert_eq!(candles.len(), 3);
@@ -489,13 +489,16 @@ fn the_readings_answer_without_http() {
         candles[1].bid.map(|bid| bid.open),
         Some("100.5".parse().unwrap())
     );
-    assert_eq!(candles[1].books, 1, "the execution's instant folds no book");
+    assert_eq!(
+        candles[1].books, 2,
+        "the execution's instant folds a book of its own"
+    );
 
     let book = service
         .book("books", "ACME", T0 + 100 * SECOND)
         .unwrap()
         .unwrap();
-    assert_eq!(book.get_currunix(), T0 + 65 * SECOND);
+    assert_eq!(book.get_currunix(), T0 + 70 * SECOND);
     assert_eq!(book.best_price(Side::Buy), Some("100.5".parse().unwrap()));
     assert!(service.book("books", "ACME", T0).unwrap().is_none());
     assert!(
@@ -511,7 +514,10 @@ fn the_readings_answer_without_http() {
         .collect::<Result<_, _>>()
         .unwrap();
     let total: usize = rows.iter().map(|batch| batch.num_rows()).sum();
-    assert_eq!(total, 4, "every book's deltas: {total}");
+    assert_eq!(
+        total, 5,
+        "every book's deltas, the execution among them: {total}"
+    );
     assert_eq!(
         rows[0].schema(),
         BookService::events_field()
@@ -963,7 +969,7 @@ fn tickers_span_the_books_of_each_ticker() {
         "2026-01-05T10:02:06.000000000Z",
         "the second after the last book"
     );
-    assert_eq!(member(acme, "books"), &Scalar::from(3_u64));
+    assert_eq!(member(acme, "books"), &Scalar::from(4_u64));
     let beta = &tickers[1];
     assert_eq!(text(beta, "ticker"), "BETA");
     assert_eq!(text(beta, "from"), "2026-01-05T10:00:30.000000000Z");
@@ -1026,7 +1032,7 @@ fn candles_fold_the_books_of_the_range_by_the_minute() {
     assert_eq!(text(member(second, "bid"), "open"), "100.5");
     assert_eq!(text(member(second, "bid"), "high"), "100.5");
     assert_eq!(text(member(second, "spread"), "close"), "0.5");
-    assert_eq!(member(second, "books"), &Scalar::from(1_u64));
+    assert_eq!(member(second, "books"), &Scalar::from(2_u64));
 
     let third = &candles[2];
     assert_eq!(text(third, "start"), "2026-01-05T10:02:00.000000000Z");
@@ -1110,7 +1116,7 @@ fn candles_align_to_the_zone_asked_and_render_in_it() {
         text(&candles[0], "end"),
         "2026-01-05T12:00:00.000000000+01:00[Europe/Zurich]"
     );
-    assert_eq!(member(&candles[0], "books"), &Scalar::from(3_u64));
+    assert_eq!(member(&candles[0], "books"), &Scalar::from(4_u64));
 }
 
 #[test]
@@ -1195,8 +1201,8 @@ fn the_book_at_an_instant_is_the_last_at_or_before_it() {
     ));
     assert_eq!(
         text(&book, "currunix"),
-        "2026-01-05T10:01:05.000000000Z",
-        "the execution at 10:01:10 folded no book"
+        "2026-01-05T10:01:10.000000000Z",
+        "the execution at 10:01:10 folded a book of its own, the last at or before"
     );
     assert_eq!(text(&book, "ticker"), "ACME");
     assert_eq!(
@@ -1317,13 +1323,24 @@ fn events_list_every_entry_and_delta_of_the_books_in_range() {
         BTreeSet::from([
             "2026-01-05T10:00:05.000000000Z".to_owned(),
             "2026-01-05T10:01:05.000000000Z".to_owned(),
+            "2026-01-05T10:01:10.000000000Z".to_owned(),
             "2026-01-05T10:02:05.000000000Z".to_owned(),
         ]),
-        "the execution's instant folds no book"
+        "the execution's instant folds a book of its own"
     );
-    assert!(
-        rows.iter().all(|row| text(row, "marketdatakind") == "QUOT"),
-        "no book holds the execution"
+    let kinds = rows
+        .iter()
+        .fold(std::collections::BTreeMap::new(), |mut kinds, row| {
+            *kinds.entry(text(row, "marketdatakind")).or_insert(0_usize) += 1;
+            kinds
+        });
+    assert_eq!(
+        kinds,
+        std::collections::BTreeMap::from([
+            ("EXEC".to_owned(), 1),
+            ("QUOT".to_owned(), rows.len() - 1)
+        ]),
+        "the execution is the one delta of its instant"
     );
     let first_book: Vec<&Scalar> = rows
         .iter()
@@ -1716,16 +1733,21 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
     let acme = acme_books();
     assert_eq!(
         acme.iter().map(BookEvent::is_complete).collect::<Vec<_>>(),
-        [false, false, false]
+        [false, false, false, false]
     );
     assert_eq!(acme[0].get_prevuuid(), None);
     let origin = acme[0]
         .clone()
         .with_previous(&BookEvent::new(T0, "ACME"))
         .unwrap();
-    let expected = acme[2]
+    let expected = acme[3]
         .clone()
-        .with_previous(&acme[1].clone().with_previous(&origin).unwrap())
+        .with_previous(
+            &acme[2]
+                .clone()
+                .with_previous(&acme[1].clone().with_previous(&origin).unwrap())
+                .unwrap(),
+        )
         .unwrap();
     let service = service(BookServiceOptions::new());
     let book = service
@@ -1734,7 +1756,7 @@ fn the_book_at_an_instant_is_rebuilt_from_the_origin_before_it() {
         .unwrap();
     assert!(book.is_complete());
     assert_eq!(book.get_currunix(), T0 + 125 * SECOND);
-    assert_eq!(book.get_curruuid(), acme[2].get_curruuid());
+    assert_eq!(book.get_curruuid(), acme[3].get_curruuid());
     assert_eq!(
         book.alive().map(Element::get_curruuid).collect::<Vec<_>>(),
         expected
@@ -1793,9 +1815,9 @@ fn a_book_naming_a_book_the_rows_do_not_hold_answers_incomplete() {
         .unwrap()
         .unwrap();
     assert!(!book.is_complete());
-    assert_eq!(book.get_curruuid(), acme[2].get_curruuid());
+    assert_eq!(book.get_curruuid(), acme[3].get_curruuid());
     assert_eq!(book.alive().count(), 0);
-    assert_eq!(book.best_price(Side::Sell), acme[2].best_price(Side::Sell));
+    assert_eq!(book.best_price(Side::Sell), acme[3].best_price(Side::Sell));
 
     let answer = ok_json(&get(
         &endpoint,

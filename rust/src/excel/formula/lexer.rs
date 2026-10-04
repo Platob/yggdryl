@@ -253,14 +253,14 @@ impl<'a> Lexer<'a> {
     /// Push the lexeme `kind` over `start..end` and move past it.
     fn push(&mut self, kind: Kind, start: usize, end: usize) {
         // An opaque run joins the one before it: one piece per run.
-        if kind == Kind::Opaque {
-            if let Some(last) = self.lexemes.last_mut() {
-                if last.kind == Kind::Opaque && last.start + last.text.len() == start {
-                    last.text = &self.text[last.start..end];
-                    self.position = end;
-                    return;
-                }
-            }
+        if kind == Kind::Opaque
+            && let Some(last) = self.lexemes.last_mut()
+            && last.kind == Kind::Opaque
+            && last.start + last.text.len() == start
+        {
+            last.text = &self.text[last.start..end];
+            self.position = end;
+            return;
         }
         self.lexemes.push(Lexeme {
             kind,
@@ -488,18 +488,18 @@ impl<'a> Lexer<'a> {
             return;
         };
         let end = start + error.len();
-        if *error == "#REF!" {
-            if let Some((target, target_end)) = self.target_at(end) {
-                self.push(
-                    Kind::Reference(RawReference {
-                        sheet: RawSheet::Invalid,
-                        target,
-                    }),
-                    start,
-                    target_end,
-                );
-                return;
-            }
+        if *error == "#REF!"
+            && let Some((target, target_end)) = self.target_at(end)
+        {
+            self.push(
+                Kind::Reference(RawReference {
+                    sheet: RawSheet::Invalid,
+                    target,
+                }),
+                start,
+                target_end,
+            );
+            return;
         }
         self.push(Kind::Error, start, end);
     }
@@ -657,20 +657,18 @@ impl<'a> Lexer<'a> {
         };
         match self.corner(at) {
             Some((Corner::Cell(row, column), end)) => {
-                if self.char_at(end) == Some(':') {
-                    if let Some((Corner::Cell(last_row, last_column), last_end)) =
+                if self.char_at(end) == Some(':')
+                    && let Some((Corner::Cell(last_row, last_column), last_end)) =
                         self.corner(end + 1)
-                    {
-                        if ends(last_end) {
-                            return Some((
-                                RawTarget::Area {
-                                    first: (row, column),
-                                    last: (last_row, last_column),
-                                },
-                                last_end,
-                            ));
-                        }
-                    }
+                    && ends(last_end)
+                {
+                    return Some((
+                        RawTarget::Area {
+                            first: (row, column),
+                            last: (last_row, last_column),
+                        },
+                        last_end,
+                    ));
                 }
                 ends(end).then_some((RawTarget::Cell { row, column }, end))
             }

@@ -330,7 +330,6 @@ pub trait IOMedia: Send {
     /// contents prove, and a container - a folder, a path ending in `/`, a
     /// glob, a table - reads as the table its leaves hold, under the encoding
     /// [`record_options`](Self::record_options) finds beneath it.
-
     ///
     /// ```
     /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
@@ -418,7 +417,6 @@ pub trait IOMedia: Send {
     /// # Ok(())
     /// # }
     /// ```
-
     ///
     /// # Errors
     ///

@@ -1296,13 +1296,13 @@ impl Run {
         let mut placeholders = 0_i32;
         let mut leftmost_zero = None;
         for token in section.tokens.iter() {
-            if let Token::Digit(kind, held) = token {
-                if *held == role {
-                    if *kind == Placeholder::Zero && leftmost_zero.is_none() {
-                        leftmost_zero = Some(placeholders);
-                    }
-                    placeholders += 1;
+            if let Token::Digit(kind, held) = token
+                && *held == role
+            {
+                if *kind == Placeholder::Zero && leftmost_zero.is_none() {
+                    leftmost_zero = Some(placeholders);
                 }
+                placeholders += 1;
             }
         }
         // From the leftmost `0` placeholder to the end, every place shows.

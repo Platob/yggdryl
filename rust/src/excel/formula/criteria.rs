@@ -87,13 +87,13 @@ impl MatchState {
                 self.reach[0] = Some(self.reach[0].map_or(at, |held| held.min(at)));
             }
             wildcard.close(&mut self.reach);
-            if let Some(start) = self.reach[states - 1] {
-                if !wildcard.entire || chars.peek().is_none() {
-                    found = match found {
-                        Some((first, _)) if first < start => found,
-                        _ => Some((start, at)),
-                    };
-                }
+            if let Some(start) = self.reach[states - 1]
+                && (!wildcard.entire || chars.peek().is_none())
+            {
+                found = match found {
+                    Some((first, _)) if first < start => found,
+                    _ => Some((start, at)),
+                };
             }
             if let Some((first, _)) = found {
                 for held in &mut self.reach {
@@ -261,11 +261,11 @@ impl Wildcard {
     /// may match nothing.
     fn close(&self, reach: &mut [Option<usize>]) {
         for (at, piece) in self.pieces.iter().enumerate() {
-            if *piece == Piece::Any {
-                if let Some(start) = reach[at] {
-                    let next = &mut reach[at + 1];
-                    *next = Some(next.map_or(start, |held| held.min(start)));
-                }
+            if *piece == Piece::Any
+                && let Some(start) = reach[at]
+            {
+                let next = &mut reach[at + 1];
+                *next = Some(next.map_or(start, |held| held.min(start)));
             }
         }
     }

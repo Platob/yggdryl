@@ -388,9 +388,10 @@ assert_eq!(read, values);
 
 ## Fold a sorted stream into books
 
-`BookIterator` folds sorted orders and quotes into one `BookEvent` per
-instant and book key that moved it - the instrument's ISIN, else its ticker,
-else `XX0000000000` - pruning every execution and trade. A book is complete
+`BookIterator` folds sorted orders and quotes into its sides and records
+executions among its deltas, yielding one `BookEvent` per recorded instant
+and book key - the instrument's ISIN, else its ticker, else `XX0000000000` -
+pruning every trade. A book is complete
 (`is_complete`) only at a snapshot tick; every other book states its deltas
 alone beside the top of book they settled on, and `with_previous` over the
 complete book before it rebuilds it whole. A filter over the `marketdata` row
@@ -423,11 +424,11 @@ fill.finalize();
 let stream = vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill)];
 
 let books = BookIterator::new(stream.clone().into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(books.len(), 2, "one book per instant that moved it; the execution folds into none");
+assert_eq!(books.len(), 2, "one book per recorded instant; the execution moves no side");
 // No grid and no snapshot input: each book states its deltas alone and its top of book.
 let last = &books[1];
 assert!(!last.is_complete());
-assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 1, 0));
+assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 2, 0));
 assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
 assert_eq!(books[0].get_prevuuid(), None);
@@ -440,9 +441,9 @@ assert_eq!((whole.alive().count(), whole.get_curruuid()), (2, last.get_curruuid(
 let gridded = BookIterator::new(stream.clone().into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(gridded.len(), 3);
 assert!(gridded.iter().all(BookEvent::is_complete));
-// A filter narrows what folds, and never admits an execution.
+// A filter can keep the execution alone, recorded without moving a side.
 let filtered = BookIterator::new(stream.into_iter(), 0)?.with_filter("marketdatakind = 'EXEC'")?;
-assert_eq!(filtered.count(), 0);
+assert_eq!(filtered.count(), 1);
 
 // The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 let mut listed = OrderEvent::at(T);
@@ -603,9 +604,10 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries into the sides and executions among the deltas - and
 `MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
-snapshot input, so its book is complete; the `X` after it states its delta.
+snapshot input, so its book is complete; the `X` after it states the bid's
+change and the execution as its deltas.
 
 ```rust
 use std::sync::Arc;
@@ -631,9 +633,9 @@ let first = books[0].as_book_event().expect("a book row");
 assert!(first.is_complete());
 let last = books[1].as_book_event().expect("a book row");
 assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
-// The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
+// The bid's change and the execution (`269=2`) are deltas; only the bid moves a side.
 assert!(!last.is_complete());
-assert_eq!(last.deltas().len(), 1);
+assert_eq!(last.deltas().len(), 2);
 ```
 
 ## Fold books into candles
@@ -802,8 +804,9 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
-  execution, a trade, a batch - is pruned in silence. An operation dated before
+  `BookEvent`); every input `MarketDataKind::is_recorded` refuses - a
+  trade or a batch - is pruned in silence. Executions are recorded among the
+  deltas and move no side. An operation dated before
   its book and a group the book refuses are left out with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
   still counts as the book's delta.

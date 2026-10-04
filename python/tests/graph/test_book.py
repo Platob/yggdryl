@@ -181,13 +181,13 @@ class TestBookEvent:
         crossed = empty.with_operations([order(price="103"), quote()])
         assert crossed.is_crossed
 
-    def test_market_data_folds_and_an_execution_is_pruned(self) -> None:
-        # A book holds no execution: a fill moves it through its order's
-        # report, so an execution in a group is left out where it is read.
+    def test_market_data_folds_and_an_execution_is_recorded(self) -> None:
+        # A book places no execution: a fill moves it through its order's
+        # report, and the execution stands among the deltas of its instant.
         execution = graph.ExecutionEvent(CLOCK, crosscode="E-1", side="BUYS", lastpx=D("101"), lastqty=1)
         book = graph.BookEvent(CLOCK, "IBM").with_operations(iter([graph.MarketData(order()), execution]))
         assert [entry.crosscode for entry in book.alive] == ["10:1:O-1"]
-        assert [delta.crosscode for delta in book.deltas] == ["10:1:O-1"]
+        assert [delta.crosscode for delta in book.deltas] == ["10:1:O-1", "8:1:E-1"]
         assert not hasattr(book, "executions")
 
     def test_alive_on_reads_one_side_best_first(self) -> None:
@@ -312,18 +312,20 @@ class TestSnapshotEvent:
 
 class TestBookIterator:
     def test_books_over_three_items_in_order(self) -> None:
-        # A walk prunes an execution where it pulls it: an instant only an
-        # execution reached emits no book.
+        # A walk records an execution where it pulls it: an instant only an
+        # execution reached emits a book stating it alone, resting nowhere.
         execution = graph.ExecutionEvent(
             CLOCK + 1, crosscode="O-1", side="BUYS", lastpx=D("101"), lastqty=1, ticker="IBM"
         )
         walk = graph.BookIterator([order(), graph.MarketData(quote()), execution])
         books = list(walk)
-        assert [type(book) for book in books] == [graph.BookEvent]
-        assert [book.currunix for book in books] == [CLOCK]
+        assert [type(book) for book in books] == [graph.BookEvent, graph.BookEvent]
+        assert [book.currunix for book in books] == [CLOCK, CLOCK + 1]
         assert decimal_of(books[0].best_price(Side.BUYS)) == D("101")
         assert decimal_of(books[0].best_price(Side.SELL)) == D("102")
         assert [delta.marketdatakind for delta in books[0].deltas] == [MarketDataKind.ORDR, MarketDataKind.QUOT]
+        assert [delta.marketdatakind for delta in books[1].deltas] == [MarketDataKind.EXEC]
+        assert decimal_of(books[1].best_price(Side.BUYS)) == D("101")
         assert hash(walk.__class__) is not None and walk.__hash__ is None
 
     def test_a_filter_narrows_the_walk_and_never_widens_it(self) -> None:
@@ -341,16 +343,17 @@ class TestBookIterator:
             return [book.currunix for book in graph.BookIterator(inputs(), filter=filter)]
 
         buys = list(graph.BookIterator(inputs(), 0, "side = 'BUYS'"))
-        assert [book.currunix for book in buys] == [1, 4]
-        assert [delta.crosscode for delta in buys[1].deltas] == ["14:0:B-2"]
+        assert [book.currunix for book in buys] == [1, 3, 4]
+        assert [delta.crosscode for delta in buys[1].deltas] == ["8:1:E-1"]
+        assert [delta.crosscode for delta in buys[2].deltas] == ["14:0:B-2"]
         # A filter is any filter the expression layer reads: text, a Filter
         # or a Term over the `marketdata` row.
-        assert instants(Filter("side = 'BUYS'")) == [1, 4]
+        assert instants(Filter("side = 'BUYS'")) == [1, 3, 4]
         assert instants(Term.column("marketdatakind").eq(Term.literal("QUOT"))) == [4]
-        # It never admits what a book does not fold.
-        assert instants("marketdatakind = 'EXEC'") == []
+        # An execution is recorded: a filter keeping it alone folds its book.
+        assert instants("marketdatakind = 'EXEC'") == [3]
         # A filter keeping every row folds what no filter does.
-        assert instants("true") == instants(None) == [1, 2, 4]
+        assert instants("true") == instants(None) == [1, 2, 3, 4]
         for refused in ("nope = 1", "price + 1"):
             with pytest.raises(ValueError):
                 graph.BookIterator(inputs(), filter=refused)

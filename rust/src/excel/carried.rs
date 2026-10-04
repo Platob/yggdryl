@@ -839,10 +839,8 @@ impl FrameReader {
                 self.flush_text();
                 let name = local_name(start.name().as_ref()).to_vec();
                 let empty = matches!(event, Event::Empty(_));
-                if main {
-                    if let Some(slot) = slot_of(&name) {
-                        self.last_slot = slot;
-                    }
+                if main && let Some(slot) = slot_of(&name) {
+                    self.last_slot = slot;
                 }
                 let class = if main {
                     Class::of(&name)
@@ -939,10 +937,9 @@ impl FrameReader {
                 if !uri
                     .as_deref()
                     .is_some_and(|uri| ShiftedExtension::from_uri(uri).is_some())
+                    && let Some(open) = self.open.as_mut()
                 {
-                    if let Some(open) = self.open.as_mut() {
-                        open.class = Class::Blocking;
-                    }
+                    open.class = Class::Blocking;
                 }
             }
             _ => {}

@@ -295,9 +295,9 @@ fs.rmSync(directory, { recursive: true, force: true })
 ## Fold a sorted stream into books
 
 `new graph.BookIterator(items, snapshotMillis = 0, filter = undefined)` folds
-sorted orders and quotes into one `BookEvent` per instant and book key that
-moved it - the instrument's ISIN, else its ticker, else `XX0000000000` -
-pruning every execution and trade. A book is complete (`isComplete`) only at a
+sorted orders and quotes into its sides and records executions among its
+deltas, yielding one `BookEvent` per recorded instant and book key - the
+instrument's ISIN, else its ticker, else `XX0000000000` - pruning every trade. A book is complete (`isComplete`) only at a
 snapshot tick; every other book states its deltas alone beside the top of book
 they settled on, and `withPrevious` over the complete book before it rebuilds
 it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -317,11 +317,11 @@ const fill = new graph.ExecutionEvent(T + SECOND, {
 const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
 const books = [...new graph.BookIterator(stream)]
-assert.equal(books.length, 2, 'one book per instant that moved it; the execution folds into none')
+assert.equal(books.length, 2, 'one book per recorded instant; the execution moves no side')
 // No grid and no snapshot input: each book states its deltas alone and its top of book.
 const last = books[1]
 assert.equal(last.isComplete, false)
-assert.deepEqual([last.currunix, last.deltas().length, last.alive().length], [T + SECOND, 1, 0])
+assert.deepEqual([last.currunix, last.deltas().length, last.alive().length], [T + SECOND, 2, 0])
 assert.equal(last.bestPrice('BUYS'), '189.49')
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
 assert.equal(books[0].prevuuid, null)
@@ -334,8 +334,8 @@ assert.deepEqual([whole.alive().length, whole.curruuid], [2, last.curruuid], 'de
 const gridded = [...new graph.BookIterator(stream, 500)]
 assert.equal(gridded.length, 3)
 assert.ok(gridded.every((book) => book.isComplete))
-// A filter narrows what folds, and never admits an execution.
-assert.equal([...new graph.BookIterator(stream, 0, "marketdatakind = 'EXEC'")].length, 0)
+// A filter can keep the execution alone, recorded without moving a side.
+assert.equal([...new graph.BookIterator(stream, 0, "marketdatakind = 'EXEC'")].length, 1)
 // The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 const [keyless] = new graph.BookIterator([new graph.OrderEvent(T, { crosscode: 'L-1', side: 'SELL' })])
 assert.deepEqual([keyless.crosscode, keyless.ticker], ['3:0:XX0000000000', null])
@@ -458,9 +458,10 @@ assert.deepEqual([...chain.getChild('crosscode')], ['10:1:O-1001'])
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `bookArrowReader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries into the sides and executions among the deltas - and
 `MarketData.fromArrowReader` reads the books back. A `W` full refresh is a
-snapshot input, so its book is complete; the `X` after it states its delta.
+snapshot input, so its book is complete; the `X` after it states the bid's
+change and the execution as its deltas.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -481,8 +482,8 @@ assert.deepEqual(values.map((value) => value.marketdatakind), ['BOOK', 'BOOK'])
 assert.equal(values[0].asBookEvent().isComplete, true)
 const last = values[1].asBookEvent()
 assert.equal(last.bestPrice('BUYS'), '101')
-// The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
-assert.deepEqual([last.isComplete, last.deltas().length], [false, 1])
+// The bid's change and the execution (`269=2`) are deltas; only the bid moves a side.
+assert.deepEqual([last.isComplete, last.deltas().length], [false, 2])
 ```
 
 ## Fold books into candles
@@ -613,7 +614,8 @@ assert.equal(typeof book.serve, 'function')
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
   `$.operations[i].kind` (`BookIterator` at `$.operation.kind`), and an
-  execution or a trade is pruned, no error and no book. What `BookIterator`
+  execution is recorded among the deltas and moves no side, while a trade
+  is pruned, no error and no book. What `BookIterator`
   finds wrong in the data - an operation dated before its book - it leaves
   out, and an order or a quote stating neither side it places nowhere (still
   the book's delta), each with a warning on standard error (unless a handler

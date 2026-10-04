@@ -100,6 +100,7 @@ impl MarketData {
         match self {
             Self::OrderEvent(event) => Some(event),
             Self::QuoteEvent(event) => Some(event),
+            Self::ExecutionEvent(event) => Some(event),
             _ => None,
         }
     }
@@ -109,6 +110,7 @@ impl MarketData {
         match self {
             Self::OrderEvent(event) => Some(event),
             Self::QuoteEvent(event) => Some(event),
+            Self::ExecutionEvent(event) => Some(event),
             _ => None,
         }
     }
@@ -124,17 +126,18 @@ impl MarketData {
         }
     }
 
-    /// This value's dated order or quote: the seam a book's internals read
-    /// through, unwrapped.
+    /// This value's dated order, quote or execution: the seam a book's
+    /// internals read through, unwrapped - a side holds orders and quotes,
+    /// the deltas executions beside them.
     pub(crate) fn operation_event(&self) -> &dyn BookOperation {
         self.as_operation_event()
-            .expect("a book holds alive only dated order or quote events")
+            .expect("a book states only dated order, quote or execution events")
     }
 
     /// [`Self::operation_event`], mutably.
     pub(crate) fn operation_event_mut(&mut self) -> &mut dyn BookOperation {
         self.as_operation_event_mut()
-            .expect("a book holds alive only dated order or quote events")
+            .expect("a book states only dated order, quote or execution events")
     }
 }
 

@@ -65,11 +65,23 @@ impl Default for ChangeSet {
     fn default() -> Self {
         use std::sync::atomic::Ordering;
         Self {
-            generation: CHANGE_GENERATIONS
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                    next.checked_add(1)
-                })
-                .expect("sheet change generation exhausted"),
+            generation: {
+                let mut generation = CHANGE_GENERATIONS.load(Ordering::Relaxed);
+                loop {
+                    let next = generation
+                        .checked_add(1)
+                        .expect("sheet change generation exhausted");
+                    match CHANGE_GENERATIONS.compare_exchange_weak(
+                        generation,
+                        next,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break generation,
+                        Err(current) => generation = current,
+                    }
+                }
+            },
             epoch: 0,
             stamp: 0,
             structural: true,
@@ -374,26 +386,25 @@ impl std::ops::DerefMut for CellMut<'_> {
 impl Drop for CellMut<'_> {
     fn drop(&mut self) {
         self.cell.move_to(self.reference);
-        if self.checked_serial {
-            if let Some(text) = CellExtra::calculation_text(self.cell) {
-                self.extras
-                    .entry(self.reference)
-                    .or_default()
-                    .calculation_text = Some(text);
-            }
+        if self.checked_serial
+            && let Some(text) = CellExtra::calculation_text(self.cell)
+        {
+            self.extras
+                .entry(self.reference)
+                .or_default()
+                .calculation_text = Some(text);
         }
-        if let Some((bits, original)) = self.saved_serial.take() {
-            if self.cell.kind() == original.kind()
-                && self.cell.value() == original.value()
-                && self.cell.format() == original.format()
-                && self.cell.formula() == original.formula()
-                && self.cell.error() == original.error()
-            {
-                self.extras
-                    .entry(self.reference)
-                    .or_default()
-                    .original_serial_bits = Some(bits);
-            }
+        if let Some((bits, original)) = self.saved_serial.take()
+            && self.cell.kind() == original.kind()
+            && self.cell.value() == original.value()
+            && self.cell.format() == original.format()
+            && self.cell.formula() == original.formula()
+            && self.cell.error() == original.error()
+        {
+            self.extras
+                .entry(self.reference)
+                .or_default()
+                .original_serial_bits = Some(bits);
         }
     }
 }
@@ -998,11 +1009,11 @@ impl Sheet {
     /// Preserve a physical record row whose values are all null after a
     /// landing. The row has no fabricated cell or datatype.
     pub(crate) fn ensure_record_row(&mut self, row: u32) {
-        if !self.rows.contains_key(&row) {
-            if let std::collections::btree_map::Entry::Vacant(entry) = self.layout.rows.entry(row) {
-                entry.insert(RowFormat::default());
-                self.changed();
-            }
+        if !self.rows.contains_key(&row)
+            && let std::collections::btree_map::Entry::Vacant(entry) = self.layout.rows.entry(row)
+        {
+            entry.insert(RowFormat::default());
+            self.changed();
         }
     }
 
@@ -1117,18 +1128,18 @@ impl Sheet {
     /// every column, which leaves nothing to scroll.
     pub fn set_frozen(&mut self, frozen: Option<Frozen>) -> Result<()> {
         let frozen = frozen.filter(|frozen| frozen.rows > 0 || frozen.columns > 0);
-        if let Some(pane) = frozen {
-            if pane.rows >= MAX_ROWS || pane.columns >= MAX_COLUMNS {
-                return Err(self.refused(
-                    "pane",
-                    format_smolstr!(
-                        "expected fewer than {MAX_ROWS} rows and {MAX_COLUMNS} columns frozen, got \
+        if let Some(pane) = frozen
+            && (pane.rows >= MAX_ROWS || pane.columns >= MAX_COLUMNS)
+        {
+            return Err(self.refused(
+                "pane",
+                format_smolstr!(
+                    "expected fewer than {MAX_ROWS} rows and {MAX_COLUMNS} columns frozen, got \
                          {} rows and {} columns",
-                        pane.rows,
-                        pane.columns
-                    ),
-                ));
-            }
+                    pane.rows,
+                    pane.columns
+                ),
+            ));
         }
         if self.layout.pane != frozen {
             self.layout.pane = frozen;
@@ -2164,14 +2175,15 @@ impl Sheet {
     /// Read one source cell through its exact retained numeric serial.
     pub(crate) fn calculation_operand_at(&self, cell: &Cell) -> super::formula::value::Outcome {
         use super::formula::value::{Operand, Outcome};
-        if cell.formula().is_none() && cell.error().is_none() && cell.kind().is_text() {
-            if let Some(text) = self
+        if cell.formula().is_none()
+            && cell.error().is_none()
+            && cell.kind().is_text()
+            && let Some(text) = self
                 .extras
                 .get(&cell.reference())
                 .and_then(|extra| extra.calculation_text.as_ref())
-            {
-                return Outcome::Computed(Operand::Text(text.clone()));
-            }
+        {
+            return Outcome::Computed(Operand::Text(text.clone()));
         }
         // A forgotten mutable guard cannot rebuild its spelling in Drop.
         // The existing direct conversion remains correct for that cold case.
@@ -2211,13 +2223,13 @@ impl Sheet {
         let mut cells = self.rows.values().peekable();
         let mut metadata = self.layout.rows.keys().copied().peekable();
         std::iter::from_fn(move || {
-            if let Some(row) = cells.peek() {
-                if metadata.peek().is_none_or(|index| row.index <= *index) {
-                    if metadata.peek() == Some(&row.index) {
-                        metadata.next();
-                    }
-                    return cells.next().map(Cow::Borrowed);
+            if let Some(row) = cells.peek()
+                && metadata.peek().is_none_or(|index| row.index <= *index)
+            {
+                if metadata.peek() == Some(&row.index) {
+                    metadata.next();
                 }
+                return cells.next().map(Cow::Borrowed);
             }
             metadata.next().map(|index| {
                 Cow::Owned(Row {
@@ -2320,27 +2332,27 @@ impl Sheet {
     /// Answers whether anything changed.
     pub(crate) fn restyle(&mut self, at: CellRef, style: StyleId, format: NumberFormat) -> bool {
         let system = self.system;
-        if let Some(row) = self.rows.get_mut(&at.row()) {
-            if let Ok(index) = row.position(at.column()) {
-                let cell = &mut row.cells[index];
-                if cell.style() == style && cell.format() == format {
-                    return false;
-                }
-                let raw = self.extras.get(&at).and_then(CellExtra::serial);
-                let used = cell.restyle(style, format, system, raw);
-                let bits = used.and_then(|raw| CellExtra::exceptional_serial(cell, raw, system));
-                if let Some(bits) = bits {
-                    self.extras.entry(at).or_default().original_serial_bits = Some(bits);
-                } else if let Some(extra) = self.extras.get_mut(&at) {
-                    extra.original_serial_bits = None;
-                    if extra.is_empty() {
-                        self.extras.remove(&at);
-                    }
-                }
-                self.note_cell(at, false);
-                self.changed();
-                return true;
+        if let Some(row) = self.rows.get_mut(&at.row())
+            && let Ok(index) = row.position(at.column())
+        {
+            let cell = &mut row.cells[index];
+            if cell.style() == style && cell.format() == format {
+                return false;
             }
+            let raw = self.extras.get(&at).and_then(CellExtra::serial);
+            let used = cell.restyle(style, format, system, raw);
+            let bits = used.and_then(|raw| CellExtra::exceptional_serial(cell, raw, system));
+            if let Some(bits) = bits {
+                self.extras.entry(at).or_default().original_serial_bits = Some(bits);
+            } else if let Some(extra) = self.extras.get_mut(&at) {
+                extra.original_serial_bits = None;
+                if extra.is_empty() {
+                    self.extras.remove(&at);
+                }
+            }
+            self.note_cell(at, false);
+            self.changed();
+            return true;
         }
         self.place(Cell::new(at, CellKind::Number, format, Scalar::Null).with_style(style));
         self.changed();
@@ -3506,7 +3518,7 @@ impl Sheet {
         } else {
             let (format, value, serial) = if raw.has_content || raw.kind.is_text() {
                 match super::cell::wire_scalar(raw.kind, format, self.system, content)
-                    .map_err(&located)?
+                    .map_err(located)?
                 {
                     super::cell::WireScalar::Decoded { scalar, serial } => (format, scalar, serial),
                     // A number no day spells under a date format - Excel
@@ -3983,9 +3995,12 @@ pub mod internals {
         sheet.track_changes().generation()
     }
 
+    /// Change-owner identity, structural flag and ordered semantic cell facts.
+    type PendingChanges = (u64, bool, Vec<(super::CellRef, bool)>);
+
     /// The semantic pending facts in coordinate order, for the mirrored tests.
     #[must_use]
-    pub fn pending_changes(sheet: &Sheet) -> Option<(u64, bool, Vec<(super::CellRef, bool)>)> {
+    pub fn pending_changes(sheet: &Sheet) -> Option<PendingChanges> {
         let changes = sheet.changes()?;
         let mut points: Vec<_> = changes.points().collect();
         points.sort_unstable();

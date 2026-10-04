@@ -2970,7 +2970,7 @@ impl JsFixCodec {
     /// epoch-aligned snapshot grid. `filter` - a `Filter`, a `Term` or the
     /// text of a predicate over the `marketdata` row - narrows what the
     /// books fold, bound once here; it never admits a pruned kind. Not
-    /// given, every booked leaf is kept. Lifecycle enrichment remains an
+    /// given, every recorded leaf is kept. Lifecycle enrichment remains an
     /// explicit composition.
     #[napi(js_name = "_bookArrowReaderNative", skip_typescript)]
     pub fn book_arrow_reader_native(

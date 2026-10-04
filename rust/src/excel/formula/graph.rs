@@ -60,11 +60,23 @@ impl Default for DependencyIndex {
     fn default() -> Self {
         Self {
             // Exhaustion must refuse a new owner rather than alias a live index.
-            owner: INDEXES
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-                    next.checked_add(1)
-                })
-                .expect("dependency index identity exhausted"),
+            owner: {
+                let mut owner = INDEXES.load(Ordering::Relaxed);
+                loop {
+                    let next = owner
+                        .checked_add(1)
+                        .expect("dependency index identity exhausted");
+                    match INDEXES.compare_exchange_weak(
+                        owner,
+                        next,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    ) {
+                        Ok(_) => break owner,
+                        Err(current) => owner = current,
+                    }
+                }
+            },
             slots: Vec::new(),
             free: None,
             points: HashMap::new(),
