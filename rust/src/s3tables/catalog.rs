@@ -183,6 +183,12 @@ impl S3TablesCatalog {
     /// `account_id` property and the client's region, else found by name
     /// among the caller's own table buckets on first use, since a bare
     /// location states no account and no region.
+    ///
+    /// The catalog keeps, and hands every namespace and table under it, the
+    /// properties less the ones the session read: who signs is the session
+    /// from here on, so no credential travels on in a bag a `Debug` or a
+    /// `properties` listing prints, and the store a table's files are opened
+    /// on signs as this session and no other.
     pub(crate) fn from_location(
         name: SmolStr,
         url: &Url,
@@ -243,10 +249,11 @@ impl S3TablesCatalog {
             .map(str::trim)
             .filter(|account| !account.is_empty())
             .map(str::to_owned);
-        Ok(
-            Self::over(name, client, url.clone(), bucket, stated, account)
-                .with_properties(properties.clone()),
-        )
+        let kept: Properties = properties
+            .iter()
+            .filter(|(name, _)| !Session::is_property(name.strip_prefix(PREFIX).unwrap_or(name)))
+            .collect();
+        Ok(Self::over(name, client, url.clone(), bucket, stated, account).with_properties(kept))
     }
 
     fn over(

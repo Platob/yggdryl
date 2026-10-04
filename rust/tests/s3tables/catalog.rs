@@ -457,10 +457,17 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
     assert_eq!(bucket.bucket_arn().expect("the ARN").to_string(), arn);
     assert_eq!(fake.lines(), ["GET /buckets?maxBuckets=250"]);
 
-    // The catalog prints none of the secrets it was stated.
+    // Who signs is the session's: the catalog keeps none of the identity
+    // properties it was stated, so it lists and prints no secret.
+    use yggdryl::ObjectValue as _;
+    let kept = catalog.properties().expect("the catalog's properties");
+    assert!(
+        kept.iter()
+            .all(|(name, _)| !yggdryl::aws::Session::is_property(name)),
+        "an identity property kept in {kept:?}"
+    );
     let shown = format!("{catalog:?}");
     assert!(!shown.contains(SECRET_KEY), "a secret in {shown}");
-    assert!(shown.contains("<redacted>"), "{shown}");
 
     // Named by its ARN, the location keeps the region and the account the
     // ARN states: the catalog is the same bucket, and no request asks for

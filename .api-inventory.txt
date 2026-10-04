@@ -2768,7 +2768,7 @@ pub enum Table  (Media(Box<MediaTable>), Iceberg(Box<IcebergTable<Handle>>) unde
   pub fn with_properties(self, properties: Properties) -> Self  (the stated properties the handle opens with: what a target's `with (...)` clause states for the table it names)
 
 ### yggdryl::warehouse::properties  [rust/src/warehouse/properties.rs]
-pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order; Debug a map with `<redacted>` for the value of a name spelled with `secret`, `token`, `key`, `password`, `credential`, `auth`, `signature`, `sas`, `connection_string` or `service_account`)
+pub struct Properties  (the ordered name/value bag every object, target and handle door reads: one value per name, names kept as written; Clone, Default, Eq, Ord, Hash; IntoIterator<Item = (&str, &str)> for &Properties, FromIterator and Extend of any (Into<SmolStr>, Into<SmolStr>) pairs; Display the `with (...)` clause's entries; serde a JSON object in order)
   pub const fn new() -> Self
   pub fn with_property(mut self, name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
   pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self

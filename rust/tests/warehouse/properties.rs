@@ -140,38 +140,3 @@ fn equality_order_and_hash_follow_the_entries() {
     let _ = one;
     let _ = other;
 }
-
-#[test]
-fn debug_hides_every_value_a_credential_name_holds() {
-    let bag = Properties::new()
-        .with_property("region", "eu-west-3")
-        .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
-        .with_property("secret_access_key", "wJalrXUtnFEMI-secret")
-        .with_property("s3tables.session-token", "IQoJ-session")
-        .with_property("client.secret-access-key", "client-secret-value")
-        .with_property("SAS_TOKEN", "sv=2024-sig")
-        .with_property("account_key", "azure-account-key")
-        .with_property("sse_key", "customer-key")
-        .with_property("basic_auth", "user:pass-word")
-        .with_property("header.Authorization", "Bearer bearer-value")
-        .with_property("connection_string", "AccountKey=conn-key")
-        .with_property("service_account_json", "{google-json}")
-        .with_property("password", "hunter2");
-    let shown = format!("{bag:?}");
-    assert!(shown.contains(r#""region": "eu-west-3""#), "{shown}");
-    for (name, secret) in bag.iter().skip(1) {
-        assert!(!shown.contains(secret), "{name} shown in {shown}");
-        assert!(
-            shown.contains(&format!("{name:?}: <redacted>")),
-            "{name} in {shown}"
-        );
-    }
-    // The data forms carry every value: the clause a plan writes back, and
-    // the document serde writes.
-    assert!(bag.to_string().contains("'hunter2'"));
-    assert!(
-        serde_json::to_string(&bag)
-            .expect("a document")
-            .contains("wJalrXUtnFEMI-secret")
-    );
-}
