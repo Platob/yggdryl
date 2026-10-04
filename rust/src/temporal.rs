@@ -867,8 +867,165 @@ pub(crate) fn parse_datetime(text: &str) -> Result<(i64, TimeUnit)> {
 /// required either way, because an instant a column stores must never carry a
 /// zone the text did not state.
 pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
-    let (local, unit, mut end) = parse_datetime_at(text, "timestamp")?;
+    let (local, unit, end) = parse_datetime_at(text, "timestamp")?;
+    zoned_at(text, local, unit, end)
+}
+
+/// Parse a datetime whose zone the text may or may not state, in one pass:
+/// a naive reading where the text ends at its clock, the instant and its
+/// zone where one follows.
+///
+/// What [`parse_datetime`] and [`parse_timestamp`] read between them, for a
+/// caller that takes either and would otherwise read the text twice to
+/// learn which it is. A naive reading answers no zone and the local count;
+/// a zoned one answers the instant.
+pub(crate) fn parse_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
+    let (local, unit, end) = parse_datetime_at(text, "timestamp")?;
+    if end == text.len() {
+        return Ok((local, unit, None));
+    }
+    let (count, unit, zone) = zoned_at(text, local, unit, end)?;
+    Ok((count, unit, Some(zone)))
+}
+
+/// Parse a datetime as FIX spells one where the general readers stop.
+///
+/// Everything [`parse_instant`] reads is read by it and as it stands -
+/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone - so the
+/// ordinary timestamp costs one pass. What is read here beside it is only
+/// what FIX and the bridges that carry it write and no other text does:
+///
+/// | Spelling | Example | Reads as |
+/// | --- | --- | --- |
+/// | one digit run - the date, the time and three, six or nine digits of fraction | `20240102101530123` | that reading, at the fraction's unit |
+/// | a clock that stops at its minutes, as a `TZTimestamp` may | `20060901-07:39Z` | the minute's first second |
+/// | a clock stating its zone and no date, a `TZTimeOnly` | `07:39:12.123+05:30`, `07:39Z` | that instant on the epoch day |
+/// | a numeric offset closed by `s`, as a bridge writes one | `20260101-10:00:00 +0400s` | the instant the offset states: the letter adds nothing to it |
+///
+/// The epoch day is the one choice that costs nothing for a time of day:
+/// the count is the time of day itself, and two readings still subtract.
+/// A clock stating neither a date nor a zone is local time, which an
+/// instant cannot hold, so it is refused - with the general reader's own
+/// refusal, which names the byte the text stopped being a datetime at.
+///
+/// A text that is read builds no refusal: the two spellings whose shape
+/// alone the general reader refuses - the digit run and the closed offset -
+/// are read before it is asked, and the two it refuses at a short clock
+/// cost it a refusal that holds nothing on the heap.
+pub(crate) fn parse_fix_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
+    if let Some(read) = fix_shaped(text) {
+        return Ok(read);
+    }
+    match parse_instant(text) {
+        Ok(read) => Ok(read),
+        Err(general) => fix_clock(text).ok_or(general),
+    }
+}
+
+/// The two FIX-only spellings their shape alone tells from every reading
+/// [`parse_instant`] takes, or nothing: a digit run past its clock, and a
+/// numeric offset closed by `s`.
+fn fix_shaped(text: &str) -> Option<(i64, TimeUnit, Option<Timezone>)> {
+    let bytes = text.as_bytes();
+    // A bridge closes a numeric offset with `s`: the letter follows a digit,
+    // and what stands before it has to be a reading that states its zone -
+    // a clock that merely ends in a digit is no offset.
+    if let [.., digit, b's' | b'S'] = bytes
+        && digit.is_ascii_digit()
+    {
+        let stated = &text[..text.len() - 1];
+        return match parse_instant(stated) {
+            Ok(read @ (_, _, Some(_))) => Some(read),
+            Ok(_) => None,
+            Err(_) => fix_clock(stated).filter(|(_, _, zone)| zone.is_some()),
+        };
+    }
+    if bytes.len() > 14 && bytes.iter().all(u8::is_ascii_digit) {
+        let (days, _) = parse_date_at(text, 0).ok()?;
+        let (in_day, _, _) = parse_clock_at(&text[..14], 8, "timestamp").ok()?;
+        let unit = match bytes.len() - 14 {
+            3 => TimeUnit::Millisecond,
+            6 => TimeUnit::Microsecond,
+            9 => TimeUnit::Nanosecond,
+            _ => return None,
+        };
+        let per = per_second(unit)?;
+        let fraction: i64 = text[14..].parse().ok()?;
+        let count = i64::from(days)
+            .checked_mul(DAY * per)?
+            .checked_add(in_day * per + fraction)?;
+        return Some((count, unit, None));
+    }
+    None
+}
+
+/// The two FIX-only spellings the general reader stops inside the clock of,
+/// or nothing: a clock that stops at its minutes, and a zoned clock with no
+/// date.
+fn fix_clock(text: &str) -> Option<(i64, TimeUnit, Option<Timezone>)> {
+    const TARGET: &str = "timestamp";
+    let bytes = text.as_bytes();
+    // The date a dated value opens with is eight digits and FIX's `-`; the
+    // digits are the test, because a dateless clock with a western offset
+    // holds a `-` too.
+    let (days, clock_at) = match bytes.get(8) {
+        Some(b'-') if bytes[..8].iter().all(u8::is_ascii_digit) => {
+            (Some(parse_date_at(text, 0).ok()?.0), 9)
+        }
+        _ => (None, 0),
+    };
+    let hours = digits(text, clock_at, 2, TARGET).ok()?;
+    literal(text, clock_at + 2, b':', TARGET).ok()?;
+    let minutes = digits(text, clock_at + 3, 2, TARGET).ok()?;
+    if minutes >= 60 {
+        return None;
+    }
+    let (seconds, fraction, unit, end) = if bytes.get(clock_at + 5) == Some(&b':') {
+        let seconds = digits(text, clock_at + 6, 2, TARGET).ok()?;
+        if seconds >= 60 {
+            return None;
+        }
+        let (fraction, unit, end) = parse_fraction_at(text, clock_at + 8, TARGET).ok()?;
+        (seconds, fraction, unit, end)
+    } else {
+        (0, 0, TimeUnit::Second, clock_at + 5)
+    };
+    let per = per_second(unit)?;
+    let in_day = (hours * 3_600 + minutes * 60 + seconds) * per + fraction;
+    let local = match days {
+        Some(days) => i64::from(days)
+            .checked_mul(DAY * per)?
+            .checked_add(in_day)?,
+        None => in_day,
+    };
+    if end == text.len() {
+        // A dated value stating no zone is the reading its column zones; a
+        // dateless one is local time, which no instant holds.
+        return days.is_some().then_some((local, unit, None));
+    }
+    let (count, unit, zone) = zoned_at(text, local, unit, end).ok()?;
+    Some((count, unit, Some(zone)))
+}
+
+/// Read the zone that closes a local reading ending at `end`, answering the
+/// instant, its unit and the zone.
+///
+/// One blank may stand between the clock and a numeric offset -
+/// `10:00:00 +0400` is how a formatter that separates its fields writes an
+/// RFC 822 zone - and nothing else may: a blank before `Z`, before a name
+/// or before anything that is no offset is trailing text.
+fn zoned_at(
+    text: &str,
+    local: i64,
+    unit: TimeUnit,
+    mut end: usize,
+) -> Result<(i64, TimeUnit, Timezone)> {
     let per = per_second(unit).expect("the reading parsed at a resolution unit");
+    if text.as_bytes().get(end) == Some(&b' ')
+        && matches!(text.as_bytes().get(end + 1), Some(b'+' | b'-'))
+    {
+        end += 1;
+    }
 
     let offset_start = end;
     let offset = match text.as_bytes().get(end) {
@@ -2001,6 +2158,16 @@ pub mod internals {
     /// Read a zoned timestamp as a count, a unit, and the zone it states.
     pub fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
         super::parse_timestamp(text)
+    }
+
+    /// Read a datetime whose zone the text may or may not state.
+    pub fn parse_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
+        super::parse_instant(text)
+    }
+
+    /// Read a datetime as FIX spells one.
+    pub fn parse_fix_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
+        super::parse_fix_instant(text)
     }
 
     /// Read a duration as a count and the unit its digits name.

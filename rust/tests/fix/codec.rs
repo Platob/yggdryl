@@ -2321,6 +2321,51 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
         instant(1_704_208_530_000_000_000),
     );
 
+    // A formatter that separates its fields writes the offset after one
+    // blank - `yyyyMMdd-HH:mm:ss Z` - and it is the same instant, whichever
+    // of the two datatypes the field is.
+    assert_eq!(
+        latest("20240102-10:15:30.000 -0500", 1132),
+        instant(1_704_208_530_000_000_000),
+    );
+    assert_eq!(
+        read("8=FIX.4.4", "20260101-10:00:00 +0400", 60),
+        instant(1_767_247_200_000_000_000),
+    );
+    // A bridge closes that offset with `s`, and the offset is the reading;
+    // any other letter after it is no offset, and the value is left
+    // unstated rather than guessed at.
+    assert_eq!(
+        read("8=FIX.4.4", "20260101-10:00:00 +0400s", 60),
+        instant(1_767_247_200_000_000_000),
+    );
+    assert_eq!(
+        latest("20240102-10:15:30.000-05:00s", 1132),
+        instant(1_704_208_530_000_000_000),
+    );
+    let suffixed = reader
+        .parse_fix_line(b"8=FIX.4.4|35=D|60=20260101-10:00:00 +0400m|10=0|")
+        .expect("a message");
+    assert!(suffixed.by_tag(60).map_or(true, |held| held.is_null()));
+    // A `TZTimestamp` may stop at its minutes.
+    assert_eq!(
+        latest("20240102-10:15-05:00", 1132),
+        instant(1_704_208_500_000_000_000),
+    );
+    // A bridge writes a clock as one digit run - the date, the time and
+    // three, six or nine digits of fraction - and it is the same instant
+    // the separators spell.
+    assert_eq!(
+        read("8=FIX.4.4", "20240102101530123", 60),
+        instant(1_704_190_530_123_000_000),
+    );
+    // An ISO spelling stating no zone is UTC under a `UTCTimestamp` exactly
+    // as the FIX one is: the column zones what the value leaves unsaid.
+    assert_eq!(
+        read("8=FIX.4.4", "2024-01-02T10:15:30", 60),
+        instant(1_704_190_530_000_000_000),
+    );
+
     // TransactTime(60) is a UTCTimestamp: no zone stated, and UTC meant.
     assert_eq!(
         read("8=FIX.4.4", "20240102-10:15:30.000", 60),
@@ -2328,8 +2373,8 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     );
 
     // FIX spells a fraction with the full stop and nothing else, but the wire
-    // spelling is handed to this crate's shared ISO reader rather than to a
-    // second parser of FIX's own, and that reader takes either decimal sign.
+    // spelling is read by the datetime's own reader rather than by a second
+    // parser of FIX's own, and that reader takes either decimal sign.
     // So a bridge writing the comma its locale writes reads the same instant
     // where it used to be Null, without FIX itself gaining a spelling.
     assert_eq!(

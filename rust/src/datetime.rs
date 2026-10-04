@@ -544,6 +544,7 @@ impl DateTime64 {
     /// | Spelling | Example | Reads as |
     /// | --- | --- | --- |
     /// | `Z`, or an offset with or without its colon | `2026-10-03T05:20:00+02:00`, `...+0200` | that instant, in the offset's zone |
+    /// | one blank, then an offset | `2026-10-03 05:20:00 +0200`, `20261003-05:20:00 +0200` | the same instant: a formatter that separates its fields writes the zone after a blank |
     /// | an offset and the zone's bracketed name | `2026-10-03T05:20:00+02:00[Europe/Paris]` | that instant, in the named zone |
     /// | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
     /// | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
@@ -562,9 +563,17 @@ impl DateTime64 {
     /// # fn main() -> yggdryl::Result<()> {
     /// let utc = DateTime64::from_text("2026-10-03T03:20:00Z", Timezone::NAIVE)?;
     /// assert_eq!((utc.count(), utc.unit()), (1_790_997_600, TimeUnit::Second));
-    /// for spelled in ["2026-10-03T05:20:00+0200", "2026-10-03 03:20:00"] {
+    /// for spelled in [
+    ///     "2026-10-03T05:20:00+0200",
+    ///     "2026-10-03 05:20:00 +0200",
+    ///     "20261003-05:20:00 +0200",
+    ///     "2026-10-03 03:20:00",
+    /// ] {
     ///     assert_eq!(DateTime64::from_text(spelled, Timezone::UTC)?.count(), 1_790_997_600);
     /// }
+    /// // One blank, and before an offset alone.
+    /// assert!(DateTime64::from_text("2026-10-03 05:20:00  +0200", Timezone::UTC).is_err());
+    /// assert!(DateTime64::from_text("2026-10-03 03:20:00 Z", Timezone::UTC).is_err());
     /// let wall = DateTime64::from_text("2026-10-03 03:20:00.250", Timezone::NAIVE)?;
     /// assert!(wall.timezone().is_naive());
     /// assert_eq!(wall.unit(), TimeUnit::Millisecond);
@@ -580,17 +589,35 @@ impl DateTime64 {
     /// `text` spells neither an instant nor a wall clock; an error when a
     /// wall clock does not exist in `naive`'s rules.
     pub fn from_text(text: &str, naive: Timezone) -> Result<Self> {
-        match crate::temporal::parse_timestamp(text) {
-            Ok((count, unit, zone)) => Self::new(count, unit, zone),
-            Err(zoned) => {
-                let (local, unit) = crate::temporal::parse_datetime(text).map_err(|_| zoned)?;
-                let count = if naive.is_naive() {
-                    local
-                } else {
-                    wall_clock_in(local, unit, naive)?
-                };
-                Self::new(count, unit, naive)
-            }
+        Self::from_reading(crate::temporal::parse_instant(text)?, naive)
+    }
+
+    /// Read a datetime as FIX spells one: everything [`Self::from_text`]
+    /// reads, and the four spellings only FIX and the bridges that carry it
+    /// write - one digit run with its fraction, a clock that stops at its
+    /// minutes, a `TZTimeOnly`, a zoned clock with no date, read on the
+    /// epoch day, and a numeric offset closed by `s` (`+0400s`), read as the
+    /// offset it is. The FIX codec reads every datetime field through this
+    /// door and parses none of them itself.
+    ///
+    /// # Errors
+    ///
+    /// The general reading's refusal when `text` is none of those spellings;
+    /// an error when a wall clock does not exist in `naive`'s rules.
+    pub(crate) fn from_fix_text(text: &str, naive: Timezone) -> Result<Self> {
+        Self::from_reading(crate::temporal::parse_fix_instant(text)?, naive)
+    }
+
+    /// The value one reading is: the instant in the zone it states, else
+    /// the wall clock in `naive`.
+    fn from_reading(
+        (count, unit, zone): (i64, TimeUnit, Option<Timezone>),
+        naive: Timezone,
+    ) -> Result<Self> {
+        match zone {
+            Some(zone) => Self::new(count, unit, zone),
+            None if naive.is_naive() => Self::new(count, unit, naive),
+            None => Self::new(wall_clock_in(count, unit, naive)?, unit, naive),
         }
     }
 }

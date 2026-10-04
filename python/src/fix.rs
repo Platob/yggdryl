@@ -2645,6 +2645,22 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'_, PyAny>> {
         batch_reader_to_pyarrow(py, reader.map_err(value_error)?)
     }
+
+    /// Runs a core stream door with the GIL released.
+    ///
+    /// A door may read its source as its reader is built - a walk reads its
+    /// first batch there - and the source may be a parse spread over worker
+    /// threads. A worker that warns takes the GIL to reach Python's
+    /// `logging`, so the thread waiting on that worker must not hold it:
+    /// held, the two wait on each other for good. One thread never showed
+    /// it, because the worker was this thread.
+    fn released<T, F>(py: Python<'_>, door: F) -> T
+    where
+        F: FnOnce() -> T + Send,
+        T: Send,
+    {
+        py.detach(door)
+    }
 }
 
 #[pymethods]
@@ -3167,7 +3183,9 @@ impl PyFixCodec {
         source: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.parse_text_arrow_reader(source))
+        let inner = &self.inner;
+        let parsed = Self::released(py, || inner.parse_text_arrow_reader(source));
+        Self::reader_to_pyarrow(py, parsed)
     }
 
     /// Walks a stream of batches of FIX rows as one lifecycle.
@@ -3190,7 +3208,9 @@ impl PyFixCodec {
         source: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.lifecycle_arrow_reader(source))
+        let inner = &self.inner;
+        let walked = Self::released(py, || inner.lifecycle_arrow_reader(source));
+        Self::reader_to_pyarrow(py, walked)
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -3337,7 +3357,9 @@ impl PyFixCodec {
         source: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.market_data_arrow_reader(source))
+        let inner = &self.inner;
+        let lifted = Self::released(py, || inner.market_data_arrow_reader(source));
+        Self::reader_to_pyarrow(py, lifted)
     }
 
     /// `parse_text_arrow_reader` answered as a native `SerieReader`.
@@ -3348,10 +3370,14 @@ impl PyFixCodec {
     /// stays native: handed to `append_serie` or `overwrite_serie`, or to
     /// another serie face, it is written or read off the GIL with no
     /// `pyarrow` stream between, nothing cast or copied.
-    fn parse_text_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+    fn parse_text_serie(
+        &self,
+        py: Python<'_>,
+        source: &Bound<'_, PyAny>,
+    ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
-        self.inner
-            .parse_text_serie(source)
+        let inner = &self.inner;
+        Self::released(py, || inner.parse_text_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
@@ -3359,20 +3385,28 @@ impl PyFixCodec {
     /// `lifecycle_arrow_reader` answered as a native `SerieReader`, over the
     /// sources `parse_text_serie` takes; the root is the source's, without
     /// the `SORT:by` the walk no longer keeps.
-    fn lifecycle_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+    fn lifecycle_serie(
+        &self,
+        py: Python<'_>,
+        source: &Bound<'_, PyAny>,
+    ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
-        self.inner
-            .lifecycle_serie(source)
+        let inner = &self.inner;
+        Self::released(py, || inner.lifecycle_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
 
     /// `market_data_arrow_reader` answered as a native `SerieReader` of
     /// lifted `marketdata` rows, over the sources `parse_text_serie` takes.
-    fn market_data_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
+    fn market_data_serie(
+        &self,
+        py: Python<'_>,
+        source: &Bound<'_, PyAny>,
+    ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
-        self.inner
-            .market_data_serie(source)
+        let inner = &self.inner;
+        Self::released(py, || inner.market_data_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
@@ -3380,10 +3414,10 @@ impl PyFixCodec {
     /// `messages` over the sources `parse_text_serie` takes: the messages a
     /// stream of FIX rows holds, so a table read back with `read_serie`
     /// feeds `lifecycle` and the book doors.
-    fn messages_serie(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+    fn messages_serie(&self, py: Python<'_>, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let source = serie_source_of(source)?;
-        self.inner
-            .messages_serie(source)
+        let inner = &self.inner;
+        Self::released(py, || inner.messages_serie(source))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3499,7 +3533,9 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'py, PyAny>> {
         let field = core_field_from_value(field)?;
         let source = batch_reader_from_value(source)?;
-        Self::reader_to_pyarrow(py, self.inner.format_arrow_reader(source, &field))
+        let inner = &self.inner;
+        let formatted = Self::released(py, || inner.format_arrow_reader(source, &field));
+        Self::reader_to_pyarrow(py, formatted)
     }
 
     /// Chains a stream of messages, lazily: the lifecycle.
@@ -3544,15 +3580,18 @@ impl PyFixCodec {
     /// a binary file-like object with `write`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
     /// `fixentries` column is refused before a row is read. One batch is
-    /// held at a time.
+    /// held at a time. The source is drained with the GIL released, each
+    /// line taking it for its own `write`.
     fn write_arrow_reader(
         &self,
+        py: Python<'_>,
         source: &Bound<'_, PyAny>,
         sink: &Bound<'_, PyAny>,
     ) -> PyResult<u64> {
         let source = batch_reader_from_value(source)?;
         let mut writer = PythonWriter::new(sink);
-        let written = self.inner.write_arrow_reader(source, &mut writer);
+        let inner = &self.inner;
+        let written = Self::released(py, || inner.write_arrow_reader(source, &mut writer));
         // The sink's own failure is the one to raise: the core reports it
         // as the write it wrapped.
         writer.finish()?;

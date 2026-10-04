@@ -3688,6 +3688,30 @@ def _dated_line(body: bytes) -> TextLine:
     return TextLine(0, body, [RECORDED], options)
 
 
+def test_a_timestamp_reads_an_offset_after_one_blank() -> None:
+    """A datetime field is read by the core's own datetime reader.
+
+    A formatter that separates its fields writes the zone after a blank -
+    ``yyyyMMdd-HH:mm:ss Z`` - and it is the same instant; a bridge closes
+    that offset with ``s``, which adds nothing to it, and any other letter
+    there is no offset, the value left unstated.
+    """
+    codec = FixCodec(FixRegistry(), default_sending_time=CLOCK, exclude_msgtypes=[])
+    instant = DataType('datetime64(ns,"UTC")')
+    stated = next(
+        codec.parse_line(
+            b"8=FIX.4.4|35=0|52=20260101-10:00:00 +0400|60=20260101-10:00:00.250 -0500|10=0|"
+        )
+    )
+    assert stated.by_tag(52) == instant.scalar(1_767_247_200_000_000_000)
+    assert stated.by_tag(60) == instant.scalar(1_767_279_600_250_000_000)
+    suffixed = next(codec.parse_line(b"8=FIX.4.4|35=0|60=20260101-10:00:00 +0400s|10=0|"))
+    assert suffixed.by_tag(60) == instant.scalar(1_767_247_200_000_000_000)
+    other = next(codec.parse_line(b"8=FIX.4.4|35=0|60=20260101-10:00:00 +0400m|10=0|"))
+    unstated = other.get_by_tag(60)
+    assert unstated is None or unstated.is_null()
+
+
 def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegistry) -> None:
     """The line was recorded as its message went by: nearer the send than any pin."""
     line = _dated_line(b"8=FIX.4.4|35=8|10=0|")
@@ -5040,6 +5064,75 @@ def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTab
     return yggdryl.iceberg.IcebergTable.create(IOBase(root), schema, format_version=3)
 
 
+THREADED_LOGGING_SCRIPT = """
+import io
+import logging
+import pathlib
+import sys
+
+from yggdryl import IOBase, TextOptions
+from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
+
+# Warnings reach Python's `logging`, so a parse worker that raises one - or
+# asks a logger's level for the first time - takes the GIL.
+logging.basicConfig(level=logging.WARNING, stream=io.StringIO())
+
+registry = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
+codec = FixCodec(registry, exclude_msgtypes=[], threads=4)
+assert codec.threads == 4
+options = TextOptions()
+options.rowheader = ULBRIDGE_ROWHEADER
+options.timezone = "UTC"
+options.start_rownum = 1
+capture = pathlib.Path(sys.argv[2])
+folder = pathlib.Path(sys.argv[3])
+
+
+def parsed():
+    # The parse as `pyarrow` holds it: a C stream over the core's reader.
+    return codec.parse_text_arrow_reader(IOBase(capture).read_serie(options=options))
+
+
+# The serie doors: the walk reads its first batch as it is built.
+lines = IOBase(capture).read_serie(options=options)
+walked = sum(len(batch) for batch in codec.lifecycle_serie(codec.parse_text_serie(lines)))
+assert walked > 0, walked
+
+# The same parse come back through `pyarrow` and drained by a storage door,
+# as a reader and as a serie source, and by the wire door.
+stored = IOBase(folder / "reader.arrow").overwrite_arrow_reader(parsed())
+assert stored.written_rows > 0, stored
+again = IOBase(folder / "serie.arrow").overwrite_serie(parsed())
+assert again.written_rows == stored.written_rows, again
+sink = io.BytesIO()
+count = codec.write_arrow_reader(parsed(), sink)
+assert count == stored.written_rows, count
+assert sink.getvalue().count(b"\\n") == count
+print("ok")
+"""
+
+
+def test_no_door_waiting_on_a_threaded_parse_holds_the_gil(tmp_path: pathlib.Path) -> None:
+    """A parse spread over worker threads logs through Python's ``logging``,
+    and a worker that logs takes the GIL - so a door waiting on the workers
+    must have released it: held, the two wait on each other for good.
+
+    Driven in a process of its own under a deadline, because the failure is
+    a hang and a test that hangs proves nothing. One thread never showed it:
+    the worker was the calling thread.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", THREADED_LOGGING_SCRIPT, str(SEED), str(ULBRIDGE_LOG), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith("ok")
+
+
 def test_the_capture_pipeline_lands_table_to_table_on_series(
     seed_batch: FixRegistry, tmp_path: pathlib.Path
 ) -> None:
@@ -5101,7 +5194,10 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     assert all(partunix == currunix - currunix % quarter for partunix, currunix in instants)
 
     # The stored text, in the table's order, parsed and walked.
-    codec = _fixed_batch(seed_batch)
+    # Every available CPU, as a pipeline runs: the parse spreads by batch and
+    # answers what one thread answers.
+    codec = _fixed_batch(seed_batch, threads=None)
+    assert codec.threads >= 1
 
     def walked() -> yggdryl.SerieReader:
         return codec.lifecycle_serie(codec.parse_text_serie(text.read_serie(field=text_row)))

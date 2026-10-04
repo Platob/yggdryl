@@ -2503,144 +2503,39 @@ fn serie_of(field: &Field, item: Field) -> Field {
     )
 }
 
-/// The day a FIX temporal that states no date is read on.
-///
-/// `TZTimeOnly` is a time of day and an offset, so the instant it names needs
-/// a day and the specification supplies none. The epoch day is the one choice
-/// that costs nothing: the count is the time of day itself, in the unit the
-/// column declares, and two readings still subtract.
-const EPOCH_DAY: &str = "1970-01-01";
-
 /// The value one FIX wire spelling states, where FIX spells it its own way.
 ///
 /// A boolean is not one: `Y`, `N` and a bridge's `yes` or `no` are spellings
-/// the generic value contract reads, as a column cast does. A temporal is a
-/// run of digits, and the crate's own
-/// ISO reader takes the shape of one as it stands - `20260821-10:30:00.123456`
-/// and the bare `20260821` are both readings there - so what is supplied here
-/// is only what FIX leaves out of the reading: the zone a UTC column carries,
-/// the date a `TZTimeOnly` omits, the seconds an `HH:MM` stops before, and the
-/// decimal point a bridge writing one long digit run never writes. Those are
-/// facts about FIX rather than about the datatype, so they are stated here and
-/// the generic value contract learns none of them.
+/// the generic value contract reads, as a column cast does. A datetime is,
+/// and the codec parses none of it: every datetime field is read by
+/// [`DateTime64::from_fix_text`](crate::DateTime64), the datetime's own
+/// reader, which takes the crate's ISO spellings as they stand -
+/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone, an offset
+/// after one blank - and the four only FIX writes: a bridge's one digit
+/// run, a clock that stops at its minutes, a `TZTimeOnly` read on the epoch
+/// day, and a numeric offset closed by `s`.
 ///
 /// Three FIX datatypes land on `DateTime64` and this reads all three, because
 /// only their spelling differs: `UTCTimestamp` states a date and no zone,
-/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. So
-/// the date is taken where there is one and the epoch day stands in where
-/// there is not, the seconds a `TZTimeOnly` may omit are filled, and the zone
-/// is kept where the value states one rather than `Z` written over it - which
-/// is what a `TZTimestamp` carrying `-05:00` needs, since appending `Z` to it
-/// spells a zone twice and reads as nothing at all.
+/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. The
+/// zone a value states outranks the column's; a value stating none is a wall
+/// clock in the column's zone, which is what `UTCTimestamp` means by saying
+/// nothing; and a column stating no zone - a `LocalMktDate`, a
+/// `LocalMktDatetime` - holds a local market value, so a reading that states
+/// a zone is not one and is left to the value contract, which refuses it.
 ///
-/// Neither half may be missing at once. A value stating a date is read
-/// whatever zone it states or omits, and one stating only a clock is read
-/// only where it states an offset - so a dated spelling that arrives without
-/// its date still answers nothing, exactly as it did when only the dated
-/// shape was read.
+/// What is answered is the typed value, in the column's own zone - the
+/// instant is the same under any - so the value contract restates the unit
+/// and reads no text a second time.
 pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
-    match dtype {
-        leaf_dtype @ DataType::DateTime64 { .. } => {
-            let leaf = &leaf_dtype
-                .datetime_type()
-                .expect("the variant was just matched");
-            let timezone = leaf.timezone();
-            // The zone a value states outranks the column's, and a column
-            // stating none takes no zone rather than Z: a `LocalMktDate` and
-            // a `LocalMktDatetime` are local market values, and rendering
-            // them as instants would make the reading claim a zone the wire
-            // never sent.
-            let implied = if timezone.is_naive() { "" } else { "Z" };
-            // A date states no clock, so it reads as that day at midnight -
-            // which is what makes `UTCDateOnly` and `LocalMktDate` instants
-            // rather than a second temporal type to cast through. The reader
-            // takes the compact date as it stands, so the only thing left to
-            // write is the zone FIX leaves implied, and a naive column is
-            // owed none: its wire text is already the reading.
-            if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) {
-                return (!implied.is_empty())
-                    .then(|| Scalar::from(format_smolstr!("{text}{implied}").as_str()));
-            }
-            // A bridge writes a clock as one digit run - the date, the
-            // time, and three, six or nine digits of fraction - and it is
-            // the same instant `20240102-10:15:30.123` spells with its
-            // separators.
-            if text.len() >= 14 && text.bytes().all(|byte| byte.is_ascii_digit()) {
-                let fraction = &text[14..];
-                if matches!(fraction.len(), 0 | 3 | 6 | 9) {
-                    let point = if fraction.is_empty() { "" } else { "." };
-                    let rendered = format_smolstr!(
-                        "{}-{}-{}T{}:{}:{}{point}{fraction}{implied}",
-                        &text[..4],
-                        &text[4..6],
-                        &text[6..8],
-                        &text[8..10],
-                        &text[10..12],
-                        &text[12..14],
-                    );
-                    return Some(Scalar::from(rendered.as_str()));
-                }
-            }
-            let dated = fix_date(text);
-            let (clock, zone) = zoned(dated.as_ref().map_or(text, |(_, rest)| *rest));
-            let date = match dated.as_ref() {
-                Some((date, _)) => date.as_str(),
-                // A value stating no date is a `TZTimeOnly`, and readable
-                // only where it states its offset: FIX means *local* time by
-                // omitting one, which an instant cannot hold, and a dated
-                // spelling that lost its date is not a reading either.
-                None if zone.is_some() => EPOCH_DAY,
-                None => return None,
-            };
-            // `HH:MM` is the one width a FIX clock may stop at, and only a
-            // `TZTimeOnly` does; anything else is left to fail the read.
-            let seconds = if clock.len() == 5 { ":00" } else { "" };
-            let zone = zone.unwrap_or(implied);
-            let rendered = format_smolstr!("{date}T{clock}{seconds}{zone}");
-            Some(Scalar::from(rendered.as_str()))
-        }
-        _ => None,
-    }
-}
-
-/// The ISO date a FIX temporal opens with, and what follows it.
-///
-/// The eight digits are the test rather than the `-`, because a `TZTimeOnly`
-/// carrying a western offset has one too and `07:39:12-08` would otherwise
-/// read `07:39:12` as a date.
-///
-/// A value stating no date answers `None`, which is what separates the two
-/// kinds of caller: a column declared `TZTimeOnly` takes the epoch day and
-/// reads the instant, while one deriving a capture's clock wants a moment the
-/// capture happened at and has to refuse a dateless one.
-pub(super) fn fix_date(text: &str) -> Option<(SmolStr, &str)> {
-    let (day, rest) = text.split_once('-')?;
-    if day.len() != 8 || !day.bytes().all(|byte| byte.is_ascii_digit()) {
+    let DataType::DateTime64 { timezone, .. } = dtype else {
+        return None;
+    };
+    let read = crate::DateTime64::from_fix_text(text, *timezone).ok()?;
+    if timezone.is_naive() != read.timezone().is_naive() {
         return None;
     }
-    Some((
-        format_smolstr!("{}-{}-{}", &day[..4], &day[4..6], &day[6..8]),
-        rest,
-    ))
-}
-
-/// One FIX clock split from the zone it states, or `None` where it states
-/// none.
-///
-/// A clock states no sign and no `Z`, so the first of either opens the zone.
-/// A dated value stating none is UTC, which is what `UTCTimestamp` means by
-/// saying nothing; a dateless one stating none is not read at all.
-fn zoned(text: &str) -> (&str, Option<&str>) {
-    if let Some(clock) = text.strip_suffix(['Z', 'z']) {
-        return (clock, Some("Z"));
-    }
-    match text.find(['+', '-']) {
-        Some(at) => {
-            let (clock, zone) = text.split_at(at);
-            (clock, Some(zone))
-        }
-        None => (text, None),
-    }
+    Scalar::datetime64(read.count(), read.unit(), *timezone).ok()
 }
 
 /// Types one wire spelling under one field, translating its code first.
@@ -2710,9 +2605,9 @@ fn typed_translation(
     }
     // Every wire value is text, and the generic value contract reads it
     // best effort - a number, a flag, an ISO instant - exactly as a column
-    // cast does. Only FIX's own temporal spellings are rewritten first,
-    // because the generic contract must not learn them:
-    // `20240102-10:15:30` is a timestamp only after both steps.
+    // cast does. Only a datetime is read first, by the datetime's own FIX
+    // door: the zone a column implies and the spellings only FIX writes are
+    // what the generic contract must not learn.
     let candidate =
         wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
     // The text contract reads the spelling and hands the value through

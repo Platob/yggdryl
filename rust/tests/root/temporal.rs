@@ -6,8 +6,8 @@ use super::typed;
 mod internal {
     use yggdryl::internals::temporal::{
         format_date, format_datetime, format_duration, format_time, format_timestamp,
-        from_temporal_text, parse_date, parse_datetime, parse_duration, parse_time,
-        parse_timestamp,
+        from_temporal_text, parse_date, parse_datetime, parse_duration, parse_fix_instant,
+        parse_instant, parse_time, parse_timestamp,
     };
     use yggdryl::{Error, TimeUnit, Timezone};
 
@@ -239,6 +239,205 @@ mod internal {
         assert_eq!(
             parse_datetime("20260818101530").unwrap(),
             parse_datetime("2026-08-18T10:15:30").unwrap()
+        );
+    }
+
+    #[test]
+    fn an_offset_may_follow_one_blank_and_nothing_else_may() {
+        // A formatter that separates its fields writes the zone after a
+        // blank - `yyyy-MM-dd HH:mm:ss Z` - and it is the same instant.
+        let written = parse_timestamp("2026-10-03T05:20:00+02:00").unwrap();
+        for spelled in [
+            "2026-10-03 05:20:00 +0200",
+            "2026-10-03T05:20:00 +02:00",
+            "20261003-05:20:00 +0200",
+            "2026-10-03 05:20:00 +02",
+        ] {
+            assert_eq!(parse_timestamp(spelled).unwrap(), written, "{spelled}");
+        }
+        let (count, unit, zone) = parse_timestamp("20260101-10:00:00 +0400").unwrap();
+        assert_eq!((count, unit), (1_767_247_200, TimeUnit::Second));
+        assert_eq!(zone.to_string(), "+04:00");
+        assert_eq!(
+            parse_timestamp("20260101-10:00:00.250 -0500").unwrap().0,
+            1_767_279_600_250
+        );
+        // One blank, before a numeric offset, and nothing wider: two blanks,
+        // a blank before `Z` or a name, a blank inside the offset, a unit
+        // after it and a blank that closes the text are all trailing text.
+        for refused in [
+            "2026-10-03 05:20:00  +0200",
+            "2026-10-03 05:20:00 Z",
+            "2026-10-03 05:20:00 UTC",
+            "2026-10-03 05:20:00 + 0200",
+            "2026-10-03 05:20:00 +0200s",
+            "2026-10-03 05:20:00 +0200 ",
+            "2026-10-03 05:20:00 ",
+        ] {
+            assert!(parse_timestamp(refused).is_err(), "{refused}");
+            assert!(parse_instant(refused).is_err(), "{refused}");
+        }
+        // A naive reading still carries no zone, blank or not.
+        assert!(parse_datetime("2026-10-03 05:20:00 +0200").is_err());
+    }
+
+    #[test]
+    fn one_pass_reads_a_datetime_whether_or_not_it_states_its_zone() {
+        let (local, unit) = parse_datetime("2026-08-18T10:15:00.250").unwrap();
+        assert_eq!(
+            parse_instant("2026-08-18T10:15:00.250").unwrap(),
+            (local, unit, None)
+        );
+        assert_eq!(
+            parse_instant("20260818").unwrap(),
+            (
+                parse_datetime("20260818").unwrap().0,
+                TimeUnit::Second,
+                None
+            )
+        );
+        for zoned in [
+            "2026-08-18T10:15:00+02:00",
+            "20260818-10:15:00.250Z",
+            "2026-08-18T10:15:00+02:00[Europe/Paris]",
+        ] {
+            let (count, unit, zone) = parse_timestamp(zoned).unwrap();
+            assert_eq!(
+                parse_instant(zoned).unwrap(),
+                (count, unit, Some(zone)),
+                "{zoned}"
+            );
+        }
+        // What neither reader reads names the byte it stopped at.
+        let Error::Parse { position, .. } = parse_instant("2026-08-18T10:15:00 soon").unwrap_err()
+        else {
+            panic!("a parse error")
+        };
+        assert_eq!(position, 19);
+    }
+
+    #[test]
+    fn the_fix_reader_adds_three_spellings_and_refuses_a_local_clock() {
+        // Everything the general reader reads is read as it stands.
+        for spelled in [
+            "20260818",
+            "2026-08-18T10:15:00",
+            "20260818-10:15:00.123456",
+            "20260818-10:15:00 +0400",
+            "20260818101530",
+        ] {
+            assert_eq!(
+                parse_fix_instant(spelled).unwrap(),
+                parse_instant(spelled).unwrap(),
+                "{spelled}"
+            );
+        }
+
+        // A bridge's one digit run: the date, the time, and three, six or
+        // nine digits of fraction - and no width between.
+        assert_eq!(
+            parse_fix_instant("20240102101530123").unwrap(),
+            (1_704_190_530_123, TimeUnit::Millisecond, None)
+        );
+        assert_eq!(
+            parse_fix_instant("20240102101530123456").unwrap(),
+            (1_704_190_530_123_456, TimeUnit::Microsecond, None)
+        );
+        assert_eq!(
+            parse_fix_instant("20240102101530123456789").unwrap(),
+            (1_704_190_530_123_456_789, TimeUnit::Nanosecond, None)
+        );
+        for refused in [
+            "202401021015301",
+            "2024010210153012",
+            "202401021015301234",
+            "202401021015301234567890",
+            "20240230101530123",
+            "20240102256130123",
+        ] {
+            assert!(parse_fix_instant(refused).is_err(), "{refused}");
+        }
+
+        // A `TZTimestamp` may stop at its minutes; so does a dated value
+        // stating no zone, which its column zones.
+        let stated = parse_timestamp("2006-09-01T07:39:00Z").unwrap().0;
+        for spelled in [
+            "20060901-07:39Z",
+            "20060901-02:39-05",
+            "20060901-15:39+08",
+            "20060901-13:09+05:30",
+            "20060901-13:09 +0530",
+        ] {
+            assert_eq!(parse_fix_instant(spelled).unwrap().0, stated, "{spelled}");
+        }
+        assert_eq!(
+            parse_fix_instant("20060901-07:39").unwrap(),
+            (stated, TimeUnit::Second, None)
+        );
+
+        // A `TZTimeOnly` states a zone and no date: the epoch day, and the
+        // offset may carry the instant behind it.
+        let (count, unit, zone) = parse_fix_instant("07:39:12.123+05:30").unwrap();
+        assert_eq!((count, unit), (7_752_123, TimeUnit::Millisecond));
+        assert_eq!(zone.map(|zone| zone.to_string()).as_deref(), Some("+05:30"));
+        assert_eq!(parse_fix_instant("07:39Z").unwrap().0, 27_540);
+        assert_eq!(parse_fix_instant("00:30+05:30").unwrap().0, -18_000);
+        assert_eq!(parse_fix_instant("07:39:12 +0530").unwrap().0, 7_752);
+
+        // A bridge closes a numeric offset with `s`, and the offset is the
+        // whole reading - after a blank or not, dated or not, either case.
+        let offset = parse_timestamp("20260101-10:00:00+04:00").unwrap();
+        for spelled in [
+            "20260101-10:00:00 +0400s",
+            "20260101-10:00:00+0400s",
+            "20260101-10:00:00 +04:00S",
+            "2026-01-01T10:00:00+04s",
+        ] {
+            let (count, unit, zone) = parse_fix_instant(spelled).unwrap();
+            assert_eq!(
+                (count, unit, zone),
+                (offset.0, offset.1, Some(offset.2)),
+                "{spelled}"
+            );
+        }
+        assert_eq!(parse_fix_instant("07:39:12+05:30s").unwrap().0, 7_752);
+        assert_eq!(
+            parse_fix_instant("20060901-13:09 +0530s").unwrap().0,
+            stated
+        );
+        // The letter closes an offset and nothing else: a clock that merely
+        // ends in a digit, a `Z`, a zone's name, a second letter and a blank
+        // before it are not that, and the general reader takes none of it.
+        for refused in [
+            "20260101-10:00:00s",
+            "20260101101530123s",
+            "20260101-10:00:00Zs",
+            "20260101-10:00:00 +0400ss",
+            "20260101-10:00:00 +0400 s",
+            "20260101-10:00:00 +0400m",
+            "07:39:12s",
+        ] {
+            assert!(parse_fix_instant(refused).is_err(), "{refused}");
+        }
+        assert!(parse_instant("20260101-10:00:00 +0400s").is_err());
+
+        // A clock stating neither a date nor a zone is local time, which no
+        // instant holds; and what is no clock at all is no reading.
+        for refused in [
+            "07:39:12",
+            "07:39",
+            "7:39Z",
+            "07:60Z",
+            "07:39:61Z",
+            "07:39:12 Z",
+            "",
+        ] {
+            assert!(parse_fix_instant(refused).is_err(), "{refused}");
+        }
+        // The refusal is the general reader's own.
+        assert_eq!(
+            parse_fix_instant("07:39:12").unwrap_err().to_string(),
+            parse_instant("07:39:12").unwrap_err().to_string()
         );
     }
 

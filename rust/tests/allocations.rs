@@ -7901,13 +7901,32 @@ struct StageCosts {
 /// its own - the bridge row's to 1500, a frame's to 1480, the packed
 /// frame's to 1518, and no other stage moved.
 ///
+/// A datetime then came to be read by the datetime's own reader, and no
+/// text is rendered for it: the ISO spelling the codec restated each wire
+/// timestamp as - built in a string builder, finished as a shared string
+/// and copied into the value the contract then read - went with the
+/// rewrite, so each parse fell by what each of its datetime fields paid for
+/// a rendering past the twenty-three bytes a string holds inline: three for
+/// a reading of milliseconds under a UTC column - the builder's one spill
+/// to the heap, the string it finished as and the value's own - and four
+/// for one of microseconds, whose builder grew once more to take the `Z`.
+/// The bridge row states three digit runs of milliseconds and one of
+/// microseconds, thirteen, to 543; a frame a `SendingTime(52)` of
+/// milliseconds and a `TransactTime(60)` and an `ExpireTime(126)` of
+/// microseconds, eleven, to 212; the packed frame two digit runs of
+/// milliseconds, six, to 1016, its two readings of whole seconds having
+/// rendered inline. A reading builds no refusal either - a digit run is
+/// read before the general reader is asked, where asking first cost two
+/// for the refusal it then dropped - so a datetime field costs a parse
+/// nothing, and no other stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
         "bridge_pipe",
         1,
         StageCosts {
-            parse: 556,
+            parse: 543,
             into_row: 88,
             landing: 1500,
             batch: 210,
@@ -7919,7 +7938,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_pipe",
         72,
         StageCosts {
-            parse: 223,
+            parse: 212,
             into_row: 64,
             landing: 1480,
             batch: 210,
@@ -7931,7 +7950,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         "frame_packed",
         111,
         StageCosts {
-            parse: 1022,
+            parse: 1016,
             into_row: 250,
             landing: 1518,
             batch: 210,

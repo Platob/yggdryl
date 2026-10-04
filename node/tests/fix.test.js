@@ -2227,6 +2227,23 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(bridge.digest().length, 16)
   })
 
+  test('a timestamp reads an offset after one blank', () => {
+    // A datetime field is read by the core's own datetime reader: a
+    // formatter that separates its fields writes the zone after a blank.
+    const reader = fixedCodec(seed(), { excludeMsgtypes: [] })
+    const instant = new DataType('datetime64(ns,"UTC")')
+    const stated = reader
+      .parseLine(Buffer.from('8=FIX.4.4|35=0|52=20260101-10:00:00 +0400|60=20260101-10:00:00.250 -0500|10=0|'))
+      .next().value
+    assert.ok(stated.byTag(52).equals(instant.scalar(1_767_247_200_000_000_000n)))
+    assert.ok(stated.byTag(60).equals(instant.scalar(1_767_279_600_250_000_000n)))
+    // A bridge closes that offset with `s`, which adds nothing to it.
+    const suffixed = reader
+      .parseLine(Buffer.from('8=FIX.4.4|35=0|60=20260101-10:00:00 +0400s|10=0|'))
+      .next().value
+    assert.ok(suffixed.byTag(60).equals(instant.scalar(1_767_247_200_000_000_000n)))
+  })
+
   test('a reader takes the pins the core takes', () => {
     const registry = seed()
 

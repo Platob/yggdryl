@@ -525,10 +525,16 @@ the JavaScript files beside it, `node/src/text/line.rs` by
   `Scheme` owns URI and compatibility scheme vocabulary. `DateTime64::from_text`
   is the one reader of datetime text whose zone the text may or may not
   state - an expiry, a capture, a parameter, a cell - over the ISO 8601
-  readers in `temporal.rs`, reading exactly what they read: a blank around
-  the text is refused as a datetime's value door refuses it, and a tool's
-  habit (the AWS CLI's trailing `UTC`) is taken off by the intake that meets
-  it (`auth::instant`); no module pairs those readers for itself.
+  readers in `temporal.rs`, in one pass and reading exactly what they read:
+  an offset may follow one blank (`10:00:00 +0400`), a blank around the text
+  is refused as a datetime's value door refuses it, and a tool's habit (the
+  AWS CLI's trailing `UTC`) is taken off by the intake that meets it
+  (`auth::instant`); no module pairs those readers for itself. A FIX datetime
+  field is read by `DateTime64::from_fix_text` - the same reader, and the
+  four spellings only FIX writes: one digit run with its fraction, a clock
+  that stops at its minutes, a zoned clock with no date on the epoch day, a
+  numeric offset closed by `s` (`+0400s`) - so the codec parses no datetime
+  of its own.
 
 ## Patterns
 
@@ -2097,7 +2103,18 @@ Python-only:
   a held chunked one a stream, `IOBase.read_serie` answers a `SerieReader`, and
   `write_serie`, `overwrite_serie`, `append_serie` and `merge_serie` take a
   `Serie`, a `ChunkedSerie`, a `SerieReader` or anything `SerieReader.from_`
-  reads, off the GIL where the rows are native.
+  reads, off the GIL where the rows are native or cross the Arrow C stream.
+- A door that waits on core threads releases the GIL. A core thread that
+  logs - or asks a logger's level for the first time - reaches Python's
+  `logging` through the host and takes the GIL, so the thread waiting on it
+  must not hold it: held, the two wait on each other for good. Every door
+  that drains a core stream runs the core detached - the FIX stream doors
+  as they are built and as they are pulled, `format_arrow_reader`, the wire
+  door whose sink takes the GIL per write, a handle's write of a native
+  source or of an Arrow C stream - and only a source this binding pulls
+  through Python item by item is written with it held, each pull being one
+  that would take it back. `python/tests/test_fix.py` pins it in a child
+  interpreter under a deadline, because the failure is a hang.
   A cast is `Serie.cast`, `ChunkedSerie.cast` or an `ArrowCastPlan`, passing
   the caller's `safe` and `representation`. No binding casts,
   rebuilds rows from, or walks an Arrow array itself.
