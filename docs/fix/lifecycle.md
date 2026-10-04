@@ -589,7 +589,7 @@ The parse reads the same table: a door opened on a codec sharing a registry fixe
     const [later] = walk(codec, '8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|')
     assert.equal(later.isincode, 'CH0012214059')
     assert.equal(later.securityids.get('ric'), 'HOLN.S')
-    assert.equal(later.currency.toJSON(), 'CHF')
+    assert.equal(later.currency, 'CHF')
     // A codec without one learns into each walk's own.
     const [unfilled] = walk(new fix.FixCodec(registry), '8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|')
     assert.equal(unfilled.isincode, null)

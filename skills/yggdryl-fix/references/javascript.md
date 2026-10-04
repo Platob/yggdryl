@@ -465,7 +465,7 @@ const [parsed] = [...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=B|55=HOLN|
 assert.equal(parsed.isincode, 'CH0012214059')
 assert.ok(parsed.securityids.isDerived('isin'))
 const [later] = [...codec.lifecycle([parsed])]
-assert.equal(later.cficode.toJSON(), 'ESVUFR')
+assert.equal(later.cficode, 'ESVUFR')
 // The table is an Arrow stream: a golden file loads with `fromUrl`.
 assert.notEqual(IsinRegistry.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
 ```
