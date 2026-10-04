@@ -403,24 +403,46 @@ test('a location is opened, created and dropped by the core, under what is state
   assert.throws(() => iceberg.IcebergTable.open(folder), /metadata/)
 })
 
-test('a table bucket location names at most a namespace and a table', () => {
-  // Refused where the location is read, before any request: there is nothing
-  // to sign, and nothing is sent.
+test('a table bucket location names at most a namespace and a table', (t) => {
+  // Refused where the location is read. Nothing here counts requests - the
+  // core's suite does, against its fake control plane - so the identity is
+  // stated in full and the endpoint is a closed loopback port: a request
+  // these doors should not send would fail on this machine rather than leave
+  // it, and nothing of the operator's is read to sign one.
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const sealed = {
+    access_key_id: 'AKIAIOSFODNN7EXAMPLE',
+    secret_access_key: 'a-secret',
+    config_file: path.join(root, 'config'),
+    shared_credentials_file: path.join(root, 'credentials'),
+    's3tables.region': 'us-east-1',
+    's3tables.endpoint': 'http://127.0.0.1:1',
+  }
   const deep = 's3tables://bucket/a/b/c'
   for (const refused of [
-    () => iceberg.IcebergTable.open(deep),
-    () => iceberg.IcebergTable.create(deep, schema()),
-    () => iceberg.IcebergTable.openOrCreate(deep, schema()),
+    () => iceberg.IcebergTable.open(deep, sealed),
+    () => iceberg.IcebergTable.create(deep, schema(), undefined, undefined, sealed),
+    () => iceberg.IcebergTable.openOrCreate(deep, schema(), undefined, undefined, sealed),
+    // A handle takes no properties: this one is refused before an identity
+    // is so much as built.
     () => new IOBase(deep),
   ]) {
     assert.throws(refused, /\$\.url/)
   }
 
-  // A bucket or a namespace is no table, and a create names one by its
-  // namespace and its name.
+  // A bucket or a namespace is no table, whichever door is asked, and a
+  // create names one by its namespace and its name.
   for (const location of ['s3tables://bucket', 's3tables://bucket/desk']) {
-    assert.throws(() => iceberg.IcebergTable.open(location), /\$\.url/)
-    assert.throws(() => iceberg.IcebergTable.create(location, schema()), /\$\.url/)
+    assert.throws(() => iceberg.IcebergTable.open(location, sealed), /\$\.url/)
+    assert.throws(
+      () => iceberg.IcebergTable.create(location, schema(), undefined, undefined, sealed),
+      /\$\.url/,
+    )
+    assert.throws(
+      () => iceberg.IcebergTable.openOrCreate(location, schema(), undefined, undefined, sealed),
+      /\$\.url/,
+    )
   }
 })
 

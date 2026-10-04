@@ -575,21 +575,39 @@ fn table_root(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result
 /// bare column an identity partition, `days(ts)`, `minutes(ts, 15)` or
 /// `truncate(name, 4) as prefix` a derived one - declared on a copy of the
 /// root and read into a spec by the core's one rule, which refuses an entry
-/// no spec can hold by naming it. An omitted argument is the schema's own
-/// declaration read by that rule - a schema declaring nothing unpartitioned -
-/// and `null` is unpartitioned whatever the schema declares.
-fn partition_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<CorePartitionSpec> {
+/// no spec can hold by naming it. `null` is unpartitioned whatever the schema
+/// declares, and an omitted argument states nothing: it is skipped rather
+/// than defaulted here, so a location root hands the absence to the core,
+/// whose create derives the spec from the schema as it stores it, and a
+/// handle root - whose core door takes a spec - reads the schema's own
+/// declaration through [`declared_spec`].
+fn stated_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<Option<CorePartitionSpec>> {
     match value {
-        Either4::A(spec) => Ok(spec.inner.clone()),
-        Either4::C(Null) => Ok(CorePartitionSpec::unpartitioned()),
-        Either4::D(()) => CorePartitionSpec::from_schema(0, schema).map_err(napi_error),
+        Either4::A(spec) => Ok(Some(spec.inner.clone())),
+        Either4::C(Null) => Ok(Some(CorePartitionSpec::unpartitioned())),
+        Either4::D(()) => Ok(None),
         Either4::B(entries) => {
             let mut root = schema.clone();
             root.as_partition_mut()
                 .set_by_texts(&entries)
                 .map_err(napi_error)?;
-            CorePartitionSpec::from_schema(0, &root).map_err(napi_error)
+            CorePartitionSpec::from_schema(0, &root)
+                .map(Some)
+                .map_err(napi_error)
         }
+    }
+}
+
+/// The spec a handle root is created under: the one stated, else the
+/// schema's own `PARTITION:by` declaration - a schema declaring nothing
+/// unpartitioned.
+fn declared_spec(
+    stated: Option<CorePartitionSpec>,
+    schema: &CoreField,
+) -> Result<CorePartitionSpec> {
+    match stated {
+        Some(spec) => Ok(spec),
+        None => CorePartitionSpec::from_schema(0, schema).map_err(napi_error),
     }
 }
 
@@ -1530,17 +1548,20 @@ impl JsTable {
         properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
-        let spec = partition_spec(partition_by, &schema)?;
+        let spec = stated_spec(partition_by, &schema)?;
         let version = format_version(version)?;
         match table_root(root, properties)? {
-            TableRoot::Handle(holder) => CoreTable::create(
-                Handle::from(*holder),
-                version.unwrap_or(FormatVersion::V2),
-                schema,
-                spec,
-            ),
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                CoreTable::create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
             TableRoot::Location(location, properties) => {
-                CoreTable::create_from_url(&location, &properties, version, schema, Some(spec))
+                CoreTable::create_from_url(&location, &properties, version, schema, spec)
             }
         }
         .map(Self::from_core)
@@ -1589,22 +1610,21 @@ impl JsTable {
         properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
-        let spec = partition_spec(partition_by, &schema)?;
+        let spec = stated_spec(partition_by, &schema)?;
         let version = format_version(version)?;
         match table_root(root, properties)? {
-            TableRoot::Handle(holder) => CoreTable::open_or_create(
-                Handle::from(*holder),
-                version.unwrap_or(FormatVersion::V2),
-                schema,
-                spec,
-            ),
-            TableRoot::Location(location, properties) => CoreTable::open_or_create_from_url(
-                &location,
-                &properties,
-                version,
-                schema,
-                Some(spec),
-            ),
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                CoreTable::open_or_create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
+            TableRoot::Location(location, properties) => {
+                CoreTable::open_or_create_from_url(&location, &properties, version, schema, spec)
+            }
         }
         .map(Self::from_core)
         .map_err(napi_error)

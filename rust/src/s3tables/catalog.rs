@@ -36,6 +36,7 @@
 //! | the location of a table | 1 `GetTableMetadataLocation`, and no `GetNamespace` |
 //! | a table's ARN | 1 `GetTable` |
 //! | [`IcebergTable::create_from_url`] | [`create_table`](NamespaceValue::create_table)'s; under a namespace the bucket does not hold, the refused `CreateTable`, 1 `CreateNamespace` and those again |
+//! | [`IcebergTable::open_or_create_from_url`] | the open's; absent, its one refused request and the create's, the location read and the bucket's ARN resolved once for both; a table's ARN is opened or absent, never created |
 //! | a table's [`remove`](crate::IOBase::remove) | 1 `DeleteTable` |
 //! | the bucket's ARN, when the catalog was named by its location alone | 1 `ListTableBuckets` per page, once |
 //! | [`children`](NamespaceValue::children) of the catalog | 1 `ListNamespaces` per page |
@@ -220,13 +221,23 @@ pub(crate) fn locate(location: &Uri, properties: &Properties) -> Result<Object> 
         Below::Table(namespace, name) => {
             catalog.namespace(namespace).table(name).map(Object::Table)
         }
-        Below::Identified(arn) => {
-            let described = catalog.client().get_table_by_arn(arn)?;
-            catalog
-                .namespace(described.namespace())
-                .described(described.name(), described.warehouse_location())
-                .map(|table| Object::Table(Table::Iceberg(Box::new(table))))
-        }
+        Below::Identified(arn) => catalog
+            .identified(arn)
+            .map(|table| Object::Table(Table::Iceberg(Box::new(table)))),
+    }
+}
+
+/// Refuse `location`, which names a `kind` of a table bucket, where a door
+/// takes a table's.
+pub(crate) fn not_a_table(location: &Uri, kind: IOKind) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$.url"),
+        reason: format_smolstr!(
+            "expected the location of a table, \
+             s3tables://<bucket>/<namespace>/<table> or a table's ARN, got the {} {}",
+            kind.as_str(),
+            crate::fs::mask_uri(&location.to_string())
+        ),
     }
 }
 
@@ -273,25 +284,63 @@ pub(crate) fn create(
         });
     };
     let (schema, spec, version) = crate::iceberg::create_layout(schema, properties, version, spec)?;
-    let namespace = place.catalog(properties)?.namespace(namespace);
-    match namespace.register(name) {
-        // What is missing is above the table: the namespace, made here, or
-        // the bucket, whose absence the namespace's creation then answers.
-        Err(Error::Remote { code, .. }) if code == "NotFoundException" => {
-            let bucket = &namespace.bucket;
-            match bucket
-                .client
-                .create_namespace(bucket.arn()?, namespace.namespace())
-            {
-                Ok(()) => {}
-                Err(error) if error.is_conflict() => {}
-                Err(error) => return Err(error),
+    place
+        .catalog(properties)?
+        .namespace(namespace)
+        .create_repairing(name, schema, spec, version)
+}
+
+/// Open the table `location` names in its table bucket, under `properties`,
+/// creating it where the bucket keeps none: what
+/// [`IcebergTable::open_or_create_from_url`] answers for a table bucket's
+/// location.
+///
+/// The location is read once and the bucket's catalog built once, so the
+/// open and the create that follows its miss sign as one session and share
+/// one resolution of the bucket's ARN: a location that states neither the
+/// ARN nor the account costs its one `ListTableBuckets` whichever of the two
+/// ran. `s3tables://<bucket>/<namespace>/<table>` is opened at one
+/// `GetTableMetadataLocation` and, absent, created as [`create`] creates
+/// it - `version`, `schema` and `spec` describing only that table. A table's
+/// ARN is opened at one `GetTable` and never created: an identifier the
+/// bucket has no table of names nothing a create could make, so its absence
+/// is the answer, as is the absence of the bucket itself.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] at `$.url` for a location that names a
+/// bucket or a namespace rather than a table; [`Error::Absent`] for a
+/// table's ARN the bucket keeps no table of, and for a bucket the caller
+/// has none of; the failures of [`create`] where it ran; and the service's
+/// own refusal.
+pub(crate) fn open_or_create(
+    location: &Uri,
+    properties: &Properties,
+    version: Option<FormatVersion>,
+    schema: &Field,
+    spec: Option<PartitionSpec>,
+) -> Result<IcebergTable<Handle>> {
+    let place = Place::read(location)?;
+    let catalog = place.catalog(properties)?;
+    match &place.below {
+        Below::Table(namespace, name) => {
+            let namespace = catalog.namespace(namespace);
+            // Resolved before the open, a bucket that is not there is the
+            // answer rather than a miss a create follows.
+            namespace.bucket.arn()?;
+            match namespace.opened(name) {
+                Err(error) if error.is_absent() => {
+                    let (schema, spec, version) =
+                        crate::iceberg::create_layout(schema, properties, version, spec)?;
+                    namespace.create_repairing(name, schema, spec, version)
+                }
+                opened => opened,
             }
-            namespace.register(name)?;
         }
-        registered => registered?,
+        Below::Identified(arn) => catalog.identified(arn),
+        Below::Bucket => Err(not_a_table(location, IOKind::Catalog)),
+        Below::Namespace(_) => Err(not_a_table(location, IOKind::Namespace)),
     }
-    namespace.publish_first(name, schema, spec, version, &Properties::new())
 }
 
 /// What every object below one table bucket shares: the client, where the
@@ -554,6 +603,16 @@ impl S3TablesCatalog {
     fn namespace(&self, name: &str) -> S3TablesNamespace {
         namespace_of(&self.bucket, extended(&self.path, name), &self.stated)
     }
+
+    /// The table the ARN `table` identifies, described: one `GetTable`,
+    /// whose answer names its namespace, its name and its warehouse
+    /// location - and primes nothing, the table's pointer being asked where
+    /// its document is on its first use.
+    fn identified(&self, table: &Arn) -> Result<IcebergTable<Handle>> {
+        let described = self.bucket.client.get_table_by_arn(table)?;
+        self.namespace(described.namespace())
+            .described(described.name(), described.warehouse_location())
+    }
 }
 
 impl PartialEq for S3TablesCatalog {
@@ -700,9 +759,15 @@ impl S3TablesNamespace {
         self.stated.inherit(&self.inherited)
     }
 
+    /// The table `name`, as the warehouse table it is: one request.
+    fn table(&self, name: &str) -> Result<Table> {
+        self.opened(name)
+            .map(|table| Table::Iceberg(Box::new(table)))
+    }
+
     /// The table `name` as `GetTableMetadataLocation` describes it: one
     /// request, the table's document read on its first use.
-    fn table(&self, name: &str) -> Result<Table> {
+    fn opened(&self, name: &str) -> Result<IcebergTable<Handle>> {
         let location = match self.bucket.client.get_table_metadata_location(
             self.bucket.arn()?,
             self.namespace(),
@@ -718,7 +783,6 @@ impl S3TablesNamespace {
             Err(error) => return Err(error),
         };
         self.described(name, location.warehouse_location())
-            .map(|table| Table::Iceberg(Box::new(table)))
     }
 
     /// The table `name` whose files are under `warehouse`, described: no
@@ -755,6 +819,39 @@ impl S3TablesNamespace {
             )),
             Err(error) => Err(error),
         }
+    }
+
+    /// Register the table `name` and publish its first document, making the
+    /// namespace on the way where the bucket does not hold it: a
+    /// `CreateTable` the service answers `NotFoundException` is followed by
+    /// one `CreateNamespace`, whose conflict is another creator's success,
+    /// and sent once more. The table states nothing of its own.
+    fn create_repairing(
+        &self,
+        name: &str,
+        schema: Field,
+        spec: PartitionSpec,
+        version: FormatVersion,
+    ) -> Result<IcebergTable<Handle>> {
+        match self.register(name) {
+            // What is missing is above the table: the namespace, made here,
+            // or the bucket, whose absence the namespace's creation then
+            // answers.
+            Err(Error::Remote { code, .. }) if code == "NotFoundException" => {
+                match self
+                    .bucket
+                    .client
+                    .create_namespace(self.bucket.arn()?, self.namespace())
+                {
+                    Ok(()) => {}
+                    Err(error) if error.is_conflict() => {}
+                    Err(error) => return Err(error),
+                }
+                self.register(name)?;
+            }
+            registered => registered?,
+        }
+        self.publish_first(name, schema, spec, version, &Properties::new())
     }
 
     /// Write and publish the first document of the registered table `name`:

@@ -385,12 +385,7 @@ impl Uri {
     #[cfg(feature = "s3tables")]
     pub(crate) fn names_s3_tables(&self) -> bool {
         if self.scheme() == &Scheme::ARN {
-            return self
-                .path
-                .as_str()
-                .split(':')
-                .nth(1)
-                .is_some_and(|service| service.eq_ignore_ascii_case("s3tables"));
+            return arn::service_of(self).eq_ignore_ascii_case("s3tables");
         }
         self.scheme().is_s3_tables()
     }

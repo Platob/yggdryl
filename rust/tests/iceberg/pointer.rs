@@ -440,7 +440,8 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
     // The catalog keeps the table: its folder is neither listed nor
     // removed, however the table is asked, and nothing reaches the store.
     // A removal is the pointer's to answer, and one that drops nothing
-    // refuses by its own name.
+    // refuses - restated by the table naming where it is, as the listing's
+    // refusal does.
     let mut listed = None;
     let mut removed = None;
     let costs = filesystem.costs(|| {
@@ -461,7 +462,13 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
                 .contains("dropping a table through its pointer"),
             "{error}"
         );
-        assert!(error.to_string().contains("MemoryPointer"), "{error}");
+        assert!(error.to_string().contains("kept"), "{error}");
+    }
+    let listing = table.ls(false, false).next().unwrap().unwrap_err();
+    let removal = table.remove(true).unwrap_err();
+    let location = IOBase::url(table.root()).unwrap().to_string();
+    for error in [listing, removal] {
+        assert!(error.to_string().contains(&location), "{error}");
     }
 
     // The table is where it was, and still reads.
@@ -498,6 +505,17 @@ fn removing_a_pointed_table_asks_its_pointer_and_never_its_folder() {
     assert_eq!(costs, "none");
     assert_eq!(pointer.drops.load(Ordering::SeqCst), 2);
     assert!(holds(&filesystem, &format!("dropped/metadata/{name}")));
+
+    // The document the value had read went with the table: what it is
+    // asked next is asked of the pointer again - one answer and one read,
+    // here of a pointer that still names the document - so a catalog that
+    // dropped the table is what answers, never a document held from before.
+    let (asked, _) = pointer.pointer.calls();
+    let costs = filesystem.costs(|| {
+        table.metadata_version().unwrap();
+    });
+    assert_eq!(costs, "open_input_stream=1");
+    assert_eq!(pointer.pointer.calls().0, asked + 1);
 }
 
 #[test]

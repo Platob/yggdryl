@@ -10,6 +10,17 @@
 //! rendering does. A resolution that fails is stored nowhere: it is the error
 //! of every operation that returns one, and the empty answer of every
 //! accessor that cannot.
+//!
+//! Resolving opens nothing and sends nothing, with the one exception the
+//! dispatcher itself states: under the `s3tables` feature a table an Amazon
+//! S3 Tables table bucket keeps is described by its service, so resolving
+//! its location is one `GetTableMetadataLocation` - one `GetTable` for the
+//! table's ARN - after the one `ListTableBuckets` a location stating neither
+//! the bucket's ARN nor its account costs. A table that is there pays that
+//! once for the value's life, the resolution being kept; one that is absent
+//! pays it at every operation and every accessor asked of the identifier,
+//! since a failed resolution is kept nowhere - as a closed handle on any
+//! store asks again.
 
 use std::sync::OnceLock;
 
@@ -39,8 +50,10 @@ impl Uri {
         }
     }
 
-    /// Open nothing: name the backend the location selects, as every other
-    /// location does. [`Holder::from_url`] never answers [`Holder::Uri`], so
+    /// Name the backend the location selects, as every other location does,
+    /// opening nothing - but for a table of an Amazon S3 Tables table bucket,
+    /// which its service describes at the requests [`Holder::from_url`]
+    /// states for one. [`Holder::from_url`] never answers [`Holder::Uri`], so
     /// resolving cannot recurse.
     fn resolve(&self) -> Result<Holder> {
         Holder::from_url(self, std::iter::empty::<(&str, &str)>())

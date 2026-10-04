@@ -135,6 +135,33 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
     ))
 }
 
+/// The spec a `partition_by` argument states, none when it was omitted
+/// (`...`): `None` unpartitioned, anything else [`spec_from_value`]'s
+/// reading.
+///
+/// An omitted argument is skipped rather than defaulted here: a location
+/// root hands the absence to the core, whose create derives the spec from
+/// the schema as it stores it, and a handle root - whose core door takes a
+/// spec - reads the schema's own declaration through [`declared_spec`].
+fn stated_spec(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Option<PartitionSpec>> {
+    if value.is(value.py().Ellipsis()) {
+        return Ok(None);
+    }
+    if value.is_none() {
+        return Ok(Some(PartitionSpec::unpartitioned()));
+    }
+    spec_from_value(value, schema).map(Some)
+}
+
+/// The spec a handle root is created under: the one stated, else the
+/// schema's own `PARTITION:by` declaration.
+fn declared_spec(stated: Option<PartitionSpec>, schema: &CoreField) -> PyResult<PartitionSpec> {
+    match stated {
+        Some(spec) => Ok(spec),
+        None => PartitionSpec::from_schema(0, schema).map_err(value_error),
+    }
+}
+
 /// Read a core partition spec out of what Python names one with.
 ///
 /// A sequence is a `PARTITION:by` declaration, each entry a projection: a
@@ -144,19 +171,6 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
 /// are declared on a copy of the schema root and read by the core's one rule,
 /// [`PartitionSpec::from_schema`], so a refusal names the entry it could not
 /// honour.
-/// The spec a `partition_by` argument states: omitted (`...`) the schema's
-/// own `PARTITION:by` declaration, `None` unpartitioned, anything else
-/// [`spec_from_value`]'s reading.
-fn spec_from_argument(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
-    if value.is(value.py().Ellipsis()) {
-        return PartitionSpec::from_schema(0, schema).map_err(value_error);
-    }
-    if value.is_none() {
-        return Ok(PartitionSpec::unpartitioned());
-    }
-    spec_from_value(value, schema)
-}
-
 fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
@@ -1036,17 +1050,20 @@ impl PyIcebergTable {
     ) -> PyResult<Py<Self>> {
         let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = spec_from_argument(partition_by, &schema)?;
+        let spec = stated_spec(partition_by, &schema)?;
         let version = format_version.map(format_version_from_value).transpose()?;
         let table = match table_root_from_value(root, properties)? {
-            TableRoot::Handle(holder) => IcebergTable::create(
-                Handle::from(*holder),
-                version.unwrap_or(FormatVersion::V2),
-                schema,
-                spec,
-            ),
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                IcebergTable::create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
             TableRoot::Location(location, properties) => {
-                IcebergTable::create_from_url(&location, &properties, version, schema, Some(spec))
+                IcebergTable::create_from_url(&location, &properties, version, schema, spec)
             }
         }
         .map_err(value_error)?;
@@ -1097,22 +1114,21 @@ impl PyIcebergTable {
     ) -> PyResult<Py<Self>> {
         let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = spec_from_argument(partition_by, &schema)?;
+        let spec = stated_spec(partition_by, &schema)?;
         let version = format_version.map(format_version_from_value).transpose()?;
         let table = match table_root_from_value(root, properties)? {
-            TableRoot::Handle(holder) => IcebergTable::open_or_create(
-                Handle::from(*holder),
-                version.unwrap_or(FormatVersion::V2),
-                schema,
-                spec,
-            ),
-            TableRoot::Location(location, properties) => IcebergTable::open_or_create_from_url(
-                &location,
-                &properties,
-                version,
-                schema,
-                Some(spec),
-            ),
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                IcebergTable::open_or_create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
+            TableRoot::Location(location, properties) => {
+                IcebergTable::open_or_create_from_url(&location, &properties, version, schema, spec)
+            }
         }
         .map_err(value_error)?;
         described_table(cls.py(), table)

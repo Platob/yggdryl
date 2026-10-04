@@ -1887,19 +1887,74 @@ mod located {
         let _ = std::fs::remove_dir_all(&path);
     }
 
-    /// A table bucket's location names a table only by a namespace and a
-    /// name, and at most that: refused at `$.url` before any request - or,
-    /// in a build without the `s3tables` feature, by the scheme no backend
-    /// of it holds.
+    /// What a folder table is opened under is what every clone of it opens
+    /// its storage under, so the table states all of it - a credential
+    /// included, which it then lists and prints, as a catalog opened by its
+    /// location does. One the environment or a profile supplies is stated
+    /// nowhere. A table an S3 Tables bucket keeps states none: its session
+    /// signs, which `rust/tests/s3tables/catalog.rs` pins.
     #[test]
-    fn a_table_bucket_location_that_names_no_table_is_refused_with_no_request() {
+    fn a_folder_table_states_every_property_it_was_opened_under() {
+        let path = root("stated");
+        let location = Url::from_path(&path).unwrap();
+        let properties = Properties::new()
+            .with_property("owner", "ops")
+            .with_property("secret_access_key", "a-secret");
+
+        let created =
+            IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
+        let opened = IcebergTable::from_url(&location, &properties).unwrap();
+        let again =
+            IcebergTable::open_or_create_from_url(&location, &properties, None, schema(), None)
+                .unwrap();
+        for table in [&created, &opened, &again] {
+            let stated = ObjectValue::properties(table).unwrap();
+            assert_eq!(stated.get("owner"), Some("ops"));
+            assert_eq!(stated.get("secret_access_key"), Some("a-secret"));
+            assert!(format!("{table:?}").contains("a-secret"));
+        }
+
+        // Stated on the table, never stored in it: opened under nothing, the
+        // same table lists and prints none of it.
+        let unstated = IcebergTable::from_url(&location, &Properties::new()).unwrap();
+        let listed = ObjectValue::properties(&unstated).unwrap();
+        assert_eq!(listed.get("owner"), None);
+        assert_eq!(listed.get("secret_access_key"), None);
+        assert!(!format!("{unstated:?}").contains("a-secret"));
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A table bucket's location names a table only by a namespace and a
+    /// name, and at most that: refused at `$.url` where it is read - or, in
+    /// a build without the `s3tables` feature, by the scheme no backend of
+    /// it holds.
+    ///
+    /// Nothing counts requests here - the fake control plane's suite does,
+    /// in `rust/tests/s3tables/catalog.rs` - so the identity is stated in
+    /// full and the endpoint is a closed loopback port: a request this door
+    /// should not send would fail on this machine rather than leave it, and
+    /// nothing of the operator's - a variable's key, a shared file - is read
+    /// to sign one.
+    #[test]
+    fn a_table_bucket_location_that_names_no_table_is_refused_where_it_is_read() {
+        let aws = root("no-identity");
+        let properties = Properties::new()
+            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+            .with_property("secret_access_key", "a-secret")
+            .with_property("config_file", aws.join("config").display().to_string())
+            .with_property(
+                "shared_credentials_file",
+                aws.join("credentials").display().to_string(),
+            )
+            .with_property("s3tables.region", "us-east-1")
+            .with_property("s3tables.endpoint", "http://127.0.0.1:1");
         for location in [
             "s3tables://lake/a/b/c",
             "s3tables://lake",
             "s3tables://lake/desk",
         ] {
             let location = Url::from_str(location).unwrap();
-            let error = IcebergTable::from_url(&location, &Properties::new()).unwrap_err();
+            let error = IcebergTable::from_url(&location, &properties).unwrap_err();
             #[cfg(feature = "s3tables")]
             assert!(error.to_string().contains("$.url"), "{location}: {error}");
             #[cfg(not(feature = "s3tables"))]

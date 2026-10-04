@@ -138,7 +138,7 @@ mod table;
 
 pub use bucket::TableBucket;
 pub use catalog::{S3TablesCatalog, S3TablesNamespace};
-pub(crate) use catalog::{create, locate};
+pub(crate) use catalog::{create, locate, not_a_table, open_or_create};
 pub use client::S3Tables;
 pub use listing::{NamespaceSummaries, TableBuckets, TableSummaries};
 pub use namespace::NamespaceSummary;

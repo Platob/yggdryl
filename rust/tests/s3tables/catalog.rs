@@ -641,8 +641,12 @@ fn a_location_names_the_catalog_the_namespace_or_the_table() {
         documents.len() == 1 && documents[0].ends_with(".metadata.json"),
         "{documents:?}"
     );
+    // That one `GetObject` is the whole of what the store was asked: no
+    // `HEAD`, no listing beside it.
+    assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     table.field().expect("its schema");
     assert_eq!(fake.request_count(), 1);
+    assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     assert_eq!(read(table), [(0, 2, 1)]);
 
     // The catalog is named as the `name` property says.
@@ -747,6 +751,98 @@ fn a_bare_location_finds_its_bucket_once() {
 }
 
 #[test]
+fn a_bare_location_lists_once_whichever_door_opens_or_creates_it() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    lake(&fake);
+    let aws = scratch("bare-doors");
+    let properties = stated(&fake, &store, &aws);
+    catalog(&fake, &store)
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    let listed = "GET /buckets?maxBuckets=250".to_owned();
+    let created = format!("PUT /tables/{LAKE_LABEL}/desk");
+    let published = |name: &str| format!("PUT /tables/{LAKE_LABEL}/desk/{name}/metadata-location");
+
+    // A create by the location alone: the one listing that finds the
+    // bucket's ARN, then the creation's own three.
+    fake.clear_requests();
+    IcebergTable::create_from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect("a table");
+    assert_eq!(
+        fake.lines(),
+        [
+            listed.clone(),
+            created.clone(),
+            metadata_location_line("quotes"),
+            published("quotes"),
+        ]
+    );
+
+    // Opening or creating a table that is not there reads the location and
+    // resolves the bucket once for both halves: one listing, the open's
+    // refused request, then the creation's three - never a second listing.
+    fake.clear_requests();
+    IcebergTable::open_or_create_from_url(
+        url("s3tables://lake/desk/fills"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect("a table");
+    assert_eq!(
+        fake.lines(),
+        [
+            listed.clone(),
+            metadata_location_line("fills"),
+            created.clone(),
+            metadata_location_line("fills"),
+            published("fills"),
+        ]
+    );
+    assert_eq!(fake.requests()[1].status, 404);
+
+    // One that is there is the listing and the open.
+    fake.clear_requests();
+    IcebergTable::open_or_create_from_url(
+        url("s3tables://lake/desk/fills"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect("the table");
+    assert_eq!(
+        fake.lines(),
+        [listed.clone(), metadata_location_line("fills")]
+    );
+
+    // A bucket the caller has none of is absent at the one listing that
+    // says so: nothing is opened, and nothing is created under it.
+    fake.clear_requests();
+    let error = IcebergTable::open_or_create_from_url(
+        url("s3tables://nowhere/desk/quotes"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect_err("no such bucket");
+    assert!(error.is_absent(), "{error}");
+    assert!(error.to_string().contains("table bucket"), "{error}");
+    assert_eq!(fake.lines(), [listed]);
+    assert_eq!(forbidden(&store), Vec::<String>::new());
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
 fn a_table_drops_itself_through_its_catalog() {
     let fake = S3TablesFake::start();
     let store = store();
@@ -779,6 +875,21 @@ fn a_table_drops_itself_through_its_catalog() {
     fake.clear_requests();
     table.remove(false).expect("already dropped");
     assert_eq!(fake.request_count(), 1);
+
+    // The value that dropped it forgot the document it had read: the handle
+    // asks the catalog whether the table is there, and it is not - and a
+    // verb after the drop is that absence, never a commit to a table gone.
+    fake.clear_requests();
+    store.clear_requests();
+    let error = table
+        .append_serie(rows(&[(2, 1)]).into(), None)
+        .expect_err("dropped");
+    assert!(error.is_absent(), "{error}");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(store.request_count(), 0, "{:?}", store.requests());
+    fake.clear_requests();
+    assert!(!Holder::from(table).exists());
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
     assert_eq!(forbidden(&store), Vec::<String>::new());
 }
 
@@ -834,6 +945,7 @@ fn a_table_opens_by_its_location_or_by_its_arn() {
     assert_eq!(table.metadata_version().expect("its version"), 1);
     assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
     assert_eq!(fetched(&store).len(), 1, "{:?}", fetched(&store));
+    assert_eq!(store.request_count(), 1, "{:?}", store.requests());
     assert_eq!(read(&Table::from(table)), [(0, 2, 1)]);
 
     // The same table by its location, the bucket's ARN known from the
@@ -1011,6 +1123,39 @@ fn a_table_is_created_at_its_location_under_a_namespace_made_on_the_way() {
             published("fills"),
         ]
     );
+
+    // A table's ARN is opened where the bucket keeps the table and absent
+    // where it does not: an identifier names nothing a create could make,
+    // so its absence is the answer, at the one `GetTable` that says so.
+    let orders = identified(&fake, "orders");
+    fake.clear_requests();
+    let by_arn = IcebergTable::open_or_create_from_url(&orders, &properties, None, plain(), None)
+        .expect("the table");
+    assert_eq!(ObjectValue::path(&by_arn), ["lake", "desk", "orders"]);
+    assert_eq!(fake.lines(), [get_table_line(&orders)]);
+    let unknown = Arn::from_str(&format!("{arn}/table/00000000-0000-4000-8000-00000000beef"))
+        .expect("a table's ARN");
+    fake.clear_requests();
+    let error = IcebergTable::open_or_create_from_url(&unknown, &properties, None, plain(), None)
+        .expect_err("no such table");
+    assert!(error.is_absent(), "{error}");
+    assert_eq!(fake.lines(), [get_table_line(&unknown)]);
+
+    // A bucket or a namespace is no table, whichever door is asked: refused
+    // by its kind, at no request.
+    fake.clear_requests();
+    for (location, kind) in [
+        ("s3tables://lake", "catalog"),
+        ("s3tables://lake/desk", "namespace"),
+    ] {
+        let error =
+            IcebergTable::open_or_create_from_url(url(location), &properties, None, plain(), None)
+                .expect_err("no table");
+        let error = error.to_string();
+        assert!(error.contains("$.url"), "{error}");
+        assert!(error.contains(&format!("got the {kind} ")), "{error}");
+    }
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
 
     // The table is written, reopened by its location and dropped as any
     // other the bucket keeps is.

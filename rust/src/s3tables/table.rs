@@ -549,15 +549,9 @@ pub(crate) fn bucket_of(table: &Arn) -> Result<Arn> {
     if table.service() != SERVICE {
         return Err(refuse("arn:".len() + table.partition().len() + 1));
     }
-    let resource = table.resource();
-    let named = resource
-        .strip_prefix("bucket/")
-        .and_then(|below| below.split_once("/table/"))
-        .filter(|(bucket, id)| {
-            !bucket.is_empty() && !bucket.contains('/') && !id.is_empty() && !id.contains('/')
-        });
-    let Some((bucket, _)) = named else {
-        return Err(refuse(text.len() - resource.len()));
+    // The ARN's own reading of its resource: one grammar, read in one place.
+    let Some((bucket, _)) = table.identified_table() else {
+        return Err(refuse(text.len() - table.resource().len()));
     };
     Arn::from_parts(
         table.partition(),

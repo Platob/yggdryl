@@ -126,8 +126,9 @@ pub trait MetadataPointer: std::fmt::Debug + Send + Sync {
     /// # Errors
     ///
     /// Returns [`Error::Unsupported`](crate::Error::Unsupported) naming the
-    /// pointer where it drops nothing, and the catalog's own refusal
-    /// otherwise.
+    /// pointer where it drops nothing - which the table's own
+    /// [`remove`](crate::IOBase::remove) restates naming its location - and
+    /// the catalog's own refusal otherwise.
     fn remove(&self) -> Result<()> {
         Err(crate::Error::unsupported(
             "dropping a table through its pointer",

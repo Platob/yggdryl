@@ -556,30 +556,49 @@ class TestLocations:
                 refused()
         assert IcebergTable(handle).format_version == 3
 
-    def test_a_table_bucket_location_names_at_most_a_namespace_and_a_table(self) -> None:
-        # Refused where the location is read, before any request: there is
-        # nothing to sign, and nothing is sent.
+    def test_a_table_bucket_location_names_at_most_a_namespace_and_a_table(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Refused where the location is read. Nothing here counts requests -
+        # the core's suite does, against its fake control plane - so the
+        # identity is stated in full and the endpoint is a closed loopback
+        # port: a request these doors should not send would fail on this
+        # machine rather than leave it, and nothing of the operator's is
+        # read to sign one.
+        sealed = {
+            "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+            "secret_access_key": "a-secret",
+            "config_file": str(tmp_path / "config"),
+            "shared_credentials_file": str(tmp_path / "credentials"),
+            "s3tables.region": "us-east-1",
+            "s3tables.endpoint": "http://127.0.0.1:1",
+        }
         deep = "s3tables://bucket/a/b/c"
         for refused in (
-            lambda: IcebergTable(deep),
-            lambda: IcebergTable.create(deep, SCHEMA),
-            lambda: IcebergTable.open_or_create(deep, SCHEMA),
+            lambda: IcebergTable(deep, **sealed),
+            lambda: IcebergTable.create(deep, SCHEMA, **sealed),
+            lambda: IcebergTable.open_or_create(deep, SCHEMA, **sealed),
+            # A handle takes no properties: this one is refused before an
+            # identity is so much as built.
             lambda: IOBase(deep),
         ):
             with pytest.raises(ValueError, match=r"\$\.url"):
                 refused()
 
-        # A bucket or a namespace is no table, and a create names one by its
-        # namespace and its name.
+        # A bucket or a namespace is no table, whichever door is asked, and
+        # a create names one by its namespace and its name.
         for location in ("s3tables://bucket", "s3tables://bucket/desk"):
             with pytest.raises(ValueError, match=r"\$\.url"):
-                IcebergTable(location)
+                IcebergTable(location, **sealed)
             with pytest.raises(ValueError, match=r"\$\.url"):
-                IcebergTable.create(location, SCHEMA)
+                IcebergTable.create(location, SCHEMA, **sealed)
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable.open_or_create(location, SCHEMA, **sealed)
 
     def test_a_table_bucket_location_is_the_object_it_names(self) -> None:
-        # A description each, and no request: the bucket is its catalog and
-        # a segment below it a namespace, as the handle each is.
+        # A description each: the bucket is its catalog and a segment below
+        # it a namespace, as the handle each is, and describing one asks
+        # nothing of the service.
         catalog = IOBase("s3tables://bucket")
         assert isinstance(catalog, Catalog)
         assert catalog.path == ("bucket",)

@@ -194,7 +194,13 @@ impl IcebergTable<Handle> {
     /// own options read - resolved on the first verb that needs it and again
     /// by every clone, and its current document is read as [`Self::open`]
     /// reads it. The table states `properties`
-    /// ([`with_properties`](Self::with_properties)).
+    /// ([`with_properties`](Self::with_properties)) - every one of them, as
+    /// a catalog opened by its location does, because they are what each
+    /// clone opens the storage under. A credential stated among them is
+    /// therefore listed by [`ObjectValue::properties`] and printed by the
+    /// table's `Debug`; one the environment, a profile or the store's own
+    /// configuration supplies is stated nowhere, and neither listed nor
+    /// printed.
     ///
     /// Under the `s3tables` feature a location in an Amazon S3 Tables table
     /// bucket - `s3tables://<bucket>/<namespace>/<table>`, or a table's ARN,
@@ -204,7 +210,9 @@ impl IcebergTable<Handle> {
     /// files under the warehouse location the service chose, and every
     /// commit published through the control plane. Who signs, the region and
     /// the endpoint are read off `properties` as the bucket's catalog reads
-    /// them (`Catalog::from_url`). It costs one `GetTableMetadataLocation` -
+    /// them (`Catalog::from_url`) and kept by its session alone: such a
+    /// table states nothing, and inherits the properties less the ones the
+    /// session read. It costs one `GetTableMetadataLocation` -
     /// one `GetTable` for an ARN, which names the table by an identifier and
     /// is answered with its namespace and its name - and, where neither the
     /// location nor a property states the bucket's ARN or its account, the
@@ -243,15 +251,10 @@ impl IcebergTable<Handle> {
         if location.names_s3_tables() {
             return match crate::s3tables::locate(location, properties)? {
                 crate::Object::Table(crate::Table::Iceberg(table)) => Ok(*table),
-                other => Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$.url"),
-                    reason: format_smolstr!(
-                        "expected the location of a table, \
-                         s3tables://<bucket>/<namespace>/<table> or a table's ARN, got the {} {}",
-                        ObjectValue::kind(&other).as_str(),
-                        crate::fs::mask_uri(&location.to_string())
-                    ),
-                }),
+                other => Err(crate::s3tables::not_a_table(
+                    location,
+                    ObjectValue::kind(&other),
+                )),
             };
         }
         let root = rooted_at(location, properties)?;
@@ -346,6 +349,15 @@ impl IcebergTable<Handle> {
     /// An existing table is opened as it is; `version`, `schema` and `spec`
     /// describe only the table this call would create.
     ///
+    /// The location is resolved once for both halves: a folder's handle
+    /// comes back from the miss, and under the `s3tables` feature a table
+    /// bucket's location is read and its catalog built once, so a miss costs
+    /// the open's one refused request and nothing a second time - the
+    /// bucket's ARN, where only a listing finds it, is found once. A table's
+    /// ARN names a table by the identifier the service gave it, which no
+    /// create can make: one the bucket has no table of is
+    /// [`Error::Absent`], exactly as [`Self::from_url`] answers it.
+    ///
     /// ```
     /// use yggdryl::iceberg::IcebergTable;
     /// use yggdryl::{DataType, Properties, StructType, Url};
@@ -379,12 +391,7 @@ impl IcebergTable<Handle> {
         let location = location.as_ref();
         #[cfg(feature = "s3tables")]
         if location.names_s3_tables() {
-            return match Self::from_url(location, properties) {
-                Err(error) if error.is_absent() => {
-                    Self::create_from_url(location, properties, version, schema, spec)
-                }
-                opened => opened,
-            };
+            return crate::s3tables::open_or_create(location, properties, version, &schema, spec);
         }
         // One locate is the whole existence question: the handle comes back
         // from the miss, so the create resolves nothing a second time.
@@ -3616,18 +3623,34 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
     /// [`MetadataPointer::remove`], one `DeleteTable` for an Amazon S3
     /// Tables table - and its folder is asked for nothing; the catalog drops
     /// a table whole, so `recursive` chooses nothing there, and a table that
-    /// is already gone is dropped.
+    /// is already gone is dropped. The document this value read is forgotten
+    /// with the table: what it asks next is asked of the pointer again, so
+    /// the handle says the table is not there and a later verb fails as
+    /// absent rather than commit to a table that is gone.
     ///
     /// # Errors
     ///
     /// Returns the backing store's delete failure, a refusal naming the
     /// location when it still has children and `recursive` is not set, and
     /// for a table a pointer names the pointer's own failure -
-    /// [`Error::Unsupported`] from one that drops nothing.
+    /// [`Error::Unsupported`] naming the table's location for a pointer that
+    /// drops nothing.
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        match &self.pointer {
-            Some(pointer) => pointer.remove(),
-            None => self.root.remove(recursive),
+        let Some(pointer) = &self.pointer else {
+            return self.root.remove(recursive);
+        };
+        match pointer.remove() {
+            Ok(()) => {
+                self.opened = OnceLock::new();
+                Ok(())
+            }
+            // A pointer that drops nothing says so by its own name; the
+            // refusal a caller reads names the table, as the listing's does.
+            Err(error) if error.is_unsupported() => Err(kept_by_catalog(
+                &self.root,
+                "dropping a table through its pointer, which drops none",
+            )),
+            Err(error) => Err(error),
         }
     }
 }

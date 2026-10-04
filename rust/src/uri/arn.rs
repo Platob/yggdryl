@@ -336,6 +336,24 @@ impl Arn {
             .filter(|table| !table.is_empty())
     }
 
+    /// Return the table bucket and the identifier of the table this ARN
+    /// names, when it is an Amazon S3 Tables table's own ARN:
+    /// `bucket/<name>/table/<id>`, each one segment, and nothing else.
+    ///
+    /// The strict reading beside [`table`](Self::table), which answers
+    /// whatever the resource spells below its bucket the way the location
+    /// the ARN lowers to does. A door that addresses the service by the ARN
+    /// asks this one: the service identifies a table by exactly that shape.
+    #[cfg(feature = "s3tables")]
+    pub(crate) fn identified_table(&self) -> Option<(&str, &str)> {
+        if self.service() != "s3tables" {
+            return None;
+        }
+        let (bucket, below) = self.table_bucket_resource()?;
+        let id = below.strip_prefix("table/")?;
+        (!id.is_empty() && !id.contains('/')).then_some((bucket, id))
+    }
+
     /// Return the location this name addresses, as a URL.
     ///
     /// An Amazon S3 ARN names a bucket and, below it, a key, which is exactly
@@ -535,12 +553,15 @@ impl Arn {
 
     /// Return the field at `index`, which validation proved is there.
     fn field(&self, index: usize) -> &str {
-        self.0
-            .path()
-            .as_str()
-            .splitn(FIELDS, ':')
-            .nth(index)
-            .unwrap_or("")
+        field_of(self.0.path().as_str(), index)
+    }
+
+    /// Return the table bucket an Amazon S3 Tables resource names and what
+    /// the resource spells below it: `bucket/<name>[/<below>]`.
+    fn table_bucket_resource(&self) -> Option<(&str, &str)> {
+        let below = self.resource().strip_prefix("bucket/")?;
+        let (bucket, below) = below.split_once('/').unwrap_or((below, ""));
+        (!bucket.is_empty()).then_some((bucket, below))
     }
 
     /// Return the scheme, the container, and the name below it this ARN spells.
@@ -559,11 +580,7 @@ impl Arn {
                 (!bucket.is_empty()).then_some((Scheme::S3, bucket, key))
             }
             "s3tables" => {
-                let below = self.resource().strip_prefix("bucket/")?;
-                let (bucket, below) = below.split_once('/').unwrap_or((below, ""));
-                if bucket.is_empty() {
-                    return None;
-                }
+                let (bucket, below) = self.table_bucket_resource()?;
                 let table = below.strip_prefix("table/").unwrap_or(below);
                 Some((Scheme::S3TABLES, bucket, table))
             }
@@ -793,6 +810,20 @@ impl fmt::Display for ArnPartition {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
+}
+
+/// The field at `index` of an ARN's path - the five fields as written - and
+/// the empty text where the path holds no such field.
+fn field_of(path: &str, index: usize) -> &str {
+    path.splitn(FIELDS, ':').nth(index).unwrap_or("")
+}
+
+/// The service field of an identifier under the `arn` scheme, as written:
+/// what a door reads to route an ARN before it validates one, so neither
+/// folded nor proven to be there.
+#[cfg(feature = "s3tables")]
+pub(super) fn service_of(arn: &Uri) -> &str {
+    field_of(arn.path().as_str(), 1)
 }
 
 /// Answer `value` unless it is the empty field, which names nothing.
