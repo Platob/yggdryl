@@ -5064,50 +5064,152 @@ def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTab
     return yggdryl.iceberg.IcebergTable.create(IOBase(root), schema, format_version=3)
 
 
-THREADED_LOGGING_SCRIPT = """
+THREADED_DOORS_SCRIPT = """
 import io
 import logging
 import pathlib
 import sys
+import threading
 
+import yggdryl
 from yggdryl import IOBase, TextOptions
-from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry
+from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry, fix_schema
 
-# Warnings reach Python's `logging`, so a parse worker that raises one - or
-# asks a logger's level for the first time - takes the GIL.
-logging.basicConfig(level=logging.WARNING, stream=io.StringIO())
+CALLER = threading.get_ident()
+on_workers = []
+
+
+class Counting(logging.Handler):
+    def emit(self, record):
+        if threading.get_ident() != CALLER:
+            on_workers.append(record.getMessage())
+
+
+# Warnings reach Python's `logging`, so a parse worker that raises one takes
+# the GIL - and a record handled on a thread that is not the caller's is one
+# a worker took it for.
+logging.basicConfig(level=logging.WARNING, handlers=[Counting()])
 
 registry = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
+folder = pathlib.Path(sys.argv[2])
 codec = FixCodec(registry, exclude_msgtypes=[], threads=4)
 assert codec.threads == 4
 options = TextOptions()
 options.rowheader = ULBRIDGE_ROWHEADER
 options.timezone = "UTC"
 options.start_rownum = 1
-capture = pathlib.Path(sys.argv[2])
-folder = pathlib.Path(sys.argv[3])
+schema = fix_schema(registry)
+
+# A warning is said the first time and counted after, by the field it names:
+# each door reads lines stating a field of its own with a value that field's
+# type refuses, so each door's first warning is said while that door runs.
+TAGS = iter(
+    [6, 12, 14, 31, 32, 38, 44, 53, 84, 99, 110, 111, 118, 119, 132, 133, 134, 135]
+    + [140, 151, 152, 155, 159, 188, 189, 190, 191, 192, 194, 195, 202, 210, 211, 218]
+    + [223, 231, 236, 270, 271, 290]
+)
+HEADER = (
+    b"2026-08-14 14:46:39.771 [15255-e7254b12:9f0316669a:40221] [OMS_X1_TradeCapture] (INFO) "
+)
+LINES = 320
 
 
-def parsed():
+def bodies(tag):
+    return [
+        b"Receiving : 8=FIX.4.4|35=D|11=D%d-%d|55=ABC|54=1|%d=zz|10=000|" % (tag, index, tag)
+        for index in range(LINES)
+    ]
+
+
+def capture(tag):
+    path = folder / ("capture-%d.log" % tag)
+    path.write_bytes(b"".join(HEADER + line + b"\\n" for line in bodies(tag)))
+    return path
+
+
+def rows(tag):
+    return IOBase(capture(tag)).read_serie(options=options)
+
+
+def text_lines(tag):
+    return list(IOBase(capture(tag)).read_text_lines(options=options))
+
+
+def parsed(tag):
     # The parse as `pyarrow` holds it: a C stream over the core's reader.
-    return codec.parse_text_arrow_reader(IOBase(capture).read_serie(options=options))
+    return codec.parse_text_arrow_reader(rows(tag))
 
 
-# The serie doors: the walk reads its first batch as it is built.
-lines = IOBase(capture).read_serie(options=options)
-walked = sum(len(batch) for batch in codec.lifecycle_serie(codec.parse_text_serie(lines)))
-assert walked > 0, walked
+def messages(tag):
+    # Lazy: the lines are parsed, on the workers, as the door pulls them.
+    return codec.parse_lines(bodies(tag))
 
-# The same parse come back through `pyarrow` and drained by a storage door,
-# as a reader and as a serie source, and by the wire door.
-stored = IOBase(folder / "reader.arrow").overwrite_arrow_reader(parsed())
-assert stored.written_rows > 0, stored
-again = IOBase(folder / "serie.arrow").overwrite_serie(parsed())
-assert again.written_rows == stored.written_rows, again
-sink = io.BytesIO()
-count = codec.write_arrow_reader(parsed(), sink)
-assert count == stored.written_rows, count
-assert sink.getvalue().count(b"\\n") == count
+
+def drain(reader):
+    return sum(len(batch) for batch in reader)
+
+
+def count(iterable):
+    return sum(1 for _ in iterable)
+
+
+DOORS = {
+    "parse_lines": lambda tag: count(codec.parse_lines(bodies(tag))),
+    "parse_lines of a generator": lambda tag: count(
+        codec.parse_lines(line for line in bodies(tag))
+    ),
+    "parse_text_lines": lambda tag: count(codec.parse_text_lines(text_lines(tag))),
+    "parse_text_arrow_reader": lambda tag: drain(parsed(tag)),
+    "parse_text_arrow_reader read whole": lambda tag: parsed(tag).read_all().num_rows,
+    "parse_text_arrow_reader of a pyarrow reader": lambda tag: drain(
+        codec.parse_text_arrow_reader(rows(tag).into_arrow_reader())
+    ),
+    "parse_text_serie": lambda tag: drain(codec.parse_text_serie(rows(tag))),
+    "messages": lambda tag: count(codec.messages(parsed(tag))),
+    "messages_serie": lambda tag: count(codec.messages_serie(codec.parse_text_serie(rows(tag)))),
+    "arrow_reader": lambda tag: drain(codec.arrow_reader(schema, messages(tag))),
+    "serie_reader": lambda tag: drain(codec.serie_reader(schema, messages(tag))),
+    "lifecycle": lambda tag: count(codec.lifecycle(messages(tag))),
+    "lifecycle of messages": lambda tag: count(codec.lifecycle(codec.messages(parsed(tag)))),
+    "lifecycle_arrow_reader": lambda tag: drain(codec.lifecycle_arrow_reader(parsed(tag))),
+    "lifecycle_serie": lambda tag: drain(
+        codec.lifecycle_serie(codec.parse_text_serie(rows(tag)))
+    ),
+    "market_data": lambda tag: count(codec.market_data(messages(tag))),
+    "market_arrow_reader": lambda tag: drain(codec.market_arrow_reader(messages(tag))),
+    "market_data_arrow_reader": lambda tag: drain(codec.market_data_arrow_reader(parsed(tag))),
+    "market_data_serie": lambda tag: drain(
+        codec.market_data_serie(codec.parse_text_serie(rows(tag)))
+    ),
+    "market_serie": lambda tag: drain(codec.market_serie(messages(tag))),
+    "book_arrow_reader": lambda tag: drain(codec.book_arrow_reader(messages(tag))),
+    "book_serie": lambda tag: drain(codec.book_serie(messages(tag))),
+    "format_messages": lambda tag: len(codec.format_messages(messages(tag), schema)),
+    "format_arrow_reader": lambda tag: drain(codec.format_arrow_reader(parsed(tag), schema)),
+    "write_arrow_reader": lambda tag: codec.write_arrow_reader(parsed(tag), io.BytesIO()),
+    "IOBase.overwrite_arrow_reader": lambda tag: IOBase(folder / ("reader-%d.arrows" % tag))
+    .overwrite_arrow_reader(parsed(tag))
+    .written_rows,
+    "IOBase.overwrite_serie of a pyarrow reader": lambda tag: IOBase(
+        folder / ("stream-%d.arrows" % tag)
+    )
+    .overwrite_serie(parsed(tag))
+    .written_rows,
+    "IOBase.overwrite_serie of a SerieReader": lambda tag: IOBase(
+        folder / ("serie-%d.arrows" % tag)
+    )
+    .overwrite_serie(codec.lifecycle_serie(codec.parse_text_serie(rows(tag))))
+    .written_rows,
+    "Serie.from_": lambda tag: len(yggdryl.Serie.from_(parsed(tag))),
+    "ChunkedSerie.from_": lambda tag: len(yggdryl.ChunkedSerie.from_(parsed(tag))),
+}
+
+for name, door in DOORS.items():
+    said = len(on_workers)
+    # Said before the door runs: a door that hangs is the last one named.
+    print("door:", name, flush=True)
+    door(next(TAGS))
+    assert len(on_workers) > said, "no worker logged while %s ran" % name
 print("ok")
 """
 
@@ -5117,19 +5219,28 @@ def test_no_door_waiting_on_a_threaded_parse_holds_the_gil(tmp_path: pathlib.Pat
     and a worker that logs takes the GIL - so a door waiting on the workers
     must have released it: held, the two wait on each other for good.
 
-    Driven in a process of its own under a deadline, because the failure is
-    a hang and a test that hangs proves nothing. One thread never showed it:
-    the worker was the calling thread.
+    Every door of the codec that can wait on them is driven, and every
+    consumer a parse reader is handed to - a handle's writes, ``Serie.from_``
+    - at four threads, each over lines whose refused field is its own, so a
+    worker's warning is said while that door runs and the script asserts one
+    was. In a process of its own under a deadline, because the failure is a
+    hang and a test that hangs proves nothing; what it had printed names the
+    door that hung. One thread never showed it: the worker was the caller.
     """
-    result = subprocess.run(
-        [sys.executable, "-c", THREADED_LOGGING_SCRIPT, str(SEED), str(ULBRIDGE_LOG), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        cwd=REPO,
-        check=False,
-        timeout=300,
-    )
-    assert result.returncode == 0, result.stderr
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", THREADED_DOORS_SCRIPT, str(SEED), str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as hung:
+        seen = hung.stdout if isinstance(hung.stdout, str) else (hung.stdout or b"").decode()
+        doors = [line for line in seen.splitlines() if line.startswith("door:")]
+        raise AssertionError(f"a door hung holding the GIL; the last named: {doors[-1:]}") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip().endswith("ok")
 
 
