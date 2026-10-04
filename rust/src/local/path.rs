@@ -342,8 +342,20 @@ impl IOBase for LocalPath {
             .unwrap_or(false)
     }
 
+    /// A local location is its path, which a move renames.
+    fn local_url(&self) -> Option<&Url> {
+        Some(&self.url)
+    }
+
     fn close(&mut self) -> Result<()> {
-        self.with_resolved_mut(|handle| handle.close())?
+        self.with_resolved_mut(|handle| handle.close())??;
+        // Closed reads are fresh: what this location resolved to while it
+        // was open - a leaf decided by absence, a mapping - goes with the
+        // cache, and the next call resolves it again from what is there.
+        if let Ok(mut slot) = self.resolved.lock() {
+            *slot = None;
+        }
+        Ok(())
     }
 
     fn parent(&self) -> Option<Holder> {

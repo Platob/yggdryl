@@ -3557,10 +3557,13 @@ class IOBase:
         *,
         uri: str | PathLike[str] | None = None,
     ) -> IOBase: ...
+    # An object-store location's query states the store's properties too, in
+    # the names the store's reader takes - `?endpoint_override=...&scheme=http`
+    # - read first and taken off the location the handle reports.
     @classmethod
     def from_uri(
         cls,
-        uri: str | PathLike[str],
+        uri: Uri | str | PathLike[str],
         *,
         options: Mapping[str, object] | None = None,
         **properties: str | bool | None,
@@ -3578,13 +3581,19 @@ class IOBase:
     def url(self) -> Url | None: ...
     @property
     def filesystem(self) -> pyarrow.fs.FileSystem | None: ...
+    # A native store's path is the container and the raw key beneath it, as
+    # the store names it, never the URL's escaped spelling.
     @property
     def path(self) -> str | None: ...
     @property
     def bound_uri(self) -> str | None: ...
     @property
     def masked_uri(self) -> str | None: ...
+    # One `open`/`close` scope of its own on a native store, so an object
+    # answers one HEAD; a handle already open keeps what it holds.
     def info(self) -> pyarrow.fs.FileInfo: ...
+    # Over the identifier alone on a native store; a bridged handle and a
+    # native one never share a location.
     def same_location(self, other: IOBase) -> bool: ...
     def normalize_path(self, path: str | PathLike[str]) -> str: ...
     @property
@@ -3630,6 +3639,8 @@ class IOBase:
     def open_input_stream(
         self, compression: str | None = "detect", buffer_size: int | None = None
     ) -> pyarrow.NativeFile: ...
+    # `metadata` reaches a bridged filesystem's own stream; a native store
+    # refuses it by name (io.UnsupportedOperation).
     def open_output_stream(
         self,
         compression: str | None = "detect",
@@ -3683,7 +3694,15 @@ class IOBase:
     def pwrite(self, offset: int, data: bytes) -> int: ...
     def append_bytes(self, data: bytes) -> int: ...
     def append(self, data: bytes | bytearray | memoryview | str) -> int: ...
-    def create_dir(self, recursive: bool = False) -> FsFolder: ...
+    def create_dir(self, recursive: bool = False) -> LocalFolder | FsFolder | S3Folder: ...
+    # On a native store each acts once and answers what the core answers:
+    # `delete_dir` is `remove(False)` on the container, `delete_dir_contents`
+    # its `clear()` - absence is success whatever `missing_dir_ok` says, which
+    # forgives only a clear that itself reports it - and `delete_file` is
+    # `remove(False)` on the plain handle, so absence is success, an empty
+    # directory is removed and a populated one refused as not empty. A bridged
+    # filesystem answers its own verbs, a directory refused. A wrapper is
+    # refused the container verbs: they are asked of the plain handle.
     def delete_dir(self) -> None: ...
     def delete_dir_contents(self, missing_dir_ok: bool = False) -> None: ...
     def delete_root_dir_contents(self) -> None: ...
@@ -3730,6 +3749,9 @@ class IOBase:
         traceback: Any | None = None,
     ) -> bool: ...
     def copy_into(self, target: IOBase) -> int: ...
+    # The handle that comes back addresses `target` on its own store, under
+    # its own options - as `IOBase(handle)` and `joinpath()` with nothing to
+    # join hold a native handle again, never rebuilt from its URL.
     def move_into(self, target: IOBase) -> IOBase: ...
     def compress_into(
         self, target: IOBase, codec: str | None = None, level: int | None = None
@@ -4119,7 +4141,8 @@ class LocalPath(IOBase):
     def as_directory(self) -> LocalFolder: ...
 
 class FsFile(IOBase):
-    """One file on a foreign filesystem, read and written through its streams."""
+    """One file on a bridged filesystem, read and written through its streams;
+    `LocalFile` or `S3File` comes back for a filesystem this build holds natively."""
 
     def __init__(
         self,
@@ -4130,7 +4153,8 @@ class FsFile(IOBase):
     ) -> None: ...
 
 class FsFolder(IOBase):
-    """One directory on a foreign filesystem."""
+    """One directory on a bridged filesystem; `LocalFolder` or `S3Folder` comes back
+    for a filesystem this build holds natively."""
 
     def __init__(
         self,
@@ -4141,7 +4165,8 @@ class FsFolder(IOBase):
     ) -> None: ...
 
 class FsPath(IOBase):
-    """One location on a foreign filesystem that resolves when asked."""
+    """One location on a bridged filesystem that resolves when asked; `LocalPath` or
+    `S3Path` comes back for a filesystem this build holds natively."""
 
     def __init__(
         self,

@@ -5078,12 +5078,28 @@ export declare class IOBase {
    */
   static fromFs(filesystem: FileSystemInput, path: string, uri?: string | undefined | null): IOBase
   /**
-   * Resolve a filesystem URI once through the core URI boundary.
+   * Hold the resource `uri` names, on the store its scheme selects, under
+   * that store's properties.
    *
-   * Local URIs use the native local Arrow filesystem implementation. Arrow
-   * JS supplies no S3 backend, so a valid S3 URI reports `Unsupported`
-   * without exposing credentials; callers with an S3 implementation bind it
-   * explicitly with [`Self::from_fs`].
+   * The core's one location door, `Holder::from_url`, for every scheme
+   * this build holds - a `file:` URL the local role, an object-store URL
+   * the native store, an `http:` one the `GET` of that resource, an
+   * `s3tables:` one the catalog object it names - with no file system
+   * handler built on the way; the constructor is this door under no
+   * properties, and `uri` is read as the constructor reads text. An
+   * object-store location's query states the store's properties too, in
+   * the names its reader takes -
+   * `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`
+   * - which the core reads beneath `options` and takes off the location
+   * the handle reports, refusing a parameter no store reads by name.
+   * `options` is an object of the store's properties in any vocabulary
+   * the core reads - this crate's own names, `PyIceberg`'s, `PyArrow`'s,
+   * each store's environment names, the HTTP options' - beside `media_type`
+   * and `codec`, which every location takes, each winning over the
+   * query's: a string, a boolean or a number is the property's text,
+   * `null` leaves it unstated, and any other value is refused by name. A
+   * property no store reads is ignored, as the core ignores it, and a
+   * scheme no backend of this build holds is refused by that scheme.
    */
   static fromUri(uri: string, options?: Record<string, any> | undefined | null): IOBase
   /** Describe an in-memory resource holding `data`. */

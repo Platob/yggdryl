@@ -606,6 +606,77 @@ b1
     }
 }
 
+/// The object-store roles: what `Holder::from_url` reads off a location's
+/// query, beneath the caller's properties, and takes off the location.
+#[cfg(feature = "s3")]
+mod object_store_holders {
+    use yggdryl::holder::Holder;
+    use yggdryl::{IOBase, Url};
+
+    use crate::server::FakeS3;
+
+    /// `text` as one query value: the escapes a URL needs.
+    fn escaped(text: &str) -> String {
+        text.replace('%', "%25")
+            .replace(':', "%3A")
+            .replace('/', "%2F")
+    }
+
+    fn store() -> FakeS3 {
+        let store = FakeS3::start();
+        store.create_bucket("trades");
+        store.allow_anonymous(true);
+        store
+    }
+
+    #[test]
+    fn a_query_states_the_store_beneath_the_properties_and_leaves_the_location() {
+        let store = store();
+        store.put("trades", "lake/part.bin", b"AAPL");
+        let none: [(&str, &str); 0] = [];
+
+        // The query names the store in the reader's own names and in
+        // PyArrow's; the handle reports the location without it.
+        let url = Url::from_str(&format!(
+            "s3://trades/lake/part.bin?endpoint_override={}&region=us-east-1&path_style=true&anonymous=true",
+            escaped(&store.endpoint())
+        ))
+        .unwrap();
+        let held = Holder::from_url(&url, none).unwrap();
+        assert!(
+            matches!(held, Holder::S3Path(_) | Holder::S3File(_)),
+            "{held:?}"
+        );
+        assert_eq!(
+            held.url().map(ToString::to_string).as_deref(),
+            Some("s3://trades/lake/part.bin")
+        );
+        assert_eq!(store.request_count(), 0, "holding sends nothing");
+        assert_eq!(held.read_all_bytes().unwrap(), b"AAPL");
+        assert!(
+            store.request_count() > 0,
+            "the read went to the endpoint the query named"
+        );
+
+        // A property the caller states wins over the query's, whatever its
+        // spelling: the request goes where the property says.
+        let url = Url::from_str(
+            "s3://trades/lake/part.bin?endpoint_override=http%3A%2F%2Fexample.invalid%3A9&region=us-east-1&path_style=true&anonymous=true",
+        )
+        .unwrap();
+        let held = Holder::from_url(&url, [("endpoint", store.endpoint().as_str())]).unwrap();
+        store.clear_requests();
+        assert_eq!(held.read_all_bytes().unwrap(), b"AAPL");
+        assert!(store.request_count() > 0);
+
+        // A parameter naming no property the store reads is refused by name
+        // before anything is held, since an object takes no query.
+        let url = Url::from_str("s3://trades/lake/part.bin?versionId=3").unwrap();
+        let error = Holder::from_url(&url, none).unwrap_err();
+        assert!(error.to_string().contains("versionId"), "{error}");
+    }
+}
+
 /// The four HTTP variants: what `Holder::from_url` routes to an `http:` or
 /// `https:` URL, the properties it reads, and what composes over one.
 #[cfg(feature = "http")]

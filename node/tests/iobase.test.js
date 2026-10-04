@@ -1331,3 +1331,122 @@ test('every object store url spelling reaches the native backend without touchin
     assert.equal(child.url.toString(), `${scheme}://${authority}/lake/year=2026/part.parquet`)
   }
 })
+
+test('fromUri holds a file: URL as the native local role and reads it', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const leaf = path.join(root, 'events.txt')
+  fs.writeFileSync(leaf, 'AAPL')
+  const spelled = Url.fromPath(leaf).toString()
+
+  // The core's one location door, as the constructor is: a `file:` URL is
+  // the local role, no file system handler stands behind it, and the bytes
+  // read through the local store.
+  const handle = IOBase.fromUri(spelled)
+  assert.equal(handle.url.toString(), spelled)
+  assert.equal(handle.toString(), new IOBase(leaf).toString())
+  assert.equal(handle.filesystem, null)
+  assert.equal(handle.boundUri, null)
+  assert.equal(handle.maskedUri, null)
+  assert.equal(handle.kind(), 'file')
+  assert.equal(handle.readText(), 'AAPL')
+  // Text is read as the constructor reads it: a platform path is the same
+  // `file:` identifier.
+  assert.equal(IOBase.fromUri(leaf).url.toString(), spelled)
+
+  // The two properties every location takes reach the core: a declared
+  // media type, and a coding the handle then presents decoded. A string, a
+  // boolean or a number is the property's text, `null` leaves it unstated,
+  // a name no store reads is ignored, and any other value is refused by
+  // name.
+  const declared = IOBase.fromUri(spelled, { media_type: 'text/csv', region: null, nothing: 1 })
+  assert.equal(declared.mediaType.toString(), 'text/csv')
+  const zipped = path.join(root, 'events.bin')
+  fs.writeFileSync(zipped, zlib.gzipSync('MSFT'))
+  assert.equal(IOBase.fromUri(Url.fromPath(zipped).toString(), { codec: 'gzip' }).readText(), 'MSFT')
+  assert.throws(
+    () => IOBase.fromUri(spelled, { region: ['eu-west-1'] }),
+    /location property "region" must be a string, boolean, number, or null/,
+  )
+})
+
+test('fromUri holds an object store URL as the native store without a request', () => {
+  // Construction costs no request: the URL, the name and the media type come
+  // from the spelling alone, and the store's properties travel in any
+  // vocabulary the core reads - a boolean spelled as its text.
+  const handle = IOBase.fromUri('s3://trades/lake/year=2026/part.parquet', {
+    region: 'eu-west-1',
+    endpoint: 'http://127.0.0.1:9',
+    anonymous: true,
+  })
+  assert.equal(handle.url.toString(), 's3://trades/lake/year=2026/part.parquet')
+  assert.equal(handle.url.scheme, 's3')
+  assert.equal(handle.url.bucket, 'trades')
+  assert.equal(handle.url.key, 'lake/year=2026/part.parquet')
+  assert.equal(handle.name, 'part.parquet')
+  assert.equal(handle.filesystem, null)
+  assert.equal(handle.boundUri, null)
+  assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
+  assert.deepEqual(handle.partitions, [{ column: 'year', value: '2026' }])
+
+  // Every store the constructor holds natively, this door holds the same way.
+  for (const spelled of [
+    'gs://trades/part.parquet',
+    'az://trades@lake.blob.core.windows.net/part.parquet',
+  ]) {
+    assert.equal(IOBase.fromUri(spelled).url.toString(), new IOBase(spelled).url.toString())
+  }
+
+  // A scheme no backend of this build holds is refused by that scheme.
+  assert.throws(
+    () => IOBase.fromUri('ftp://example.com/part.parquet'),
+    /"ftp" does not support holding a location of this scheme/,
+  )
+})
+
+// The one request `operation` sends goes to 127.0.0.1:9 and is refused
+// there - never to a public host, never carrying a secret.
+function refusedAtTheEndpoint(operation) {
+  assert.throws(operation, (error) => {
+    const message = String(error.message)
+    assert.ok(!message.includes('amazonaws') && !message.includes('do-not-leak'), message)
+    assert.ok(
+      message.includes('127.0.0.1:9') || /refus/i.test(message) || message.includes('10061'),
+      message,
+    )
+    return true
+  })
+}
+
+test('fromUri reads an object store query as the store properties and takes it off the location', () => {
+  // The query states the store's properties in the names its reader takes,
+  // read first and taken off the location the handle reports, so the URL
+  // names the resource and not how it is reached, and carries no secret.
+  const handle = IOBase.fromUri(
+    's3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http&region=eu-west-1',
+    { access_key_id: 'AKIAEXAMPLE', secret_access_key: 'do-not-leak' },
+  )
+  assert.equal(handle.url.toString(), 's3://bucket/lake/key.bin')
+  assert.equal(handle.url.query, null)
+  assert.equal(handle.url.bucket, 'bucket')
+  assert.equal(handle.url.key, 'lake/key.bin')
+  assert.ok(!handle.toString().includes('do-not-leak'))
+  // The endpoint the query stated is where the first request goes.
+  refusedAtTheEndpoint(() => handle.readBytes())
+
+  // An option wins over the query's spelling of the same property: the
+  // request goes where the option says, not to the host the query named.
+  const overridden = IOBase.fromUri(
+    's3://bucket/lake/key.bin?endpoint_override=example.invalid%3A9&scheme=http',
+    { endpoint_override: '127.0.0.1:9', anonymous: true },
+  )
+  assert.equal(overridden.url.toString(), 's3://bucket/lake/key.bin')
+  refusedAtTheEndpoint(() => overridden.readBytes())
+
+  // A query on any other scheme is the resource's own and stays on the
+  // location: an HTTP URL's query is part of what is fetched.
+  assert.equal(
+    IOBase.fromUri('http://127.0.0.1:9/lake/key.bin?version=3').url.toString(),
+    'http://127.0.0.1:9/lake/key.bin?version=3',
+  )
+})

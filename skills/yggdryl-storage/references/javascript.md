@@ -408,11 +408,51 @@ assert.equal(blob.parent.url.toString(), 'abfss://lake@trades.dfs.core.windows.n
 assert.equal(new IOBase(new Arn('arn:aws:s3:::b/k')).url.toString(), 's3://b/k')
 ```
 
+## Hold a URI under properties
+
+`IOBase.fromUri(uri, options?)` is `Holder::from_url`, the core's one
+location door, for every scheme the build holds - the constructor under
+properties. `options` is a plain object in any vocabulary the core reads
+(the crate's own names, PyIceberg's, PyArrow's, environment names) beside
+`media_type` and `codec`: a string, a boolean or a number is the property's
+text, `null` leaves it unstated, a name nothing reads is ignored, and any
+other value is refused by name. An object-store URL's query states the
+store's properties too, read by the core beneath the options - an option
+wins whatever its spelling - and taken off the location the handle reports;
+a query parameter no store reads is refused by name (`?versionId=3`), and a
+`file:` or `http:` URL's query stays.
+
+```javascript
+const assert = require('node:assert/strict')
+const { IOBase } = require('yggdryl')
+
+// The native store under the properties given; construction sends nothing.
+const part = IOBase.fromUri('s3://trades/lake/year=2026/part.parquet', {
+  region: 'eu-west-1',
+  endpoint: 'http://127.0.0.1:9',
+  anonymous: true,
+  session_token: null,
+})
+assert.equal(part.url.toString(), 's3://trades/lake/year=2026/part.parquet')
+assert.equal(part.url.bucket, 'trades')
+assert.equal(part.filesystem, null)
+assert.equal(part.mediaType.toString(), 'application/vnd.apache.parquet')
+assert.equal(IOBase.fromUri('gs://trades/part.bin').url.toString(), new IOBase('gs://trades/part.bin').url.toString())
+assert.throws(() => IOBase.fromUri('s3://trades/k', { region: ['eu-west-1'] }), /"region"/)
+
+// The query states the store's properties, beneath the options, off the location.
+const spelled = IOBase.fromUri('s3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http', { anonymous: true })
+assert.equal(spelled.url.toString(), 's3://bucket/lake/key.bin')
+assert.equal(spelled.url.query, null)
+```
+
 ## Bind a filesystem through the handler protocol
 
-`IOBase.fromFs(handler, path, uri?)` wraps any object answering sixteen
-synchronous calls (sizes, offsets and nanosecond mtimes are `bigint`). The
-path is opaque: `%2F` reaches the handler literally.
+`IOBase.fromFs(handler, path, uri?)` is the one door that bridges: it wraps
+any object answering sixteen synchronous calls (sizes, offsets and
+nanosecond mtimes are `bigint`). The path is opaque: `%2F` reaches the
+handler literally. A URL is never bridged - `new IOBase(url)` and `fromUri`
+hold every scheme natively.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -560,9 +600,8 @@ Not bound in JavaScript - never invent these: a decoded-view handle
 (`into_coded`/`Coded`; use `compressInto`/`decompressInto` or the codec
 namespaces), `Transcoded`, `Counted` call tallies, ZIP archives, role classes
 (`LocalFile`, `LocalFolder`, `S3File`), `LocalFolder.temporary()/home()`,
-streaming codec readers/writers, `S3Options`/`Session` builders. JavaScript
-has no S3 client for `IOBase.fromUri('s3://...')` (it reports `Unsupported`);
-`new IOBase('s3://...')` is the native store.
+streaming codec readers/writers, `S3Options`/`Session` builders. The store
+knobs those builders take cross as `IOBase.fromUri(url, options)` properties.
 
 ## Gotchas in JavaScript
 
@@ -574,6 +613,13 @@ has no S3 client for `IOBase.fromUri('s3://...')` (it reports `Unsupported`);
 - `mediaType`, `codec`, `parent`, `partitions`, `url` are getters; `size()`, `kind()`,
   `opened()`, `closed()`, `exists()`, `isDir()`, `isFile()` are methods.
 - `copyInto` answers a `bigint`; `compressInto`/`decompressInto` a `number`.
+- `moveInto` and the four `open*Stream` calls are the bridge's own: both
+  handles come from `fromFs`. A native handle moves with `copyInto` then
+  `remove()`.
+- `IOBase.fromUri('s3://b/k?endpoint_override=...')` reads the query as the
+  store's properties and reports the URL without it; an option wins over it
+  whatever its spelling (`endpoint` over the query's `endpoint_override`),
+  and a parameter no store reads (`versionId`) is refused by name.
 - `buffered(...)` returns the same handle (Python's spends it).
 - A handler-backed handle is bound to the JavaScript thread that supplied the
   handler; it cannot be read from a `Worker`.

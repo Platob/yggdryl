@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::fs::{BoundLocation, FileSystem, LocalFileSystem, MemoryFileSystem, mask_uri};
+use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem, mask_uri};
 
 use crate::counting_filesystem::CountingFileSystem;
 
@@ -58,7 +58,7 @@ fn an_in_process_filesystem_names_localhost_and_so_does_everything_bound_from_it
 #[test]
 fn a_local_filesystem_names_no_host_so_its_url_is_the_path() {
     let location = BoundLocation::new(
-        Arc::new(LocalFileSystem::new()),
+        Arc::new(yggdryl::fs::LocalFileSystem::new()),
         "/tmp/lake/trades.parquet",
         None,
     )

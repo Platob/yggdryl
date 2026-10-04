@@ -115,7 +115,11 @@ class TestNativeHandleLayers:
     def test_open_retains_media_metadata_until_close_then_refreshes(
         self, tmp_path: pathlib.Path
     ) -> None:
-        location = tmp_path / "opened.arrows"
+        # A bridged in-memory filesystem: the store takes a replacement
+        # written outside this handle while the handle holds it open, which a
+        # mapped local file would refuse on some platforms.
+        filesystem = pafs._MockFileSystem()
+        location = "opened.arrows"
         replacement = tmp_path / "replacement.arrows"
         original = pa.table({"id": pa.array([1, 2], type=pa.int32())})
         changed = pa.table(
@@ -124,7 +128,6 @@ class TestNativeHandleLayers:
                 "symbol": ["A", "B", "C"],
             }
         )
-        filesystem = pafs.LocalFileSystem()
         handle = IOBase.from_fs(filesystem, location)
         handle.overwrite_arrow_table(original)
         IOBase(replacement).overwrite_arrow_table(changed)

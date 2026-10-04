@@ -156,6 +156,16 @@ impl S3File {
         self.file_exists()
     }
 
+    /// The prefix this object's own location names, on the same client, no
+    /// request.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal when the location names no bucket.
+    pub fn as_directory(&self) -> Result<S3Folder> {
+        S3Folder::new(self.client.clone(), self.url.clone())
+    }
+
     /// Lock the state, reporting a poisoned lock rather than panicking.
     fn state(&self) -> Result<MutexGuard<'_, State>> {
         self.state.lock().map_err(|_| poisoned())
@@ -771,8 +781,11 @@ impl IOBase for S3File {
         if state.opened && state.meta.is_some() {
             return Ok(());
         }
-        state.opened = true;
+        // Open only once the store has answered: a refused `HEAD` leaves the
+        // handle as it was, closed, so nothing is kept of a scope that never
+        // began.
         let meta = self.client.head_object(&self.bucket, &self.key)?;
+        state.opened = true;
         state.meta = Some(meta);
         Ok(())
     }

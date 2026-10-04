@@ -15,6 +15,9 @@
 
 #[path = "support/counting_filesystem.rs"]
 mod counting_filesystem;
+#[cfg(feature = "s3")]
+#[path = "support/server.rs"]
+mod server;
 
 use std::sync::Arc;
 
@@ -385,6 +388,99 @@ fn a_write_is_one_call_and_a_transfer_is_one_stream() {
                 .expect("a compression");
         },
     );
+
+    // A move reads the source's kind once, then the copy above, then one
+    // removal.
+    let mut mover = crate::source(&payload(4096), "file:///lake/part.bin");
+    let calls = Arc::clone(mover.calls());
+    costs(
+        "a move",
+        &calls,
+        "pstream_bytes=1 remove=1 url=1 bound_location=3 media_type=1 kind=1 is_container=1",
+        || {
+            let mut destination = Buffer::new();
+            mover.move_into(&mut destination).expect("a move");
+        },
+    );
+}
+
+/// What a move between two objects of one store costs in requests, and the
+/// two refusals that cost the open alone.
+#[cfg(feature = "s3")]
+mod object_store {
+    use yggdryl::IOBase;
+    use yggdryl::holder::Holder;
+    use yggdryl::s3::{Credentials, S3Options};
+
+    use crate::server::FakeS3;
+
+    fn file(store: &FakeS3, key: &str) -> Holder {
+        let options = S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
+        Holder::S3File(yggdryl::s3::file_with(&format!("s3://trades/{key}"), options).unwrap())
+    }
+
+    fn methods(store: &FakeS3) -> Vec<String> {
+        store
+            .requests()
+            .iter()
+            .map(|request| request.method.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_move_between_two_objects_is_the_open_the_copy_and_the_removal() {
+        let store = FakeS3::start();
+        store.create_bucket("trades");
+        store.put("trades", "lake/source.bin", b"AAPL,1");
+        let mut source = file(&store, "lake/source.bin");
+        let mut target = file(&store, "lake/target.bin");
+        store.clear_requests();
+
+        // One `HEAD` reads the source's kind; the copy reads it, reads the
+        // target it would restore and publishes; one `DELETE` removes the
+        // source.
+        assert_eq!(source.move_into(&mut target).unwrap(), 6);
+        assert_eq!(methods(&store), ["HEAD", "GET", "GET", "PUT", "DELETE"]);
+        assert_eq!(
+            store.get("trades", "lake/target.bin").as_deref(),
+            Some(&b"AAPL,1"[..])
+        );
+        assert_eq!(store.get("trades", "lake/source.bin"), None);
+
+        // Onto its own location: the kind read, then the refusal by that
+        // location, and the object untouched.
+        let mut source = file(&store, "lake/target.bin");
+        let mut same = file(&store, "lake/target.bin");
+        store.clear_requests();
+        let error = source.move_into(&mut same).unwrap_err();
+        assert!(matches!(error, yggdryl::Error::Conflict { .. }), "{error}");
+        assert!(error.to_string().contains("lake/target.bin"), "{error}");
+        assert_eq!(methods(&store), ["HEAD"]);
+        assert_eq!(
+            store.get("trades", "lake/target.bin").as_deref(),
+            Some(&b"AAPL,1"[..])
+        );
+
+        // A store that refuses the `HEAD` reads as an unknown kind, which one
+        // bounded `GET` confirms: refused too, the move fails with the store's
+        // own reason, never as absence, and nothing is moved or removed.
+        let mut other = file(&store, "lake/other.bin");
+        store.clear_requests();
+        store.fail_next(403, "AccessDenied", 2);
+        let error = source.move_into(&mut other).unwrap_err();
+        assert!(!error.is_absent(), "{error}");
+        assert_eq!(methods(&store), ["HEAD", "GET"]);
+        assert_eq!(
+            store.get("trades", "lake/target.bin").as_deref(),
+            Some(&b"AAPL,1"[..])
+        );
+        assert_eq!(store.get("trades", "lake/other.bin"), None);
+    }
 }
 
 #[test]

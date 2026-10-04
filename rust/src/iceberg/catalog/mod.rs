@@ -361,10 +361,14 @@ fn is_not_a_directory(error: &Error) -> bool {
 /// A backend's `child_by_path` answers with what it believes is there, and
 /// for a location nothing occupies yet that is a leaf-to-be. A catalog knows
 /// better - its names address containers - so the leaf spellings are re-cast
-/// as the same backend's folder, keeping every bound-location fact.
+/// as the same backend's folder: a local or bound location keeping every
+/// bound-location fact, an object store's undecided location or object the
+/// prefix it names on the same client, with no request.
 fn folder_role(child: Holder) -> Result<Holder> {
     match child {
         Holder::LocalFolder(_) | Holder::FsFolder(_) => Ok(child),
+        #[cfg(feature = "s3")]
+        Holder::S3Folder(_) => Ok(child),
         Holder::LocalPath(path) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
             path.url().clone(),
         )?)),
@@ -382,6 +386,10 @@ fn folder_role(child: Holder) -> Result<Holder> {
         Holder::FsFile(file) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             file.bound().clone(),
         ))),
+        #[cfg(feature = "s3")]
+        Holder::S3Path(path) => Ok(Holder::S3Folder(path.as_directory()?)),
+        #[cfg(feature = "s3")]
+        Holder::S3File(file) => Ok(Holder::S3Folder(file.as_directory()?)),
         other => {
             let described = other
                 .url()
