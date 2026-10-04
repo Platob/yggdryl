@@ -93,7 +93,7 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     handle: &mut H,
     value: SerieReader,
     formatting: Formatting,
-) -> Result<()> {
+) -> Result<u64> {
     let plan = Plan::infer(handle)?;
     let format = plan.format();
     let root = value.field().clone();
@@ -101,6 +101,7 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     let batches = value;
 
     let mut encoded = Vec::new();
+    let written;
     {
         let mut coded = plan
             .codec()
@@ -122,13 +123,13 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
                         plan.format(),
                         formatting,
                     )?;
-                    rows.into_result()?;
+                    written = rows.into_result()?;
                 }
                 // One document: the frame encloses every row, so they are held.
                 Format::Json | Format::Toml | Format::Xml => {
                     let mut rows = Rows::new(batches, root, format);
                     let held = rows.by_ref().collect::<Vec<_>>();
-                    rows.into_result()?;
+                    written = rows.into_result()?;
                     let document = Scalar::from_sequence(held);
                     let document = match format {
                         Format::Toml => Scalar::from_struct([(name, document)])?,
@@ -150,7 +151,8 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
         }
         coded.finish()?;
     }
-    handle.write_all_bytes(&encoded)
+    handle.write_all_bytes(&encoded)?;
+    Ok(written)
 }
 
 /// Select the rows a parsed document set holds; `declared` says whether
@@ -239,6 +241,7 @@ struct Rows {
     root: Field,
     format: Format,
     buffered: VecDeque<Scalar>,
+    yielded: u64,
     failure: Option<Error>,
 }
 
@@ -249,13 +252,15 @@ impl Rows {
             root,
             format,
             buffered: VecDeque::new(),
+            yielded: 0,
             failure: None,
         }
     }
 
-    /// Report the failure that stopped the iteration, if one did.
-    fn into_result(self) -> Result<()> {
-        self.failure.map_or(Ok(()), Err)
+    /// Report the failure that stopped the iteration, if one did, and
+    /// otherwise the rows it yielded.
+    fn into_result(self) -> Result<u64> {
+        self.failure.map_or(Ok(self.yielded), Err)
     }
 
     /// Refill the buffer from the next column, or report the end of the
@@ -288,6 +293,7 @@ impl Iterator for Rows {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(row) = self.buffered.pop_front() {
+                self.yielded += 1;
                 return Some(row);
             }
             if self.failure.is_some() {

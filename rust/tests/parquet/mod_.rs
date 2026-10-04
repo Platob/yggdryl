@@ -30,7 +30,7 @@ mod internal {
 
     use yggdryl::ArrowCastOptions;
     use yggdryl::internals::parquet::open_builder;
-    use yggdryl::internals::parquet_geospatial::{extension_schema, variant_schema};
+    use yggdryl::internals::parquet_geospatial::{annotated_schema, extension_schema};
     use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, Field};
     use yggdryl::{IOBase, IOMedia};
@@ -489,7 +489,7 @@ mod internal {
             .unwrap();
         let descriptor = SchemaDescriptor::new(Arc::new(root));
         let foreign = Schema::new(vec![ArrowField::new("payload", variant_storage(), true)]);
-        assert!(variant_schema(&descriptor, &foreign).is_none());
+        assert!(annotated_schema(&descriptor, &foreign).is_none());
     }
 
     #[test]
@@ -626,8 +626,8 @@ mod internal {
             ArrowField::new("items", list(false), true),
             ArrowField::new("attributes", map(false), false),
         ]);
-        let recovered =
-            variant_schema(&descriptor, &foreign).expect("the annotations restore nested variants");
+        let recovered = annotated_schema(&descriptor, &foreign)
+            .expect("the annotations restore nested variants");
 
         let ArrowDataType::List(item) = recovered.field_with_name("items").unwrap().data_type()
         else {
@@ -1313,7 +1313,7 @@ mod records {
         media.open().unwrap();
         assert!(media.opened());
         assert_eq!(media.read_statistics().unwrap().num_rows, 2);
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let overwrite_options = media.record_options().unwrap();
         media
@@ -1371,7 +1371,7 @@ mod records {
             )
             .unwrap();
         media.open().unwrap();
-        media.options_mut().set_commit_row_size(Some(1));
+        media.options_mut().set_commit_batch_num(Some(1));
 
         let options = media.record_options().unwrap();
         let message = media
@@ -2391,7 +2391,10 @@ mod parallel {
                 );
             }
             // A writer that learns to encode the interval wrote every row.
-            Ok(()) => assert_eq!(media.row_size().unwrap(), count as u64),
+            Ok(result) => {
+                assert_eq!(result.written_rows, count as u64);
+                assert_eq!(media.row_size().unwrap(), count as u64);
+            }
         }
     }
 
@@ -2582,7 +2585,7 @@ mod parallel {
             .read_arrow_reader(&options.clone().with_filter("symbol is not null").unwrap())
             .unwrap();
         let mut streamed = options.clone();
-        streamed.set_commit_row_size(Some(50_000));
+        streamed.set_commit_batch_num(Some(1));
         media.overwrite_arrow_reader(reader, &streamed).unwrap();
         media.flush().unwrap();
         assert_eq!(media.row_size().unwrap(), 450_000);
@@ -2959,8 +2962,9 @@ mod pruning {
     }
 
     #[test]
-    fn a_derived_column_prunes_nothing_by_what_is_stored_under_its_name() {
-        // Stored all null under `y`; the declared root computes `y` from `x`.
+    fn a_derived_column_reads_and_prunes_by_what_is_stored_under_its_name() {
+        // Stored all null under `y`; the declared root says `y` derives from
+        // `x`, which a read does not compute: it casts what is stored.
         let batch = RecordBatch::try_new(
             Arc::new(arrow_schema::Schema::new(vec![
                 arrow_schema::Field::new("x", arrow_schema::DataType::Int64, false),
@@ -2987,8 +2991,262 @@ mod pruning {
         .map(DataType::from)
         .unwrap()
         .required_field("row");
-        // The unprunable spelling is the rows' own answer.
-        assert_eq!(kept(&media, Some(root.clone()), "(y + 0) = 10"), vec![1]);
-        assert_eq!(kept(&media, Some(root), "y = 10"), vec![1]);
+        // The unprunable spelling and the statistics agree with the rows.
+        assert_eq!(
+            kept(&media, Some(root.clone()), "(y + 0) = 10"),
+            Vec::<i64>::new()
+        );
+        assert_eq!(
+            kept(&media, Some(root.clone()), "y = 10"),
+            Vec::<i64>::new()
+        );
+        assert_eq!(kept(&media, Some(root), "y is null"), vec![1, 2]);
+    }
+}
+
+/// A `uuid` column is written as Parquet's `UUID` logical type wherever it
+/// sits - at the root, nullable, as a serie's item, as a map's value, inside
+/// a struct - so a reader outside this crate sees an identifier rather than
+/// sixteen opaque bytes; and every file reads back as the uuid it holds.
+mod uuid_columns {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    use parquet::arrow::{ArrowWriter, arrow_writer::ArrowWriterOptions};
+    use parquet::basic::{LogicalType, Type as PhysicalType};
+    use parquet::file::metadata::ParquetMetaDataReader;
+    use parquet::schema::parser::parse_message_type;
+    use parquet::schema::types::SchemaDescriptor;
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::parquet::Parquet;
+    use yggdryl::{
+        ArrowCastOptions, DataType, Field, IOBase, IOMedia, Scalar, Serie, StructType, Url, Uuid,
+    };
+
+    fn handle(name: &str) -> Buffer {
+        Buffer::new().with_media_type(
+            Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type(),
+        )
+    }
+
+    fn uuid(seed: u8) -> Scalar {
+        Scalar::Uuid(Uuid::from_bytes(&[seed; 16]).unwrap())
+    }
+
+    /// Every place a uuid leaf reaches.
+    fn root() -> Field {
+        let inner = DataType::from(
+            StructType::from_fields([DataType::Uuid.nullable_field("prevuuid")]).unwrap(),
+        );
+        DataType::from(
+            StructType::from_fields([
+                DataType::Uuid.required_field("curruuid"),
+                DataType::Uuid.nullable_field("prevuuid"),
+                DataType::serie(DataType::Uuid.required_field("item")).nullable_field("srcuuids"),
+                DataType::map_of(DataType::utf8(), DataType::Uuid, true)
+                    .unwrap()
+                    .nullable_field("byname"),
+                inner.nullable_field("event"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row")
+    }
+
+    fn rows() -> Vec<Scalar> {
+        vec![
+            Scalar::from_sequence([
+                uuid(1),
+                uuid(2),
+                Scalar::from_sequence([uuid(3), uuid(4)]),
+                Scalar::from_mapping([(Scalar::from("a"), uuid(5))]).unwrap(),
+                Scalar::from_sequence([uuid(6)]),
+            ]),
+            Scalar::from_sequence([
+                uuid(7),
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::from_sequence([Scalar::Null]),
+            ]),
+        ]
+    }
+
+    /// Every sixteen-byte leaf of a file's footer, with its logical type.
+    fn uuid_leaves(media: &Parquet<Buffer>) -> Vec<(String, Option<LogicalType>)> {
+        let bytes = media.handle().read_all_bytes().unwrap();
+        let footer = ParquetMetaDataReader::new()
+            .parse_and_finish(&bytes::Bytes::from(bytes))
+            .unwrap();
+        footer
+            .file_metadata()
+            .schema_descr()
+            .columns()
+            .iter()
+            .filter(|column| column.physical_type() == PhysicalType::FIXED_LEN_BYTE_ARRAY)
+            .map(|column| (column.path().string(), column.logical_type_ref().cloned()))
+            .collect()
+    }
+
+    /// The columns and rows a file holds, read under `field` or under its
+    /// own schema.
+    fn read_rows(media: &Parquet<Buffer>, field: Option<&Field>) -> (Vec<Field>, Vec<Scalar>) {
+        let mut options = media.record_options().unwrap();
+        if let Some(field) = field {
+            options = options.with_field(field.clone());
+        }
+        let read = Serie::from_arrow_reader(
+            field,
+            media.read_arrow_reader(&options).unwrap(),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let rows = (0..read.len())
+            .map(|position| read.scalar(position).unwrap())
+            .collect();
+        (read.field().expect("a column").fields().to_vec(), rows)
+    }
+
+    #[test]
+    fn every_uuid_leaf_carries_the_uuid_logical_type_and_round_trips() {
+        let root = root();
+        let batch = Serie::from_scalars(root.clone(), rows())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let mut media = Parquet::new(handle("uuids.parquet"));
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), vec![batch]),
+                &options,
+            )
+            .unwrap();
+
+        let leaves = uuid_leaves(&media);
+        assert_eq!(leaves.len(), 5, "{leaves:?}");
+        for (path, logical) in &leaves {
+            assert_eq!(logical, &Some(LogicalType::Uuid), "{path}");
+        }
+
+        let (fields, read) = read_rows(&media, None);
+        assert_eq!(fields, root.fields().to_vec());
+        assert_eq!(read, rows());
+    }
+
+    #[test]
+    fn a_file_without_the_annotation_reads_as_the_declared_uuid() {
+        // What this crate wrote before the annotation, and what a writer
+        // that never heard of it writes: sixteen bytes with no logical type,
+        // the extension riding the embedded Arrow schema or nowhere at all.
+        let root = root();
+        let batch = Serie::from_scalars(root.clone(), rows())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let bare = |batch: &RecordBatch, skip: bool| -> Parquet<Buffer> {
+            let mut encoded = Vec::new();
+            let mut writer = ArrowWriter::try_new_with_options(
+                &mut encoded,
+                batch.schema(),
+                ArrowWriterOptions::new().with_skip_arrow_metadata(skip),
+            )
+            .unwrap();
+            writer.write(batch).unwrap();
+            writer.close().unwrap();
+            let mut handle = handle("legacy.parquet");
+            handle.write_all_bytes(&encoded).unwrap();
+            Parquet::new(handle)
+        };
+
+        let legacy = bare(&batch, false);
+        assert!(
+            uuid_leaves(&legacy)
+                .iter()
+                .all(|(_, logical)| logical.is_none())
+        );
+        assert_eq!(read_rows(&legacy, None), (root.fields().to_vec(), rows()));
+        assert_eq!(
+            read_rows(&legacy, Some(&root)),
+            (root.fields().to_vec(), rows())
+        );
+
+        let foreign = bare(&batch, true);
+        assert_eq!(
+            read_rows(&foreign, Some(&root)),
+            (root.fields().to_vec(), rows())
+        );
+    }
+
+    #[test]
+    fn a_foreign_uuid_annotation_reads_as_a_uuid() {
+        // A file another writer produced: `UUID` annotations and no Arrow
+        // schema in its footer.
+        let descriptor = SchemaDescriptor::new(Arc::new(
+            parse_message_type(
+                "message row {
+                    required fixed_len_byte_array(16) curruuid (UUID);
+                    optional fixed_len_byte_array(16) prevuuid (UUID);
+                }",
+            )
+            .unwrap(),
+        ));
+        let storage = |nullable: bool, name: &str| {
+            ArrowField::new(name, ArrowDataType::FixedSizeBinary(16), nullable)
+        };
+        let schema = Arc::new(Schema::new(vec![
+            storage(false, "curruuid"),
+            storage(true, "prevuuid"),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(
+                    FixedSizeBinaryArray::try_from_iter([[1_u8; 16], [7; 16]].into_iter()).unwrap(),
+                ) as ArrayRef,
+                Arc::new(
+                    FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+                        [Some([2_u8; 16]), None].into_iter(),
+                        16,
+                    )
+                    .unwrap(),
+                ),
+            ],
+        )
+        .unwrap();
+        let mut encoded = Vec::new();
+        let mut writer = ArrowWriter::try_new_with_options(
+            &mut encoded,
+            schema,
+            ArrowWriterOptions::new()
+                .with_skip_arrow_metadata(true)
+                .with_parquet_schema(descriptor),
+        )
+        .unwrap();
+        writer.write(&batch).unwrap();
+        writer.close().unwrap();
+        let mut handle = handle("foreign.parquet");
+        handle.write_all_bytes(&encoded).unwrap();
+        let media = Parquet::new(handle);
+
+        let (fields, read) = read_rows(&media, None);
+        assert_eq!(
+            fields,
+            vec![
+                DataType::Uuid.required_field("curruuid"),
+                DataType::Uuid.nullable_field("prevuuid"),
+            ]
+        );
+        assert_eq!(
+            read,
+            vec![
+                Scalar::from_sequence([uuid(1), uuid(2)]),
+                Scalar::from_sequence([uuid(7), Scalar::Null]),
+            ]
+        );
     }
 }

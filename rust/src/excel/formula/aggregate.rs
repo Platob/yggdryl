@@ -1,8 +1,8 @@
 //! Streaming numeric and logical accumulation over resolved Excel operands.
 
 use super::super::cell::ExcelError;
-use super::number;
 use super::functions::Function;
+use super::number;
 use crate::Arithmetic;
 
 /// A resolved spreadsheet aggregate, shared by formula reductions, PivotTables,
@@ -69,7 +69,9 @@ impl Aggregate {
 
     /// Resolve the OOXML spelling through the same table as publication.
     pub(crate) fn from_subtotal(name: &str) -> Option<Self> {
-        Self::NAMES.iter().map(|(_, kind)| *kind)
+        Self::NAMES
+            .iter()
+            .map(|(_, kind)| *kind)
             .find(|kind| kind.subtotal() == name)
     }
 
@@ -103,12 +105,17 @@ pub struct Accumulator {
 impl Accumulator {
     /// Collect numeric ranks only for MEDIAN/MODE; ordinary folds keep no rows.
     pub fn ranked() -> Self {
-        Self { ranks: Some(Vec::new()), ..Self::default() }
+        Self {
+            ranks: Some(Vec::new()),
+            ..Self::default()
+        }
     }
 
     /// Admit one already-resolved numeric input without retaining its row.
     pub fn push_number(&mut self, value: f64) -> Result<(), ExcelError> {
-        if self.squares.is_some() { return self.push_variance(value); }
+        if self.squares.is_some() {
+            return self.push_variance(value);
+        }
         if let Some(ranks) = &mut self.ranks {
             if value.is_subnormal() {
                 self.uncertain = true;
@@ -132,8 +139,16 @@ impl Accumulator {
         };
         // Extrema compare the actual finite binary values. Excel MIN/MAX
         // distinguish close values that its comparison operator calls equal.
-        self.min = if self.count == 0 { value } else { self.min.min(value) };
-        self.max = if self.count == 0 { value } else { self.max.max(value) };
+        self.min = if self.count == 0 {
+            value
+        } else {
+            self.min.min(value)
+        };
+        self.max = if self.count == 0 {
+            value
+        } else {
+            self.max.max(value)
+        };
         self.count = count;
         self.counta = counta;
         self.uncertain |= uncertain_input || prefix.is_subnormal();
@@ -149,7 +164,9 @@ impl Accumulator {
         debug_assert!(self.ranks.is_none(), "zero runs belong to streaming folds");
         let total = self.count.checked_add(count).ok_or(ExcelError::Num)?;
         let total_present = self.counta.checked_add(count).ok_or(ExcelError::Num)?;
-        for _ in 0..count.min(2) { self.push_number(0.0)?; }
+        for _ in 0..count.min(2) {
+            self.push_number(0.0)?;
+        }
         self.count = total;
         self.counta = total_present;
         Ok(())
@@ -172,14 +189,22 @@ impl Accumulator {
     /// `trunc(n-k)` while SMALL indexes from `trunc(k-1)`; both validate
     /// the untruncated k against 1..=n first.
     pub fn finish_kth(self, k: f64, largest: bool) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain { return Ok(None); }
+        if self.uncertain {
+            return Ok(None);
+        }
         let mut ranks = self.ranks.expect("ranked accumulator construction");
         let n = ranks.len() as f64;
-        if !k.is_finite() || k < 1.0 || k > n { return Err(ExcelError::Num); }
-        let index = if largest { (n - k).trunc() } else { (k - 1.0).trunc() } as usize;
+        if !k.is_finite() || k < 1.0 || k > n {
+            return Err(ExcelError::Num);
+        }
+        let index = if largest {
+            (n - k).trunc()
+        } else {
+            (k - 1.0).trunc()
+        } as usize;
         // Selection is linear and rearranges the one retained vector in place.
-        let (_, selected, _) = ranks.select_nth_unstable_by(index,
-            |left, right| left.0.total_cmp(&right.0));
+        let (_, selected, _) =
+            ranks.select_nth_unstable_by(index, |left, right| left.0.total_cmp(&right.0));
         number::finite(selected.0).map(Some)
     }
 
@@ -187,28 +212,43 @@ impl Accumulator {
     /// one-based coordinate is formed before subtracting its integer part:
     /// zero-based `(n-1)*k` loses an observed ULP for decimal k.
     pub fn finish_percentile(self, k: f64) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain { return Ok(None); }
+        if self.uncertain {
+            return Ok(None);
+        }
         let mut ranks = self.ranks.expect("ranked accumulator construction");
         if ranks.is_empty() || !k.is_finite() || !(0.0..=1.0).contains(&k) {
             return Err(ExcelError::Num);
         }
-        let coordinate = Arithmetic::Add.apply_float(1.0,
-            Arithmetic::Mul.apply_float((ranks.len() - 1) as f64, k));
+        let coordinate = Arithmetic::Add.apply_float(
+            1.0,
+            Arithmetic::Mul.apply_float((ranks.len() - 1) as f64, k),
+        );
         let floor = coordinate.floor();
         let low = floor as usize - 1;
-        let (_, selected, above) = ranks.select_nth_unstable_by(low,
-            |left, right| left.0.total_cmp(&right.0));
+        let (_, selected, above) =
+            ranks.select_nth_unstable_by(low, |left, right| left.0.total_cmp(&right.0));
         let lower = selected.0;
         let fraction = Arithmetic::Sub.apply_float(coordinate, floor);
-        if fraction == 0.0 { return number::finite(lower).map(Some); }
-        let upper = above.iter().map(|entry| entry.0)
-            .min_by(f64::total_cmp).expect("a fractional coordinate has an upper neighbour");
+        if fraction == 0.0 {
+            return number::finite(lower).map(Some);
+        }
+        let upper = above
+            .iter()
+            .map(|entry| entry.0)
+            .min_by(f64::total_cmp)
+            .expect("a fractional coordinate has an upper neighbour");
         let difference = Arithmetic::Sub.apply_float(upper, lower);
-        if difference.is_subnormal() { return Ok(None); }
+        if difference.is_subnormal() {
+            return Ok(None);
+        }
         let scaled = Arithmetic::Mul.apply_float(difference, fraction);
-        if scaled.is_subnormal() { return Ok(None); }
+        if scaled.is_subnormal() {
+            return Ok(None);
+        }
         let value = Arithmetic::Add.apply_float(lower, scaled);
-        if value.is_subnormal() { return Ok(None); }
+        if value.is_subnormal() {
+            return Ok(None);
+        }
         number::finite(value).map(Some)
     }
 
@@ -216,17 +256,24 @@ impl Accumulator {
     /// first position. A nonzero order selects ascending, including a
     /// negative or fractional order argument.
     pub fn finish_rank(self, target: f64, ascending: bool) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain || target.is_subnormal() { return Ok(None); }
+        if self.uncertain || target.is_subnormal() {
+            return Ok(None);
+        }
         let ranks = self.ranks.expect("ranked accumulator construction");
         let target = number::finite(target)?;
         if !ranks.iter().any(|(value, _)| *value == target) {
             return Err(ExcelError::NA);
         }
-        let before = ranks.iter().filter(|(value, _)| if ascending {
-            *value < target
-        } else {
-            *value > target
-        }).count();
+        let before = ranks
+            .iter()
+            .filter(|(value, _)| {
+                if ascending {
+                    *value < target
+                } else {
+                    *value > target
+                }
+            })
+            .count();
         number::finite((before + 1) as f64).map(Some)
     }
 
@@ -234,26 +281,38 @@ impl Accumulator {
     /// difference before adding the lower middle value; each intermediate
     /// passes the published numeric cache boundary.
     pub fn finish_median(self) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain { return Ok(None); }
+        if self.uncertain {
+            return Ok(None);
+        }
         let mut ranks = self.ranks.expect("ranked accumulator construction");
-        if ranks.is_empty() { return Err(ExcelError::Num); }
+        if ranks.is_empty() {
+            return Err(ExcelError::Num);
+        }
         ranks.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
         let upper = ranks[ranks.len() / 2].0;
-        if ranks.len() % 2 == 1 { return number::finite(upper).map(Some); }
+        if ranks.len() % 2 == 1 {
+            return number::finite(upper).map(Some);
+        }
         let lower = ranks[ranks.len() / 2 - 1].0;
         let difference = number::finite(crate::Arithmetic::Sub.apply_float(upper, lower))?;
         let half = number::finite(crate::Arithmetic::Div.apply_float(difference, 2.0))?;
         let middle = crate::Arithmetic::Add.apply_float(lower, half);
-        if middle.is_subnormal() { return Ok(None); }
+        if middle.is_subnormal() {
+            return Ok(None);
+        }
         number::finite(middle).map(Some)
     }
 
     /// Most frequent admitted binary64 number; equal-frequency ties keep the
     /// first source occurrence. No repeated value is #N/A.
     pub fn finish_mode(self) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain { return Ok(None); }
+        if self.uncertain {
+            return Ok(None);
+        }
         let mut ranks = self.ranks.expect("ranked accumulator construction");
-        if ranks.is_empty() { return Err(ExcelError::NA); }
+        if ranks.is_empty() {
+            return Err(ExcelError::NA);
+        }
         ranks.sort_unstable_by(|left, right| left.0.total_cmp(&right.0));
         let mut best = (0usize, 0usize, usize::MAX);
         let mut start = 0;
@@ -269,7 +328,9 @@ impl Accumulator {
             }
             start = end;
         }
-        if best.1 < 2 { return Err(ExcelError::NA); }
+        if best.1 < 2 {
+            return Err(ExcelError::NA);
+        }
         number::finite(ranks[best.0].0).map(Some)
     }
 
@@ -314,39 +375,56 @@ impl Accumulator {
     /// boundary is independently settled.
     pub fn finish_average(self) -> Result<Option<f64>, ExcelError> {
         let count = self.count;
-        if count == 0 { return Err(ExcelError::Div0); }
-        if count > (1u64 << 53) { return Ok(None); }
+        if count == 0 {
+            return Err(ExcelError::Div0);
+        }
+        if count > (1u64 << 53) {
+            return Ok(None);
+        }
         match self.finish_sum()? {
             Some(total) => {
                 let value = Arithmetic::Div.apply_float(total, count as f64);
-                if value.is_subnormal() { Ok(None) } else { number::finite(value).map(Some) }
+                if value.is_subnormal() {
+                    Ok(None)
+                } else {
+                    number::finite(value).map(Some)
+                }
             }
             None => Ok(None),
         }
     }
 
-
     /// NPV folds terms starting at exponent zero, then discounts the sum once.
     /// Only this mode holds a growth factor and running denominator; prefix
     /// and uncertain are shared with the other constant-space numeric folds.
     pub fn discounted(rate: f64) -> Self {
-        Self { discount: Some((Arithmetic::Add.apply_float(1.0, rate), 1.0)),
-            uncertain: rate.is_subnormal() || !rate.is_finite(), ..Self::default() }
+        Self {
+            discount: Some((Arithmetic::Add.apply_float(1.0, rate), 1.0)),
+            uncertain: rate.is_subnormal() || !rate.is_finite(),
+            ..Self::default()
+        }
     }
 
     /// Admit a cash flow in source order without SUM's final-pair correction.
     pub fn push_discounted(&mut self, value: f64) -> Result<(), ExcelError> {
         let (growth, denominator) = self.discount.as_mut().expect("discounted construction");
-        if *denominator == 0.0 && *growth == 0.0 { return Err(ExcelError::Div0); }
-        if value.is_subnormal() || *denominator == 0.0
-            || denominator.is_subnormal() || !denominator.is_finite() {
+        if *denominator == 0.0 && *growth == 0.0 {
+            return Err(ExcelError::Div0);
+        }
+        if value.is_subnormal()
+            || *denominator == 0.0
+            || denominator.is_subnormal()
+            || !denominator.is_finite()
+        {
             self.uncertain = true;
             return Ok(());
         }
         let value = number::finite(value)?;
         let discounted = Arithmetic::Div.apply_float(value, *denominator);
         let sum = Arithmetic::Add.apply_float(self.prefix, discounted);
-        if discounted.is_subnormal() || sum.is_subnormal() { self.uncertain = true; }
+        if discounted.is_subnormal() || sum.is_subnormal() {
+            self.uncertain = true;
+        }
         let sum = number::finite(sum)?;
         self.prefix = sum;
         // An overflowing next denominator only matters if another flow arrives.
@@ -356,24 +434,37 @@ impl Accumulator {
 
     /// Finish the original ordered cash-flow fold; no terms are retained.
     pub fn finish_discounted(self) -> Result<Option<f64>, ExcelError> {
-        if self.uncertain { return Ok(None); }
+        if self.uncertain {
+            return Ok(None);
+        }
         let (growth, _) = self.discount.expect("discounted construction");
-        if growth == 0.0 { return Err(ExcelError::Div0); }
+        if growth == 0.0 {
+            return Err(ExcelError::Div0);
+        }
         let value = Arithmetic::Div.apply_float(self.prefix, growth);
-        if value.is_subnormal() { return Ok(None); }
+        if value.is_subnormal() {
+            return Ok(None);
+        }
         number::finite(value).map(Some)
     }
     /// Use exact integral moments only; uncertain inputs retain the old cache.
     /// The range walker and input-origin rules remain the ordinary aggregate's.
     pub fn variance() -> Self {
-        Self { squares: Some(0), ..Self::default() }
+        Self {
+            squares: Some(0),
+            ..Self::default()
+        }
     }
 
     fn push_variance(&mut self, value: f64) -> Result<(), ExcelError> {
         const EXACT: i128 = 1i128 << 53;
-        if !value.is_finite() { return Err(ExcelError::Num); }
+        if !value.is_finite() {
+            return Err(ExcelError::Num);
+        }
         self.count = self.count.checked_add(1).ok_or(ExcelError::Num)?;
-        if self.uncertain { return Ok(()); }
+        if self.uncertain {
+            return Ok(());
+        }
         if value.fract() != 0.0 || value.abs() > EXACT as f64 {
             self.uncertain = true;
             return Ok(());
@@ -399,26 +490,38 @@ impl Accumulator {
     /// rounds; no magnitude-dependent choice of variance algorithm is made.
     pub fn finish_variance(self, sample: bool) -> Result<Option<f64>, ExcelError> {
         const EXACT: i128 = 1i128 << 53;
-        if self.count <= u64::from(sample) { return Err(ExcelError::Div0); }
-        if self.uncertain { return Ok(None); }
+        if self.count <= u64::from(sample) {
+            return Err(ExcelError::Div0);
+        }
+        if self.uncertain {
+            return Ok(None);
+        }
         let count = i128::from(self.count);
-        if count > EXACT { return Ok(None); }
+        if count > EXACT {
+            return Ok(None);
+        }
         let sum = self.prefix as i128;
         let squares = i128::from(self.squares.expect("variance construction"));
         let odd_count = self.count >> self.count.trailing_zeros();
-        if sum % i128::from(odd_count) != 0 || sum * sum > EXACT
-            || count * squares > EXACT || count * count > EXACT {
+        if sum % i128::from(odd_count) != 0
+            || sum * sum > EXACT
+            || count * squares > EXACT
+            || count * count > EXACT
+        {
             return Ok(None);
         }
-        let fractional_bits = self.count.trailing_zeros()
+        let fractional_bits = self
+            .count
+            .trailing_zeros()
             .saturating_sub(sum.unsigned_abs().trailing_zeros());
         let scale_squared = 1i128 << (2 * fractional_bits);
-        if scale_squared > EXACT || squares > EXACT / scale_squared { return Ok(None); }
+        if scale_squared > EXACT || squares > EXACT / scale_squared {
+            return Ok(None);
+        }
         let correction = Arithmetic::Div.apply_float((sum * sum) as f64, count as f64);
         let centered = Arithmetic::Sub.apply_float(squares as f64, correction);
         debug_assert!(centered >= 0.0 && centered <= EXACT as f64);
-        let value = Arithmetic::Div.apply_float(centered,
-            (self.count - u64::from(sample)) as f64);
+        let value = Arithmetic::Div.apply_float(centered, (self.count - u64::from(sample)) as f64);
         number::finite(value).map(Some)
     }
     /// Correct only the final pair of the ordered binary64 fold.
@@ -444,7 +547,12 @@ pub(crate) struct LogicalAccumulator {
 
 impl Default for LogicalAccumulator {
     fn default() -> Self {
-        Self { seen: false, all: true, any: false, odd: false }
+        Self {
+            seen: false,
+            all: true,
+            any: false,
+            odd: false,
+        }
     }
 }
 
@@ -479,7 +587,9 @@ pub mod internals {
     /// Exercise the constant-space native discount fold without an evaluator.
     pub fn discounted(rate: f64, values: &[f64]) -> Result<Option<f64>, super::ExcelError> {
         let mut fold = super::Accumulator::discounted(rate);
-        for &value in values { fold.push_discounted(value)?; }
+        for &value in values {
+            fold.push_discounted(value)?;
+        }
         fold.finish_discounted()
     }
 }

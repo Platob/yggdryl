@@ -2838,11 +2838,14 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, crate::version::PyVersion>>() {
         return Some(Scalar::Version(value.inner.clone()));
     }
-    // An identifier crosses as its three-text row and a map of them as the
-    // sorted map from each key `src:type` to its row, the shapes an
-    // identifier column holds.
+    // An identifier crosses as the one-entry map from its key's text to its
+    // value and a map of them as the sorted map of every entry, the shape an
+    // identifier column holds and `Identifiers::from_scalar` reads back.
     if let Ok(value) = value.extract::<PyRef<'_, crate::identifier::PyIdentifier>>() {
-        return Some(value.inner.clone().into_scalar());
+        return Some(Scalar::Map(yggdryl::Map::new(vec![(
+            Scalar::from(value.inner.key().to_string()),
+            Scalar::from(value.inner.value()),
+        )])));
     }
     if let Ok(value) = value.extract::<PyRef<'_, crate::identifier::PyIdentifiers>>() {
         return Some(value.inner.into_scalar());

@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingreturnratevaluationdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnratevaluationdates",
-          "FIX:tag": "43071"
-        }
-      },
-      {
         "name": "underlyingreturnratevaluationdates",
         "dtype": {
           "type": "null"
@@ -253,17 +242,6 @@
         "metadata": {
           "FIX:field": "underlyingreturnratevaluationdatebusinessdayconvention",
           "FIX:tag": "43029"
-        }
-      },
-      {
-        "name": "nounderlyingreturnratevaluationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingreturnratevaluationdatebusinesscenters",
-          "FIX:tag": "43069"
         }
       },
       {

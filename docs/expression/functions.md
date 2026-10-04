@@ -11,7 +11,7 @@ The closed function set, and its one door: a user-defined function is registered
 | Signature | a struct `Field` named `namespace.name`: one child per parameter in position order, a parameter carrying `FUNCTION:default` optional, the return as the `FUNCTION:returns` property; `as_field` and `from_field` are lossless |
 | Call | arguments bound by position, defaults filled, each cast to its parameter through `DataType::cast_scalar`; a null meeting a parameter declared `not null` answers null without a call; the answer is cast to the declared return |
 | Tiers | the scalar tier calls `call`; the vectorized tier calls `call_arrow(arguments, rows, output)`, each argument one landed [`Serie`](../types/serie.md) and the answer the `Serie` of `output`, whose default reads each row off the argument columns, runs `call` on it and lays the answers out once; the statistics tier never learns a user function, so a filter over one reads the rows |
-| Stored | a call over plain columns is a column's `TRANSFORM:function` and `TRANSFORM:sources` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
+| Stored | a call over plain columns is a column's `TRANSFORM:function` and `TRANSFORM:by` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
 | Registry | process-wide, one implementation per qualified name, the latest registration wins; an unregistered name is refused where it is typed or bound, never silently null |
 | Bindings | Python `@user_defined_function` and `@user_defined_filter` in `yggdryl.expression`; JavaScript parses and prints the spelling and refuses it at bind |
 
@@ -111,10 +111,10 @@ The closed function set, and its one door: a user-defined function is registered
     assert big.where("size").apply_arrow_batch(batch).column("ccy").to_pylist() == ["c"]
     assert Filter("docs.big(size)").apply_records([{"size": 5, "ccy": "x"}], rows).collect() == [{"size": 5, "ccy": "x"}]
 
-    # A stored column derives by function and sources.
+    # A stored column derives by function and the terms it reads.
     stored = Selector("docs.double(size) as doubled").into_field(rows)
     assert stored.dtype["doubled"].transform["function"] == "docs.double"
-    assert stored.dtype["doubled"].transform["sources"] == '["size"]'
+    assert stored.dtype["doubled"].transform["by"] == '["size"]'
 
     for function in (double, shout, big):
         assert function.unregister()
@@ -137,6 +137,101 @@ The closed function set, and its one door: a user-defined function is registered
     assert.equal(Term.call('docs.double', [Term.column('size')]).toString(), 'docs.double(size)')
     const rows = Field.from('rows: struct<size: int64> not null')
     assert.throws(() => term.bind(rows), /docs\.double/)
+    ```
+
+## Calendar parts and epoch periods
+
+Two families read a temporal, and they answer different questions. The four *calendar parts* - `year(x)`, `month(x)`, `day(x)`, `hour(x)` - read a field off the date: 2024, 1 through 12, 1 through 31, 0 through 23. The seven *epoch periods* - `years(x)`, `quarters(x)`, `months(x)`, `weeks(x)`, `days(x)`, `hours(x)`, `minutes(x, n)` - count the whole periods from the Unix epoch to the value, floored, so an instant before 1970 is in a negative period rather than the one after it: `years('1969-12-31')` is `-1`. They are spelled in the plural as Spark's Iceberg DDL spells them, each is one [Iceberg partition transform](../media/iceberg.md#partition-transforms) (`minutes(ts, 15)` is the `minutes[15]` transform of `ts`), and each is monotone over its argument, so a range on `x` prunes a filter on `years(x)` by the same statistics.
+
+`minutes(x, n)` always states its step `n`, a whole-number literal from 1 to 4294967295 - `minutes(ts, 1)` the minute, `minutes(ts, 15)` the quarter hour, `minutes(ts, 30)` the half hour, `minutes(ts, 60)` the hour `hours(ts)` answers. A missing step is refused by the parser, which reads `minutes` as a call of exactly two arguments; `minutes(ts, 0)`, `minutes(ts, 'x')` and a step a column holds parse, and are refused where the call is typed; a parameter supplied as a whole number is a literal there.
+
+| Function | Argument | Answers |
+| --- | --- | --- |
+| `years(x)` | date or timestamp | `int32` years since 1970 |
+| `quarters(x)` | date or timestamp | `int32` quarters since 1970-Q1 |
+| `months(x)` | date or timestamp | `int32` months since 1970-01 |
+| `weeks(x)` | date or timestamp | `int32` weeks since Monday 1969-12-29; every week starts on a Monday as an ISO 8601 week does |
+| `days(x)` | date or timestamp | `date32`, the UTC day |
+| `hours(x)` | timestamp | `int32` hours since the epoch |
+| `minutes(x, n)` | timestamp, and a whole-number literal `n` | `int32` periods of `n` minutes since the epoch |
+| `time_bucket(width, x)` | a constant fixed-length width, and a date or timestamp | `x` floored to a multiple of the width, in `x`'s own datatype, unit and zone kept |
+
+`time_bucket` is DuckDB's, name and argument order: where an epoch period counts, it floors, so the answer is still an instant - a column a table can partition and sort by as it is. The width is text - `'15 minutes'`, `'1.5h'`, `'900s'`, ISO 8601 `'PT15M'`, a clock `'00:15:00'` - or a duration literal, read once where the call is typed; units are `ns`, `us`, `ms`, `s`, `min`, `h`, `d` and `w` with their long forms, and `'15m'` is refused because a minute and a month share the letter. Buckets start from DuckDB's origin, Monday 2000-01-03 00:00:00 - UTC for a zoned value, the wall clock for a naive one - so every width dividing a day lines up with the Unix epoch and a week starts on a Monday. A calendar width, a zero or negative one, a width finer than `x`'s unit or not a whole multiple of it, a clock width under a date and a width a column holds are refused naming the argument. The function is monotone, so a range on `x` prunes through it.
+
+A date has no clock, so a sub-day period over one is refused where it is typed; a null answers null, and so does a period past `int32` - never a number wrapped back into range - so the column is nullable wherever its source's count reaches one, even over a required source: every period over seconds, `months` and finer over milliseconds or a `date64`, `hours` and `minutes(x, 1)` over microseconds, and none over a `date32` or nanoseconds. A calendar unit is not a fixed length, so `truncate(x, 'month')` stays refused and `months(x)` is how a month is read.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Selector, StructType, TimeUnit, Timezone};
+
+    let root = Field::new(
+        "rows",
+        DataType::from(StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: Timezone::NAIVE,
+        }
+        .required_field("ts")])?),
+        false,
+    );
+    let selector: Selector = "year(ts) as calendar, years(ts) as y, weeks(ts) as w, minutes(ts, 15) as q, days(ts) as d".parse()?;
+    let published = selector.apply_field(&root)?;
+    assert_eq!(published.fields()[1].dtype(), &DataType::Int32);
+    assert_eq!(published.fields()[4].dtype(), &DataType::date32());
+
+    // 2017-11-16T22:31:08: the calendar year is 2017, the 47th year since 1970.
+    let row = Scalar::from_sequence([Scalar::datetime64(1_510_871_468_000_000, TimeUnit::Microsecond, Timezone::NAIVE)?]);
+    let answered = selector.apply_scalar(&root, &row)?;
+    let cells = answered.as_sequence().expect("a row");
+    assert_eq!(cells[0], Scalar::from(2017));
+    assert_eq!(cells[1], Scalar::from(47));
+    assert_eq!(cells[2], Scalar::from(2498));
+    assert_eq!(cells[3], Scalar::from(1_678_746));
+    assert_eq!(cells[4], Scalar::date32(17_486));
+
+    // The half hour is the step 30, and the step is always written.
+    let half_hours: Selector = "minutes(ts, 30) as h".parse()?;
+    let cells = half_hours.apply_scalar(&root, &row)?;
+    assert_eq!(cells.as_sequence().expect("a row")[0], Scalar::from(839_373));
+    assert!("minutes(ts)".parse::<Selector>().is_err());
+
+    // Before the epoch, a period is negative: the last day of 1969 is year -1.
+    let before = Scalar::from_sequence([Scalar::datetime64(-1, TimeUnit::Microsecond, Timezone::NAIVE)?]);
+    let cells = selector.apply_scalar(&root, &before)?;
+    assert_eq!(cells.as_sequence().expect("a row")[1], Scalar::from(-1));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field, Selector
+
+    root = Field("rows", "struct<ts:timestamp(us)>", False)
+    selector = Selector("year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d")
+    assert str(selector) == "year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d"
+    assert selector.names == ["calendar", "y", "q", "d"]
+
+    published = selector.apply_field(root)
+    assert published.dtype["y"].dtype == DataType("int32")
+    assert published.dtype["q"].dtype == DataType("int32")
+    assert published.dtype["d"].dtype == DataType("date32")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Selector } = require('yggdryl')
+
+    const root = new Field('rows', 'struct<ts:timestamp(us)>', false)
+    const selector = new Selector('year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d')
+    assert.equal(selector.toString(), 'year(ts) as calendar, years(ts) as y, minutes(ts, 15) as q, days(ts) as d')
+    assert.deepEqual(selector.names, ['calendar', 'y', 'q', 'd'])
+
+    const published = selector.applyField(root)
+    assert.equal(String(published.dtype.getFieldAt(1).dtype), 'int32')
+    assert.equal(String(published.dtype.getFieldAt(2).dtype), 'int32')
+    assert.equal(String(published.dtype.getFieldAt(3).dtype), 'date32')
     ```
 
 ## The signature is a field

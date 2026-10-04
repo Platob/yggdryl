@@ -67,11 +67,7 @@ impl TradeEvent {
         &self.data
     }
 
-    pub(crate) fn into_executions(self) -> Vec<ExecutionEvent> {
-        self.executions
-    }
-
-    pub(super) fn rebase_currunix(&mut self, unix: i64) {
+    fn rebase_currunix(&mut self, unix: i64) {
         self.data.set_currunix(unix);
         rebase_executions(&mut self.executions, unix);
         self.refresh();

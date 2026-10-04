@@ -9,8 +9,8 @@ so cross whole tables or readers, never a row at a time. Cast options are
 ## Build a column from JavaScript values
 
 `Serie.fromScalars` sends every row through the field's value contract once;
-`fromDefault` repeats the field's canonical default. `int64` rows are
-`bigint` going in.
+`fromDefault` repeats the field's canonical default and `lit` any value, each
+as a constant column holding the one row. `int64` rows are `bigint` going in.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -29,6 +29,12 @@ assert.throws(() => Serie.fromScalars(price, [null]), /\$\.price/)
 assert.deepEqual(Serie.fromDefault(price, 2).asJs(), [0, 0])
 assert.deepEqual(Serie.fromDefault(Field.from('symbol: utf8'), 2).asJs(), [null, null])
 assert.equal(Serie.empty(price).length, 0)
+
+// A constant: one value held once, laid out only when something exports it.
+const constant = Serie.lit(price, 125n, 1_000_000)
+assert.equal(constant.isLit, true)
+assert.equal(constant.scalar(999_999).asJs(), 125)
+assert.ok(constant.residentSize() < 1_024)
 ```
 
 ## Land an Arrow JS vector
@@ -332,6 +338,168 @@ assert.deepEqual(rows.child('tags').offsets, [0, 2, 2])
 
 assert.throws(() => rows.push([3n, 'not a list']))
 assert.equal(rows.length, 2) // unchanged
+```
+
+## Sort, deduplicate, group and window
+
+Every leaf answers every verb in one order - `Scalar`'s total order, absent
+values last unless `nullsFirst: true` (the plan's `order by` and DuckDB's
+default, the opposite of Arrow's) - so a column and the run of its rows sort,
+deduplicate and group alike. `into*` answers a new serie under the same field;
+`as*` brings the serie into that state in place and chains (`clone()` first to
+keep the original). `indices`, `mask` and `keys` are a `Serie` or an iterable
+of values; the options are a plain `{ descending, nullsFirst }` object. A
+`ChunkedSerie` answers the same: `isSorted`, `intoReversed`, `intoFiltered` and
+`partitionBy` chunk by chunk, the sorts and `intoUnique` by merging the chunks
+each sorted on its own, the rest through one join.
+
+```javascript
+const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
+const { ChunkedSerie, Field, Serie } = require('yggdryl')
+
+const int64 = (values) => arrow.vectorFromArray(values, new arrow.Int64())
+const prices = Serie.fromArrowArray(int64([3n, null, 1n, 3n]), Field.from('price: int64'))
+
+// The order as positions: stable, absences last unless told otherwise.
+assert.deepEqual(prices.sortIndices().asJs(), [2, 0, 3, 1])
+assert.deepEqual(prices.sortIndices({ descending: true, nullsFirst: true }).asJs(), [1, 0, 3, 2])
+
+// The reads answer a new serie; this one is as it was.
+assert.deepEqual(prices.intoSorted().asJs(), [1, 3, 3, null])
+assert.equal(prices.intoSorted().isSorted(), true)
+assert.deepEqual([prices.isUnique(), prices.uniqueCount()], [false, 3])
+assert.equal(prices.intoUnique().length, 3)
+assert.deepEqual(prices.intoTaken([2, 0]).asJs(), [1, 3])
+assert.equal(prices.intoFiltered([true, false, false, true]).length, 2)
+
+// The writes chain in place; a primitive column holding its buffer alone sorts where it stands.
+const held = prices.clone()
+assert.equal(held.asSorted().asUnique().asReversed(), held)
+assert.deepEqual(held.asJs(), [null, 3, 1])
+
+// One [key, rows] per distinct key, in first-occurrence order.
+const groups = prices.partitionBy(['XNAS', 'XNYS', 'XNAS', 'XNYS'])
+assert.deepEqual([groups.length, groups[0][0].asJs()], [2, 'XNAS'])
+assert.deepEqual(groups[0][1].asJs(), [3, 1])
+
+// A window reads and writes a stretch where it stands, window-relative.
+const column = Serie.fromScalars(Field.from('price: int64 not null'), [9n, 3n, 1n, 2n, 0n])
+assert.deepEqual(column.window(1, 3).intoSorted().asJs(), [1, 2, 3])
+column.window(1, 3).asSorted()
+assert.deepEqual(column.asJs(), [9, 1, 2, 3, 0])
+assert.ok(column.memorySize() > 0)
+
+// Chunks: the edge between two sorted chunks is read with no join.
+const chunked = ChunkedSerie.fromArrowArray(int64([3n, 1n]).concat(int64([2n, 3n])))
+assert.equal(chunked.isSorted(), false)
+assert.equal(chunked.intoSorted().numChunks, 1)
+assert.equal(chunked.intoReversed().numChunks, 2)
+```
+
+## Sort by keys, read the declared order
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie } = require('yggdryl')
+
+const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+const quotes = Serie.fromScalars(root, [['XNYS', 1], ['XNAS', 2], ['XNYS', 3]])
+
+const sorted = quotes.intoSortBy('venue, price desc')
+assert.deepEqual(sorted.child('price').asJs(), [2, 3, 1])
+assert.deepEqual(sorted.declaredOrder(), ['venue', 'price desc'])
+// Answered off the declaration: the identity. Kept by a slice, cleared by a breaking write.
+assert.deepEqual(sorted.sortIndicesBy('venue').asJs(), [0, 1, 2])
+assert.deepEqual(sorted.slice(1, 2).declaredOrder(), ['venue', 'price desc'])
+const held = sorted.clone()
+held.push(['AAAA', 0])
+assert.equal(held.declaredOrder(), null)
+```
+
+## Spill a column to disk
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie, SpillOptions } = require('yggdryl')
+
+const prices = Serie.fromScalars(Field.from('price: int64 not null'), Array.from({ length: 1024 }, (_, i) => i))
+const spilled = prices.clone()
+spilled.spill(new SpillOptions({ byteSize: 0 }))
+assert.equal(spilled.isSpilled() && spilled.residentSize() === 0, true)
+assert.equal(spilled.scalar(7).asJs(), 7) // read exactly as resident
+spilled.push(1024) // a write brings the leaf back
+assert.equal(spilled.isSpilled(), false)
+
+// One-liners: a spilled copy, or the spill chained in place.
+assert.equal(prices.intoSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), true)
+assert.equal(prices.isSpilled(), false)
+assert.equal(spilled.asSpilled(new SpillOptions({ byteSize: 0 })).isSpilled(), true)
+```
+
+## Join two record columns
+
+```javascript
+const assert = require('node:assert/strict')
+const { Field, Serie, SerieReader } = require('yggdryl')
+
+const trades = Serie.fromScalars(
+  Field.from('trade: struct<id: int64 not null, size: int64 not null> not null'),
+  [[1, 10], [2, 20], [3, 30]],
+)
+const venues = Serie.fromScalars(
+  Field.from('venue: struct<id: int64 not null, venue: utf8 not null> not null'),
+  [[1, 'XNAS'], [2, 'XNYS']],
+)
+const inner = trades.joinWith(venues, 'id', 'inner', { build: 'right' }) // `using`: id once
+assert.deepEqual(inner.child('venue').asJs(), ['XNAS', 'XNYS'])
+const left = trades.joinWith(venues, 'id', 'left', { build: 'right' })
+assert.deepEqual(left.child('venue').asJs(), ['XNAS', 'XNYS', null])
+assert.equal(trades.joinWith(venues, 'id', 'anti', { build: 'right' }).length, 1)
+// A stream probes lazily against the held side.
+let rows = 0
+for (const batch of SerieReader.fromSerie(trades).joinWith(venues, 'id', 'inner', { build: 'right' })) rows += batch.length
+assert.equal(rows, 2)
+```
+
+## Cut rows into windows by key
+
+`windowBy(by, sorted?)` computes the key once and answers `[key, WindowSerie]`
+pairs, each window a view stating the record of its key cells, `windownum`
+and `rownum` as `staticValues`. `sorted: true` asks for each key once in key
+order: keys already in order copy nothing, and only a descent gathers the
+rows once. A `ChunkedSerie` regroups its runs as zero-copy pieces and states
+no record; a `SerieReader` yields one lazy reader per window, read in order.
+Contract and costs:
+[windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key).
+
+```javascript
+const assert = require('node:assert/strict')
+const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+
+const root = Field.from('fill: struct<venue: utf8 not null, qty: int64 not null> not null')
+const fills = Serie.fromScalars(root, [['XNAS', 5n], ['XNYS', 2n], ['XNAS', 3n]])
+
+// Each key once, in key order; the record names the window's key.
+const totals = {}
+for (const [, window] of fills.windowBy('venue', true)) {
+  const venue = window.staticValues.get('venue').asJs()
+  totals[venue] = window.intoSerie().child('qty').asJs().reduce((sum, qty) => sum + qty, 0)
+}
+assert.deepEqual(totals, { XNAS: 8, XNYS: 2 })
+
+// Across chunks: zero-copy pieces, no join, no record.
+const chunked = ChunkedSerie.fromSeries([fills.slice(0, 2), fills.slice(2, 1)], root)
+const [[, xnas]] = chunked.windowBy('venue', true)
+assert.deepEqual([xnas.length, xnas.numChunks], [2, 2])
+
+// A stream: one lazy reader per window - read each before taking the next.
+const places = []
+for (const window of SerieReader.fromSerie(fills).windowBy('venue')) {
+  const rownum = window.staticValues.get('rownum').asJs()
+  places.push([rownum, [...window].reduce((rows, piece) => rows + piece.length, 0)])
+}
+assert.deepEqual(places, [[0, 1], [1, 1], [2, 1]])
 ```
 
 ## Keep chunks and batches apart

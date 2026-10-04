@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nodividendperiodbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodividendperiodbusinesscenters",
-          "FIX:tag": "42294"
-        }
-      },
-      {
         "name": "dividendperiodbusinesscenters",
         "dtype": {
           "type": "null"

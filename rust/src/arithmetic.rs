@@ -10,7 +10,9 @@ use crate::decimal::{
     inferred_decimal_division_scale, is_exact_number, result_decimal_scale,
 };
 use crate::floating::{float_arithmetic, float_value_width, float_width};
-use crate::integer::{common_integer, integer_arithmetic, integer_kind, integer_parts, integer_value_kind};
+use crate::integer::{
+    common_integer, integer_arithmetic, integer_kind, integer_parts, integer_value_kind,
+};
 use crate::scalar::Scalar;
 use crate::temporal::scalars::{
     TemporalKind, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
@@ -74,27 +76,38 @@ impl Arithmetic {
     }
 }
 
-
 impl Arithmetic {
     /// The native power kernel after a caller has resolved its float domain.
-    pub(crate) fn power_float(base: f64, exponent: f64) -> f64 { base.powf(exponent) }
+    pub(crate) fn power_float(base: f64, exponent: f64) -> f64 {
+        base.powf(exponent)
+    }
 
     /// Compound growth and the corresponding payment factor. Integral periods
     /// use repeated squaring, at most1024 steps for finite binary64. Fractional
     /// periods use the shared power kernel. Callers own nonfinite/error policy.
     pub(crate) fn annuity_factors(rate: f64, periods: f64, due: bool) -> (f64, f64) {
-        if rate == 0.0 { return (1.0, periods); }
+        if rate == 0.0 {
+            return (1.0, periods);
+        }
         let base = 1.0 + rate;
         let growth = if periods.is_finite() && periods.fract() == 0.0 {
             let mut count = periods.abs();
             let mut factor = base;
             let mut product = 1.0;
             while count >= 1.0 {
-                if count % 2.0 != 0.0 { product *= factor; }
+                if count % 2.0 != 0.0 {
+                    product *= factor;
+                }
                 count = (count / 2.0).trunc();
-                if count >= 1.0 { factor *= factor; }
+                if count >= 1.0 {
+                    factor *= factor;
+                }
             }
-            if periods < 0.0 { 1.0 / product } else { product }
+            if periods < 0.0 {
+                1.0 / product
+            } else {
+                product
+            }
         } else {
             Self::power_float(base, periods)
         };
@@ -114,37 +127,53 @@ impl Scalar {
     /// Greatest common divisor of two exact integer values, in `uint64`.
     /// Null propagates; negative operands contribute their unsigned magnitude.
     pub fn checked_gcd(&self, other: &Self) -> Result<Self> {
-        if self.is_null() || other.is_null() { return Ok(Self::Null); }
-        let (Some((_, left)), Some((_, right))) = (integer_parts(self), integer_parts(other)) else {
+        if self.is_null() || other.is_null() {
+            return Ok(Self::Null);
+        }
+        let (Some((_, left)), Some((_, right))) = (integer_parts(self), integer_parts(other))
+        else {
             return Err(Error::InvalidArithmetic {
                 operation: "greatest common divisor",
-                left: self.kind(), right: Some(other.kind()),
+                left: self.kind(),
+                right: Some(other.kind()),
                 reason: "expected exact integer operands".into(),
             });
         };
-        let result = u64::try_from(integer_gcd(left, right)).map_err(|_| {
-            Error::ArithmeticOverflow { operation: "greatest common divisor", kind: "u64" }
-        })?;
+        let result =
+            u64::try_from(integer_gcd(left, right)).map_err(|_| Error::ArithmeticOverflow {
+                operation: "greatest common divisor",
+                kind: "u64",
+            })?;
         Ok(Self::from(result))
     }
 
     /// Least common multiple of two exact integer values, in `uint64`.
     /// Zero annihilates; a product outside `uint64` refuses before narrowing.
     pub fn checked_lcm(&self, other: &Self) -> Result<Self> {
-        if self.is_null() || other.is_null() { return Ok(Self::Null); }
-        let (Some((_, left)), Some((_, right))) = (integer_parts(self), integer_parts(other)) else {
+        if self.is_null() || other.is_null() {
+            return Ok(Self::Null);
+        }
+        let (Some((_, left)), Some((_, right))) = (integer_parts(self), integer_parts(other))
+        else {
             return Err(Error::InvalidArithmetic {
                 operation: "least common multiple",
-                left: self.kind(), right: Some(other.kind()),
+                left: self.kind(),
+                right: Some(other.kind()),
                 reason: "expected exact integer operands".into(),
             });
         };
-        if left == 0 || right == 0 { return Ok(Self::from(0_u64)); }
+        if left == 0 || right == 0 {
+            return Ok(Self::from(0_u64));
+        }
         let result = (left / integer_gcd(left, right)).checked_mul(right).ok_or(
-            Error::ArithmeticOverflow { operation: "least common multiple", kind: "u64" }
+            Error::ArithmeticOverflow {
+                operation: "least common multiple",
+                kind: "u64",
+            },
         )?;
-        let result = u64::try_from(result).map_err(|_| {
-            Error::ArithmeticOverflow { operation: "least common multiple", kind: "u64" }
+        let result = u64::try_from(result).map_err(|_| Error::ArithmeticOverflow {
+            operation: "least common multiple",
+            kind: "u64",
         })?;
         Ok(Self::from(result))
     }
@@ -368,10 +397,21 @@ impl Scalar {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => {
                 let value = value.as_f64();
-                Ok(Self::from(if value > 0.0 { 1.0 } else if value < 0.0 { -1.0 }
-                    else if value.is_nan() { f64::NAN } else { 0.0 }))
+                Ok(Self::from(if value > 0.0 {
+                    1.0
+                } else if value < 0.0 {
+                    -1.0
+                } else if value.is_nan() {
+                    f64::NAN
+                } else {
+                    0.0
+                }))
             }
-            _ => Err(invalid_unary("sign", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "sign",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -380,7 +420,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().floor())),
-            _ => Err(invalid_unary("floor", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "floor",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -389,7 +433,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().trunc())),
-            _ => Err(invalid_unary("truncation", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "truncation",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -417,7 +465,9 @@ impl Scalar {
                 let number = value.as_f64();
                 if !number.is_finite() || number < 0.0 || number.fract() != 0.0 {
                     return Err(invalid_unary(
-                        "factorial", self, "expected a nonnegative whole Float64 operand"
+                        "factorial",
+                        self,
+                        "expected a nonnegative whole Float64 operand",
                     ));
                 }
                 if number > 170.0 {
@@ -432,7 +482,9 @@ impl Scalar {
                 Ok(Self::from(answer))
             }
             _ => Err(invalid_unary(
-                "factorial", self, "expected a bound Float64 operand"
+                "factorial",
+                self,
+                "expected a bound Float64 operand",
             )),
         }
     }
@@ -442,7 +494,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().exp())),
-            _ => Err(invalid_unary("exponential", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "exponential",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -451,7 +507,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().ln())),
-            _ => Err(invalid_unary("natural logarithm", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "natural logarithm",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -460,7 +520,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().log10())),
-            _ => Err(invalid_unary("base-10 logarithm", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "base-10 logarithm",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -469,7 +533,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().to_degrees())),
-            _ => Err(invalid_unary("degrees", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "degrees",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -478,7 +546,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().to_radians())),
-            _ => Err(invalid_unary("radians", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "radians",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -487,7 +559,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().cos())),
-            _ => Err(invalid_unary("cosine", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "cosine",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -496,7 +572,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().asin())),
-            _ => Err(invalid_unary("inverse sine", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "inverse sine",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -505,7 +585,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().sin())),
-            _ => Err(invalid_unary("sine", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "sine",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -514,7 +598,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().tan())),
-            _ => Err(invalid_unary("tangent", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "tangent",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -523,7 +611,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().acos())),
-            _ => Err(invalid_unary("inverse cosine", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "inverse cosine",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -532,7 +624,11 @@ impl Scalar {
         match self {
             Self::Null => Ok(Self::Null),
             Self::Float64(value) => Ok(Self::from(value.as_f64().atan2(1.0))),
-            _ => Err(invalid_unary("inverse tangent", self, "expected a bound Float64 operand")),
+            _ => Err(invalid_unary(
+                "inverse tangent",
+                self,
+                "expected a bound Float64 operand",
+            )),
         }
     }
 
@@ -550,9 +646,16 @@ impl Scalar {
                     y.atan2(x)
                 } else {
                     let angle = ratio.atan2(1.0);
-                    if x > 0.0 { angle }
-                    else { angle + if y > 0.0 { std::f64::consts::PI }
-                           else { -std::f64::consts::PI } }
+                    if x > 0.0 {
+                        angle
+                    } else {
+                        angle
+                            + if y > 0.0 {
+                                std::f64::consts::PI
+                            } else {
+                                -std::f64::consts::PI
+                            }
+                    }
                 };
                 Ok(Self::from(result))
             }
@@ -569,9 +672,10 @@ impl Scalar {
     pub(crate) fn checked_pow(&self, exponent: &Self) -> Result<Self> {
         match (self, exponent) {
             (Self::Null, _) | (_, Self::Null) => Ok(Self::Null),
-            (Self::Float64(base), Self::Float64(power)) => {
-                Ok(Self::from(Arithmetic::power_float(base.as_f64(), power.as_f64())))
-            }
+            (Self::Float64(base), Self::Float64(power)) => Ok(Self::from(Arithmetic::power_float(
+                base.as_f64(),
+                power.as_f64(),
+            ))),
             _ => Err(Error::InvalidArithmetic {
                 operation: "power",
                 left: self.kind(),
@@ -1040,13 +1144,19 @@ pub mod internals {
     }
 
     /// Read the bound Float64 sign kernel through the private test door.
-    pub fn checked_sign(value: &Scalar) -> Result<Scalar> { value.checked_sign() }
+    pub fn checked_sign(value: &Scalar) -> Result<Scalar> {
+        value.checked_sign()
+    }
 
     /// Read the bound Float64 floor kernel through the private test door.
-    pub fn checked_floor(value: &Scalar) -> Result<Scalar> { value.checked_floor() }
+    pub fn checked_floor(value: &Scalar) -> Result<Scalar> {
+        value.checked_floor()
+    }
 
     /// Read the bound Float64 truncation kernel through the private test door.
-    pub fn checked_trunc(value: &Scalar) -> Result<Scalar> { value.checked_trunc() }
+    pub fn checked_trunc(value: &Scalar) -> Result<Scalar> {
+        value.checked_trunc()
+    }
 
     /// Read the bound Float64 square-root kernel through the private test door.
     pub fn checked_sqrt(value: &Scalar) -> Result<Scalar> {
@@ -1059,40 +1169,64 @@ pub mod internals {
     }
 
     /// Read the bound Float64 exponential through the private test door.
-    pub fn checked_exp(value: &Scalar) -> Result<Scalar> { value.checked_exp() }
+    pub fn checked_exp(value: &Scalar) -> Result<Scalar> {
+        value.checked_exp()
+    }
 
     /// Read the bound Float64 natural logarithm through the private test door.
-    pub fn checked_ln(value: &Scalar) -> Result<Scalar> { value.checked_ln() }
+    pub fn checked_ln(value: &Scalar) -> Result<Scalar> {
+        value.checked_ln()
+    }
 
     /// Read the bound Float64 base-10 logarithm through the private test door.
-    pub fn checked_log10(value: &Scalar) -> Result<Scalar> { value.checked_log10() }
+    pub fn checked_log10(value: &Scalar) -> Result<Scalar> {
+        value.checked_log10()
+    }
 
     /// Read the bound Float64 degree conversion through the private test door.
-    pub fn checked_degrees(value: &Scalar) -> Result<Scalar> { value.checked_degrees() }
+    pub fn checked_degrees(value: &Scalar) -> Result<Scalar> {
+        value.checked_degrees()
+    }
 
     /// Read the bound Float64 radian conversion through the private test door.
-    pub fn checked_radians(value: &Scalar) -> Result<Scalar> { value.checked_radians() }
+    pub fn checked_radians(value: &Scalar) -> Result<Scalar> {
+        value.checked_radians()
+    }
 
     /// Read the bound Float64 cosine through the private test door.
-    pub fn checked_cos(value: &Scalar) -> Result<Scalar> { value.checked_cos() }
+    pub fn checked_cos(value: &Scalar) -> Result<Scalar> {
+        value.checked_cos()
+    }
 
     /// Read the bound Float64 inverse sine through the private test door.
-    pub fn checked_asin(value: &Scalar) -> Result<Scalar> { value.checked_asin() }
+    pub fn checked_asin(value: &Scalar) -> Result<Scalar> {
+        value.checked_asin()
+    }
 
     /// Read the bound Float64 sine through the private test door.
-    pub fn checked_sin(value: &Scalar) -> Result<Scalar> { value.checked_sin() }
+    pub fn checked_sin(value: &Scalar) -> Result<Scalar> {
+        value.checked_sin()
+    }
 
     /// Read the bound Float64 tangent through the private test door.
-    pub fn checked_tan(value: &Scalar) -> Result<Scalar> { value.checked_tan() }
+    pub fn checked_tan(value: &Scalar) -> Result<Scalar> {
+        value.checked_tan()
+    }
 
     /// Read the bound Float64 inverse cosine through the private test door.
-    pub fn checked_acos(value: &Scalar) -> Result<Scalar> { value.checked_acos() }
+    pub fn checked_acos(value: &Scalar) -> Result<Scalar> {
+        value.checked_acos()
+    }
 
     /// Read the bound Float64 inverse tangent through the private test door.
-    pub fn checked_atan(value: &Scalar) -> Result<Scalar> { value.checked_atan() }
+    pub fn checked_atan(value: &Scalar) -> Result<Scalar> {
+        value.checked_atan()
+    }
 
     /// Read the bound Float64 coordinate inverse tangent through the private test door.
-    pub fn checked_atan2(y: &Scalar, x: &Scalar) -> Result<Scalar> { y.checked_atan2(x) }
+    pub fn checked_atan2(y: &Scalar, x: &Scalar) -> Result<Scalar> {
+        y.checked_atan2(x)
+    }
 
     /// Read the bound Float64 power kernel through the private test door.
     pub fn checked_pow(base: &Scalar, exponent: &Scalar) -> Result<Scalar> {

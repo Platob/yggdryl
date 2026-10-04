@@ -13,7 +13,7 @@ use crate::{
     Ccy, Cfi, DataType, Decimal, Field, Isin, Mic, Result, Scalar, Side, StructType, TimeUnit,
     Timezone, Unit,
 };
-use crate::{IdSource, IdType, Identifier, Identifiers};
+use crate::{IdKey, IdType, Identifier, Identifiers};
 
 /// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -39,7 +39,9 @@ pub enum MarketColumn {
     Unit,
     /// The side it takes.
     Side,
-    /// The security identifiers it names, key to code, sorted.
+    /// The security identifiers it names, key to code, sorted: a
+    /// `map<utf8, utf8>` keyed as [`IdKey`] spells a key, the base key of
+    /// each type its type alone.
     SecurityIds,
     /// The ISIN it names: the `ISIN` security identifier, projected.
     IsinCode,
@@ -213,6 +215,59 @@ impl MarketColumn {
         }
     }
 
+    /// What the column holds, for a catalog.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::MarketDataKind => {
+                "The category the element is filed under: an order, a quote, an execution, a trade, a book or another market data kind; UNKN where none is stated."
+            }
+            Self::MarketDataType => {
+                "The type of its kind the element is: its order, quote, trade or book entry type; UNKN where none is stated."
+            }
+            Self::Price => "The price the element is about.",
+            Self::StopPx => "The price a stop order triggers at.",
+            Self::Currency => "The currency the element is priced in; XXX where it states none.",
+            Self::Quantity => "The quantity the element is about.",
+            Self::DisplayQty => "The part of the quantity shown to the market: an iceberg's peak.",
+            Self::HiddenQty => {
+                "The part of the quantity kept from the market: an iceberg's reserve."
+            }
+            Self::Unit => "The unit the quantity is counted in; empty where it states none.",
+            Self::Side => "The side the element takes; UNKN where it states none.",
+            Self::SecurityIds => {
+                "The security identifiers the element names, sorted by key: an identifier's source and type to its value, the type alone for the base source."
+            }
+            Self::IsinCode => "The ISIN the element names: its isin security identifier.",
+            Self::CfiCode => "The detailed CFI classification of the instrument.",
+            Self::MicCode => "The market the instrument trades on, as its MIC.",
+            Self::ExecUnix => {
+                "When the element last executed: the latest execution its lifecycle reached, in UTC to the nanosecond."
+            }
+            Self::LastPx => "The last executed price the element reports.",
+            Self::LastQty => "The last executed quantity the element reports.",
+            Self::AvgPx => "The average price of what the element traded.",
+            Self::CumQty => "How much the element has traded.",
+            Self::LeavesQty => "How much the element has left to trade.",
+            Self::CxlQty => "How much of the element was canceled.",
+            Self::PrevPx => "The price the step before the element settled on.",
+            Self::PrevQty => "The quantity the step before the element settled on.",
+            Self::SpotRate => "The spot part of an FX forward price.",
+            Self::ForwardPoints => "The forward points of an FX forward price.",
+            Self::BidPx => "The bid price the element states.",
+            Self::BidQty => "The quantity bid.",
+            Self::BidCcy => "The currency the bid is stated in.",
+            Self::AskPx => "The ask price the element states.",
+            Self::AskQty => "The quantity offered.",
+            Self::AskCcy => "The currency the ask is stated in.",
+            Self::FxRates => {
+                "The FX rates the element states: a target currency to the rate an amount is divided by."
+            }
+            Self::Ticker => "The ticker the instrument goes by.",
+            Self::Metadata => "The free-form facts the element carries, sorted by key.",
+        }
+    }
+
     /// The one datatype the column is built and read at: the
     /// [`MarketDataKind`](crate::MarketDataKind) code for the category and the
     /// [`MarketDataType`](crate::MarketDataType) code for the type, the crate's
@@ -248,7 +303,7 @@ impl MarketColumn {
             Self::Currency | Self::BidCcy | Self::AskCcy => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
-            Self::SecurityIds => Identifiers::dtype("securityid"),
+            Self::SecurityIds => Identifiers::dtype(),
             Self::IsinCode => DataType::Isin,
             Self::CfiCode => DataType::Cfi,
             Self::MicCode => DataType::Mic,
@@ -275,14 +330,16 @@ impl MarketColumn {
         )
     }
 
-    /// The column as a field, named, typed and displayed.
+    /// The column as a field, named, typed and nullable as its fact is, with
+    /// its display and description for a catalog.
     ///
     /// # Errors
     ///
-    /// Returns an error when the display cannot be set.
+    /// Returns an error when the display or the description cannot be set.
     pub fn field(self) -> Result<Field> {
         let mut field = Field::new(self.name(), self.datatype(), self.nullable());
         field.set_display(self.display())?;
+        field.set_description(self.description())?;
         Ok(field)
     }
 
@@ -435,9 +492,11 @@ impl MarketColumn {
                     Scalar::Isin(held) => Some(held.clone()),
                     other => other.as_str().and_then(|text| Isin::new(text).ok()),
                 };
+                // A projection of `securityids`: it fills an absent ISIN,
+                // replaces one ranking below it and leaves another real one
+                // standing - what `insert` decides.
                 if let Some(code) = code
-                    && element.get_isincode().is_none()
-                    && let Ok(id) = Identifier::new(IdSource::Base, IdType::Isin, code.as_str())
+                    && let Ok(id) = Identifier::new(IdKey::base(IdType::Isin), code.as_str())
                 {
                     let _ = element.insert_securityid(id);
                 }

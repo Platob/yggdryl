@@ -14,7 +14,8 @@
 | Lazy | Schema before any batch; `combined` pulls no row and collects nothing |
 | Cast | [`SerieReader`](../types/cast.md#eager-and-lazy)`::from_arrow_reader(root, inner, options)`: one compiled plan for the whole stream, one record `Serie` per batch; `into_arrow_reader` hands it back as a `BatchReader`, and an identity plan hands back the inner reader unwrapped |
 | Cast errors | Reported at the pull of the batch that carries them; the reader is fused after one, and the source is released then |
-| Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)` and `SerieReader.from_arrow_reader(reader, root=None, ...)`; JavaScript `BatchReader.combined(other, schema?, safe?)` and `SerieReader.fromArrowReader(reader, root?, options?)` |
+| Windows | [`SerieReader::window_by(by, sorted)`](#windows-of-a-stream): one lazy `SerieReader` per window of equal adjacent keys, read in order, each stating its record as `static_values` |
+| Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)` and `SerieReader.from_arrow_reader(reader, root=None, ...)`; JavaScript `BatchReader.combined(other, schema?, safe?)` and `SerieReader.fromArrowReader(reader, root?, options?)`; `window_by(by, sorted=False)` / `windowBy(by, sorted?)` and `static_values` / `staticValues` in both |
 
 ## Use
 
@@ -201,6 +202,171 @@ write takes. [Eager and lazy](../types/cast.md#eager-and-lazy) has the failure t
     assert.equal(reader.intoTable().numRows, 3)
     ```
 
+## Windows of a stream
+
+`SerieReader::window_by(by, sorted)` cuts a stream into windows of equal adjacent keys and answers `SerieReaderWindows`: one lazy `SerieReader` per window, in the order the windows arrive. `by` is read as [`Serie::window_by`](../types/serie.md#windows-by-key) reads it and bound once against the reader's root before any batch is pulled; the reader is consumed.
+
+| Aspect | Rule |
+| --- | --- |
+| A window | An ordinary `SerieReader` of the root's rows as they stand in the stream, one piece per batch it spans: a batch a window spans whole is served as the landed batch itself, and only a batch a window opens or closes in is sliced. No window is ever held whole |
+| In order | Every window is pulled through one walk the windows share, which holds at most one batch, that batch's key record and one bit per row of it. Taking the next window pulls and drops the open one's unread rows; a window read after its walk passed rows of it refuses once, naming it, then ends - so collecting the windows before reading them is loud, never a silent loss. A window dropped unread costs only the pull of its rows, and a window may outlive its walk |
+| `sorted` | Each key once, in key order - ascending, absent keys last - and a stream is never reordered: it verifies that the keys arrive in that order and refuses the first window whose key orders before the one before it, naming the batch and the row, every window before it delivered whole. A stream whose keys do not arrive in order is held first - [`ChunkedSerie::from_serie_reader`](../types/chunked-serie.md#windows-by-key), then `ChunkedSerie::window_by` - to be windowed sorted |
+| The record | `field()` is the root every window yields and `static_field()` the record every window states, both known before the first pull. Each window's [`static_values()`](../types/window-serie.md#static-values) is that record: where the windowed reader is itself a window, its cells but `windownum` and `rownum`; the key cells; `windownum`, the window's place from 0; and `rownum`, the number its first row has in the stream - absolute through windows of windows, and never null, since a stream is never reordered. It is the record a held window of the same rows states, field and values; `cast` keeps it, and the Arrow face, `into_arrow_reader`, drops it |
+| Failures | A failure of the stream, of a cast or of a key is the item of whichever reader pulled it - the walk or a window - once; then the walk and every window end and the stream is dropped. A window the walk was skipping when it failed refuses as passed, so a partial window is never presented as complete |
+| Threads | `SerieReaderWindows` is `Send + Sync` and every window `Send`: a pull takes the walk's lock, and a window of a window takes its own walk's lock before its parent's |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, ChunkedSerie, DataType, Field, Scalar, Serie, SerieReader, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("venue"),
+        DataType::Int64.required_field("price"),
+    ])?)
+    .required_field("quote");
+    let quote = |venue: &str, price: i64| Scalar::from_sequence([Scalar::from(venue), Scalar::from(price)]);
+    // Two batches, XNAS spanning the edge between them.
+    let batches = [
+        Serie::from_scalars(root.clone(), [quote("XNAS", 1), quote("XNAS", 2)])?,
+        Serie::from_scalars(root.clone(), [quote("XNAS", 3), quote("XNYS", 4)])?,
+    ];
+    let stream = || -> yggdryl::arrow::Result<SerieReader> {
+        SerieReader::from_chunked(ChunkedSerie::from_series(Some(&root), batches.clone(), ArrowCastOptions::new())?)
+    };
+
+    // One lazy reader per window, in the order the keys arrive; both records known before a pull.
+    let mut windows = stream()?.window_by("venue", false)?;
+    assert_eq!(windows.field(), &root);
+    let names: Vec<&str> = windows.static_field().fields().iter().map(Field::name).collect();
+    assert_eq!(names, ["venue", "windownum", "rownum"]);
+
+    // Read each window before taking the next: one piece per batch it spans.
+    let xnas = windows.next().expect("a window")?;
+    let record = xnas.static_values().expect("a window states its record");
+    assert_eq!(record.get_key_str("venue"), Some(&Scalar::from("XNAS")));
+    let pieces: Vec<usize> = xnas.map(|piece| piece.map(|piece| piece.len())).collect::<Result<_, _>>()?;
+    assert_eq!(pieces, [2, 1]);
+    let xnys = windows.next().expect("a window")?;
+    let record = xnys.static_values().expect("its record");
+    assert_eq!(record.get_key_str("windownum"), Some(&Scalar::from(1_u64)));
+    assert_eq!(record.get_key_str("rownum"), Some(&Scalar::from(3_u64)));
+    assert!(windows.next().is_none());
+
+    // A window read after its walk passed it is refused once, naming it, then ends.
+    let collected: Vec<SerieReader> = stream()?.window_by("venue", false)?.collect::<Result<_, _>>()?;
+    let mut first = collected.into_iter().next().expect("a window");
+    let refused = first.next().expect("one refusal").unwrap_err();
+    assert!(refused.to_string().contains("window 0 was passed by its walk"));
+    assert!(first.next().is_none());
+
+    // Sorted verifies the keys arrive in order, refusing the first that goes backwards.
+    let backwards = Serie::from_scalars(root.clone(), [quote("XNYS", 1), quote("XNAS", 2)])?;
+    let mut sorted = SerieReader::from_serie(backwards)?.window_by("venue", true)?;
+    let xnys = sorted.next().expect("a window")?;
+    assert_eq!(xnys.map(|piece| piece.map(|piece| piece.len())).sum::<Result<usize, _>>()?, 1);
+    let refused = sorted.next().expect("the refusal").unwrap_err();
+    assert!(refused.to_string().contains("batch 0 row 1"));
+    assert!(sorted.next().is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import ChunkedSerie, Field, Serie, SerieReader
+
+    root = Field("quote", "struct<venue: utf8 not null, price: int64 not null>", nullable=False)
+
+
+    def stream() -> SerieReader:
+        # Two batches, XNAS spanning the edge between them.
+        batches = [[["XNAS", 1], ["XNAS", 2]], [["XNAS", 3], ["XNYS", 4]]]
+        return SerieReader.from_chunked(
+            ChunkedSerie.from_series([Serie.from_scalars(root, rows) for rows in batches], root)
+        )
+
+
+    # One lazy reader per window, in the order the keys arrive; both records known before a pull.
+    windows = stream().window_by("venue")
+    assert windows.field == root
+    assert [child.name for child in windows.static_field] == ["venue", "windownum", "rownum"]
+
+    # Read each window before taking the next: one piece per batch it spans.
+    xnas = next(windows)
+    assert xnas.static_values is not None
+    assert xnas.static_values.as_py() == {"venue": "XNAS", "windownum": 0, "rownum": 0}
+    assert [len(piece) for piece in xnas] == [2, 1]
+    xnys = next(windows)
+    assert xnys.static_values is not None
+    assert xnys.static_values["rownum"].as_py() == 3
+    assert next(windows, None) is None
+
+    # A window read after its walk passed it is refused once, naming it.
+    first, _ = list(stream().window_by("venue"))
+    try:
+        next(first)
+    except ValueError as error:
+        assert "window 0 was passed by its walk" in str(error)
+    else:
+        raise AssertionError("collected windows are read in order or refused")
+
+    # Sorted verifies the keys arrive in order, refusing the first that goes backwards.
+    backwards = Serie.from_scalars(root, [["XNYS", 1], ["XNAS", 2]])
+    walk = SerieReader.from_serie(backwards).window_by("venue", sorted=True)
+    assert sum(len(piece) for piece in next(walk)) == 1
+    try:
+        next(walk)
+    except ValueError as error:
+        assert "batch 0 row 1" in str(error)
+    else:
+        raise AssertionError("a key going backwards is refused")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { ChunkedSerie, Field, Serie, SerieReader } = require('yggdryl')
+
+    const root = Field.from('quote: struct<venue: utf8 not null, price: int64 not null> not null')
+    // Two batches, XNAS spanning the edge between them.
+    const stream = () =>
+      SerieReader.fromChunked(
+        ChunkedSerie.fromSeries(
+          [
+            Serie.fromScalars(root, [['XNAS', 1n], ['XNAS', 2n]]),
+            Serie.fromScalars(root, [['XNAS', 3n], ['XNYS', 4n]]),
+          ],
+          root,
+        ),
+      )
+
+    // One lazy reader per window, in the order the keys arrive; both records known before a pull.
+    const windows = stream().windowBy('venue')
+    assert.ok(windows.field.equals(root))
+    assert.equal(windows.staticField.name, 'quote')
+
+    // Read each window before taking the next: one piece per batch it spans.
+    const xnas = windows.next().value
+    assert.deepEqual(xnas.staticValues.asJs(), { venue: 'XNAS', windownum: 0, rownum: 0 })
+    assert.deepEqual([...xnas].map((piece) => piece.length), [2, 1])
+    const xnys = windows.next().value
+    assert.equal(xnys.staticValues.get('rownum').asJs(), 3)
+    assert.equal(windows.next().done, true)
+
+    // A window read after its walk passed it is refused once, naming it.
+    const [first] = [...stream().windowBy('venue')]
+    assert.throws(() => [...first], /window 0 was passed by its walk/)
+
+    // Sorted verifies the keys arrive in order, refusing the first that goes backwards.
+    const backwards = Serie.fromScalars(root, [['XNYS', 1n], ['XNAS', 2n]])
+    const walk = SerieReader.fromSerie(backwards).windowBy('venue', true)
+    assert.equal([...walk.next().value].length, 1)
+    assert.throws(() => walk.next(), /batch 0 row 1/)
+    ```
+
+`sorted` is `False` by default in Python, where `None` clears to it, and absent or `null` is `false` in JavaScript. Python's `SerieReaderWindows` is an iterator - every pull runs off the GIL - and JavaScript's an iterable that is its own iterator, `next()` answering one window; both carry `field` and `static_field` / `staticField`, and a window's record is a struct `Scalar` read by name.
+
 ## Merge rules
 
 | Rule | Behavior |
@@ -258,6 +424,9 @@ assert_eq!(rows, 3);
 - A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a [required column](../types/cast.md#required-columns) the source does not carry -> `SerieReader::from_arrow_reader` returns `Err` rather than a reader that fails on its first batch.
 - A batch the plan refuses -> reported at the pull that reads it, and the reader is fused after it.
 - Dropping a `SerieReader` or its transport face before it is drained -> the source is dropped with it, so a C stream behind it is released there.
+- A window read after its walk passed rows of it -> refused once, `window 0 was passed by its walk with rows unread; read each window before taking the next`, then ended; read each window before taking the next.
+- `window_by(.., sorted = true)` over keys arriving out of order -> the first window keyed backwards is refused naming the stream row, the batch, the row and both keys - `window by expects keys in order, ascending with absent keys last: batch 0 row 1 ...` - and the walk ends; window it unsorted, or hold it in a `ChunkedSerie` and window that sorted.
+- `window_by`'s key is refused before any batch is pulled: text that is not a selector, a key stating no projection, an `unnest`, a term reaching no column, and a key cell folding onto `windownum`, `rownum` or a cell the windowed reader's record keeps, naming both - alias it. In Python, text that does not parse leaves the reader usable and any other refusal spends it, as a refused `cast` does.
 - Python batch export caches the exact schema before any pull, retains [nested Map flags and shared buffers](../types/serie.md#exact-map-schemas), and releases the native reader on exhaustion or failure. A batch with no columns still retains its row count.
 
 ## Commands
@@ -270,12 +439,14 @@ assert_eq!(rows, 3);
     cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::coverage
     cargo test --features "parquet iceberg" -p yggdryl --test root -- cast::plans
     cargo test --features "parquet iceberg" -p yggdryl --test serie -- arrow::
+    cargo test -p yggdryl --test allocations -- a_windowed_stream a_continuing_window_edge
     ```
 
 === "Python"
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/test_cast.py -k reader
+    python/.venv/bin/python -m pytest python/tests/test_serie.py -k TestReaderWindowBy
     ```
 
 === "JavaScript"

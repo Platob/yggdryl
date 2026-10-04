@@ -529,12 +529,13 @@ fn row_size_and_column_size_answer_from_the_document_or_the_declared_field() {
 
 #[test]
 fn a_commit_cadence_publishes_every_bounded_prefix() {
+    // One row a batch, so a cadence of one batch is a commit per row.
     let three = || {
-        reader(vec![batch(&[
-            (1, Some("AAPL")),
-            (2, None),
-            (3, Some("MSFT")),
-        ])])
+        reader(vec![
+            batch(&[(1, Some("AAPL"))]),
+            batch(&[(2, None)]),
+            batch(&[(3, Some("MSFT"))]),
+        ])
     };
     let counted = Counted::new(buffer("trades.csv"));
     let calls = Arc::clone(counted.calls());
@@ -548,7 +549,7 @@ fn a_commit_cadence_publishes_every_bounded_prefix() {
     let counted = Counted::new(buffer("trades.csv"));
     let calls = Arc::clone(counted.calls());
     let mut media = Csv::new(counted);
-    media.options_mut().commit_row_size = Some(1);
+    media.options_mut().commit_batch_num = Some(1);
     let options = media.record_options().expect("the options");
     media
         .overwrite_arrow_reader(three(), &options)
@@ -563,9 +564,9 @@ fn a_commit_cadence_publishes_every_bounded_prefix() {
     );
 
     let mut zero = options.clone();
-    zero.set_commit_row_size(Some(0));
+    zero.set_commit_batch_num(Some(0));
     let (path, _) = refusal(media.overwrite_arrow_reader(three(), &zero).unwrap_err());
-    assert_eq!(path, "$.commit_row_size");
+    assert_eq!(path, "$.commit_batch_num");
 }
 
 #[test]
@@ -1172,7 +1173,7 @@ fn media_open_as_binds_the_dialect_the_type_names() {
 fn a_resumed_append_completes_onto_the_header_too() {
     let mut handle = stored("x,y\n1,a\n");
     let mut options = handle.record_options().expect("the options");
-    options.set_commit_row_size(Some(1));
+    options.set_commit_batch_num(Some(1));
     let mut session = yggdryl::ArrowWriteSession::append(&options).expect("a session");
     session
         .push(

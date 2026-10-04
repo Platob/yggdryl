@@ -169,17 +169,6 @@
         }
       },
       {
-        "name": "nocomplexeventdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexeventdates",
-          "FIX:tag": "1491"
-        }
-      },
-      {
         "name": "complexeventdates",
         "dtype": {
           "type": "null"
@@ -333,17 +322,6 @@
         }
       },
       {
-        "name": "nocomplexeventratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexeventratesources",
-          "FIX:tag": "41013"
-        }
-      },
-      {
         "name": "complexeventratesources",
         "dtype": {
           "type": "null"
@@ -361,17 +339,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "complexeventrelativedate"
-        }
-      },
-      {
-        "name": "nocomplexeventperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexeventperiods",
-          "FIX:tag": "41010"
         }
       },
       {
@@ -440,17 +407,6 @@
         }
       },
       {
-        "name": "nocomplexeventcrediteventsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexeventcrediteventsources",
-          "FIX:tag": "41029"
-        }
-      },
-      {
         "name": "complexeventcrediteventsources",
         "dtype": {
           "type": "null"
@@ -458,17 +414,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "complexeventcrediteventsources"
-        }
-      },
-      {
-        "name": "nocomplexeventcreditevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexeventcreditevents",
-          "FIX:tag": "40997"
         }
       },
       {

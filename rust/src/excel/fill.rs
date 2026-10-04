@@ -221,9 +221,11 @@ impl Workbook {
                     }
                     (_, None) => (None, None),
                 };
-                let bits = cell.as_ref().and_then(|cell| raw.and_then(|raw| {
-                    super::sheet::CellExtra::exceptional_serial(cell, raw, system)
-                }));
+                let bits = cell.as_ref().and_then(|cell| {
+                    raw.and_then(|raw| {
+                        super::sheet::CellExtra::exceptional_serial(cell, raw, system)
+                    })
+                });
                 writes.push((destination, cell, bits));
             }
         }
@@ -372,7 +374,13 @@ impl Item {
         let value = cell.value();
         match cell.format() {
             NumberFormat::Date => {
-                let serial = raw.or_else(|| system.serial_of(value).ok().flatten().map(|(serial, _)| serial));
+                let serial = raw.or_else(|| {
+                    system
+                        .serial_of(value)
+                        .ok()
+                        .flatten()
+                        .map(|(serial, _)| serial)
+                });
                 if let Scalar::Date32(days) = value {
                     return Some(Self::Date(i64::from(days.count()), serial?));
                 }
@@ -450,7 +458,8 @@ impl Series {
             .iter()
             .enumerate()
             .map(|(index, cell)| {
-                cell.as_ref().and_then(|cell| Item::of(cell, system, retained(index)))
+                cell.as_ref()
+                    .and_then(|cell| Item::of(cell, system, retained(index)))
             })
             .collect::<Option<Vec<_>>>()?;
         let first = items.first()?;
@@ -491,18 +500,24 @@ impl Series {
                         first: *start,
                         months: i64::from(y1 - y0) * 12 + i64::from(m1) - i64::from(m0),
                     };
-                    return dates.iter().enumerate()
+                    return dates
+                        .iter()
+                        .enumerate()
                         .all(|(position, (day, _))| series.day(position as i64) == Some(*day))
                         .then_some(series);
                 }
                 let step = dates[1].1 - dates[0].1;
-                dates.iter().enumerate().all(|(position, (_, serial))| {
-                    round15(first_serial + step * position as f64) == *serial
-                }).then_some(Self::Serials {
-                    start: *first_serial,
-                    step,
-                    format: NumberFormat::Date,
-                })
+                dates
+                    .iter()
+                    .enumerate()
+                    .all(|(position, (_, serial))| {
+                        round15(first_serial + step * position as f64) == *serial
+                    })
+                    .then_some(Self::Serials {
+                        start: *first_serial,
+                        step,
+                        format: NumberFormat::Date,
+                    })
             }
             Item::Serial(_, format) => {
                 let format = *format;

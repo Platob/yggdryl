@@ -439,12 +439,15 @@ fn read_token(body: &[u8], now: SystemTime) -> Result<Bearer> {
         .get_key_str("access_token")
         .and_then(Scalar::as_str)
         .ok_or_else(|| refusal("expected access_token in the token answer"))?;
+    // Google states the lifetime as a number and a hosted identity endpoint
+    // as text; the one integer reader takes either.
     let lifetime = value
         .get_key_str("expires_in")
-        .and_then(|value| value.as_str().and_then(|text| text.parse::<u64>().ok()));
+        .and_then(crate::integer::integer_from_scalar_as::<u64>);
     Ok(Bearer::new(
         token,
-        lifetime.map(|seconds| now + Duration::from_secs(seconds)),
+        // A lifetime no clock can hold states none, rather than panicking.
+        lifetime.and_then(|seconds| now.checked_add(Duration::from_secs(seconds))),
     ))
 }
 
@@ -582,5 +585,31 @@ impl std::fmt::Debug for Credential {
             Self::AuthorizedUser { .. } => "AuthorizedUser(<redacted>)",
             Self::Impersonated { .. } => "Impersonated(<redacted>)",
         })
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/s3/google/token.rs` pins and a caller cannot reach.
+    //!
+    //! Every exchange - a signed assertion, a refresh token - and the
+    //! metadata server end in one reader of the token answer, so it is
+    //! pinned by the answers each of them gives. The item forwards.
+    use std::time::SystemTime;
+
+    use crate::Result;
+    use crate::auth::Expiring;
+
+    /// The access token an answer carries and the instant it lapses, when it
+    /// states one.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refusal when the body is not JSON or carries no
+    /// `access_token`.
+    pub fn read_token(body: &[u8], now: SystemTime) -> Result<(String, Option<SystemTime>)> {
+        let bearer = super::read_token(body, now)?;
+        Ok((bearer.value().to_owned(), bearer.expires_at()))
     }
 }

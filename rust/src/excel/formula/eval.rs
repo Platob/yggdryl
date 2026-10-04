@@ -4,13 +4,13 @@ use std::collections::{HashMap, HashSet};
 
 use super::aggregate::{Accumulator, LogicalAccumulator};
 use super::criteria::Criterion;
+use super::criteria::Wildcard;
 use super::functions::Function;
 use super::lexer::{self, Kind};
-use super::shape;
-use super::criteria::Wildcard;
 use super::number;
 use super::parser::{BinaryOp, EvaluationPolicy, Expr, Node, ReferenceUse, Selection, UnaryOp};
 use super::reference::{Coord, Reference, SheetSpec, Target};
+use super::shape;
 use super::shape::Held;
 use super::value::{ArrayId, NameId, Operand, Outcome, ReferenceId, Unevaluated};
 use crate::excel::cell::{CellRange, CellRef, DateSystem, ExcelError, MAX_COLUMNS, MAX_ROWS};
@@ -41,7 +41,9 @@ pub(crate) enum RangeRead {
     AggregateA,
     /// Ignore nested SUBTOTAL formula cells; 100-series codes also omit
     /// manually hidden rows. The workbook's same sparse visitor applies it.
-    Subtotal { exclude_hidden: bool },
+    Subtotal {
+        exclude_hidden: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -52,13 +54,19 @@ enum RankArgument {
 
 impl RangeRead {
     pub(crate) const fn includes_values(self) -> bool {
-        matches!(self, Self::Values | Self::ValuesWithBlanks | Self::Lookup | Self::Subtotal { .. })
+        matches!(
+            self,
+            Self::Values | Self::ValuesWithBlanks | Self::Lookup | Self::Subtotal { .. }
+        )
     }
 }
 
 /// A lookup reader suspended before its next unresolved source cell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RangeProgress { Complete, Paused(u64) }
+pub(crate) enum RangeProgress {
+    Complete,
+    Paused(u64),
+}
 
 /// One resolved reference or an existing named expression arena.
 pub(crate) enum ReferenceResult {
@@ -84,7 +92,8 @@ pub(crate) trait Context<'w> {
     /// Single-sheet geometry, without reading any cell value. None is 3-D.
     fn reference_geometry(&self, id: ReferenceId) -> Option<CellRange>;
     /// Reference algebra preserves source areas rather than reading values.
-    fn reference_combine(&mut self, op: BinaryOp, left: ReferenceId, right: ReferenceId) -> Outcome;
+    fn reference_combine(&mut self, op: BinaryOp, left: ReferenceId, right: ReferenceId)
+    -> Outcome;
     fn reference_is_union(&self, id: ReferenceId) -> bool;
     /// Select one zero-based area for INDEX's reference form.
     fn reference_nth(&mut self, id: ReferenceId, index: usize) -> Outcome;
@@ -96,8 +105,12 @@ pub(crate) trait Context<'w> {
     fn reference_range(&mut self, id: ReferenceId, range: CellRange) -> Outcome;
     /// Establish dependency readiness before consuming a retained handle.
     /// A suspended caller retains this evaluator and its descriptor arena.
-    fn ready(&mut self, _id: ReferenceId, _usage: ReferenceUse) -> crate::Result<bool> { Ok(true) }
-    fn ready_subtotal(&mut self, _id: ReferenceId, _exclude_hidden: bool) -> crate::Result<bool> { Ok(true) }
+    fn ready(&mut self, _id: ReferenceId, _usage: ReferenceUse) -> crate::Result<bool> {
+        Ok(true)
+    }
+    fn ready_subtotal(&mut self, _id: ReferenceId, _exclude_hidden: bool) -> crate::Result<bool> {
+        Ok(true)
+    }
     fn scalar(&mut self, value: Operand) -> crate::Result<Outcome>;
     /// Visit outcomes in sheet/row/column order. ValuesWithBlanks and Lookup emit
     /// absent positions as compact blank runs; every other outcome has count1.
@@ -143,8 +156,14 @@ enum Frame {
         usage: ReferenceUse,
     },
     ArraySelection {
-        name: Option<NameId>, id: usize, base: usize,
-        selector: ArraySelector, test: ArrayId, choices: std::ops::Range<usize>, next: usize, waiting: bool,
+        name: Option<NameId>,
+        id: usize,
+        base: usize,
+        selector: ArraySelector,
+        test: ArrayId,
+        choices: std::ops::Range<usize>,
+        next: usize,
+        waiting: bool,
     },
     Lookup {
         name: Option<NameId>,
@@ -162,9 +181,17 @@ pub(crate) enum Evaluation {
 
 /// Source origin changes aggregate coercion; arrays are not worksheet cells.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ArgumentSource { Direct, Reference, Array }
+enum ArgumentSource {
+    Direct,
+    Reference,
+    Array,
+}
 
-enum AggregateMode { Plain, Ranked(RankArgument), Filtered(RangeRead) }
+enum AggregateMode {
+    Plain,
+    Ranked(RankArgument),
+    Filtered(RangeRead),
+}
 
 enum SelectionStep {
     Complete(Outcome),
@@ -267,7 +294,11 @@ impl LookupState {
 /// Scalar kernels shared by ordinary evaluation and requested array elements.
 #[derive(Clone, Copy, Debug)]
 enum ElementOp {
-    Unary(UnaryOp), Percent, Binary { op: BinaryOp, root: bool }, Absolute, Round,
+    Unary(UnaryOp),
+    Percent,
+    Binary { op: BinaryOp, root: bool },
+    Absolute,
+    Round,
 }
 
 impl ElementOp {
@@ -275,7 +306,13 @@ impl ElementOp {
         match self {
             Self::Unary(op) => Evaluator::unary(op, left, false, system),
             Self::Percent => Evaluator::percent(left, system),
-            Self::Binary { op, root } => Evaluator::binary(op, left, right.expect("binary operation owns two operands"), root, system),
+            Self::Binary { op, root } => Evaluator::binary(
+                op,
+                left,
+                right.expect("binary operation owns two operands"),
+                root,
+                system,
+            ),
             Self::Absolute => Evaluator::absolute(left, system),
             Self::Round => Evaluator::round(left, right.expect("ROUND owns two operands"), system),
         }
@@ -283,7 +320,10 @@ impl ElementOp {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum ArraySelector { If, Choose }
+enum ArraySelector {
+    If,
+    Choose,
+}
 
 impl ArraySelector {
     /// One coercion owner for scalar and array selector positions.
@@ -297,12 +337,16 @@ impl ArraySelector {
             },
             Self::Choose => match value.number(system) {
                 Some(Ok(index)) => {
-                    let index = Scalar::from(index).checked_trunc()
-                        .expect("CHOOSE binds a Float64 index").as_f64()
+                    let index = Scalar::from(index)
+                        .checked_trunc()
+                        .expect("CHOOSE binds a Float64 index")
+                        .as_f64()
                         .expect("the shared truncation preserves Float64");
                     if !index.is_finite() || index < 1.0 || index > count as f64 {
                         Err(Outcome::Computed(Operand::Error(ExcelError::Value)))
-                    } else { Ok(index as usize - 1) }
+                    } else {
+                        Ok(index as usize - 1)
+                    }
                 }
                 Some(Err(error)) => Err(Outcome::Computed(Operand::Error(error))),
                 None => Err(Outcome::Uncomputed(Unevaluated::Function(Function::Choose))),
@@ -312,27 +356,57 @@ impl ArraySelector {
 }
 
 #[derive(Debug)]
-struct ArrayChoice { child: Option<usize>, selected: bool, value: Outcome }
+struct ArrayChoice {
+    child: Option<usize>,
+    selected: bool,
+    value: Outcome,
+}
 
 #[derive(Debug)]
 enum ArrayOperation {
-    Element { op: ElementOp, left: Outcome, right: Option<Outcome> },
-    Selection { selector: ArraySelector, test: ArrayId, choices: std::ops::Range<usize> },
+    Element {
+        op: ElementOp,
+        left: Outcome,
+        right: Option<Outcome>,
+    },
+    Selection {
+        selector: ArraySelector,
+        test: ArrayId,
+        choices: std::ops::Range<usize>,
+    },
 }
 
 #[derive(Debug)]
 struct ArrayPlan {
-    operation: ArrayOperation, rows: usize, columns: usize,
+    operation: ArrayOperation,
+    rows: usize,
+    columns: usize,
     // One last coordinate per plan bounds repeated named-array DAG work.
     cached: Option<(usize, usize, Outcome)>,
 }
 
 #[derive(Debug)]
 enum ElementFrame {
-    Read { value: Outcome, row: usize, column: usize },
-    Apply { index: usize, row: usize, column: usize },
-    Select { index: usize, row: usize, column: usize },
-    Cache { index: usize, row: usize, column: usize },
+    Read {
+        value: Outcome,
+        row: usize,
+        column: usize,
+    },
+    Apply {
+        index: usize,
+        row: usize,
+        column: usize,
+    },
+    Select {
+        index: usize,
+        row: usize,
+        column: usize,
+    },
+    Cache {
+        index: usize,
+        row: usize,
+        column: usize,
+    },
 }
 
 #[derive(Debug)]
@@ -372,10 +446,14 @@ pub(crate) struct Evaluator {
 
 impl Evaluator {
     #[cfg(feature = "internals")]
-    pub(crate) const fn visited(&self) -> usize { self.visited }
+    pub(crate) const fn visited(&self) -> usize {
+        self.visited
+    }
 
     #[cfg(feature = "internals")]
-    pub(crate) const fn array_steps(&self) -> usize { self.element_steps }
+    pub(crate) const fn array_steps(&self) -> usize {
+        self.element_steps
+    }
 
     #[cfg(feature = "internals")]
     pub(crate) fn evaluate<'w>(
@@ -411,18 +489,33 @@ impl Evaluator {
         self.name_volatility.clear();
     }
 
-    pub(crate) fn volatile(&self) -> bool { self.volatile }
+    pub(crate) fn volatile(&self) -> bool {
+        self.volatile
+    }
 
     pub(crate) fn begin(&mut self, expression: &Expr) {
         self.clear();
         self.volatile = false;
         #[cfg(feature = "internals")]
-        { self.visited = 0; self.element_steps = 0; }
+        {
+            self.visited = 0;
+            self.element_steps = 0;
+        }
         self.values.resize_with(expression.nodes.len(), || None);
-        self.stack.push(Frame::Node { name: None, id: expression.root, base: 0, usage: ReferenceUse::Scalar, ready: false });
+        self.stack.push(Frame::Node {
+            name: None,
+            id: expression.root,
+            base: 0,
+            usage: ReferenceUse::Scalar,
+            ready: false,
+        });
     }
 
-    pub(crate) fn resume<'w>(&mut self, expression: &'w Expr, context: &mut impl Context<'w>) -> crate::Result<Evaluation> {
+    pub(crate) fn resume<'w>(
+        &mut self,
+        expression: &'w Expr,
+        context: &mut impl Context<'w>,
+    ) -> crate::Result<Evaluation> {
         let system = context.system();
         while let Some(frame) = self.stack.pop() {
             let (name, id, base, usage, ready) = match frame {
@@ -575,23 +668,66 @@ impl Evaluator {
                     }
                     continue;
                 }
-                Frame::ArraySelection { name, id, base, selector, test, choices, mut next, mut waiting } => {
+                Frame::ArraySelection {
+                    name,
+                    id,
+                    base,
+                    selector,
+                    test,
+                    choices,
+                    mut next,
+                    mut waiting,
+                } => {
                     while next < choices.end {
                         let choice = &self.array_choices[next];
-                        let Some(child) = choice.child.filter(|_| choice.selected) else { next += 1; continue; };
+                        let Some(child) = choice.child.filter(|_| choice.selected) else {
+                            next += 1;
+                            continue;
+                        };
                         if !waiting {
-                            self.stack.push(Frame::ArraySelection { name, id, base, selector, test, choices: choices.clone(), next, waiting: true });
-                            self.stack.push(Frame::Node { name, id: child, base, usage: ReferenceUse::Geometry, ready: false });
+                            self.stack.push(Frame::ArraySelection {
+                                name,
+                                id,
+                                base,
+                                selector,
+                                test,
+                                choices: choices.clone(),
+                                next,
+                                waiting: true,
+                            });
+                            self.stack.push(Frame::Node {
+                                name,
+                                id: child,
+                                base,
+                                usage: ReferenceUse::Geometry,
+                                ready: false,
+                            });
                             break;
                         }
-                        let point = match self.values[base + child].as_ref().expect("selected branch was evaluated") {
+                        let point = match self.values[base + child]
+                            .as_ref()
+                            .expect("selected branch was evaluated")
+                        {
                             Outcome::Computed(Operand::Reference(reference))
-                            | Outcome::Intersection { value: Operand::Reference(reference), .. } =>
-                                context.reference_geometry(*reference).is_some_and(|range| range.cell_count() == 1),
+                            | Outcome::Intersection {
+                                value: Operand::Reference(reference),
+                                ..
+                            } => context
+                                .reference_geometry(*reference)
+                                .is_some_and(|range| range.cell_count() == 1),
                             _ => false,
                         };
                         if point && !self.ready(base, child, ReferenceUse::Scalar, context)? {
-                            self.stack.push(Frame::ArraySelection { name, id, base, selector, test, choices, next, waiting: true });
+                            self.stack.push(Frame::ArraySelection {
+                                name,
+                                id,
+                                base,
+                                selector,
+                                test,
+                                choices,
+                                next,
+                                waiting: true,
+                            });
                             return Ok(Evaluation::Paused);
                         }
                         let value = self.take(base, child);
@@ -600,19 +736,24 @@ impl Evaluator {
                         // a named boundary until array reference lifting exists.
                         let value = match value {
                             Outcome::Computed(Operand::Reference(reference))
-                            | Outcome::Intersection { value: Operand::Reference(reference), .. } => {
-                                match context.reference_geometry(reference) {
-                                    Some(range) if range.cell_count() == 1 => context.scalar(Operand::Reference(reference))?,
-                                    _ => Outcome::Uncomputed(Unevaluated::Array),
+                            | Outcome::Intersection {
+                                value: Operand::Reference(reference),
+                                ..
+                            } => match context.reference_geometry(reference) {
+                                Some(range) if range.cell_count() == 1 => {
+                                    context.scalar(Operand::Reference(reference))?
                                 }
-                            }
+                                _ => Outcome::Uncomputed(Unevaluated::Array),
+                            },
                             value => value,
                         };
                         self.array_choices[next].value = value;
-                        next += 1; waiting = false;
+                        next += 1;
+                        waiting = false;
                     }
                     if next == choices.end {
-                        self.values[base + id] = Some(self.finish_array_selection(selector, test, choices, context));
+                        self.values[base + id] =
+                            Some(self.finish_array_selection(selector, test, choices, context));
                     }
                     continue;
                 }
@@ -638,7 +779,10 @@ impl Evaluator {
                         self.project(value, context)?
                     } else {
                         match value {
-                            Outcome::Array { array, .. } => Outcome::Array { array, implicit: true },
+                            Outcome::Array { array, .. } => Outcome::Array {
+                                array,
+                                implicit: true,
+                            },
                             value => value,
                         }
                     });
@@ -694,18 +838,28 @@ impl Evaluator {
             if !ready {
                 // Registry volatility applies even to a currently held call.
                 // Propagation prevents caching computed volatile ancestors.
-                if let Node::Call { function: Some(function), .. } = node
+                if let Node::Call {
+                    function: Some(function),
+                    ..
+                } = node
                     && function.info().volatile
                 {
                     self.volatile = true;
-                    if let Some(current) = self.name_volatility.last_mut() { *current = true; }
+                    if let Some(current) = self.name_volatility.last_mut() {
+                        *current = true;
+                    }
                 }
                 match node.evaluation_children() {
                     EvaluationPolicy::Leaf => {
                         self.values[base + id] = Some(match node {
                             Node::Literal(value) => Self::literal(value),
-                            Node::Array(_) => Outcome::Array { array: ArrayId::Literal { name, node: id }, implicit: false },
-                            Node::Reference(reference) => match context.reference(name, reference)? {
+                            Node::Array(_) => Outcome::Array {
+                                array: ArrayId::Literal { name, node: id },
+                                implicit: false,
+                            },
+                            Node::Reference(reference) => match context
+                                .reference(name, reference)?
+                            {
                                 ReferenceResult::Value(value) => value,
                                 ReferenceResult::Name(name) => match self.name_results.get(&name) {
                                     Some(cached) => {
@@ -717,20 +871,30 @@ impl Evaluator {
                                         cached.outcome.clone()
                                     }
                                     None => match context.expression(Some(name)) {
-                                    Err(reason) => Outcome::Uncomputed(Unevaluated::Held(reason)),
-                                    Ok(named) if self.names.insert(name) => {
-                                        self.name_volatility.push(false);
-                                        let next = self.values.len();
-                                        self.values.resize_with(next + named.nodes.len(), || None);
-                                        self.stack.push(Frame::Return {
-                                            name, root: named.root, base: next, destination: base + id,
-                                        });
-                                        self.stack.push(Frame::Node {
-                                            name: Some(name), id: named.root, base: next, usage, ready: false,
-                                        });
-                                        continue;
-                                    }
-                                    Ok(_) => Outcome::Uncomputed(Unevaluated::Reference),
+                                        Err(reason) => {
+                                            Outcome::Uncomputed(Unevaluated::Held(reason))
+                                        }
+                                        Ok(named) if self.names.insert(name) => {
+                                            self.name_volatility.push(false);
+                                            let next = self.values.len();
+                                            self.values
+                                                .resize_with(next + named.nodes.len(), || None);
+                                            self.stack.push(Frame::Return {
+                                                name,
+                                                root: named.root,
+                                                base: next,
+                                                destination: base + id,
+                                            });
+                                            self.stack.push(Frame::Node {
+                                                name: Some(name),
+                                                id: named.root,
+                                                base: next,
+                                                usage,
+                                                ready: false,
+                                            });
+                                            continue;
+                                        }
+                                        Ok(_) => Outcome::Uncomputed(Unevaluated::Reference),
                                     },
                                 },
                             },
@@ -740,13 +904,38 @@ impl Evaluator {
                         });
                     }
                     EvaluationPolicy::Strict(children) => {
-                        self.stack.push(Frame::Node { name, id, base, usage, ready: true });
-                        children.visit_references(usage, |id, usage| self.stack.push(Frame::Node { name, id, base, usage, ready: false }));
+                        self.stack.push(Frame::Node {
+                            name,
+                            id,
+                            base,
+                            usage,
+                            ready: true,
+                        });
+                        children.visit_references(usage, |id, usage| {
+                            self.stack.push(Frame::Node {
+                                name,
+                                id,
+                                base,
+                                usage,
+                                ready: false,
+                            })
+                        });
                     }
                     EvaluationPolicy::Select(selection) => {
-                        self.stack.push(Frame::Selection { name, id, base, usage });
+                        self.stack.push(Frame::Selection {
+                            name,
+                            id,
+                            base,
+                            usage,
+                        });
                         selection.visit_inputs_reverse(|input, usage| {
-                            self.stack.push(Frame::Node { name, id: input, base, usage, ready: false });
+                            self.stack.push(Frame::Node {
+                                name,
+                                id: input,
+                                base,
+                                usage,
+                                ready: false,
+                            });
                         });
                     }
                     EvaluationPolicy::Held => {
@@ -826,13 +1015,21 @@ impl Evaluator {
                 Node::Group(child) => self.take(base, *child),
                 Node::Unary { op, value } => {
                     let value = self.take(base, *value);
-                    let referenced = matches!(&value,
+                    let referenced = matches!(
+                        &value,
                         Outcome::Computed(Operand::Reference(_))
-                        | Outcome::Intersection { referenced: true, .. });
+                            | Outcome::Intersection {
+                                referenced: true,
+                                ..
+                            }
+                    );
                     let value = if *op == UnaryOp::ImplicitIntersection {
                         match value {
                             Outcome::Computed(Operand::Reference(id))
-                            | Outcome::Intersection { value: Operand::Reference(id), .. } => context.intersection(id),
+                            | Outcome::Intersection {
+                                value: Operand::Reference(id),
+                                ..
+                            } => context.intersection(id),
                             value => self.project(value, context)?,
                         }
                     } else {
@@ -840,19 +1037,36 @@ impl Evaluator {
                     };
                     if *op == UnaryOp::ImplicitIntersection {
                         Self::unary(*op, value, referenced, system)
-                    } else { value }
+                    } else {
+                        value
+                    }
                 }
                 Node::Percent(child) => {
                     let value = self.take(base, *child);
                     self.element(ElementOp::Percent, value, None, context)?
                 }
-                Node::Binary { op: op @ (BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union), left, right } => {
-                    Self::reference_binary(*op, self.take(base, *left), self.take(base, *right), context)
-                }
+                Node::Binary {
+                    op: op @ (BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union),
+                    left,
+                    right,
+                } => Self::reference_binary(
+                    *op,
+                    self.take(base, *left),
+                    self.take(base, *right),
+                    context,
+                ),
                 Node::Binary { op, left, right } => {
                     let left = self.take(base, *left);
                     let right = self.take(base, *right);
-                    self.element(ElementOp::Binary { op: *op, root: id == arena.root }, left, Some(right), context)?
+                    self.element(
+                        ElementOp::Binary {
+                            op: *op,
+                            root: id == arena.root,
+                        },
+                        left,
+                        Some(right),
+                        context,
+                    )?
                 }
                 Node::Call {
                     function: Some(function @ (Function::True | Function::False)),
@@ -877,7 +1091,9 @@ impl Evaluator {
                     function: Some(Function::Pi),
                     args,
                 } => {
-                    let [] = args.as_ref() else { unreachable!("the strict policy proved zero arguments") };
+                    let [] = args.as_ref() else {
+                        unreachable!("the strict policy proved zero arguments")
+                    };
                     Self::numeric(std::f64::consts::PI)
                 }
                 Node::Call {
@@ -917,15 +1133,25 @@ impl Evaluator {
                     Self::randbetween(bottom, top, system, context)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Row | Function::Column | Function::Rows | Function::Columns)),
+                    function:
+                        Some(
+                            function @ (Function::Row
+                            | Function::Column
+                            | Function::Rows
+                            | Function::Columns),
+                        ),
                     args,
                 } => {
-                    let value = args.first().and_then(|id| *id).map(|id| self.take(base, id));
+                    let value = args
+                        .first()
+                        .and_then(|id| *id)
+                        .map(|id| self.take(base, id));
                     self.geometry(*function, value, context)
                 }
-                Node::Call { function: Some(Function::Address), args } => {
-                    self.address(args, base, context)?
-                }
+                Node::Call {
+                    function: Some(Function::Address),
+                    args,
+                } => self.address(args, base, context)?,
                 Node::Call {
                     function: Some(Function::Isref),
                     args,
@@ -935,8 +1161,10 @@ impl Evaluator {
                     };
                     match self.take(base, *argument) {
                         Outcome::Computed(Operand::Reference(id)) => {
-                            Outcome::Computed(Operand::Boolean(context.reference_is_union(id)
-                                || context.reference_geometry(id).is_some()))
+                            Outcome::Computed(Operand::Boolean(
+                                context.reference_is_union(id)
+                                    || context.reference_geometry(id).is_some(),
+                            ))
                         }
                         Outcome::Computed(_) => Outcome::Computed(Operand::Boolean(false)),
                         Outcome::Array { .. } => Outcome::Computed(Operand::Boolean(false)),
@@ -947,12 +1175,21 @@ impl Evaluator {
                     }
                 }
                 Node::Call {
-                    function: Some(function @ (
-                        Function::ErrorDotType | Function::Isblank | Function::Iserr
-                        | Function::Iserror | Function::Iseven | Function::Islogical
-                        | Function::Isna | Function::Isnontext | Function::Isnumber
-                        | Function::Isodd | Function::Istext | Function::N
-                    )),
+                    function:
+                        Some(
+                            function @ (Function::ErrorDotType
+                            | Function::Isblank
+                            | Function::Iserr
+                            | Function::Iserror
+                            | Function::Iseven
+                            | Function::Islogical
+                            | Function::Isna
+                            | Function::Isnontext
+                            | Function::Isnumber
+                            | Function::Isodd
+                            | Function::Istext
+                            | Function::N),
+                        ),
                     args,
                 } => {
                     let [Some(argument)] = args.as_ref() else {
@@ -971,43 +1208,64 @@ impl Evaluator {
                     let value = Self::scalar(self.take(base, *argument), context)?;
                     Self::calendar_extract(*function, value, system)
                 }
-                Node::Call { function: Some(Function::Date), args } => {
+                Node::Call {
+                    function: Some(Function::Date),
+                    args,
+                } => {
                     let [Some(year), Some(month), Some(day)] = args.as_ref() else {
                         unreachable!("strict policy proved three present DATE arguments")
                     };
-                    Self::date([
-                        Self::scalar(self.take(base, *year), context)?,
-                        Self::scalar(self.take(base, *month), context)?,
-                        Self::scalar(self.take(base, *day), context)?,
-                    ], system)
+                    Self::date(
+                        [
+                            Self::scalar(self.take(base, *year), context)?,
+                            Self::scalar(self.take(base, *month), context)?,
+                            Self::scalar(self.take(base, *day), context)?,
+                        ],
+                        system,
+                    )
                 }
-                Node::Call { function: Some(Function::Time), args } => {
+                Node::Call {
+                    function: Some(Function::Time),
+                    args,
+                } => {
                     let [Some(hour), Some(minute), Some(second)] = args.as_ref() else {
                         unreachable!("strict policy proved three present TIME arguments")
                     };
-                    Self::time([
-                        Self::scalar(self.take(base, *hour), context)?,
-                        Self::scalar(self.take(base, *minute), context)?,
-                        Self::scalar(self.take(base, *second), context)?,
-                    ], system)
+                    Self::time(
+                        [
+                            Self::scalar(self.take(base, *hour), context)?,
+                            Self::scalar(self.take(base, *minute), context)?,
+                            Self::scalar(self.take(base, *second), context)?,
+                        ],
+                        system,
+                    )
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Edate | Function::Eomonth)), args,
+                    function: Some(function @ (Function::Edate | Function::Eomonth)),
+                    args,
                 } => {
                     let [Some(serial), Some(months)] = args.as_ref() else {
                         unreachable!("strict policy proved two present month-shift arguments")
                     };
-                    Self::month_shift(*function,
+                    Self::month_shift(
+                        *function,
                         Self::scalar(self.take(base, *serial), context)?,
-                        Self::scalar(self.take(base, *months), context)?, system)
+                        Self::scalar(self.take(base, *months), context)?,
+                        system,
+                    )
                 }
-                Node::Call { function: Some(function @ (Function::Pv | Function::Fv | Function::Pmt)), args } => {
-                    self.annuity(*function, args, base, context)?
-                }
-                Node::Call { function: Some(Function::Npv), args } => {
-                    self.npv(base, args, context)?
-                }
-                Node::Call { function: Some(Function::Days), args } => {
+                Node::Call {
+                    function: Some(function @ (Function::Pv | Function::Fv | Function::Pmt)),
+                    args,
+                } => self.annuity(*function, args, base, context)?,
+                Node::Call {
+                    function: Some(Function::Npv),
+                    args,
+                } => self.npv(base, args, context)?,
+                Node::Call {
+                    function: Some(Function::Days),
+                    args,
+                } => {
                     let [Some(end), Some(start)] = args.as_ref() else {
                         unreachable!("strict policy proved two present DAYS arguments")
                     };
@@ -1016,7 +1274,9 @@ impl Evaluator {
                     Self::days(end, start, system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Hour | Function::Minute | Function::Second)), args,
+                    function:
+                        Some(function @ (Function::Hour | Function::Minute | Function::Second)),
+                    args,
                 } => {
                     let [Some(argument)] = args.as_ref() else {
                         unreachable!("strict policy proved one clock-part argument")
@@ -1025,7 +1285,8 @@ impl Evaluator {
                     Self::clock_extract(*function, value, system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Datevalue | Function::Timevalue)), args,
+                    function: Some(function @ (Function::Datevalue | Function::Timevalue)),
+                    args,
                 } => {
                     let [Some(argument)] = args.as_ref() else {
                         unreachable!("strict policy proved one text-temporal argument")
@@ -1033,7 +1294,10 @@ impl Evaluator {
                     let value = Self::scalar(self.take(base, *argument), context)?;
                     Self::parsed_temporal(*function, value, system)
                 }
-                Node::Call { function: Some(Function::Log), args } => {
+                Node::Call {
+                    function: Some(Function::Log),
+                    args,
+                } => {
                     let (value, radix) = match args.as_ref() {
                         [Some(value)] => (*value, None),
                         [Some(value), Some(radix)] => (*value, Some(*radix)),
@@ -1046,7 +1310,10 @@ impl Evaluator {
                     };
                     Self::logarithm(value, radix, system)
                 }
-                Node::Call { function: Some(Function::Weekday), args } => {
+                Node::Call {
+                    function: Some(Function::Weekday),
+                    args,
+                } => {
                     let (serial, code) = match args.as_ref() {
                         [Some(serial)] => (*serial, None),
                         [Some(serial), Some(code)] => (*serial, Some(*code)),
@@ -1060,9 +1327,20 @@ impl Evaluator {
                     Self::weekday(value, code, system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Exp | Function::Ln | Function::Log10
-                        | Function::Degrees | Function::Radians | Function::Cos | Function::Asin
-                        | Function::Sin | Function::Tan | Function::Acos | Function::Atan)),
+                    function:
+                        Some(
+                            function @ (Function::Exp
+                            | Function::Ln
+                            | Function::Log10
+                            | Function::Degrees
+                            | Function::Radians
+                            | Function::Cos
+                            | Function::Asin
+                            | Function::Sin
+                            | Function::Tan
+                            | Function::Acos
+                            | Function::Atan),
+                        ),
                     args,
                 } => {
                     let [Some(argument)] = args.as_ref() else {
@@ -1072,31 +1350,74 @@ impl Evaluator {
                     Self::pure_math(*function, value, system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::T | Function::Clean | Function::Trim
-                        | Function::Left | Function::Right | Function::Mid | Function::Exact
-                        | Function::Char | Function::Code | Function::Proper | Function::Rept | Function::Lower | Function::Upper | Function::Substitute | Function::Find | Function::Replace)), args,
+                    function:
+                        Some(
+                            function @ (Function::T
+                            | Function::Clean
+                            | Function::Trim
+                            | Function::Left
+                            | Function::Right
+                            | Function::Mid
+                            | Function::Exact
+                            | Function::Char
+                            | Function::Code
+                            | Function::Proper
+                            | Function::Rept
+                            | Function::Lower
+                            | Function::Upper
+                            | Function::Substitute
+                            | Function::Find
+                            | Function::Replace),
+                        ),
+                    args,
                 } => {
                     let mut values = std::array::from_fn(|_| Outcome::Computed(Operand::Blank));
                     for (index, argument) in args.iter().enumerate() {
-                        values[index] = Self::scalar(self.take(base, argument.expect("the strict policy proved present arguments")), context)?;
+                        values[index] = Self::scalar(
+                            self.take(
+                                base,
+                                argument.expect("the strict policy proved present arguments"),
+                            ),
+                            context,
+                        )?;
                     }
                     function.text(values, args.len(), context.text_compatibility(), system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Concat | Function::Concatenate | Function::Textjoin)), args,
+                    function:
+                        Some(
+                            function @ (Function::Concat
+                            | Function::Concatenate
+                            | Function::Textjoin),
+                        ),
+                    args,
                 } => self.join(*function, base, args, context)?,
-                Node::Call { function: Some(Function::Search), args } => {
+                Node::Call {
+                    function: Some(Function::Search),
+                    args,
+                } => {
                     let mut values = std::array::from_fn(|_| Outcome::Computed(Operand::Blank));
                     for (index, argument) in args.iter().enumerate() {
-                        values[index] = Self::scalar(self.take(base, argument.expect("typed SEARCH arity")), context)?;
+                        values[index] = Self::scalar(
+                            self.take(base, argument.expect("typed SEARCH arity")),
+                            context,
+                        )?;
                     }
-                    self.search.evaluate(values, args.len(), context.text_compatibility(), system)
+                    self.search
+                        .evaluate(values, args.len(), context.text_compatibility(), system)
                 }
-                Node::Call { function: Some(Function::Value), args } => {
-                    let value = Self::scalar(self.take(base, args[0].expect("typed VALUE argument")), context)?;
+                Node::Call {
+                    function: Some(Function::Value),
+                    args,
+                } => {
+                    let value = Self::scalar(
+                        self.take(base, args[0].expect("typed VALUE argument")),
+                        context,
+                    )?;
                     match value.operand() {
                         Err(reason) => Outcome::Uncomputed(reason),
-                        Ok(Operand::Text(text)) => match entry::value_number(text.as_str(), system) {
+                        Ok(Operand::Text(text)) => match entry::value_number(text.as_str(), system)
+                        {
                             Some(Ok(value)) => Self::numeric(value),
                             Some(Err(error)) => Outcome::Computed(Operand::Error(error)),
                             None => Outcome::Uncomputed(Unevaluated::Coercion),
@@ -1104,21 +1425,50 @@ impl Evaluator {
                         Ok(Operand::Blank) => Self::numeric(0.0),
                         Ok(Operand::Number(value)) => Self::numeric(value),
                         Ok(Operand::Error(error)) => Outcome::Computed(Operand::Error(error)),
-                        Ok(Operand::Boolean(_)) => Outcome::Computed(Operand::Error(ExcelError::Value)),
-                        Ok(Operand::Reference(_)) => unreachable!("Context scalarized VALUE's reference"),
+                        Ok(Operand::Boolean(_)) => {
+                            Outcome::Computed(Operand::Error(ExcelError::Value))
+                        }
+                        Ok(Operand::Reference(_)) => {
+                            unreachable!("Context scalarized VALUE's reference")
+                        }
                     }
                 }
-                Node::Call { function: Some(Function::Text), args } => {
-                    let value = Self::scalar(self.take(base, args[0].expect("typed TEXT argument")), context)?;
-                    let code = Self::scalar(self.take(base, args[1].expect("typed TEXT format")), context)?;
+                Node::Call {
+                    function: Some(Function::Text),
+                    args,
+                } => {
+                    let value = Self::scalar(
+                        self.take(base, args[0].expect("typed TEXT argument")),
+                        context,
+                    )?;
+                    let code = Self::scalar(
+                        self.take(base, args[1].expect("typed TEXT format")),
+                        context,
+                    )?;
                     self.formatter.text(value, code, system)
                 }
-                Node::Call { function: Some(Function::Len), args } => {
-                    let value = Self::scalar(self.take(base, args[0].expect("the strict policy proved the argument")), context)?;
+                Node::Call {
+                    function: Some(Function::Len),
+                    args,
+                } => {
+                    let value = Self::scalar(
+                        self.take(
+                            base,
+                            args[0].expect("the strict policy proved the argument"),
+                        ),
+                        context,
+                    )?;
                     context.text_compatibility().length(value)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Abs | Function::Sqrt | Function::Fact | Function::Sign | Function::Int)),
+                    function:
+                        Some(
+                            function @ (Function::Abs
+                            | Function::Sqrt
+                            | Function::Fact
+                            | Function::Sign
+                            | Function::Int),
+                        ),
                     args,
                 } => match args.as_ref() {
                     [Some(argument)] => {
@@ -1126,51 +1476,101 @@ impl Evaluator {
                         if *function == Function::Abs {
                             self.element(ElementOp::Absolute, value, None, context)?
                         } else {
-                        let value = Self::scalar(value, context)?;
-                        match function {
-                            Function::Sqrt => Self::square_root(value, system),
-                            Function::Fact => Self::factorial(value, system),
-                            Function::Sign | Function::Int => Self::signed_integer(*function, value, system),
-                            _ => unreachable!("the call was matched above"),
-                        }
+                            let value = Self::scalar(value, context)?;
+                            match function {
+                                Function::Sqrt => Self::square_root(value, system),
+                                Function::Fact => Self::factorial(value, system),
+                                Function::Sign | Function::Int => {
+                                    Self::signed_integer(*function, value, system)
+                                }
+                                _ => unreachable!("the call was matched above"),
+                            }
                         }
                     }
                     _ => Outcome::Uncomputed(Unevaluated::Function(*function)),
                 },
-                Node::Call { function: Some(Function::Sumproduct), args } =>
-                    self.sum_product(base, args, context)?,
-                Node::Call { function: Some(Function::Countblank), args } =>
-                    self.count_blank(base, args, context)?,
                 Node::Call {
-                    function: Some(function @ (Function::Sum | Function::Count | Function::Counta
-                        | Function::Min | Function::Max | Function::Average | Function::Averagea
-                        | Function::Mina | Function::Maxa | Function::Product
-                        | Function::Median | Function::Mode | Function::ModeDotSngl
-                        | Function::Var | Function::Varp | Function::VarDotS | Function::VarDotP
-                        | Function::Stdev | Function::Stdevp | Function::StdevDotS | Function::StdevDotP)),
+                    function: Some(Function::Sumproduct),
+                    args,
+                } => self.sum_product(base, args, context)?,
+                Node::Call {
+                    function: Some(Function::Countblank),
+                    args,
+                } => self.count_blank(base, args, context)?,
+                Node::Call {
+                    function:
+                        Some(
+                            function @ (Function::Sum
+                            | Function::Count
+                            | Function::Counta
+                            | Function::Min
+                            | Function::Max
+                            | Function::Average
+                            | Function::Averagea
+                            | Function::Mina
+                            | Function::Maxa
+                            | Function::Product
+                            | Function::Median
+                            | Function::Mode
+                            | Function::ModeDotSngl
+                            | Function::Var
+                            | Function::Varp
+                            | Function::VarDotS
+                            | Function::VarDotP
+                            | Function::Stdev
+                            | Function::Stdevp
+                            | Function::StdevDotS
+                            | Function::StdevDotP),
+                        ),
                     args,
                 } => self.aggregate(*function, base, args, AggregateMode::Plain, context)?,
-                Node::Call { function: Some(Function::Subtotal), args } => {
-                    match self.subtotal(base, args, context)? {
-                        Some(value) => value,
-                        None => {
-                            self.stack.push(Frame::Node { name, id, base, usage, ready: true });
-                            return Ok(Evaluation::Paused);
-                        }
-                    }
-                }
-                Node::Call { function: Some(function @ (Function::Countif | Function::Countifs
-                    | Function::Sumif | Function::Sumifs | Function::Averageif
-                    | Function::Averageifs | Function::Maxifs | Function::Minifs)), args } =>
-                    self.criteria(*function, base, args, context)?,
                 Node::Call {
-                    function: Some(function @ (Function::Large | Function::Small
-                        | Function::Percentile | Function::PercentileDotInc
-                        | Function::Quartile | Function::QuartileDotInc
-                        | Function::Rank | Function::RankDotEq)), args,
+                    function: Some(Function::Subtotal),
+                    args,
+                } => match self.subtotal(base, args, context)? {
+                    Some(value) => value,
+                    None => {
+                        self.stack.push(Frame::Node {
+                            name,
+                            id,
+                            base,
+                            usage,
+                            ready: true,
+                        });
+                        return Ok(Evaluation::Paused);
+                    }
+                },
+                Node::Call {
+                    function:
+                        Some(
+                            function @ (Function::Countif
+                            | Function::Countifs
+                            | Function::Sumif
+                            | Function::Sumifs
+                            | Function::Averageif
+                            | Function::Averageifs
+                            | Function::Maxifs
+                            | Function::Minifs),
+                        ),
+                    args,
+                } => self.criteria(*function, base, args, context)?,
+                Node::Call {
+                    function:
+                        Some(
+                            function @ (Function::Large
+                            | Function::Small
+                            | Function::Percentile
+                            | Function::PercentileDotInc
+                            | Function::Quartile
+                            | Function::QuartileDotInc
+                            | Function::Rank
+                            | Function::RankDotEq),
+                        ),
+                    args,
                 } => self.order_statistic(*function, base, args, context)?,
                 Node::Call {
-                    function: Some(function @ (Function::Gcd | Function::Lcm)), args,
+                    function: Some(function @ (Function::Gcd | Function::Lcm)),
+                    args,
                 } => self.integer_math(*function, base, args, context)?,
                 Node::Call {
                     function: Some(function @ (Function::And | Function::Or | Function::Xor)),
@@ -1202,9 +1602,17 @@ impl Evaluator {
                     Self::rounding_unary(*function, value, system)
                 }
                 Node::Call {
-                    function: Some(function @ (Function::Roundup | Function::Rounddown
-                        | Function::Quotient | Function::Ceiling | Function::Floor
-                        | Function::Mround | Function::CeilingDotMath | Function::FloorDotMath)),
+                    function:
+                        Some(
+                            function @ (Function::Roundup
+                            | Function::Rounddown
+                            | Function::Quotient
+                            | Function::Ceiling
+                            | Function::Floor
+                            | Function::Mround
+                            | Function::CeilingDotMath
+                            | Function::FloorDotMath),
+                        ),
                     args,
                 } => {
                     let [Some(value), rest @ ..] = args.as_ref() else {
@@ -1212,23 +1620,30 @@ impl Evaluator {
                     };
                     let value = Self::scalar(self.take(base, *value), context)?;
                     let (significance, mode) = match rest {
-                        [] => (Outcome::Computed(Operand::Number(1.0)),
-                               Outcome::Computed(Operand::Number(0.0))),
-                        [Some(second)] => (Self::scalar(self.take(base, *second), context)?,
-                                           Outcome::Computed(Operand::Number(0.0))),
-                        [Some(second), Some(mode)] =>
-                            (Self::scalar(self.take(base, *second), context)?,
-                             Self::scalar(self.take(base, *mode), context)?),
+                        [] => (
+                            Outcome::Computed(Operand::Number(1.0)),
+                            Outcome::Computed(Operand::Number(0.0)),
+                        ),
+                        [Some(second)] => (
+                            Self::scalar(self.take(base, *second), context)?,
+                            Outcome::Computed(Operand::Number(0.0)),
+                        ),
+                        [Some(second), Some(mode)] => (
+                            Self::scalar(self.take(base, *second), context)?,
+                            Self::scalar(self.take(base, *mode), context)?,
+                        ),
                         _ => unreachable!("the strict policy proved the rounding arity"),
                     };
                     Self::rounding_binary(*function, value, significance, mode, system)
                 }
-                Node::Call { function: Some(function @ (Function::Index | Function::Offset)), args } => {
-                    self.indexed_reference(*function, args, base, context)?
-                }
-                Node::Call { function: Some(Function::Indirect), args } => {
-                    self.indirect(args, base, context)?
-                }
+                Node::Call {
+                    function: Some(function @ (Function::Index | Function::Offset)),
+                    args,
+                } => self.indexed_reference(*function, args, base, context)?,
+                Node::Call {
+                    function: Some(Function::Indirect),
+                    args,
+                } => self.indirect(args, base, context)?,
                 Node::Call {
                     function: Some(Function::Round),
                     args,
@@ -1284,10 +1699,22 @@ impl Evaluator {
         self.project(result, context).map(Evaluation::Complete)
     }
 
-    fn ready<'w>(&self, base: usize, id: usize, usage: ReferenceUse, context: &mut impl Context<'w>) -> crate::Result<bool> {
-        match self.values[base + id].as_ref().expect("the child was evaluated") {
+    fn ready<'w>(
+        &self,
+        base: usize,
+        id: usize,
+        usage: ReferenceUse,
+        context: &mut impl Context<'w>,
+    ) -> crate::Result<bool> {
+        match self.values[base + id]
+            .as_ref()
+            .expect("the child was evaluated")
+        {
             Outcome::Computed(Operand::Reference(id))
-            | Outcome::Intersection { value: Operand::Reference(id), .. } => context.ready(*id, usage),
+            | Outcome::Intersection {
+                value: Operand::Reference(id),
+                ..
+            } => context.ready(*id, usage),
             _ => Ok(true),
         }
     }
@@ -1295,17 +1722,24 @@ impl Evaluator {
     fn literal(value: &super::parser::Literal) -> Outcome {
         match Operand::literal(value) {
             Operand::Number(value) => Self::numeric(value),
-            Operand::Error(ExcelError::Unrecognized) => Outcome::Uncomputed(Unevaluated::Held(Held::Unrecognized)),
+            Operand::Error(ExcelError::Unrecognized) => {
+                Outcome::Uncomputed(Unevaluated::Held(Held::Unrecognized))
+            }
             value => Outcome::Computed(value),
         }
     }
 
     /// Borrow constants in the already-resolved root or named arena. The
     /// parser proves nonempty rectangular rows and literal/signed-number cells.
-    fn array<'w>(name: Option<NameId>, node: usize,
-        context: &impl Context<'w>) -> Result<(&'w Expr, &'w [Box<[usize]>]), Held> {
+    fn array<'w>(
+        name: Option<NameId>,
+        node: usize,
+        context: &impl Context<'w>,
+    ) -> Result<(&'w Expr, &'w [Box<[usize]>]), Held> {
         let arena = context.expression(name)?;
-        let Node::Array(rows) = &arena.nodes[node] else { unreachable!("array outcome names its parsed node") };
+        let Node::Array(rows) = &arena.nodes[node] else {
+            unreachable!("array outcome names its parsed node")
+        };
         Ok((arena, rows))
     }
 
@@ -1313,7 +1747,9 @@ impl Evaluator {
         match &arena.nodes[node] {
             Node::Literal(value) => Self::literal(value),
             Node::Unary { op, value } => {
-                let Node::Literal(value) = &arena.nodes[*value] else { unreachable!("array sign has one numeric literal") };
+                let Node::Literal(value) = &arena.nodes[*value] else {
+                    unreachable!("array sign has one numeric literal")
+                };
                 Self::unary(*op, Self::literal(value), false, system)
             }
             _ => unreachable!("the array parser accepts only constants"),
@@ -1321,7 +1757,11 @@ impl Evaluator {
     }
 
     /// Explicit @, scalar-only consumers and cell publication take top-left.
-    fn project<'w>(&mut self, value: Outcome, context: &mut impl Context<'w>) -> crate::Result<Outcome> {
+    fn project<'w>(
+        &mut self,
+        value: Outcome,
+        context: &mut impl Context<'w>,
+    ) -> crate::Result<Outcome> {
         match value {
             Outcome::Array { array, .. } => Ok(self.array_element(array, 0, 0, context)),
             value => Self::scalar(value, context),
@@ -1331,7 +1771,8 @@ impl Evaluator {
     fn array_shape<'w>(&self, array: ArrayId, context: &impl Context<'w>) -> (usize, usize) {
         match array {
             ArrayId::Literal { name, node } => {
-                let (_, rows) = Self::array(name, node, context).expect("a reached array has a parsed arena");
+                let (_, rows) =
+                    Self::array(name, node, context).expect("a reached array has a parsed arena");
                 (rows.len(), rows[0].len())
             }
             ArrayId::Mapped(index) => {
@@ -1345,8 +1786,13 @@ impl Evaluator {
     /// operands. Singleton axes broadcast; other missing positions are #N/A.
     /// The retained plans and element stacks are bounded by reached expression
     /// nodes, never by the Cartesian product of array dimensions.
-    fn element<'w>(&mut self, op: ElementOp, left: Outcome, right: Option<Outcome>,
-        context: &mut impl Context<'w>) -> crate::Result<Outcome> {
+    fn element<'w>(
+        &mut self,
+        op: ElementOp,
+        left: Outcome,
+        right: Option<Outcome>,
+        context: &mut impl Context<'w>,
+    ) -> crate::Result<Outcome> {
         let left = self.element_argument(left, context)?;
         let right = match right {
             Some(value) => Some(self.element_argument(value, context)?),
@@ -1364,8 +1810,16 @@ impl Evaluator {
             None => Ok(op.apply(left, right, context.system())),
             Some((rows, columns)) => {
                 let index = self.arrays.len();
-                self.arrays.push(ArrayPlan { operation: ArrayOperation::Element { op, left, right }, rows, columns, cached: None });
-                Ok(Outcome::Array { array: ArrayId::Mapped(index), implicit: false })
+                self.arrays.push(ArrayPlan {
+                    operation: ArrayOperation::Element { op, left, right },
+                    rows,
+                    columns,
+                    cached: None,
+                });
+                Ok(Outcome::Array {
+                    array: ArrayId::Mapped(index),
+                    implicit: false,
+                })
             }
         }
     }
@@ -1373,25 +1827,53 @@ impl Evaluator {
     /// Admit only choices selected by at least one array position. Branch
     /// evaluation remains on the existing resumable formula stack; this scan
     /// never evaluates a branch or copies its expression.
-    fn array_selection<'w>(&mut self, selection: Selection<'_>, name: Option<NameId>,
-        id: usize, base: usize, context: &impl Context<'w>) -> bool {
+    fn array_selection<'w>(
+        &mut self,
+        selection: Selection<'_>,
+        name: Option<NameId>,
+        id: usize,
+        base: usize,
+        context: &impl Context<'w>,
+    ) -> bool {
         let (selector, child) = match selection {
-            Selection::If { test: Some(child), .. } => (ArraySelector::If, child),
-            Selection::Choose { index: Some(child), .. } => (ArraySelector::Choose, child),
+            Selection::If {
+                test: Some(child), ..
+            } => (ArraySelector::If, child),
+            Selection::Choose {
+                index: Some(child), ..
+            } => (ArraySelector::Choose, child),
             _ => return false,
         };
-        let Some(Outcome::Array { array: test, .. }) = &self.values[base + child] else { return false; };
+        let Some(Outcome::Array { array: test, .. }) = &self.values[base + child] else {
+            return false;
+        };
         let test = *test;
         self.take(base, child);
         let start = self.array_choices.len();
         match selection {
             Selection::If { yes, no, .. } => {
-                self.array_choices.push(ArrayChoice { child: yes, selected: false, value: Self::numeric(0.0) });
-                self.array_choices.push(ArrayChoice { child: no.flatten(), selected: false,
-                    value: if no.is_none() { Outcome::Computed(Operand::Boolean(false)) } else { Self::numeric(0.0) } });
+                self.array_choices.push(ArrayChoice {
+                    child: yes,
+                    selected: false,
+                    value: Self::numeric(0.0),
+                });
+                self.array_choices.push(ArrayChoice {
+                    child: no.flatten(),
+                    selected: false,
+                    value: if no.is_none() {
+                        Outcome::Computed(Operand::Boolean(false))
+                    } else {
+                        Self::numeric(0.0)
+                    },
+                });
             }
             Selection::Choose { choices, .. } => {
-                self.array_choices.extend(choices.iter().map(|child| ArrayChoice { child: *child, selected: false, value: Self::numeric(0.0) }));
+                self.array_choices
+                    .extend(choices.iter().map(|child| ArrayChoice {
+                        child: *child,
+                        selected: false,
+                        value: Self::numeric(0.0),
+                    }));
             }
             _ => unreachable!("only IF and CHOOSE admit array selectors"),
         }
@@ -1405,26 +1887,59 @@ impl Evaluator {
                 }
             }
         }
-        self.stack.push(Frame::ArraySelection { name, id, base, selector, test, choices, next: start, waiting: false });
+        self.stack.push(Frame::ArraySelection {
+            name,
+            id,
+            base,
+            selector,
+            test,
+            choices,
+            next: start,
+            waiting: false,
+        });
         true
     }
 
-    fn finish_array_selection<'w>(&mut self, selector: ArraySelector, test: ArrayId,
-        choices: std::ops::Range<usize>, context: &impl Context<'w>) -> Outcome {
+    fn finish_array_selection<'w>(
+        &mut self,
+        selector: ArraySelector,
+        test: ArrayId,
+        choices: std::ops::Range<usize>,
+        context: &impl Context<'w>,
+    ) -> Outcome {
         let (mut rows, mut columns) = self.array_shape(test, context);
         for choice in &self.array_choices[choices.clone()] {
-            if choice.selected && let Outcome::Array { array, .. } = &choice.value {
+            if choice.selected
+                && let Outcome::Array { array, .. } = &choice.value
+            {
                 let (next_rows, next_columns) = self.array_shape(*array, context);
-                rows = rows.max(next_rows); columns = columns.max(next_columns);
+                rows = rows.max(next_rows);
+                columns = columns.max(next_columns);
             }
         }
         let index = self.arrays.len();
-        self.arrays.push(ArrayPlan { operation: ArrayOperation::Selection { selector, test, choices }, rows, columns, cached: None });
+        self.arrays.push(ArrayPlan {
+            operation: ArrayOperation::Selection {
+                selector,
+                test,
+                choices,
+            },
+            rows,
+            columns,
+            cached: None,
+        });
         // Native legacy formulas insert @ at the function boundary when an
         // operator consumes this result; direct array reducers retain it.
-        Outcome::Array { array: ArrayId::Mapped(index), implicit: true }
+        Outcome::Array {
+            array: ArrayId::Mapped(index),
+            implicit: true,
+        }
     }
-    fn element_argument<'w>(&mut self, value: Outcome, context: &mut impl Context<'w>) -> crate::Result<Outcome> {
+    fn element_argument<'w>(
+        &mut self,
+        value: Outcome,
+        context: &mut impl Context<'w>,
+    ) -> crate::Result<Outcome> {
         match value {
             value @ Outcome::Array { implicit: true, .. } => self.project(value, context),
             value @ Outcome::Array { .. } => Ok(value),
@@ -1434,24 +1949,46 @@ impl Evaluator {
 
     /// Execute one requested position with an explicit stack. Captured scalar
     /// values (including volatile calls) are never evaluated again per element.
-    fn array_element<'w>(&mut self, array: ArrayId, row: usize, column: usize,
-        context: &impl Context<'w>) -> Outcome {
+    fn array_element<'w>(
+        &mut self,
+        array: ArrayId,
+        row: usize,
+        column: usize,
+        context: &impl Context<'w>,
+    ) -> Outcome {
         debug_assert!(self.element_stack.is_empty() && self.element_values.is_empty());
-        self.element_stack.push(ElementFrame::Read { value: Outcome::Array { array, implicit: false }, row, column });
+        self.element_stack.push(ElementFrame::Read {
+            value: Outcome::Array {
+                array,
+                implicit: false,
+            },
+            row,
+            column,
+        });
         while let Some(frame) = self.element_stack.pop() {
             match frame {
-                ElementFrame::Read { value: Outcome::Array { array, .. }, row, column } => {
+                ElementFrame::Read {
+                    value: Outcome::Array { array, .. },
+                    row,
+                    column,
+                } => {
                     let (rows, columns) = self.array_shape(array, context);
                     let row = if rows == 1 { 0 } else { row };
                     let column = if columns == 1 { 0 } else { column };
                     if row >= rows || column >= columns {
-                        self.element_values.push(Outcome::Computed(Operand::Error(ExcelError::NA)));
+                        self.element_values
+                            .push(Outcome::Computed(Operand::Error(ExcelError::NA)));
                         continue;
                     }
                     match array {
                         ArrayId::Literal { name, node } => {
-                            let (arena, rows) = Self::array(name, node, context).expect("a reached array has a parsed arena");
-                            self.element_values.push(Self::array_item(arena, rows[row][column], context.system()));
+                            let (arena, rows) = Self::array(name, node, context)
+                                .expect("a reached array has a parsed arena");
+                            self.element_values.push(Self::array_item(
+                                arena,
+                                rows[row][column],
+                                context.system(),
+                            ));
                         }
                         ArrayId::Mapped(index) => {
                             let plan = &self.arrays[index];
@@ -1463,15 +2000,38 @@ impl Evaluator {
                             }
                             match &plan.operation {
                                 ArrayOperation::Element { left, right, .. } => {
-                                    self.element_stack.push(ElementFrame::Apply { index, row, column });
+                                    self.element_stack.push(ElementFrame::Apply {
+                                        index,
+                                        row,
+                                        column,
+                                    });
                                     if let Some(right) = right {
-                                        self.element_stack.push(ElementFrame::Read { value: right.clone(), row, column });
+                                        self.element_stack.push(ElementFrame::Read {
+                                            value: right.clone(),
+                                            row,
+                                            column,
+                                        });
                                     }
-                                    self.element_stack.push(ElementFrame::Read { value: left.clone(), row, column });
+                                    self.element_stack.push(ElementFrame::Read {
+                                        value: left.clone(),
+                                        row,
+                                        column,
+                                    });
                                 }
                                 ArrayOperation::Selection { test, .. } => {
-                                    self.element_stack.push(ElementFrame::Select { index, row, column });
-                                    self.element_stack.push(ElementFrame::Read { value: Outcome::Array { array: *test, implicit: false }, row, column });
+                                    self.element_stack.push(ElementFrame::Select {
+                                        index,
+                                        row,
+                                        column,
+                                    });
+                                    self.element_stack.push(ElementFrame::Read {
+                                        value: Outcome::Array {
+                                            array: *test,
+                                            implicit: false,
+                                        },
+                                        row,
+                                        column,
+                                    });
                                 }
                             }
                         }
@@ -1480,26 +2040,55 @@ impl Evaluator {
                 ElementFrame::Read { value, .. } => self.element_values.push(value),
                 ElementFrame::Apply { index, row, column } => {
                     #[cfg(feature = "internals")]
-                    { self.element_steps += 1; }
+                    {
+                        self.element_steps += 1;
+                    }
                     let plan = &mut self.arrays[index];
-                    let ArrayOperation::Element { op, right, .. } = &plan.operation else { unreachable!("element continuation has an element plan") };
-                    let right = right.is_some().then(|| self.element_values.pop().expect("a binary element has its right value"));
-                    let left = self.element_values.pop().expect("an element has its left value");
+                    let ArrayOperation::Element { op, right, .. } = &plan.operation else {
+                        unreachable!("element continuation has an element plan")
+                    };
+                    let right = right.is_some().then(|| {
+                        self.element_values
+                            .pop()
+                            .expect("a binary element has its right value")
+                    });
+                    let left = self
+                        .element_values
+                        .pop()
+                        .expect("an element has its left value");
                     let value = op.apply(left, right, context.system());
                     plan.cached = Some((row, column, value.clone()));
                     self.element_values.push(value);
                 }
                 ElementFrame::Select { index, row, column } => {
                     #[cfg(feature = "internals")]
-                    { self.element_steps += 1; }
-                    let ArrayOperation::Selection { selector, choices, .. } = &self.arrays[index].operation else { unreachable!("selection continuation has a selection plan") };
-                    let test = self.element_values.pop().expect("a selector has its condition");
+                    {
+                        self.element_steps += 1;
+                    }
+                    let ArrayOperation::Selection {
+                        selector, choices, ..
+                    } = &self.arrays[index].operation
+                    else {
+                        unreachable!("selection continuation has a selection plan")
+                    };
+                    let test = self
+                        .element_values
+                        .pop()
+                        .expect("a selector has its condition");
                     match selector.index(test, choices.len(), context.system()) {
                         Ok(choice) => {
                             let choice = &self.array_choices[choices.start + choice];
-                            debug_assert!(choice.selected, "mask scanning admitted every consumed choice");
-                            self.element_stack.push(ElementFrame::Cache { index, row, column });
-                            self.element_stack.push(ElementFrame::Read { value: choice.value.clone(), row, column });
+                            debug_assert!(
+                                choice.selected,
+                                "mask scanning admitted every consumed choice"
+                            );
+                            self.element_stack
+                                .push(ElementFrame::Cache { index, row, column });
+                            self.element_stack.push(ElementFrame::Read {
+                                value: choice.value.clone(),
+                                row,
+                                column,
+                            });
                         }
                         Err(value) => {
                             self.arrays[index].cached = Some((row, column, value.clone()));
@@ -1508,19 +2097,29 @@ impl Evaluator {
                     }
                 }
                 ElementFrame::Cache { index, row, column } => {
-                    let value = self.element_values.last().expect("selected branch produced one element").clone();
+                    let value = self
+                        .element_values
+                        .last()
+                        .expect("selected branch produced one element")
+                        .clone();
                     self.arrays[index].cached = Some((row, column, value));
                 }
             }
         }
-        let value = self.element_values.pop().expect("one requested position yields one outcome");
+        let value = self
+            .element_values
+            .pop()
+            .expect("one requested position yields one outcome");
         debug_assert!(self.element_values.is_empty());
         value
     }
     fn scalar<'w>(value: Outcome, context: &mut impl Context<'w>) -> crate::Result<Outcome> {
         match value {
             Outcome::Computed(value @ Operand::Reference(_))
-            | Outcome::Intersection { value: value @ Operand::Reference(_), .. } => context.scalar(value),
+            | Outcome::Intersection {
+                value: value @ Operand::Reference(_),
+                ..
+            } => context.scalar(value),
             Outcome::Intersection { value, .. } => Ok(Outcome::Computed(value)),
             Outcome::Array { .. } => Ok(Outcome::Uncomputed(Unevaluated::Array)),
             value => Ok(value),
@@ -2080,7 +2679,10 @@ impl Evaluator {
     /// formula lexer's single reference grammar, then retain its identity in
     /// the existing context arena. The consumer admits selected value edges.
     fn indirect<'w>(
-        &mut self, args: &[Option<usize>], base: usize, context: &mut impl Context<'w>,
+        &mut self,
+        args: &[Option<usize>],
+        base: usize,
+        context: &mut impl Context<'w>,
     ) -> crate::Result<Outcome> {
         let child = args[0].expect("the strict policy proved INDIRECT text");
         let text = Self::scalar(self.take(base, child), context)?;
@@ -2095,8 +2697,12 @@ impl Evaluator {
             match mode.operand() {
                 Ok(Operand::Error(error)) => return Ok(Outcome::Computed(Operand::Error(error))),
                 Ok(value) => match value.logical() {
-                    Some(Ok(true)) => {},
-                    Some(Ok(false)) => return Ok(Outcome::Uncomputed(Unevaluated::Function(Function::Indirect))),
+                    Some(Ok(true)) => {}
+                    Some(Ok(false)) => {
+                        return Ok(Outcome::Uncomputed(Unevaluated::Function(
+                            Function::Indirect,
+                        )));
+                    }
                     Some(Err(error)) => return Ok(Outcome::Computed(Operand::Error(error))),
                     None => return Ok(Outcome::Uncomputed(Unevaluated::Coercion)),
                 },
@@ -2114,10 +2720,13 @@ impl Evaluator {
         Ok(match context.reference(None, &reference)? {
             // An unresolved name in reference text is INDIRECT's #REF!,
             // whereas the same spelling entered as a formula is #NAME?.
-            ReferenceResult::Value(Outcome::Computed(Operand::Error(ExcelError::Name))) =>
-                Outcome::Computed(Operand::Error(ExcelError::Ref)),
+            ReferenceResult::Value(Outcome::Computed(Operand::Error(ExcelError::Name))) => {
+                Outcome::Computed(Operand::Error(ExcelError::Ref))
+            }
             ReferenceResult::Value(value) => value,
-            ReferenceResult::Name(_) => Outcome::Uncomputed(Unevaluated::Function(Function::Indirect)),
+            ReferenceResult::Name(_) => {
+                Outcome::Uncomputed(Unevaluated::Function(Function::Indirect))
+            }
         })
     }
 
@@ -2130,7 +2739,9 @@ impl Evaluator {
     ) -> crate::Result<Outcome> {
         let held = || Outcome::Uncomputed(Unevaluated::Function(function));
         let error = |error| Outcome::Computed(Operand::Error(error));
-        let Some(source) = args[0] else { return Ok(error(ExcelError::Ref)); };
+        let Some(source) = args[0] else {
+            return Ok(error(ExcelError::Ref));
+        };
         let source = self.take(base, source);
         let source = match source.operand() {
             Ok(Operand::Reference(id)) => id,
@@ -2154,22 +2765,35 @@ impl Evaluator {
         }
         let source = if function == Function::Index {
             let area = indices[2].unwrap_or(1.0);
-            if area < 1.0 { return Ok(error(ExcelError::Value)); }
-            if area >= usize::MAX as f64 { return Ok(error(ExcelError::Ref)); }
-            match context.reference_nth(source, area.trunc() as usize - 1).operand() {
+            if area < 1.0 {
+                return Ok(error(ExcelError::Value));
+            }
+            if area >= usize::MAX as f64 {
+                return Ok(error(ExcelError::Ref));
+            }
+            match context
+                .reference_nth(source, area.trunc() as usize - 1)
+                .operand()
+            {
                 Ok(Operand::Reference(id)) => id,
                 Ok(Operand::Error(value)) => return Ok(error(value)),
                 Err(reason) => return Ok(Outcome::Uncomputed(reason)),
                 _ => return Ok(held()),
             }
         } else {
-            if context.reference_is_union(source) { return Ok(error(ExcelError::Value)); }
+            if context.reference_is_union(source) {
+                return Ok(error(ExcelError::Value));
+            }
             source
         };
-        let Some(range) = context.reference_geometry(source) else { return Ok(held()); };
+        let Some(range) = context.reference_geometry(source) else {
+            return Ok(held());
+        };
         let selected = if function == Function::Index {
             let (mut row, mut column) = (indices[0].unwrap_or(0.0), indices[1].unwrap_or(0.0));
-            if row < 0.0 || column < 0.0 { return Ok(error(ExcelError::Value)); }
+            if row < 0.0 || column < 0.0 {
+                return Ok(error(ExcelError::Value));
+            }
             row = row.trunc();
             column = column.trunc();
             if args.len() == 2 && range.row_size() > 1 && range.column_size() > 1 {
@@ -2194,7 +2818,10 @@ impl Evaluator {
                 let column = range.start().column() + column as u32 - 1;
                 (column, column)
             };
-            CellRange::new(CellRef::new(first_row, first_column), CellRef::new(last_row, last_column))
+            CellRange::new(
+                CellRef::new(first_row, first_column),
+                CellRef::new(last_row, last_column),
+            )
         } else {
             let row = f64::from(range.start().row()) + indices[0].unwrap_or(0.0).trunc();
             let column = f64::from(range.start().column()) + indices[1].unwrap_or(0.0).trunc();
@@ -2202,18 +2829,29 @@ impl Evaluator {
             let columns = indices[3].unwrap_or(f64::from(range.column_size())).trunc();
             // Excel's signed dimensions extend from the displaced anchor
             // toward the preceding row/column, with the anchor included.
-            let (first_row, last_row) = if rows < 0.0 { (row + rows + 1.0, row) }
-                else { (row, row + rows - 1.0) };
-            let (first_column, last_column) = if columns < 0.0 { (column + columns + 1.0, column) }
-                else { (column, column + columns - 1.0) };
-            if rows == 0.0 || columns == 0.0 || first_row < 0.0 || first_column < 0.0
+            let (first_row, last_row) = if rows < 0.0 {
+                (row + rows + 1.0, row)
+            } else {
+                (row, row + rows - 1.0)
+            };
+            let (first_column, last_column) = if columns < 0.0 {
+                (column + columns + 1.0, column)
+            } else {
+                (column, column + columns - 1.0)
+            };
+            if rows == 0.0
+                || columns == 0.0
+                || first_row < 0.0
+                || first_column < 0.0
                 || last_row >= f64::from(crate::excel::MAX_ROWS)
                 || last_column >= f64::from(crate::excel::MAX_COLUMNS)
             {
                 return Ok(error(ExcelError::Ref));
             }
-            CellRange::new(CellRef::new(first_row as u32, first_column as u32),
-                CellRef::new(last_row as u32, last_column as u32))
+            CellRange::new(
+                CellRef::new(first_row as u32, first_column as u32),
+                CellRef::new(last_row as u32, last_column as u32),
+            )
         };
         Ok(context.reference_range(source, selected))
     }
@@ -2228,7 +2866,10 @@ impl Evaluator {
         let range = match value {
             None => CellRange::new(context.host(), context.host()),
             Some(Outcome::Computed(Operand::Reference(id)))
-            | Some(Outcome::Intersection { value: Operand::Reference(id), .. }) => {
+            | Some(Outcome::Intersection {
+                value: Operand::Reference(id),
+                ..
+            }) => {
                 if context.reference_is_union(id) {
                     return Outcome::Computed(Operand::Error(ExcelError::Ref));
                 }
@@ -2239,9 +2880,16 @@ impl Evaluator {
             }
             Some(Outcome::Array { array, .. }) if dimensions => {
                 let (rows, columns) = self.array_shape(array, context);
-                return Self::numeric(if function == Function::Rows { rows as f64 } else { columns as f64 });
+                return Self::numeric(if function == Function::Rows {
+                    rows as f64
+                } else {
+                    columns as f64
+                });
             }
-            Some(Outcome::Intersection { value: Operand::Error(error), .. }) => {
+            Some(Outcome::Intersection {
+                value: Operand::Error(error),
+                ..
+            }) => {
                 return Outcome::Computed(Operand::Error(error));
             }
             Some(Outcome::Computed(Operand::Error(error))) if dimensions => {
@@ -2275,8 +2923,12 @@ impl Evaluator {
         let mut input = |child| match child {
             Some(child) => {
                 let value = self.take(base, child);
-                if project_input { self.project(value, context) } else { Self::scalar(value, context) }
-            },
+                if project_input {
+                    self.project(value, context)
+                } else {
+                    Self::scalar(value, context)
+                }
+            }
             None => Ok(Outcome::Computed(Operand::Blank)),
         };
         let complete = |value| SelectionStep::Complete(Outcome::Computed(value));
@@ -2365,7 +3017,9 @@ impl Evaluator {
     }
 
     fn take(&mut self, base: usize, id: usize) -> Outcome {
-        self.values[base + id].take().expect("the child was scheduled")
+        self.values[base + id]
+            .take()
+            .expect("the child was scheduled")
     }
 
     fn unary(op: UnaryOp, value: Outcome, referenced: bool, system: DateSystem) -> Outcome {
@@ -2437,12 +3091,20 @@ impl Evaluator {
         let mut error = None;
         for (index, outcome) in values.into_iter().enumerate() {
             match outcome.operand() {
-                Err(reason) => { held.get_or_insert(reason); }
-                Ok(Operand::Error(value)) => { error.get_or_insert(value); }
+                Err(reason) => {
+                    held.get_or_insert(reason);
+                }
+                Ok(Operand::Error(value)) => {
+                    error.get_or_insert(value);
+                }
                 Ok(value) => match Self::coerce_number(value, system) {
                     Ok(value) => parts[index] = value,
-                    Err(Outcome::Uncomputed(reason)) => { held.get_or_insert(reason); }
-                    Err(Outcome::Computed(Operand::Error(value))) => { error.get_or_insert(value); }
+                    Err(Outcome::Uncomputed(reason)) => {
+                        held.get_or_insert(reason);
+                    }
+                    Err(Outcome::Computed(Operand::Error(value))) => {
+                        error.get_or_insert(value);
+                    }
                     Err(_) => unreachable!("numeric coercion returns held or typed error"),
                 },
             }
@@ -2472,7 +3134,10 @@ impl Evaluator {
             Ok(parts) => parts,
             Err(outcome) => return outcome,
         };
-        if parts.iter().any(|value| !value.is_finite() || !(0.0..=32_767.0).contains(value)) {
+        if parts
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=32_767.0).contains(value))
+        {
             return Outcome::Computed(Operand::Error(ExcelError::Num));
         }
         let hour = parts[0].trunc() as i64;
@@ -2482,11 +3147,17 @@ impl Evaluator {
         Self::numeric((seconds as f64 / 86_400.0).fract())
     }
 
-    fn month_shift(function: Function, serial: Outcome, months: Outcome, system: DateSystem) -> Outcome {
+    fn month_shift(
+        function: Function,
+        serial: Outcome,
+        months: Outcome,
+        system: DateSystem,
+    ) -> Outcome {
         let (serial, months) = match (serial.operand(), months.operand()) {
             (Err(reason), _) | (_, Err(reason)) => return Outcome::Uncomputed(reason),
-            (Ok(Operand::Error(error)), _) | (_, Ok(Operand::Error(error))) =>
-                return Outcome::Computed(Operand::Error(error)),
+            (Ok(Operand::Error(error)), _) | (_, Ok(Operand::Error(error))) => {
+                return Outcome::Computed(Operand::Error(error));
+            }
             (Ok(serial), Ok(months)) => (serial, months),
         };
         let serial = match Self::coerce_number(serial, system) {
@@ -2637,9 +3308,13 @@ impl Evaluator {
         // shared natural logarithm ratio for other bases; the two orders
         // have different observable binary64 tails.
         let source = Scalar::from(value);
-        let result = if radix == 10.0 { source.checked_log10() } else {
+        let result = if radix == 10.0 {
+            source.checked_log10()
+        } else {
             source.checked_ln().and_then(|value| {
-                Scalar::from(radix).checked_ln().and_then(|divisor| value.checked_div(&divisor))
+                Scalar::from(radix)
+                    .checked_ln()
+                    .and_then(|divisor| value.checked_div(&divisor))
             })
         };
         match result {
@@ -2662,8 +3337,7 @@ impl Evaluator {
         }
         // The native endpoint-sensitive negative ASIN region differs from
         // the generic binary64 kernel; retain its preexisting cached value.
-        if function == Function::Asin
-            && value > -1.0 && value < -std::f64::consts::FRAC_1_SQRT_2 {
+        if function == Function::Asin && value > -1.0 && value < -std::f64::consts::FRAC_1_SQRT_2 {
             return Outcome::Uncomputed(Unevaluated::NumericPolicy);
         }
         if function == Function::Acos {
@@ -2680,20 +3354,24 @@ impl Evaluator {
             // cosine is pi/2 minus the shared inverse-sine kernel.
             let source = Scalar::from(value);
             return match source.checked_asin() {
-                Ok(sine) => Self::numeric(std::f64::consts::FRAC_PI_2
-                    - sine.as_f64().expect("bound inverse sine preserves Float64")),
+                Ok(sine) => Self::numeric(
+                    std::f64::consts::FRAC_PI_2
+                        - sine.as_f64().expect("bound inverse sine preserves Float64"),
+                ),
                 Err(_) => Outcome::Uncomputed(Unevaluated::NumericPolicy),
             };
         }
         // The native SIN, COS and TAN domain ends at |angle| = 2^27.
         if matches!(function, Function::Cos | Function::Sin | Function::Tan)
-            && value.abs() >= 134_217_728.0 {
+            && value.abs() >= 134_217_728.0
+        {
             return Outcome::Computed(Operand::Error(ExcelError::Num));
         }
         if (function == Function::Sin
-                && (value.is_subnormal() || value.abs() > std::f64::consts::FRAC_PI_2))
+            && (value.is_subnormal() || value.abs() > std::f64::consts::FRAC_PI_2))
             || (function == Function::Tan
-                && (value.is_subnormal() || value.abs() > std::f64::consts::FRAC_PI_4)) {
+                && (value.is_subnormal() || value.abs() > std::f64::consts::FRAC_PI_4))
+        {
             return Outcome::Uncomputed(Unevaluated::NumericPolicy);
         }
         // Native large-angle reduction differs from the shared libm kernel.
@@ -2770,9 +3448,9 @@ impl Evaluator {
             return Outcome::Computed(Operand::Error(ExcelError::Num));
         }
         match Scalar::from(value.trunc()).checked_factorial() {
-            Ok(result) => Self::numeric(
-                result.as_f64().expect("bound factorial preserves Float64"),
-            ),
+            Ok(result) => {
+                Self::numeric(result.as_f64().expect("bound factorial preserves Float64"))
+            }
             Err(_) => Outcome::Uncomputed(Unevaluated::NumericPolicy),
         }
     }
@@ -2845,23 +3523,31 @@ impl Evaluator {
             return Outcome::Uncomputed(Unevaluated::Reference);
         }
         match function {
-            Function::Isblank => Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Blank))),
-            Function::Islogical =>
-                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Boolean(_)))),
-            Function::Isnontext =>
-                Outcome::Computed(Operand::Boolean(!matches!(operand, Operand::Text(_)))),
-            Function::Isnumber =>
-                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Number(_)))),
-            Function::Istext =>
-                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Text(_)))),
+            Function::Isblank => {
+                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Blank)))
+            }
+            Function::Islogical => {
+                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Boolean(_))))
+            }
+            Function::Isnontext => {
+                Outcome::Computed(Operand::Boolean(!matches!(operand, Operand::Text(_))))
+            }
+            Function::Isnumber => {
+                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Number(_))))
+            }
+            Function::Istext => {
+                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Text(_))))
+            }
             Function::Iserr => Outcome::Computed(Operand::Boolean(
                 matches!(operand, Operand::Error(error) if error != ExcelError::NA),
             )),
-            Function::Iserror =>
-                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Error(_)))),
-            Function::Isna => Outcome::Computed(Operand::Boolean(
-                matches!(operand, Operand::Error(ExcelError::NA)),
-            )),
+            Function::Iserror => {
+                Outcome::Computed(Operand::Boolean(matches!(operand, Operand::Error(_))))
+            }
+            Function::Isna => Outcome::Computed(Operand::Boolean(matches!(
+                operand,
+                Operand::Error(ExcelError::NA)
+            ))),
             Function::ErrorDotType => match operand {
                 Operand::Error(error) => {
                     let code = match error {
@@ -2884,9 +3570,13 @@ impl Evaluator {
             },
             Function::Iseven | Function::Isodd => match operand.integer_number(system) {
                 Some(Ok(value)) => match number::odd(value) {
-                    Some(Ok(odd)) => Outcome::Computed(Operand::Boolean(
-                        if function == Function::Isodd { odd } else { !odd },
-                    )),
+                    Some(Ok(odd)) => {
+                        Outcome::Computed(Operand::Boolean(if function == Function::Isodd {
+                            odd
+                        } else {
+                            !odd
+                        }))
+                    }
                     Some(Err(error)) => Outcome::Computed(Operand::Error(error)),
                     None => Outcome::Uncomputed(Unevaluated::NumericPolicy),
                 },
@@ -2924,7 +3614,11 @@ impl Evaluator {
                     // The dense text consumers accept one rectangle; a union
                     // contributes an argument error in its original order.
                     if read == RangeRead::ValuesWithBlanks && context.reference_is_union(id) {
-                        visit(Outcome::Computed(Operand::Error(ExcelError::Value)), ArgumentSource::Reference, 1);
+                        visit(
+                            Outcome::Computed(Operand::Error(ExcelError::Value)),
+                            ArgumentSource::Reference,
+                            1,
+                        );
                         continue;
                     }
                     context.visit_range(id, read, 0, |value, count| {
@@ -2939,13 +3633,25 @@ impl Evaluator {
                         value @ Operand::Reference(_) => context.scalar(value)?,
                         value => Outcome::Computed(value),
                     };
-                    visit(value, if referenced { ArgumentSource::Reference } else { ArgumentSource::Direct }, 1);
+                    visit(
+                        value,
+                        if referenced {
+                            ArgumentSource::Reference
+                        } else {
+                            ArgumentSource::Direct
+                        },
+                        1,
+                    );
                 }
                 Outcome::Array { array, .. } => {
                     let (rows, columns) = self.array_shape(array, context);
                     for row in 0..rows {
                         for column in 0..columns {
-                            visit(self.array_element(array, row, column, context), ArgumentSource::Array, 1);
+                            visit(
+                                self.array_element(array, row, column, context),
+                                ArgumentSource::Array,
+                                1,
+                            );
                         }
                     }
                 }
@@ -2973,28 +3679,52 @@ impl Evaluator {
         let mut explicit_error = None;
         let rate = match rate.number(system) {
             Some(Ok(rate)) => rate,
-            Some(Err(error)) => { explicit_error = Some(error); 0.0 },
+            Some(Err(error)) => {
+                explicit_error = Some(error);
+                0.0
+            }
             None => return Ok(Outcome::Uncomputed(Unevaluated::Coercion)),
         };
         let mut discounted = Accumulator::discounted(rate);
         let mut numeric_error = None;
         let mut unresolved = None;
-        self.visit_arguments(base, &args[1..], RangeRead::Numbers, context, |outcome, source, count| {
-            debug_assert_eq!(count, 1, "NPV uses sparse numeric range reads");
-            let value = match outcome.operand() {
-                Err(reason) => { unresolved.get_or_insert(reason); return; }
-                Ok(Operand::Blank | Operand::Boolean(_) | Operand::Text(_)) if source != ArgumentSource::Direct => return,
-                Ok(value) => value,
-            };
-            match value.number(system) {
-                Some(Ok(value)) => {
-                    if let Err(error) = discounted.push_discounted(value) { numeric_error.get_or_insert(error); }
+        self.visit_arguments(
+            base,
+            &args[1..],
+            RangeRead::Numbers,
+            context,
+            |outcome, source, count| {
+                debug_assert_eq!(count, 1, "NPV uses sparse numeric range reads");
+                let value = match outcome.operand() {
+                    Err(reason) => {
+                        unresolved.get_or_insert(reason);
+                        return;
+                    }
+                    Ok(Operand::Blank | Operand::Boolean(_) | Operand::Text(_))
+                        if source != ArgumentSource::Direct =>
+                    {
+                        return;
+                    }
+                    Ok(value) => value,
+                };
+                match value.number(system) {
+                    Some(Ok(value)) => {
+                        if let Err(error) = discounted.push_discounted(value) {
+                            numeric_error.get_or_insert(error);
+                        }
+                    }
+                    Some(Err(error)) => {
+                        explicit_error.get_or_insert(error);
+                    }
+                    None => {
+                        unresolved.get_or_insert(Unevaluated::Coercion);
+                    }
                 }
-                Some(Err(error)) => { explicit_error.get_or_insert(error); }
-                None => { unresolved.get_or_insert(Unevaluated::Coercion); }
-            }
-        })?;
-        if let Some(reason) = unresolved { return Ok(Outcome::Uncomputed(reason)); }
+            },
+        )?;
+        if let Some(reason) = unresolved {
+            return Ok(Outcome::Uncomputed(reason));
+        }
         if let Some(error) = explicit_error.or(numeric_error) {
             return Ok(Outcome::Computed(Operand::Error(error)));
         }
@@ -3012,11 +3742,21 @@ impl Evaluator {
         context: &mut impl Context<'w>,
     ) -> crate::Result<Outcome> {
         let (delimiter, ignore, args) = if function == Function::Textjoin {
-            let delimiter = Self::scalar(self.take(base, args[0].expect("strict policy proved delimiter")), context)?;
-            let ignore = Self::scalar(self.take(base, args[1].expect("strict policy proved ignore_empty")), context)?;
+            let delimiter = Self::scalar(
+                self.take(base, args[0].expect("strict policy proved delimiter")),
+                context,
+            )?;
+            let ignore = Self::scalar(
+                self.take(base, args[1].expect("strict policy proved ignore_empty")),
+                context,
+            )?;
             (delimiter, ignore, &args[2..])
         } else {
-            (Outcome::Computed(Operand::Blank), Outcome::Computed(Operand::Boolean(true)), args)
+            (
+                Outcome::Computed(Operand::Blank),
+                Outcome::Computed(Operand::Boolean(true)),
+                args,
+            )
         };
         let mut output = super::text::Join::new(delimiter, ignore);
         if function == Function::Concatenate {
@@ -3026,8 +3766,13 @@ impl Evaluator {
                 output.push(value, 1);
             }
         } else {
-            self.visit_arguments(base, args, RangeRead::ValuesWithBlanks, context,
-                |outcome, _, count| output.push(outcome, count))?;
+            self.visit_arguments(
+                base,
+                args,
+                RangeRead::ValuesWithBlanks,
+                context,
+                |outcome, _, count| output.push(outcome, count),
+            )?;
         }
         Ok(output.finish())
     }
@@ -3042,18 +3787,30 @@ impl Evaluator {
         let mut accumulator = LogicalAccumulator::default();
         let mut explicit_error = None;
         let mut unresolved = None;
-        self.visit_arguments(base, args, RangeRead::Logical, context, |outcome, source, count| {
-            debug_assert_eq!(count, 1, "Logical is a sparse range mode");
-            match outcome.operand() {
-                Err(reason) => { unresolved.get_or_insert(reason); }
-                Ok(Operand::Blank | Operand::Text(_)) if source != ArgumentSource::Direct => {}
-                Ok(value) => match value.logical() {
-                    Some(Ok(value)) => accumulator.push(value),
-                    Some(Err(error)) => { explicit_error.get_or_insert(error); }
-                    None => { unresolved.get_or_insert(Unevaluated::Function(function)); }
-                },
-            }
-        })?;
+        self.visit_arguments(
+            base,
+            args,
+            RangeRead::Logical,
+            context,
+            |outcome, source, count| {
+                debug_assert_eq!(count, 1, "Logical is a sparse range mode");
+                match outcome.operand() {
+                    Err(reason) => {
+                        unresolved.get_or_insert(reason);
+                    }
+                    Ok(Operand::Blank | Operand::Text(_)) if source != ArgumentSource::Direct => {}
+                    Ok(value) => match value.logical() {
+                        Some(Ok(value)) => accumulator.push(value),
+                        Some(Err(error)) => {
+                            explicit_error.get_or_insert(error);
+                        }
+                        None => {
+                            unresolved.get_or_insert(Unevaluated::Function(function));
+                        }
+                    },
+                }
+            },
+        )?;
         if let Some(reason) = unresolved {
             return Ok(Outcome::Uncomputed(reason));
         }
@@ -3075,7 +3832,10 @@ impl Evaluator {
     ) -> crate::Result<Outcome> {
         let system = context.system();
         let (sources, argument) = if matches!(function, Function::Rank | Function::RankDotEq) {
-            let target = Self::scalar(self.take(base, args[0].expect("typed RANK target")), context)?;
+            let target = Self::scalar(
+                self.take(base, args[0].expect("typed RANK target")),
+                context,
+            )?;
             let target = match target.operand() {
                 Ok(value) => match Self::coerce_number(value, system) {
                     Ok(value) => value,
@@ -3084,7 +3844,8 @@ impl Evaluator {
                 Err(reason) => return Ok(Outcome::Uncomputed(reason)),
             };
             let ascending = if args.len() == 3 {
-                let order = Self::scalar(self.take(base, args[2].expect("typed RANK order")), context)?;
+                let order =
+                    Self::scalar(self.take(base, args[2].expect("typed RANK order")), context)?;
                 match order.operand() {
                     Ok(value) => match Self::coerce_number(value, system) {
                         Ok(value) => value != 0.0,
@@ -3092,10 +3853,15 @@ impl Evaluator {
                     },
                     Err(reason) => return Ok(Outcome::Uncomputed(reason)),
                 }
-            } else { false };
+            } else {
+                false
+            };
             (&args[1..2], RankArgument::Rank { target, ascending })
         } else {
-            let k = Self::scalar(self.take(base, args[1].expect("typed rank coordinate")), context)?;
+            let k = Self::scalar(
+                self.take(base, args[1].expect("typed rank coordinate")),
+                context,
+            )?;
             let k = match k.operand() {
                 Ok(value) => match Self::coerce_number(value, system) {
                     Ok(value) => value,
@@ -3105,7 +3871,13 @@ impl Evaluator {
             };
             (&args[..1], RankArgument::K(k))
         };
-        self.aggregate(function, base, sources, AggregateMode::Ranked(argument), context)
+        self.aggregate(
+            function,
+            base,
+            sources,
+            AggregateMode::Ranked(argument),
+            context,
+        )
     }
 
     /// Fold each aligned product without row materialization. Scalar calls
@@ -3123,10 +3895,15 @@ impl Evaluator {
                 *uncertain |= value.is_subnormal();
                 let next = Arithmetic::Mul.apply_float(*product, value);
                 *uncertain |= next.is_subnormal();
-                if next.is_finite() { *product = next; }
-                else { numeric_error.get_or_insert(ExcelError::Num); }
+                if next.is_finite() {
+                    *product = next;
+                } else {
+                    numeric_error.get_or_insert(ExcelError::Num);
+                }
             }
-            Err(error) => { explicit_error.get_or_insert(error); }
+            Err(error) => {
+                explicit_error.get_or_insert(error);
+            }
         }
     }
 
@@ -3155,20 +3932,30 @@ impl Evaluator {
                 Outcome::Array { array, .. } => self.array_shape(*array, context),
                 Outcome::Uncomputed(reason) => return Ok(Outcome::Uncomputed(*reason)),
                 Outcome::Computed(Operand::Error(error))
-                | Outcome::Intersection { value: Operand::Error(error), .. } => {
-                    direct_error.get_or_insert(*error); (1, 1)
+                | Outcome::Intersection {
+                    value: Operand::Error(error),
+                    ..
+                } => {
+                    direct_error.get_or_insert(*error);
+                    (1, 1)
                 }
                 _ => (1, 1),
             };
-            if shape.is_some_and(|prior| prior != size) { mismatch = true; }
+            if shape.is_some_and(|prior| prior != size) {
+                mismatch = true;
+            }
             shape.get_or_insert(size);
             sources.push(outcome);
         }
         if mismatch && direct_error.is_some() {
             return Ok(Outcome::Uncomputed(Unevaluated::NumericPolicy));
         }
-        if mismatch { return Ok(Outcome::Computed(Operand::Error(ExcelError::Value))); }
-        if let Some(error) = direct_error { return Ok(Outcome::Computed(Operand::Error(error))); }
+        if mismatch {
+            return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
+        }
+        if let Some(error) = direct_error {
+            return Ok(Outcome::Computed(Operand::Error(error)));
+        }
 
         let (rows, columns) = shape.expect("typed SUMPRODUCT has at least one argument");
         let count = rows as u64 * columns as u64;
@@ -3184,26 +3971,45 @@ impl Evaluator {
                 let value = match source {
                     Outcome::Computed(Operand::Reference(id)) => {
                         let mut observed = None;
-                        let progress = context.visit_range(*id, RangeRead::NumericDense, cursor, |value, run| {
-                            observed = Some((value, run));
-                            std::ops::ControlFlow::Break(())
-                        })?;
+                        let progress = context.visit_range(
+                            *id,
+                            RangeRead::NumericDense,
+                            cursor,
+                            |value, run| {
+                                observed = Some((value, run));
+                                std::ops::ControlFlow::Break(())
+                            },
+                        )?;
                         if matches!(progress, RangeProgress::Paused(_)) {
                             return Ok(Outcome::Uncomputed(Unevaluated::Reference));
                         }
-                        let (value, run) = observed.expect("dense sparse visitor returns an aligned run");
+                        let (value, run) =
+                            observed.expect("dense sparse visitor returns an aligned run");
                         span = span.min(run);
                         value
                     }
                     Outcome::Array { array, .. } => {
                         span = 1;
-                        self.array_element(*array, cursor as usize / columns, cursor as usize % columns, context)
+                        self.array_element(
+                            *array,
+                            cursor as usize / columns,
+                            cursor as usize % columns,
+                            context,
+                        )
                     }
-                    value => { span = 1; Self::scalar(value.clone(), context)? }
+                    value => {
+                        span = 1;
+                        Self::scalar(value.clone(), context)?
+                    }
                 };
                 match value.operand() {
-                    Ok(value) => Self::product_factor(&mut product, value, &mut uncertain,
-                        &mut explicit_error, &mut numeric_error),
+                    Ok(value) => Self::product_factor(
+                        &mut product,
+                        value,
+                        &mut uncertain,
+                        &mut explicit_error,
+                        &mut numeric_error,
+                    ),
                     Err(reason) => return Ok(Outcome::Uncomputed(reason)),
                 }
             }
@@ -3214,13 +4020,21 @@ impl Evaluator {
                     debug_assert_eq!(span, 1, "nonzero values are individual source cells");
                     total.push_number(product)
                 };
-                if let Err(error) = admitted { numeric_error.get_or_insert(error); }
+                if let Err(error) = admitted {
+                    numeric_error.get_or_insert(error);
+                }
             }
             cursor += span;
         }
-        if uncertain { return Ok(Outcome::Uncomputed(Unevaluated::NumericPolicy)); }
-        if let Some(error) = explicit_error { return Ok(Outcome::Computed(Operand::Error(error))); }
-        if let Some(error) = numeric_error { return Ok(Outcome::Computed(Operand::Error(error))); }
+        if uncertain {
+            return Ok(Outcome::Uncomputed(Unevaluated::NumericPolicy));
+        }
+        if let Some(error) = explicit_error {
+            return Ok(Outcome::Computed(Operand::Error(error)));
+        }
+        if let Some(error) = numeric_error {
+            return Ok(Outcome::Computed(Operand::Error(error)));
+        }
         Ok(match total.finish_sum() {
             Ok(Some(value)) => Outcome::Computed(Operand::Number(value)),
             Ok(None) => Outcome::Uncomputed(Unevaluated::NumericPolicy),
@@ -3245,10 +4059,14 @@ impl Evaluator {
                 observed = Some((value, run));
                 std::ops::ControlFlow::Break(())
             })?;
-            if matches!(progress, RangeProgress::Paused(_)) { return Ok(None); }
+            if matches!(progress, RangeProgress::Paused(_)) {
+                return Ok(None);
+            }
             let (value, run) = observed.expect("dense sparse visitor returns a source run");
             span = span.min(run);
-            if !visit(index, value) { return Ok(Some((span, false))); }
+            if !visit(index, value) {
+                return Ok(Some((span, false)));
+            }
         }
         Ok(Some((span, true)))
     }
@@ -3267,8 +4085,9 @@ impl Evaluator {
         let (pairs, result_arg) = match function {
             Function::Countif | Function::Countifs => (args, None),
             Function::Sumif | Function::Averageif => (&args[..2], args.get(2).copied().flatten()),
-            Function::Sumifs | Function::Averageifs
-            | Function::Maxifs | Function::Minifs => (&args[1..], args[0]),
+            Function::Sumifs | Function::Averageifs | Function::Maxifs | Function::Minifs => {
+                (&args[1..], args[0])
+            }
             _ => unreachable!("criteria call owns six functions"),
         };
         let mut ranges = Vec::with_capacity(pairs.len() / 2);
@@ -3284,21 +4103,32 @@ impl Evaluator {
             if context.reference_is_union(range) {
                 return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
             }
-            let value = Self::scalar(self.take(base,
-                pair[1].expect("strict policy proved criterion")), context)?;
+            let value = Self::scalar(
+                self.take(base, pair[1].expect("strict policy proved criterion")),
+                context,
+            )?;
             let value = match value.operand() {
                 Ok(value) => value,
                 Err(reason) => return Ok(Outcome::Uncomputed(reason)),
             };
-            let Some(criterion) = Criterion::new(value) else { return Ok(held()); };
+            let Some(criterion) = Criterion::new(value) else {
+                return Ok(held());
+            };
             ranges.push(range);
             criteria.push(criterion);
         }
-        let Some(first) = context.reference_geometry(ranges[0]) else { return Ok(held()); };
+        let Some(first) = context.reference_geometry(ranges[0]) else {
+            return Ok(held());
+        };
         let count = first.cell_count();
-        let legacy = matches!(function, Function::Countif | Function::Sumif | Function::Averageif);
+        let legacy = matches!(
+            function,
+            Function::Countif | Function::Sumif | Function::Averageif
+        );
         for range in &ranges[1..] {
-            let Some(shape) = context.reference_geometry(*range) else { return Ok(held()); };
+            let Some(shape) = context.reference_geometry(*range) else {
+                return Ok(held());
+            };
             if shape.row_size() != first.row_size() || shape.column_size() != first.column_size() {
                 return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
             }
@@ -3314,21 +4144,31 @@ impl Evaluator {
             if context.reference_is_union(result) {
                 return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
             }
-            let Some(shape) = context.reference_geometry(result) else { return Ok(held()); };
+            let Some(shape) = context.reference_geometry(result) else {
+                return Ok(held());
+            };
             if legacy {
                 let start = shape.start();
-                let end_row = start.row().checked_add(first.row_size() - 1)
+                let end_row = start
+                    .row()
+                    .checked_add(first.row_size() - 1)
                     .filter(|row| *row < crate::excel::cell::MAX_ROWS);
-                let end_col = start.column().checked_add(first.column_size() - 1)
+                let end_col = start
+                    .column()
+                    .checked_add(first.column_size() - 1)
                     .filter(|column| *column < crate::excel::cell::MAX_COLUMNS);
-                let (Some(row), Some(column)) = (end_row, end_col) else { return Ok(held()); };
+                let (Some(row), Some(column)) = (end_row, end_col) else {
+                    return Ok(held());
+                };
                 let rectangle = CellRange::new(start, CellRef::new(row, column));
                 match context.reference_range(result, rectangle).operand() {
                     Ok(Operand::Reference(id)) => Some(id),
                     _ => return Ok(held()),
                 }
             } else {
-                if shape.row_size() != first.row_size() || shape.column_size() != first.column_size() {
+                if shape.row_size() != first.row_size()
+                    || shape.column_size() != first.column_size()
+                {
                     return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
                 }
                 Some(result)
@@ -3346,8 +4186,12 @@ impl Evaluator {
         let mut cursor = 0;
         while cursor < count {
             let mut stopped = None;
-            let Some((mut span, matched)) = Self::aligned_run(context, &ranges, cursor,
-                RangeRead::ValuesWithBlanks, |index, outcome| {
+            let Some((mut span, matched)) = Self::aligned_run(
+                context,
+                &ranges,
+                cursor,
+                RangeRead::ValuesWithBlanks,
+                |index, outcome| {
                     let value = match outcome.operand() {
                         Ok(value) => value,
                         Err(reason) => {
@@ -3357,12 +4201,19 @@ impl Evaluator {
                     };
                     match matchers[index].matches(&value) {
                         Some(result) => result,
-                        None => { stopped = Some(held()); false }
+                        None => {
+                            stopped = Some(held());
+                            false
+                        }
                     }
-                })? else {
-                    return Ok(Outcome::Uncomputed(Unevaluated::Reference));
-                };
-            if let Some(outcome) = stopped { return Ok(outcome); }
+                },
+            )?
+            else {
+                return Ok(Outcome::Uncomputed(Unevaluated::Reference));
+            };
+            if let Some(outcome) = stopped {
+                return Ok(outcome);
+            }
             if matched {
                 if result.is_none() {
                     if let Err(error) = accumulator.push_count_n(span) {
@@ -3370,11 +4221,15 @@ impl Evaluator {
                     }
                 } else {
                     let mut observed = None;
-                    let progress = context.visit_range(result.expect("result checked"),
-                        RangeRead::NumericDense, cursor, |value, run| {
+                    let progress = context.visit_range(
+                        result.expect("result checked"),
+                        RangeRead::NumericDense,
+                        cursor,
+                        |value, run| {
                             observed = Some((value, run));
                             std::ops::ControlFlow::Break(())
-                        })?;
+                        },
+                    )?;
                     if matches!(progress, RangeProgress::Paused(_)) {
                         return Ok(Outcome::Uncomputed(Unevaluated::Reference));
                     }
@@ -3385,13 +4240,16 @@ impl Evaluator {
                         Ok(Operand::Number(number)) => {
                             debug_assert_eq!(span, 1, "stored numeric result is one position");
                             if matches!(function, Function::Maxifs | Function::Minifs)
-                                && number.is_subnormal() {
+                                && number.is_subnormal()
+                            {
                                 numeric_policy = true;
                             } else if let Err(error) = accumulator.push_number(number) {
                                 aggregate_error.get_or_insert(error);
                             }
                         }
-                        Ok(Operand::Error(error)) => { explicit_error.get_or_insert(error); }
+                        Ok(Operand::Error(error)) => {
+                            explicit_error.get_or_insert(error);
+                        }
                         Ok(Operand::Reference(_)) => return Ok(held()),
                         Ok(Operand::Blank | Operand::Text(_) | Operand::Boolean(_)) => {}
                     }
@@ -3405,7 +4263,9 @@ impl Evaluator {
         if let Some(error) = aggregate_error {
             return Ok(Outcome::Computed(Operand::Error(error)));
         }
-        if numeric_policy { return Ok(Outcome::Uncomputed(Unevaluated::NumericPolicy)); }
+        if numeric_policy {
+            return Ok(Outcome::Uncomputed(Unevaluated::NumericPolicy));
+        }
         let result = match function {
             Function::Countif | Function::Countifs => Ok(accumulator.finish_counta()),
             Function::Sumif | Function::Sumifs => accumulator.finish_sum(),
@@ -3433,13 +4293,22 @@ impl Evaluator {
         // The code survives a suspended source preflight. Its static Scalar
         // dependency was already ready before this call started.
         let code_id = args[0].expect("strict policy proved the subtotal code");
-        let code = Self::scalar(self.values[base + code_id].as_ref()
-            .expect("the strict child was evaluated").clone(), context)?;
+        let code = Self::scalar(
+            self.values[base + code_id]
+                .as_ref()
+                .expect("the strict child was evaluated")
+                .clone(),
+            context,
+        )?;
         let code = match code.operand() {
             Err(reason) => return Ok(Some(Outcome::Uncomputed(reason))),
             Ok(Operand::Error(error)) => return Ok(Some(Outcome::Computed(Operand::Error(error)))),
             Ok(Operand::Number(value)) if value.is_finite() && value.fract() == 0.0 => value,
-            _ => return Ok(Some(Outcome::Uncomputed(Unevaluated::Function(Function::Subtotal)))),
+            _ => {
+                return Ok(Some(Outcome::Uncomputed(Unevaluated::Function(
+                    Function::Subtotal,
+                ))));
+            }
         };
         let (function, exclude_hidden) = match code as i32 {
             1 | 101 => (Function::Average, code >= 100.0),
@@ -3459,8 +4328,13 @@ impl Evaluator {
         // source workbook; no speculative scalar admission here.
         for child in &args[1..] {
             let child = child.expect("strict policy proved subtotal references");
-            let Some(Outcome::Computed(Operand::Reference(id))) = self.values[base + child].as_ref()
-                else { return Ok(Some(Outcome::Uncomputed(Unevaluated::Function(Function::Subtotal)))); };
+            let Some(Outcome::Computed(Operand::Reference(id))) =
+                self.values[base + child].as_ref()
+            else {
+                return Ok(Some(Outcome::Uncomputed(Unevaluated::Function(
+                    Function::Subtotal,
+                ))));
+            };
             if !context.reference_is_union(*id) && context.reference_geometry(*id).is_none() {
                 return Ok(Some(Outcome::Computed(Operand::Error(ExcelError::Value))));
             }
@@ -3468,16 +4342,27 @@ impl Evaluator {
         let mut ready = true;
         for child in &args[1..] {
             let child = child.expect("strict policy proved subtotal references");
-            let Some(Outcome::Computed(Operand::Reference(id))) = self.values[base + child].as_ref()
-                else { unreachable!("the reference policy was proved above") };
+            let Some(Outcome::Computed(Operand::Reference(id))) =
+                self.values[base + child].as_ref()
+            else {
+                unreachable!("the reference policy was proved above")
+            };
             // Every source is registered, even when an earlier one pauses:
             // no range is partially published and every future change is watched.
             ready &= context.ready_subtotal(*id, exclude_hidden)?;
         }
-        if !ready { return Ok(None); }
+        if !ready {
+            return Ok(None);
+        }
         self.values[base + code_id].take();
-        self.aggregate(function, base, &args[1..], AggregateMode::Filtered(
-            RangeRead::Subtotal { exclude_hidden }), context).map(Some)
+        self.aggregate(
+            function,
+            base,
+            &args[1..],
+            AggregateMode::Filtered(RangeRead::Subtotal { exclude_hidden }),
+            context,
+        )
+        .map(Some)
     }
 
     /// Count absent cells and formula-empty text without materializing
@@ -3490,12 +4375,17 @@ impl Evaluator {
     ) -> crate::Result<Outcome> {
         let source = self.take(base, args[0].expect("typed COUNTBLANK source"));
         let id = match source.operand() {
-            Ok(Operand::Reference(id)) if context.reference_is_union(id) =>
-                return Ok(Outcome::Computed(Operand::Error(ExcelError::Value))),
+            Ok(Operand::Reference(id)) if context.reference_is_union(id) => {
+                return Ok(Outcome::Computed(Operand::Error(ExcelError::Value)));
+            }
             Ok(Operand::Reference(id)) if context.reference_geometry(id).is_some() => id,
             Ok(Operand::Error(error)) => return Ok(Outcome::Computed(Operand::Error(error))),
             Err(reason) => return Ok(Outcome::Uncomputed(reason)),
-            _ => return Ok(Outcome::Uncomputed(Unevaluated::Function(Function::Countblank))),
+            _ => {
+                return Ok(Outcome::Uncomputed(Unevaluated::Function(
+                    Function::Countblank,
+                )));
+            }
         };
         let mut count = Accumulator::default();
         let mut failed = None;
@@ -3503,12 +4393,18 @@ impl Evaluator {
         let progress = context.visit_range(id, RangeRead::BlankPresence, 0, |value, run| {
             match value.operand() {
                 Ok(Operand::Blank) => {
-                    if let Err(error) = count.push_count_n(run) { failed.get_or_insert(error); }
+                    if let Err(error) = count.push_count_n(run) {
+                        failed.get_or_insert(error);
+                    }
                 }
                 Ok(Operand::Text(text)) if text.as_str().is_empty() => {
-                    if let Err(error) = count.push_count_n(run) { failed.get_or_insert(error); }
+                    if let Err(error) = count.push_count_n(run) {
+                        failed.get_or_insert(error);
+                    }
                 }
-                Err(reason) => { unresolved.get_or_insert(reason); }
+                Err(reason) => {
+                    unresolved.get_or_insert(reason);
+                }
                 _ => {}
             }
             std::ops::ControlFlow::Continue(())
@@ -3516,8 +4412,12 @@ impl Evaluator {
         if matches!(progress, RangeProgress::Paused(_)) {
             return Ok(Outcome::Uncomputed(Unevaluated::Reference));
         }
-        if let Some(reason) = unresolved { return Ok(Outcome::Uncomputed(reason)); }
-        if let Some(error) = failed { return Ok(Outcome::Computed(Operand::Error(error))); }
+        if let Some(reason) = unresolved {
+            return Ok(Outcome::Uncomputed(reason));
+        }
+        if let Some(error) = failed {
+            return Ok(Outcome::Computed(Operand::Error(error)));
+        }
         Ok(match count.finish_counta() {
             Some(value) => Outcome::Computed(Operand::Number(value)),
             None => Outcome::Uncomputed(Unevaluated::NumericPolicy),
@@ -3538,11 +4438,23 @@ impl Evaluator {
             AggregateMode::Filtered(read) => (None, Some(read)),
         };
         let system = context.system();
-        let mut accumulator = if rank.is_some() || matches!(function,
-            Function::Median | Function::Mode | Function::ModeDotSngl) {
+        let mut accumulator = if rank.is_some()
+            || matches!(
+                function,
+                Function::Median | Function::Mode | Function::ModeDotSngl
+            ) {
             Accumulator::ranked()
-        } else if matches!(function, Function::Var | Function::Varp | Function::VarDotS | Function::VarDotP
-            | Function::Stdev | Function::Stdevp | Function::StdevDotS | Function::StdevDotP) {
+        } else if matches!(
+            function,
+            Function::Var
+                | Function::Varp
+                | Function::VarDotS
+                | Function::VarDotP
+                | Function::Stdev
+                | Function::Stdevp
+                | Function::StdevDotS
+                | Function::StdevDotP
+        ) {
             Accumulator::variance()
         } else {
             Accumulator::default()
@@ -3563,15 +4475,25 @@ impl Evaluator {
                     aggregate_error.get_or_insert(error);
                 }
             }
-            Ok(Operand::Boolean(value)) if source == ArgumentSource::Reference && matches!(function,
-                Function::Averagea | Function::Mina | Function::Maxa) => {
+            Ok(Operand::Boolean(value))
+                if source == ArgumentSource::Reference
+                    && matches!(
+                        function,
+                        Function::Averagea | Function::Mina | Function::Maxa
+                    ) =>
+            {
                 if let Err(error) = accumulator.push_number(if value { 1.0 } else { 0.0 }) {
                     aggregate_error.get_or_insert(error);
                 }
             }
-            Ok(Operand::Text(_)) if (source == ArgumentSource::Reference && matches!(function,
-                Function::Averagea | Function::Mina | Function::Maxa))
-                || (source == ArgumentSource::Array && function == Function::Averagea) => {
+            Ok(Operand::Text(_))
+                if (source == ArgumentSource::Reference
+                    && matches!(
+                        function,
+                        Function::Averagea | Function::Mina | Function::Maxa
+                    ))
+                    || (source == ArgumentSource::Array && function == Function::Averagea) =>
+            {
                 if let Err(error) = accumulator.push_number(0.0) {
                     aggregate_error.get_or_insert(error);
                 }
@@ -3580,20 +4502,44 @@ impl Evaluator {
             Ok(Operand::Error(error)) => {
                 explicit_error.get_or_insert(error);
             }
-            Ok(Operand::Blank | Operand::Text(_) | Operand::Boolean(_)) if source != ArgumentSource::Direct => {}
-            Ok(Operand::Text(_) | Operand::Boolean(_)) if matches!(function,
-                Function::Mode | Function::ModeDotSngl | Function::Large | Function::Small
-                | Function::Percentile | Function::PercentileDotInc
-                | Function::Quartile | Function::QuartileDotInc
-                | Function::Rank | Function::RankDotEq) => {}
+            Ok(Operand::Blank | Operand::Text(_) | Operand::Boolean(_))
+                if source != ArgumentSource::Direct => {}
+            Ok(Operand::Text(_) | Operand::Boolean(_))
+                if matches!(
+                    function,
+                    Function::Mode
+                        | Function::ModeDotSngl
+                        | Function::Large
+                        | Function::Small
+                        | Function::Percentile
+                        | Function::PercentileDotInc
+                        | Function::Quartile
+                        | Function::QuartileDotInc
+                        | Function::Rank
+                        | Function::RankDotEq
+                ) => {}
             Ok(value) => match value.number(system) {
                 Some(Ok(value)) => {
-                    if matches!(function, Function::Min | Function::Max | Function::Mina
-                        | Function::Maxa | Function::Product | Function::Median
-                        | Function::Mode | Function::ModeDotSngl | Function::Large
-                        | Function::Small | Function::Percentile | Function::PercentileDotInc
-                        | Function::Quartile | Function::QuartileDotInc
-                        | Function::Rank | Function::RankDotEq) && value.is_subnormal() {
+                    if matches!(
+                        function,
+                        Function::Min
+                            | Function::Max
+                            | Function::Mina
+                            | Function::Maxa
+                            | Function::Product
+                            | Function::Median
+                            | Function::Mode
+                            | Function::ModeDotSngl
+                            | Function::Large
+                            | Function::Small
+                            | Function::Percentile
+                            | Function::PercentileDotInc
+                            | Function::Quartile
+                            | Function::QuartileDotInc
+                            | Function::Rank
+                            | Function::RankDotEq
+                    ) && value.is_subnormal()
+                    {
                         unresolved.get_or_insert(Unevaluated::NumericPolicy);
                     } else {
                         let admitted = if function == Function::Product {
@@ -3601,7 +4547,9 @@ impl Evaluator {
                         } else {
                             accumulator.push_number(value)
                         };
-                        if let Err(error) = admitted { aggregate_error.get_or_insert(error); }
+                        if let Err(error) = admitted {
+                            aggregate_error.get_or_insert(error);
+                        }
                     }
                 }
                 Some(Err(_)) if function == Function::Count => {}
@@ -3641,19 +4589,32 @@ impl Evaluator {
             Function::Mina => Ok(Some(accumulator.finish_min())),
             Function::Maxa => Ok(Some(accumulator.finish_max())),
             Function::Product => Ok(Some(accumulator.finish_product())),
-            Function::Var | Function::Varp | Function::VarDotS | Function::VarDotP
-            | Function::Stdev | Function::Stdevp | Function::StdevDotS | Function::StdevDotP =>
-                accumulator.finish_variance(matches!(function, Function::Var | Function::VarDotS
-                    | Function::Stdev | Function::StdevDotS)),
+            Function::Var
+            | Function::Varp
+            | Function::VarDotS
+            | Function::VarDotP
+            | Function::Stdev
+            | Function::Stdevp
+            | Function::StdevDotS
+            | Function::StdevDotP => accumulator.finish_variance(matches!(
+                function,
+                Function::Var | Function::VarDotS | Function::Stdev | Function::StdevDotS
+            )),
             Function::Median => accumulator.finish_median(),
             Function::Mode | Function::ModeDotSngl => accumulator.finish_mode(),
             Function::Large | Function::Small => {
-                let Some(RankArgument::K(k)) = rank else { unreachable!("typed rank coordinate") };
+                let Some(RankArgument::K(k)) = rank else {
+                    unreachable!("typed rank coordinate")
+                };
                 accumulator.finish_kth(k, function == Function::Large)
             }
-            Function::Percentile | Function::PercentileDotInc
-            | Function::Quartile | Function::QuartileDotInc => {
-                let Some(RankArgument::K(k)) = rank else { unreachable!("typed percentile coordinate") };
+            Function::Percentile
+            | Function::PercentileDotInc
+            | Function::Quartile
+            | Function::QuartileDotInc => {
+                let Some(RankArgument::K(k)) = rank else {
+                    unreachable!("typed percentile coordinate")
+                };
                 let k = if matches!(function, Function::Quartile | Function::QuartileDotInc) {
                     if !(0.0..=4.0).contains(&k) {
                         // Native integer out-of-range arguments are #NUM!;
@@ -3665,7 +4626,9 @@ impl Evaluator {
                         return Ok(Outcome::Computed(Operand::Error(ExcelError::Num)));
                     }
                     k.trunc() / 4.0
-                } else { k };
+                } else {
+                    k
+                };
                 accumulator.finish_percentile(k)
             }
             Function::Rank | Function::RankDotEq => {
@@ -3673,13 +4636,18 @@ impl Evaluator {
                     unreachable!("typed RANK parameters")
                 };
                 accumulator.finish_rank(target, ascending)
-            },
+            }
             _ => unreachable!("the node policy selects the numeric aggregate"),
         };
         Ok(match result {
-            Ok(Some(value)) if matches!(function, Function::Stdev | Function::Stdevp
-                | Function::StdevDotS | Function::StdevDotP) =>
-                Self::square_root(Outcome::Computed(Operand::Number(value)), system),
+            Ok(Some(value))
+                if matches!(
+                    function,
+                    Function::Stdev | Function::Stdevp | Function::StdevDotS | Function::StdevDotP
+                ) =>
+            {
+                Self::square_root(Outcome::Computed(Operand::Number(value)), system)
+            }
             Ok(Some(value)) => Outcome::Computed(Operand::Number(value)),
             Ok(None) => Outcome::Uncomputed(Unevaluated::NumericPolicy),
             Err(error) => Outcome::Computed(Operand::Error(error)),
@@ -3701,65 +4669,76 @@ impl Evaluator {
         let mut domain_error = None;
         let mut pair_overflow = false;
         let mut unresolved = None;
-        self.visit_arguments(base, args, RangeRead::Values, context, |outcome, source, count| {
-            debug_assert_eq!(count, 1, "Values walks only stored cells");
-            match outcome.operand() {
-                Err(reason) => { unresolved.get_or_insert(reason); }
-                Ok(Operand::Error(error)) => { input_error.get_or_insert(error); }
-                Ok(Operand::Blank) if source != ArgumentSource::Direct => {}
-                Ok(value) => {
-                    let number = match value.integer_number(system) {
-                        Some(Ok(number)) => number,
-                        Some(Err(error)) => {
-                            input_error.get_or_insert(error);
+        self.visit_arguments(
+            base,
+            args,
+            RangeRead::Values,
+            context,
+            |outcome, source, count| {
+                debug_assert_eq!(count, 1, "Values walks only stored cells");
+                match outcome.operand() {
+                    Err(reason) => {
+                        unresolved.get_or_insert(reason);
+                    }
+                    Ok(Operand::Error(error)) => {
+                        input_error.get_or_insert(error);
+                    }
+                    Ok(Operand::Blank) if source != ArgumentSource::Direct => {}
+                    Ok(value) => {
+                        let number = match value.integer_number(system) {
+                            Some(Ok(number)) => number,
+                            Some(Err(error)) => {
+                                input_error.get_or_insert(error);
+                                return;
+                            }
+                            None => {
+                                unresolved.get_or_insert(Unevaluated::NumericPolicy);
+                                return;
+                            }
+                        };
+                        if !number.is_finite() || number < 0.0 || number > 9_007_199_254_740_992.0 {
+                            domain_error.get_or_insert(ExcelError::Num);
                             return;
                         }
-                        None => {
-                            unresolved.get_or_insert(Unevaluated::NumericPolicy);
+                        // The computed 2^53 boundary is accepted; larger
+                        // integer arguments have Excel's #NUM! domain.
+                        let next = Scalar::from(number.trunc() as u128);
+                        if function == Function::Lcm && next.as_u128() == Some(0) {
+                            // A valid zero clears only provisional pair overflow.
+                            // Invalid inputs and later explicit errors stay visible.
+                            pair_overflow = false;
+                            result = Some(next);
                             return;
                         }
-                    };
-                    if !number.is_finite() || number < 0.0
-                        || number > 9_007_199_254_740_992.0 {
-                        domain_error.get_or_insert(ExcelError::Num);
-                        return;
-                    }
-                    // The computed 2^53 boundary is accepted; larger
-                    // integer arguments have Excel's #NUM! domain.
-                    let next = Scalar::from(number.trunc() as u128);
-                    if function == Function::Lcm && next.as_u128() == Some(0) {
-                        // A valid zero clears only provisional pair overflow.
-                        // Invalid inputs and later explicit errors stay visible.
-                        pair_overflow = false;
-                        result = Some(next);
-                        return;
-                    }
-                    if pair_overflow {
-                        return;
-                    }
-                    result = match result.take() {
-                        None => Some(next),
-                        Some(prior) => {
-                            let combined = if function == Function::Gcd {
-                                prior.checked_gcd(&next)
-                            } else {
-                                prior.checked_lcm(&next)
-                            };
-                            match combined {
-                                Ok(value) => Some(value),
-                                Err(_) => {
-                                    // The pair kernel has one exact u64 result domain.
-                                    // A later LCM zero can annihilate this interim value.
-                                    pair_overflow = true;
-                                    Some(prior)
+                        if pair_overflow {
+                            return;
+                        }
+                        result = match result.take() {
+                            None => Some(next),
+                            Some(prior) => {
+                                let combined = if function == Function::Gcd {
+                                    prior.checked_gcd(&next)
+                                } else {
+                                    prior.checked_lcm(&next)
+                                };
+                                match combined {
+                                    Ok(value) => Some(value),
+                                    Err(_) => {
+                                        // The pair kernel has one exact u64 result domain.
+                                        // A later LCM zero can annihilate this interim value.
+                                        pair_overflow = true;
+                                        Some(prior)
+                                    }
                                 }
                             }
-                        }
-                    };
+                        };
+                    }
                 }
-            }
-        })?;
-        if let Some(reason) = unresolved { return Ok(Outcome::Uncomputed(reason)); }
+            },
+        )?;
+        if let Some(reason) = unresolved {
+            return Ok(Outcome::Uncomputed(reason));
+        }
         if let Some(error) = input_error.or(domain_error) {
             return Ok(Outcome::Computed(Operand::Error(error)));
         }
@@ -3815,18 +4794,24 @@ impl Evaluator {
     }
 
     fn rounding_binary(
-        function: Function, value: Outcome, second: Outcome, mode: Outcome, system: DateSystem,
+        function: Function,
+        value: Outcome,
+        second: Outcome,
+        mode: Outcome,
+        system: DateSystem,
     ) -> Outcome {
         let (value, second, mode) = match (value.operand(), second.operand(), mode.operand()) {
-            (Err(reason), _, _) | (_, Err(reason), _) | (_, _, Err(reason)) =>
-                return Outcome::Uncomputed(reason),
-            (Ok(Operand::Error(error)), _, _) | (_, Ok(Operand::Error(error)), _)
-            | (_, _, Ok(Operand::Error(error))) =>
-                return Outcome::Computed(Operand::Error(error)),
+            (Err(reason), _, _) | (_, Err(reason), _) | (_, _, Err(reason)) => {
+                return Outcome::Uncomputed(reason);
+            }
+            (Ok(Operand::Error(error)), _, _)
+            | (_, Ok(Operand::Error(error)), _)
+            | (_, _, Ok(Operand::Error(error))) => return Outcome::Computed(Operand::Error(error)),
             (Ok(value), Ok(second), Ok(mode)) => (value, second, mode),
         };
         if matches!(function, Function::Quotient | Function::Mround)
-            && (matches!(&value, Operand::Boolean(_)) || matches!(&second, Operand::Boolean(_))) {
+            && (matches!(&value, Operand::Boolean(_)) || matches!(&second, Operand::Boolean(_)))
+        {
             return Outcome::Computed(Operand::Error(ExcelError::Value));
         }
         let value = match Self::coerce_number(value, system) {
@@ -3838,11 +4823,15 @@ impl Evaluator {
             Err(outcome) => return outcome,
         };
         let result = match function {
-            Function::Roundup | Function::Rounddown =>
-                number::round_direction(value, second, function == Function::Roundup),
+            Function::Roundup | Function::Rounddown => {
+                number::round_direction(value, second, function == Function::Roundup)
+            }
             Function::Quotient => number::quotient(value, second),
-            Function::Ceiling | Function::Floor | Function::Mround
-            | Function::CeilingDotMath | Function::FloorDotMath => {
+            Function::Ceiling
+            | Function::Floor
+            | Function::Mround
+            | Function::CeilingDotMath
+            | Function::FloorDotMath => {
                 let mode = match Self::coerce_number(mode, system) {
                     Ok(value) => value,
                     Err(outcome) => return outcome,
@@ -3861,8 +4850,9 @@ impl Evaluator {
     fn truncate(value: Outcome, places: Outcome, system: DateSystem) -> Outcome {
         let (value, places) = match (value.operand(), places.operand()) {
             (Err(reason), _) | (_, Err(reason)) => return Outcome::Uncomputed(reason),
-            (Ok(Operand::Error(error)), _) | (_, Ok(Operand::Error(error))) =>
-                return Outcome::Computed(Operand::Error(error)),
+            (Ok(Operand::Error(error)), _) | (_, Ok(Operand::Error(error))) => {
+                return Outcome::Computed(Operand::Error(error));
+            }
             (Ok(value), Ok(places)) => (value, places),
         };
         let value = match Self::coerce_number(value, system) {
@@ -3917,7 +4907,10 @@ impl Evaluator {
     }
 
     fn reference_binary<'w>(
-        op: BinaryOp, left: Outcome, right: Outcome, context: &mut impl Context<'w>,
+        op: BinaryOp,
+        left: Outcome,
+        right: Outcome,
+        context: &mut impl Context<'w>,
     ) -> Outcome {
         let left = match left.operand() {
             Ok(value) => value,
@@ -3928,8 +4921,12 @@ impl Evaluator {
             Err(reason) => return Outcome::Uncomputed(reason),
         };
         match (left, right) {
-            (Operand::Error(error), _) | (_, Operand::Error(error)) => Outcome::Computed(Operand::Error(error)),
-            (Operand::Reference(left), Operand::Reference(right)) => context.reference_combine(op, left, right),
+            (Operand::Error(error), _) | (_, Operand::Error(error)) => {
+                Outcome::Computed(Operand::Error(error))
+            }
+            (Operand::Reference(left), Operand::Reference(right)) => {
+                context.reference_combine(op, left, right)
+            }
             _ => Outcome::Uncomputed(Unevaluated::Binary(op)),
         }
     }
@@ -4009,7 +5006,9 @@ impl Evaluator {
     ) -> crate::Result<Outcome> {
         let mut numbers = [0.0; 5];
         for (index, argument) in args.iter().enumerate() {
-            let Some(argument) = argument else { continue; };
+            let Some(argument) = argument else {
+                continue;
+            };
             let value = Self::scalar(self.take(base, *argument), context)?;
             let value = match value.operand() {
                 Ok(value) => value,
@@ -4072,8 +5071,10 @@ impl Evaluator {
         };
         // Native singleton fractions are known, but the two-bound interval
         // policy has not been proved. Keep every fractional interval held.
-        if !bottom.is_finite() || !top.is_finite()
-            || bottom.fract() != 0.0 || top.fract() != 0.0
+        if !bottom.is_finite()
+            || !top.is_finite()
+            || bottom.fract() != 0.0
+            || top.fract() != 0.0
             || bottom.abs() > 9_007_199_254_740_991.0
             || top.abs() > 9_007_199_254_740_991.0
         {
@@ -4097,7 +5098,10 @@ impl Evaluator {
     /// reference. R1C1 letters depend on Excel's UI locale (native French
     /// uses L/C), which the workbook does not type, so that mode stays held.
     fn address<'w>(
-        &mut self, args: &[Option<usize>], base: usize, context: &mut impl Context<'w>,
+        &mut self,
+        args: &[Option<usize>],
+        base: usize,
+        context: &mut impl Context<'w>,
     ) -> crate::Result<Outcome> {
         let failure = |error| Outcome::Computed(Operand::Error(error));
         let mut numeric = [0.0, 0.0, 1.0];
@@ -4114,10 +5118,15 @@ impl Evaluator {
             };
         }
         let [row, column, mode] = numeric;
-        if !row.is_finite() || !column.is_finite() || !mode.is_finite()
-            || row < 1.0 || row >= f64::from(MAX_ROWS + 1)
-            || column < 1.0 || column >= f64::from(MAX_COLUMNS + 1)
-            || mode < 1.0 || mode >= 5.0
+        if !row.is_finite()
+            || !column.is_finite()
+            || !mode.is_finite()
+            || row < 1.0
+            || row >= f64::from(MAX_ROWS + 1)
+            || column < 1.0
+            || column >= f64::from(MAX_COLUMNS + 1)
+            || mode < 1.0
+            || mode >= 5.0
         {
             return Ok(failure(ExcelError::Value));
         }
@@ -4138,7 +5147,9 @@ impl Evaluator {
             }
         };
         if !a1 {
-            return Ok(Outcome::Uncomputed(Unevaluated::Function(Function::Address)));
+            return Ok(Outcome::Uncomputed(Unevaluated::Function(
+                Function::Address,
+            )));
         }
         let sheet = match args.get(4).copied().flatten() {
             None => None,
@@ -4146,7 +5157,9 @@ impl Evaluator {
                 let value = Self::scalar(self.take(base, child), context)?;
                 Some(match value.operand() {
                     Ok(Operand::Text(text)) => text.to_string(),
-                    Ok(Operand::Number(value)) if value.is_finite() && value.fract() == 0.0 => value.to_string(),
+                    Ok(Operand::Number(value)) if value.is_finite() && value.fract() == 0.0 => {
+                        value.to_string()
+                    }
                     Ok(Operand::Error(error)) => return Ok(failure(error)),
                     Ok(_) => return Ok(Outcome::Uncomputed(Unevaluated::Coercion)),
                     Err(reason) => return Ok(Outcome::Uncomputed(reason)),
@@ -4155,15 +5168,32 @@ impl Evaluator {
         };
         let row = row.trunc() as u32 - 1;
         let column = column.trunc() as u32 - 1;
-        let row = if mode <= 2 { Coord::Absolute(row) } else { Coord::Relative(row as i32) };
-        let column = if mode == 1 || mode == 3 { Coord::Absolute(column) } else { Coord::Relative(column as i32) };
+        let row = if mode <= 2 {
+            Coord::Absolute(row)
+        } else {
+            Coord::Relative(row as i32)
+        };
+        let column = if mode == 1 || mode == 3 {
+            Coord::Absolute(column)
+        } else {
+            Coord::Relative(column as i32)
+        };
         let reference = Reference {
-            sheet: sheet.as_ref().filter(|text| !text.is_empty()).map_or(SheetSpec::Own,
-                |text| SheetSpec::Named { name: text.as_str().into(), quoted: false }),
+            sheet: sheet
+                .as_ref()
+                .filter(|text| !text.is_empty())
+                .map_or(SheetSpec::Own, |text| SheetSpec::Named {
+                    name: text.as_str().into(),
+                    quoted: false,
+                }),
             target: Target::Cell { row, column },
         };
         let rendered = reference.a1(CellRef::new(0, 0)).to_string();
-        let rendered = if sheet.as_deref() == Some("") { format!("!{rendered}") } else { rendered };
+        let rendered = if sheet.as_deref() == Some("") {
+            format!("!{rendered}")
+        } else {
+            rendered
+        };
         Ok(Outcome::Computed(Operand::Text(crate::Str::from(rendered))))
     }
 
@@ -4247,10 +5277,12 @@ pub mod internals {
             match_at: u64,
             pause_at: Option<u64>,
         ) -> Result<Option<Scalar>> {
-            let expression = formula.expression().map_err(|_| crate::Error::InvalidRecord {
-                path: "context-fixture".into(),
-                reason: "expected a compiled lookup expression".into(),
-            })?;
+            let expression = formula
+                .expression()
+                .map_err(|_| crate::Error::InvalidRecord {
+                    path: "context-fixture".into(),
+                    reason: "expected a compiled lookup expression".into(),
+                })?;
             self.evaluator.begin(expression);
             let mut context = Fixture {
                 root: expression,
@@ -4292,14 +5324,26 @@ pub mod internals {
         /// independently of the Cartesian output area.
         #[must_use]
         pub fn array_capacity(&self) -> [usize; 4] {
-            [self.evaluator.arrays.capacity(), self.evaluator.array_choices.capacity(),
-             self.evaluator.element_stack.capacity(), self.evaluator.element_values.capacity()]
+            [
+                self.evaluator.arrays.capacity(),
+                self.evaluator.array_choices.capacity(),
+                self.evaluator.element_stack.capacity(),
+                self.evaluator.element_values.capacity(),
+            ]
         }
 
         /// A failed read must leave no live result or range ID in the buffers.
         #[must_use]
         pub fn is_clear(&self) -> bool {
-            self.evaluator.stack.is_empty() && self.evaluator.values.iter().all(Option::is_none) && self.evaluator.names.is_empty() && self.evaluator.name_results.is_empty() && self.evaluator.name_volatility.is_empty() && self.evaluator.arrays.is_empty() && self.evaluator.array_choices.is_empty() && self.evaluator.element_stack.is_empty() && self.evaluator.element_values.is_empty()
+            self.evaluator.stack.is_empty()
+                && self.evaluator.values.iter().all(Option::is_none)
+                && self.evaluator.names.is_empty()
+                && self.evaluator.name_results.is_empty()
+                && self.evaluator.name_volatility.is_empty()
+                && self.evaluator.arrays.is_empty()
+                && self.evaluator.array_choices.is_empty()
+                && self.evaluator.element_stack.is_empty()
+                && self.evaluator.element_values.is_empty()
         }
     }
 
@@ -4325,7 +5369,11 @@ pub mod internals {
         fn text_compatibility(&self) -> super::super::text::Compatibility {
             super::super::text::Compatibility::default()
         }
-        fn reference_range(&mut self, _id: super::ReferenceId, _range: super::CellRange) -> Outcome {
+        fn reference_range(
+            &mut self,
+            _id: super::ReferenceId,
+            _range: super::CellRange,
+        ) -> Outcome {
             unreachable!("the fixture does not evaluate indexed references")
         }
         fn clock_serial(&mut self, _today: bool) -> Result<f64> {
@@ -4340,29 +5388,53 @@ pub mod internals {
             _reference: &super::super::reference::Reference,
         ) -> Result<super::ReferenceResult> {
             self.calls[0] += 1;
-            Ok(super::ReferenceResult::Value(Outcome::Computed(Operand::Reference(
-                super::super::value::ReferenceId(0),
-            ))))
+            Ok(super::ReferenceResult::Value(Outcome::Computed(
+                Operand::Reference(super::super::value::ReferenceId(0)),
+            )))
         }
-        fn expression(&self, name: Option<super::NameId>) -> std::result::Result<&'w super::Expr, super::Held> {
-            assert!(name.is_none(), "this context never returns a named expression");
+        fn expression(
+            &self,
+            name: Option<super::NameId>,
+        ) -> std::result::Result<&'w super::Expr, super::Held> {
+            assert!(
+                name.is_none(),
+                "this context never returns a named expression"
+            );
             Ok(self.root)
         }
-        fn host(&self) -> super::CellRef { super::CellRef::new(0, 0) }
-        fn reference_combine(&mut self, op: super::BinaryOp, _left: super::ReferenceId, _right: super::ReferenceId) -> Outcome {
+        fn host(&self) -> super::CellRef {
+            super::CellRef::new(0, 0)
+        }
+        fn reference_combine(
+            &mut self,
+            op: super::BinaryOp,
+            _left: super::ReferenceId,
+            _right: super::ReferenceId,
+        ) -> Outcome {
             Outcome::Uncomputed(super::Unevaluated::Binary(op))
         }
-        fn reference_is_union(&self, _id: super::ReferenceId) -> bool { false }
-        fn reference_nth(&mut self, id: super::ReferenceId, index: usize) -> Outcome {
-            if index == 0 { Outcome::Computed(Operand::Reference(id)) }
-            else { Outcome::Computed(Operand::Error(super::ExcelError::Ref)) }
+        fn reference_is_union(&self, _id: super::ReferenceId) -> bool {
+            false
         }
-        fn reference_geometry(&self, id: super::super::value::ReferenceId) -> Option<super::CellRange> {
+        fn reference_nth(&mut self, id: super::ReferenceId, index: usize) -> Outcome {
+            if index == 0 {
+                Outcome::Computed(Operand::Reference(id))
+            } else {
+                Outcome::Computed(Operand::Error(super::ExcelError::Ref))
+            }
+        }
+        fn reference_geometry(
+            &self,
+            id: super::super::value::ReferenceId,
+        ) -> Option<super::CellRange> {
             assert!(id.0 <= 1);
             let end = self.lookup.as_ref().map_or(4, |probe| {
                 u32::try_from(probe.length - 1).expect("bounded lookup fixture")
             });
-            Some(super::CellRange::new(super::CellRef::new(0, 0), super::CellRef::new(if id.0 == 0 { end } else { 0 }, 0)))
+            Some(super::CellRange::new(
+                super::CellRef::new(0, 0),
+                super::CellRef::new(if id.0 == 0 { end } else { 0 }, 0),
+            ))
         }
         fn intersection(&mut self, id: super::super::value::ReferenceId) -> Outcome {
             assert!(id.0 <= 1);
@@ -4415,11 +5487,18 @@ pub mod internals {
                         reason: "expected an available source value, got a read refusal".into(),
                     });
                 }
-                if visit(if at == 2 && self.held {
-                    Outcome::Uncomputed(super::super::value::Unevaluated::Reference)
-                } else {
-                    Outcome::Computed(value)
-                }, 1).is_break() { break; }
+                if visit(
+                    if at == 2 && self.held {
+                        Outcome::Uncomputed(super::super::value::Unevaluated::Reference)
+                    } else {
+                        Outcome::Computed(value)
+                    },
+                    1,
+                )
+                .is_break()
+                {
+                    break;
+                }
             }
             Ok(super::RangeProgress::Complete)
         }

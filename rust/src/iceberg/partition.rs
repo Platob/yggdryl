@@ -6,13 +6,35 @@
 //! [`Url::hive_partitions`](crate::Url::hive_partitions) already reads, so a
 //! table this module writes is also a lake the rest of the crate can walk.
 //!
-//! Apache Iceberg validates transform/source pairs and computes non-identity
-//! partition values. Yggdryl keeps its Arrow 59 arrays at the I/O boundary and
-//! passes one typed scalar at a time through that implementation while grouping
-//! rows for its own data-file writer.
+//! Apache Iceberg validates the standard transform/source pairs and computes
+//! a bucket or a truncation. Every time transform - the specification's
+//! `year`, `month`, `day` and `hour`, and this crate's own `minutes[n]`,
+//! `week` and `quarter` - is computed here through the one [`EpochPeriod`] the
+//! expression grammar's `years(x)` through `minutes(x, n)` read, so a
+//! partition value and a filter cannot disagree about a period. Yggdryl keeps
+//! its Arrow 59 arrays at the I/O boundary and passes one typed scalar at a
+//! time through that implementation while grouping rows for its own
+//! data-file writer.
+//!
+//! The transforms of this crate's own have no spelling in the official model,
+//! which refuses a name it does not know. They cross it as a bucket whose
+//! count no table can state - above `i32::MAX`, which every bucket the crate
+//! hands the official model is checked against first: `minutes[n]` as
+//! `bucket[2147483648 + n]`, `quarter` as `bucket[4294967294]` and `week` as
+//! `bucket[4294967295]` - because a bucket is accepted on every date and
+//! timestamp source, answers the same `int32` a period does, and each count
+//! is its own transform to the official duplicate check. A bucket accepts
+//! sources a period does not, so the source of each of the three is judged
+//! by [`Transform::result_type`] wherever a spec or a sort order is bound to
+//! a schema. [`Transform::into_official`] and [`Transform::from_official`]
+//! are the two halves, and every document handed to the official model is
+//! rewritten through them in `official.rs`, so a document on disk always
+//! spells `minutes[n]`, and a `bucket[n]` it spells above `i32::MAX` is
+//! refused by its count rather than read as one of the three.
 
 use std::collections::HashSet;
 use std::fmt;
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use iceberg_official::spec::{
@@ -22,6 +44,9 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::expression::eval::{EpochPeriod, epoch_value};
+use crate::expression::{FieldSegment, Function, Literal, Projection, Term};
+use crate::structure::partition_column_name;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -38,12 +63,35 @@ pub(super) const SPEC_ID: &str = "spec-id";
 
 /// How a source column value becomes a partition value.
 ///
+/// The specification's transforms and three of this crate's own -
+/// `minutes[n]`, `week` and `quarter` - each written by its one name, a
+/// parameter in brackets as `bucket[n]` writes one. Spark's DDL plurals -
+/// `years`, `months`, `days`, `hours`, and `weeks` and `quarters` beside
+/// them - are read as intake spellings of the parameter-free time
+/// transforms and written singular; `minutes[n]` has no other spelling, so
+/// `minutes(15)`, `minutes[+15]`, a bare `minutes`, `minute` and `min15`
+/// are refused by name, while `bucket(n)` and `truncate(w)` stay read.
+///
+/// No other implementation knows this crate's own three. Apache Iceberg's
+/// Java implementation and PyIceberg read a name they do not know as
+/// `unknown` and prune nothing by it, as the specification says of an
+/// unknown transform; iceberg-rust 0.10 refuses a metadata or manifest
+/// document naming one, so a table partitioned or sorted by one does not
+/// open there.
+///
 /// ```
 /// use yggdryl::iceberg::Transform;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// assert_eq!(Transform::from_str("bucket[16]")?, Transform::Bucket(16));
 /// assert_eq!(Transform::Bucket(16).to_string(), "bucket[16]");
+/// assert_eq!(Transform::from_str("minutes[15]")?, Transform::Minutes(15));
+/// assert_eq!(Transform::Minutes(15).to_string(), "minutes[15]");
+/// assert!(Transform::from_str("minutes[0]").is_err());
+/// assert!(Transform::from_str("minutes").is_err());
+/// assert!(Transform::from_str("minutes(15)").is_err());
+/// assert_eq!(Transform::from_str("weeks")?, Transform::Week);
+/// assert_eq!(Transform::Week.to_string(), "week");
 ///
 /// // Invertibility is distinct from write support: bucket values are
 /// // computed by Apache Iceberg even though they cannot restore the source.
@@ -69,6 +117,16 @@ pub enum Transform {
     Day,
     /// Hours since 1970-01-01T00, from a timestamp.
     Hour,
+    /// Periods of `n` minutes since 1970-01-01T00:00, from a timestamp;
+    /// `minutes[n]` - `minutes[1]` the minute, `minutes[15]` the quarter
+    /// hour, `minutes[60]` the hour - with `n` from 1 to 2147483645, the most
+    /// the official model can carry ([`Self::result_type`] refuses another).
+    Minutes(u32),
+    /// Monday-start weeks since Monday 1969-12-29, from a date or
+    /// timestamp; `week`.
+    Week,
+    /// Quarters since 1970-Q1, from a date or timestamp; `quarter`.
+    Quarter,
     /// Always null, which is how a spec retires a partition field.
     Void,
     /// A transform retained for metadata compatibility but not interpreted.
@@ -91,11 +149,215 @@ impl Transform {
         matches!(self, Self::Identity | Self::Void)
     }
 
+    /// The grammar function spelling this transform, for the seven that one
+    /// spells: `years(x)` for `year` through `minutes(x, n)` for
+    /// `minutes[n]`.
+    ///
+    /// This is the parameter-free half of the mapping: `minutes[n]` answers
+    /// [`Function::Minutes`] whatever its `n`, which [`Self::into_term`]
+    /// writes. `Identity`, `Bucket`, `Truncate`, `Void` and `Unknown` have
+    /// none.
+    ///
+    /// ```
+    /// use yggdryl::expression::Function;
+    /// use yggdryl::iceberg::Transform;
+    ///
+    /// assert_eq!(Transform::Minutes(15).function(), Some(Function::Minutes));
+    /// assert_eq!(Transform::from_function(&Function::Weeks), Some(Transform::Week));
+    /// assert_eq!(Transform::from_function(&Function::Minutes), None);
+    /// assert_eq!(Transform::Bucket(4).function(), None);
+    /// assert_eq!(Transform::from_function(&Function::Year), None);
+    /// ```
+    pub const fn function(self) -> Option<Function> {
+        Some(match self {
+            Self::Year => Function::Years,
+            Self::Month => Function::Months,
+            Self::Day => Function::Days,
+            Self::Hour => Function::Hours,
+            Self::Minutes(_) => Function::Minutes,
+            Self::Week => Function::Weeks,
+            Self::Quarter => Function::Quarters,
+            Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
+                return None;
+            }
+        })
+    }
+
+    /// The transform a grammar function spells by its name alone, the
+    /// inverse of [`Self::function`] for the six parameter-free epoch
+    /// functions. [`Function::Minutes`] names no transform without its `n`,
+    /// which [`Self::from_term`] reads off the call.
+    pub const fn from_function(function: &Function) -> Option<Self> {
+        Some(match function {
+            Function::Years => Self::Year,
+            Function::Months => Self::Month,
+            Function::Days => Self::Day,
+            Function::Hours => Self::Hour,
+            Function::Weeks => Self::Week,
+            Function::Quarters => Self::Quarter,
+            _ => return None,
+        })
+    }
+
+    /// The transform a grammar call spells: `years(ts)` is `year` and
+    /// `minutes(ts, 15)` is `minutes[15]`.
+    ///
+    /// This and [`Self::into_term`] are the one rule between a call and a
+    /// transform - which argument carries `n` is the expression grammar's
+    /// own reading of `minutes(x, n)` - so a partition declaration and a scan
+    /// read a call alike. The source, the call's first argument, is the
+    /// caller's to read. `None` for a term that is not a call of one of the
+    /// seven epoch functions with the arguments it takes, or a `minutes`
+    /// call whose step is not a literal whole number from 1 to `u32::MAX`; a
+    /// step past what a table can carry reads as the transform
+    /// [`Self::result_type`] then refuses by name.
+    ///
+    /// ```
+    /// use yggdryl::Term;
+    /// use yggdryl::iceberg::Transform;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let quarter_hour: Term = "minutes(ts, 15)".parse()?;
+    /// assert_eq!(Transform::from_term(&quarter_hour), Some(Transform::Minutes(15)));
+    /// assert_eq!(Transform::from_term(&"weeks(ts)".parse()?), Some(Transform::Week));
+    /// assert_eq!(Transform::from_term(&"minutes(ts, 0)".parse()?), None);
+    /// assert_eq!(Transform::from_term(&"year(ts)".parse()?), None);
+    ///
+    /// let spelled = Transform::Minutes(15).into_term(Term::column("ts"));
+    /// assert_eq!(spelled, Some(quarter_hour));
+    /// assert_eq!(
+    ///     Transform::Week.into_term(Term::column("ts")).map(|term| term.to_string()),
+    ///     Some("weeks(ts)".to_owned())
+    /// );
+    /// assert_eq!(Transform::Bucket(16).into_term(Term::column("ts")), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_term(term: &Term) -> Option<Self> {
+        let Term::Function(function, arguments) = term else {
+            return None;
+        };
+        let (least, most) = function.arity();
+        if arguments.len() < least || arguments.len() > most {
+            return None;
+        }
+        let constants = arguments
+            .iter()
+            .map(|argument| argument.as_literal().map(Literal::value));
+        match function.epoch_period(constants).ok()?? {
+            EpochPeriod::Minutes(step) => Some(Self::Minutes(step.get())),
+            _ => Self::from_function(function),
+        }
+    }
+
+    /// The grammar call spelling this transform over `source`, the inverse
+    /// of [`Self::from_term`]: `minutes[n]` writes its `n` as the second
+    /// argument, so `minutes[15]` of `ts` is `minutes(ts, 15)`.
+    ///
+    /// `None` for a transform no call spells - `Identity`, `Bucket`,
+    /// `Truncate`, `Void`, `Unknown` - and for `minutes[0]`, which has no
+    /// period.
+    pub fn into_term(self, source: Term) -> Option<Term> {
+        let function = self.function()?;
+        Some(match self {
+            Self::Minutes(0) => return None,
+            Self::Minutes(step) => Term::call(function, [source, Term::literal(i64::from(step))]),
+            _ => Term::call(function, [source]),
+        })
+    }
+
+    /// The period a time transform floors its source to, for the seven;
+    /// `None` for every other, and for a `minutes[0]` built by hand.
+    pub(super) const fn epoch_period(self) -> Option<EpochPeriod> {
+        Some(match self {
+            Self::Year => EpochPeriod::Year,
+            Self::Month => EpochPeriod::Month,
+            Self::Day => EpochPeriod::Day,
+            Self::Hour => EpochPeriod::Hour,
+            Self::Minutes(step) => match NonZeroU32::new(step) {
+                Some(step) => EpochPeriod::Minutes(step),
+                None => return None,
+            },
+            Self::Week => EpochPeriod::Week,
+            Self::Quarter => EpochPeriod::Quarter,
+            Self::Identity | Self::Bucket(_) | Self::Truncate(_) | Self::Void | Self::Unknown => {
+                return None;
+            }
+        })
+    }
+
+    /// Whether this is one of the transforms the official model has no
+    /// spelling for, which cross it as a reserved bucket count.
+    pub(super) const fn is_bridged(self) -> bool {
+        matches!(self, Self::Minutes(_) | Self::Week | Self::Quarter)
+    }
+
+    /// The official transform this one crosses the Apache model as.
+    ///
+    /// The standard transforms are themselves; this crate's own are each a
+    /// bucket of a reserved count (see the module documentation). Every
+    /// parameter is checked first, so a reserved count reaches the official
+    /// model only as one of the three it carries.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a parameter no table can state: a bucket count of zero or
+    /// past `i32::MAX`, a truncate width of zero, or a `minutes[n]` whose
+    /// `n` the reserved counts cannot carry.
+    pub(super) fn into_official(self) -> Result<OfficialTransform> {
+        self.validate_parameter()?;
+        Ok(match self {
+            Self::Identity => OfficialTransform::Identity,
+            Self::Bucket(count) => OfficialTransform::Bucket(count),
+            Self::Truncate(width) => OfficialTransform::Truncate(width),
+            Self::Year => OfficialTransform::Year,
+            Self::Month => OfficialTransform::Month,
+            Self::Day => OfficialTransform::Day,
+            Self::Hour => OfficialTransform::Hour,
+            Self::Minutes(step) => OfficialTransform::Bucket(BRIDGE_BUCKET_BASE + step),
+            Self::Week => OfficialTransform::Bucket(WEEK_BUCKET),
+            Self::Quarter => OfficialTransform::Bucket(QUARTER_BUCKET),
+            Self::Void => OfficialTransform::Void,
+            Self::Unknown => OfficialTransform::Unknown,
+        })
+    }
+
+    /// The transform an official one spells, the inverse of
+    /// [`Self::into_official`]: a reserved bucket count reads as the
+    /// transform it carried. Only the crate's own bridge hands the official
+    /// model a reserved count, because [`Self::into_official`] and the
+    /// document bridge refuse one stated as a bucket.
+    pub(super) const fn from_official(transform: OfficialTransform) -> Self {
+        match transform {
+            OfficialTransform::Identity => Self::Identity,
+            OfficialTransform::Bucket(WEEK_BUCKET) => Self::Week,
+            OfficialTransform::Bucket(QUARTER_BUCKET) => Self::Quarter,
+            OfficialTransform::Bucket(count)
+                if count > BRIDGE_BUCKET_BASE && count - BRIDGE_BUCKET_BASE <= MAX_MINUTES =>
+            {
+                Self::Minutes(count - BRIDGE_BUCKET_BASE)
+            }
+            OfficialTransform::Bucket(count) => Self::Bucket(count),
+            OfficialTransform::Truncate(width) => Self::Truncate(width),
+            OfficialTransform::Year => Self::Year,
+            OfficialTransform::Month => Self::Month,
+            OfficialTransform::Day => Self::Day,
+            OfficialTransform::Hour => Self::Hour,
+            OfficialTransform::Void => Self::Void,
+            OfficialTransform::Unknown => Self::Unknown,
+        }
+    }
+
     /// Return the datatype a partition value has, given its source column.
     ///
     /// # Errors
     ///
-    /// Returns an error when the transform cannot apply to the source type.
+    /// Returns an error when the transform cannot apply to the source type:
+    /// a sub-day period needs a timestamp, a week or a quarter a date or a
+    /// timestamp, and the standard transforms what Apache Iceberg accepts.
+    /// Every time transform reads only a source Iceberg can express, so a
+    /// timestamp counted in seconds or milliseconds is refused by all seven
+    /// alike.
     pub fn result_type(self, source: &DataType) -> Result<DataType> {
         self.validate_parameter()?;
         if self == Self::Void {
@@ -104,8 +366,30 @@ impl Transform {
         if self == Self::Unknown {
             return Ok(DataType::utf8());
         }
+        if self.is_bridged() {
+            official_primitive_type(source)?;
+            let period = self
+                .epoch_period()
+                .expect("a bridged transform is a period");
+            let accepted = match source {
+                DataType::DateTime64 { .. } => true,
+                DataType::Date32 => period.takes_date(),
+                _ => false,
+            };
+            if !accepted {
+                return Err(invalid(format_smolstr!(
+                    "expected {} as the source of the {self} transform, got {source}",
+                    if period.takes_date() {
+                        "a date or a timestamp"
+                    } else {
+                        "a timestamp"
+                    }
+                )));
+            }
+            return Ok(DataType::Int32);
+        }
 
-        let transform = official_transform(self);
+        let transform = self.into_official()?;
         let input = OfficialType::Primitive(official_primitive_type(source)?);
         transform.result_type(&input).map_err(Error::from_iceberg)?;
 
@@ -113,7 +397,9 @@ impl Transform {
             Self::Identity | Self::Truncate(_) => source.clone(),
             Self::Day => DataType::date32(),
             Self::Bucket(_) | Self::Year | Self::Month | Self::Hour => DataType::Int32,
-            Self::Void | Self::Unknown => unreachable!("returned above"),
+            Self::Minutes(_) | Self::Week | Self::Quarter | Self::Void | Self::Unknown => {
+                unreachable!("returned above")
+            }
         })
     }
 
@@ -130,6 +416,11 @@ impl Transform {
             Self::Truncate(0) => Err(invalid(SmolStr::new_static(
                 "expected a positive truncate width, got truncate[0]",
             ))),
+            Self::Minutes(step) if step == 0 || step > MAX_MINUTES => {
+                Err(invalid(format_smolstr!(
+                    "expected minutes[n] with n from 1 to {MAX_MINUTES}, got minutes[{step}]"
+                )))
+            }
             _ => Ok(()),
         }
     }
@@ -142,10 +433,12 @@ impl FromStr for Transform {
         let trimmed = value.trim();
         match trimmed {
             "identity" => return Ok(Self::Identity),
-            "year" => return Ok(Self::Year),
-            "month" => return Ok(Self::Month),
-            "day" => return Ok(Self::Day),
-            "hour" => return Ok(Self::Hour),
+            "year" | "years" => return Ok(Self::Year),
+            "month" | "months" => return Ok(Self::Month),
+            "day" | "days" => return Ok(Self::Day),
+            "hour" | "hours" => return Ok(Self::Hour),
+            "week" | "weeks" => return Ok(Self::Week),
+            "quarter" | "quarters" => return Ok(Self::Quarter),
             "void" => return Ok(Self::Void),
             "unknown" => return Ok(Self::Unknown),
             _ => {}
@@ -156,12 +449,31 @@ impl FromStr for Transform {
         if let Some(rest) = trimmed.strip_prefix("truncate") {
             return Ok(Self::Truncate(bracketed(rest, "truncate")?));
         }
+        if let Some(rest) = trimmed.strip_prefix("minutes") {
+            // One spelling: the step in brackets, unsigned digits only.
+            let step = rest
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+                .filter(|digits| {
+                    !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+                })
+                .and_then(|digits| digits.parse::<u32>().ok())
+                .filter(|step| (1..=MAX_MINUTES).contains(step));
+            return step.map(Self::Minutes).ok_or_else(|| Error::Parse {
+                target: "iceberg transform",
+                position: 0,
+                reason: format_smolstr!(
+                    "expected minutes[n] - the step in brackets, a whole number from 1 to \
+                     {MAX_MINUTES} - got {trimmed:?}"
+                ),
+            });
+        }
         Err(Error::Parse {
             target: "iceberg transform",
             position: 0,
             reason: format_smolstr!(
                 "expected an Iceberg transform (identity, bucket[n], truncate[w], year, month, \
-                 day, hour, void, unknown), got {trimmed:?}"
+                 day, hour, minutes[n], week, quarter, void, unknown), got {trimmed:?}"
             ),
         })
     }
@@ -177,11 +489,33 @@ impl fmt::Display for Transform {
             Self::Month => formatter.write_str("month"),
             Self::Day => formatter.write_str("day"),
             Self::Hour => formatter.write_str("hour"),
+            Self::Minutes(step) => write!(formatter, "minutes[{step}]"),
+            Self::Week => formatter.write_str("week"),
+            Self::Quarter => formatter.write_str("quarter"),
             Self::Void => formatter.write_str("void"),
             Self::Unknown => formatter.write_str("unknown"),
         }
     }
 }
+
+/// The bucket count above which the official model carries the transforms
+/// it has no spelling for: `i32::MAX + 1`, so `minutes[n]` is the count
+/// `n` after it. A real bucket count is at most `i32::MAX`, and a larger one
+/// is refused before anything reaches the official model - by
+/// [`Transform::into_official`] for a spec built in code, by the document
+/// bridge for a metadata document or a manifest header that states one - so
+/// a reserved count read back was written by the bridge.
+const BRIDGE_BUCKET_BASE: u32 = i32::MAX as u32 + 1;
+
+/// The reserved bucket count `week` crosses the official model as.
+const WEEK_BUCKET: u32 = u32::MAX;
+
+/// The reserved bucket count `quarter` crosses the official model as.
+const QUARTER_BUCKET: u32 = u32::MAX - 1;
+
+/// The largest `n` of `minutes[n]`: the most minutes whose reserved count
+/// stays below the two calendar ones, 2147483645.
+const MAX_MINUTES: u32 = QUARTER_BUCKET - 1 - BRIDGE_BUCKET_BASE;
 
 /// Read `[n]` or `(n)` after a transform keyword.
 fn bracketed(rest: &str, keyword: &str) -> Result<u32> {
@@ -357,21 +691,66 @@ impl PartitionSpec {
         Ok(Self { spec_id, fields })
     }
 
-    /// Build a spec from the columns a schema already marks as partitions.
+    /// Build a spec from what a schema declares it partitions by.
     ///
-    /// A [`Field`] says which of its children a path spells out, so a caller
-    /// who declared that on the schema does not declare it again here. The
-    /// marked columns become identity partition fields in declaration order,
-    /// and a schema that marks none produces the unpartitioned spec.
+    /// [`Field::partition_by`] is the declaration - the `PARTITION:by`
+    /// entries, or the marked columns where the schema declares none - and
+    /// each entry is one spec field, in order: a bare column an identity
+    /// partition; an epoch function over a column - `years(ts)`, `days(ts)`,
+    /// `minutes(ts, 15)` - the transform [`Transform::from_term`] reads;
+    /// `truncate(col, w)` with a whole-number width [`Transform::Truncate`].
+    /// The spec field is named by the entry's alias, else by the convention
+    /// [`Field::with_partition_by`] names a derived column by (`ts_year`,
+    /// `ts_minutes`, `name_truncate`). A schema declaring nothing produces
+    /// the unpartitioned spec.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
+    /// use yggdryl::{DataType, StructType, TimeUnit, Timezone};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut schema = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }.required_field("ts"),
+    /// ])?)
+    /// .required_field("row")
+    /// .with_partition_by(["venue".parse()?, "minutes(ts, 15)".parse()?])?;
+    /// assign_field_ids(&mut schema, 1)?;
+    ///
+    /// let spec = PartitionSpec::from_schema(1, &schema)?;
+    /// assert_eq!(spec.fields.len(), 2);
+    /// assert_eq!(spec.fields[0].transform, Transform::Identity);
+    /// assert_eq!(spec.fields[1].transform, Transform::Minutes(15));
+    /// assert_eq!(spec.fields[1].name, "ts_minutes");
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error when the field is not a struct root, or when a marked
-    /// column carries no field identifier.
+    /// Returns an error when the field is not a struct root, when a source
+    /// column is missing or carries no field identifier, or when an entry is
+    /// not a transform a spec can hold, naming the entry.
     pub fn from_schema(spec_id: i32, schema: &Field) -> Result<Self> {
         schema.require_struct()?;
-        let columns: Vec<&str> = schema.partition_field_names().collect();
-        Self::identity(spec_id, schema, &columns)
+        let mut fields = Vec::new();
+        for (offset, entry) in schema.partition_by()?.iter().enumerate() {
+            let (source, transform) = partition_entry(schema, entry)?;
+            let source_id = source.parquet_field_id()?.ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a PARQUET:field_id on the partition source {:?}; call \
+                     assign_field_ids first",
+                    source.name()
+                ))
+            })?;
+            fields.push(PartitionField {
+                source_id,
+                field_id: FIRST_PARTITION_ID + i32::try_from(offset).unwrap_or_default(),
+                name: partition_column_name(entry)?,
+                transform,
+            });
+        }
+        Ok(Self { spec_id, fields })
     }
 
     /// Read a spec back off the partition tuple it describes.
@@ -415,12 +794,19 @@ impl PartitionSpec {
         Ok(Self { spec_id, fields })
     }
 
-    /// Return `schema` with the columns this spec partitions on marked.
+    /// Return `schema` with the columns this spec partitions on marked and
+    /// the spec declared as its `PARTITION:by`.
     ///
     /// Only an identity transform marks a column: it is the one transform whose
     /// partition value *is* the column's value, so it is the only one a path can
-    /// spell and a reader can invert. A schema carrying the marks says how it is
-    /// laid out without a spec beside it.
+    /// spell and a reader can invert. The declaration names every field the
+    /// expression grammar can spell - an identity as its column, a time
+    /// transform as its epoch function, a truncation as `truncate(col, w)`,
+    /// each aliased where the spec's name is not the convention's - so a
+    /// schema carrying it says how the table partitions without a spec beside
+    /// it, and [`Self::from_schema`] reads the spec back. A `bucket`, a `void`
+    /// and an `unknown` field have no spelling and are left out of the
+    /// declaration; the spec itself keeps them.
     ///
     /// # Errors
     ///
@@ -428,20 +814,46 @@ impl PartitionSpec {
     /// column is missing from it.
     pub fn mark_partitions(&self, schema: &Field) -> Result<Field> {
         let mut columns = Vec::with_capacity(self.fields.len());
+        let mut by = Vec::with_capacity(self.fields.len());
         for field in &self.fields {
-            if field.transform != Transform::Identity {
-                continue;
-            }
             // A spec can name a column of a nested struct, which no path spells
             // out and no top-level marker describes; such a field is left alone.
             let Some(source) = schema.field_by_parquet_field_id(field.source_id) else {
                 continue;
             };
-            if schema.dtype().get_field_by_name(source.name()).is_some() {
+            if schema.dtype().get_field_by_name(source.name()).is_none() {
+                continue;
+            }
+            if field.transform == Transform::Identity {
                 columns.push(source.name());
             }
+            let column = Term::column(source.name());
+            let term = match field.transform {
+                Transform::Identity => column,
+                Transform::Truncate(width) => Term::call(
+                    Function::Truncate,
+                    [column, Term::literal(i64::from(width))],
+                ),
+                transform => match transform.into_term(column) {
+                    Some(term) => term,
+                    None => continue,
+                },
+            };
+            let entry = Projection::new(term);
+            let entry = if partition_column_name(&entry)? == field.name {
+                entry
+            } else {
+                entry.with_alias(field.name.clone())
+            };
+            by.push(entry);
         }
-        schema.with_partition_fields(&columns)
+        let mut marked = schema.with_partition_fields(&columns)?;
+        if by.is_empty() {
+            marked.as_partition_mut().remove_by();
+        } else {
+            marked.as_partition_mut().set_by(by)?;
+        }
+        Ok(marked)
     }
 
     /// Return whether this spec places every file in one partition.
@@ -513,12 +925,14 @@ impl PartitionSpec {
                     result.dtype()
                 )));
             }
+            // A bucket and a truncation are the official scalar functions;
+            // every time transform floors its count here.
             let function = match field.transform {
-                Transform::Identity | Transform::Void => None,
-                transform => Some(
-                    create_transform_function(&official_transform(transform))
+                transform @ (Transform::Bucket(_) | Transform::Truncate(_)) => Some(
+                    create_transform_function(&transform.into_official()?)
                         .map_err(Error::from_iceberg)?,
                 ),
+                _ => None,
             };
             transforms.push(PartitionTransform {
                 path,
@@ -574,6 +988,13 @@ impl PartitionSpec {
     /// `values` is one value per partition field, in spec order. A null value
     /// writes the literal `null`, which is what Iceberg's own writers spell and
     /// why the manifest, not the path, is the authority on a partition value.
+    /// For the same reason a name or a value is written with only the
+    /// characters every store's path holds - ASCII letters and digits, `.`,
+    /// `_`, `+` and `-` - and any other as `_`: an instant spells `:`, which
+    /// no Windows path can, and `2024-01-01T00_15_00Z` names its directory
+    /// on every store alike. Two values one directory name stands for share
+    /// the directory and nothing else; their files are told apart by the
+    /// manifest.
     ///
     /// # Errors
     ///
@@ -592,9 +1013,9 @@ impl PartitionSpec {
             if !path.is_empty() {
                 path.push('/');
             }
-            path.push_str(&field.name);
+            path.extend(field.name.chars().map(path_character));
             path.push('=');
-            path.push_str(&super::value::scalar_text(value));
+            path.extend(super::value::scalar_text(value).chars().map(path_character));
         }
         Ok(path)
     }
@@ -762,11 +1183,14 @@ impl PartitionTransform {
     /// [`Self::partition_value`] once per distinct key rather than once per
     /// row, which is only the same partition when equal keys can never compute
     /// two values. The source column itself has that property for every
-    /// transform. A timestamp under a calendar transform has a coarser one -
-    /// the UTC hour for `hour`, the UTC day for `day`, `month` and `year` -
-    /// because every instant of one day computes one day, month and year, so
-    /// a column of distinct instants still keys a handful of groups. `void`
-    /// computes null whatever the row holds, so it keys nothing.
+    /// transform. A timestamp under a time transform has a coarser one - the
+    /// period itself for a fixed-length one (`minutes[n]` floors to `60 * n`
+    /// seconds, `hour`, `day`), the UTC day for the calendar ones (`week`,
+    /// `month`, `quarter`, `year`), which are not aligned to the epoch -
+    /// because every instant of one day computes one week, month, quarter
+    /// and year, so a column of distinct instants still keys a handful of
+    /// groups. `void` computes null whatever the row holds, so it keys
+    /// nothing.
     ///
     /// # Errors
     ///
@@ -782,17 +1206,25 @@ impl PartitionTransform {
         };
         use arrow_schema::TimeUnit as ArrowTimeUnit;
 
-        let (seconds, unit) = match (self.transform, source.data_type()) {
-            (Transform::Void, _) => return Ok(None),
-            (Transform::Hour, arrow_schema::DataType::Timestamp(unit, _)) => (3_600, *unit),
-            (
-                Transform::Day | Transform::Month | Transform::Year,
-                arrow_schema::DataType::Timestamp(unit, _),
-            ) => (86_400, *unit),
+        let (seconds, unit) = match (
+            self.transform.epoch_period(),
+            self.transform,
+            source.data_type(),
+        ) {
+            (_, Transform::Void, _) => return Ok(None),
+            (Some(period), _, arrow_schema::DataType::Timestamp(unit, _)) => {
+                (period.seconds().unwrap_or(86_400), *unit)
+            }
             _ => return Ok(Some(std::sync::Arc::clone(source))),
         };
-        let step = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit)).unwrap_or(1)
-            * seconds;
+        // A period past `i64` in the source's unit - a great many minutes
+        // counted in nanoseconds - keys by the instant itself.
+        let Some(step) = crate::temporal::per_second(crate::TimeUnit::from_arrow_time(unit))
+            .unwrap_or(1)
+            .checked_mul(seconds)
+        else {
+            return Ok(Some(std::sync::Arc::clone(source)));
+        };
         // A timestamp is its count, read straight off its values buffer;
         // flooring keeps an instant before the epoch in its own period.
         macro_rules! floored {
@@ -811,7 +1243,9 @@ impl PartitionTransform {
         Ok(Some(std::sync::Arc::new(keys)))
     }
 
-    /// Compute one partition value through Apache Iceberg's scalar transform.
+    /// Compute one partition value: a time transform through the crate's own
+    /// period arithmetic, a bucket or a truncation through Apache Iceberg's
+    /// scalar transform.
     pub(super) fn partition_value(&self, value: Scalar) -> Result<Scalar> {
         if value.is_null() || self.transform == Transform::Void {
             return Ok(Scalar::Null);
@@ -820,51 +1254,42 @@ impl PartitionTransform {
             return Ok(value);
         }
 
-        // The official literal implementation unwraps Date32 calendar
-        // conversion. Core calendar arithmetic is total over i32 day counts,
-        // so keep caller-controlled extremes out of that panic path.
-        if let Scalar::Date32(date) = &value {
-            let days = date.count();
-            let (year, month, _) = crate::timezone::civil_from_days(i64::from(days));
-            let month = i32::try_from(month).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a calendar month fitting i32, got {month}"
-                ))
-            })?;
-            return match self.transform {
-                Transform::Year => Ok(Scalar::from(year - 1970)),
-                Transform::Month => Ok(Scalar::from((year - 1970) * 12 + month - 1)),
-                Transform::Day => Ok(Scalar::date32(days)),
-                _ => self.official_value(Scalar::date32(days)),
+        // Every time transform floors its source's count to the UTC period,
+        // as the specification and the Java implementation do. iceberg-rust
+        // 0.10 truncates a count before the epoch toward zero first, which
+        // moves the last second of a day before 1970 into the next day - and
+        // a write keys every instant of one UTC day together, so one row
+        // would label the whole day. Flooring here is also total over the
+        // i32 day range the official literal path unwraps a calendar on.
+        if let Some(period) = self.transform.epoch_period() {
+            let value = match &value {
+                Scalar::Date32(_) | Scalar::DateTime64(_) => epoch_value(period, &value),
+                _ => {
+                    let count = super::value::single_value(&value, self.source.dtype())
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
+                        .map(i64::from_le_bytes);
+                    match (count, self.source.dtype()) {
+                        (Some(count), DataType::DateTime64 { unit, timezone }) => {
+                            epoch_value(period, &Scalar::datetime64(count, *unit, *timezone)?)
+                        }
+                        _ => {
+                            return Err(invalid(format_smolstr!(
+                                "expected a date or timestamp scalar for the {} transform, got {}",
+                                self.transform,
+                                value.kind()
+                            )));
+                        }
+                    }
+                }
             };
-        }
-
-        // `day` over an instant floors its count to the UTC day, as the
-        // specification and the Java implementation do. iceberg-rust 0.10
-        // truncates a count before the epoch toward zero first, which moves
-        // the last second of a day before 1970 into the next day - and a
-        // write keys every instant of one UTC day together, so one row would
-        // label the whole day.
-        if self.transform == Transform::Day
-            && let DataType::DateTime64 { unit, .. } = self.source.dtype()
-        {
-            let count = super::value::single_value(&value, self.source.dtype())
-                .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
-                .map(i64::from_le_bytes)
-                .ok_or_else(|| {
-                    invalid(format_smolstr!(
-                        "expected a timestamp scalar for the day transform, got {}",
-                        value.kind()
-                    ))
-                })?;
-            let per_day = crate::temporal::per_second(*unit).unwrap_or(1) * 86_400;
-            let days = i32::try_from(count.div_euclid(per_day)).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected a day number fitting i32, got {}",
-                    count.div_euclid(per_day)
-                ))
-            })?;
-            return Ok(Scalar::date32(days));
+            if value.is_null() {
+                return Err(invalid(format_smolstr!(
+                    "expected the {} transform of a {} value to fit int32",
+                    self.transform,
+                    self.source.dtype()
+                )));
+            }
+            return Ok(value);
         }
 
         self.official_value(value)
@@ -893,20 +1318,6 @@ impl PartitionTransform {
                 ))
             })?;
         scalar_from_official(&transformed, self.result.dtype())
-    }
-}
-
-fn official_transform(transform: Transform) -> OfficialTransform {
-    match transform {
-        Transform::Identity => OfficialTransform::Identity,
-        Transform::Bucket(count) => OfficialTransform::Bucket(count),
-        Transform::Truncate(width) => OfficialTransform::Truncate(width),
-        Transform::Year => OfficialTransform::Year,
-        Transform::Month => OfficialTransform::Month,
-        Transform::Day => OfficialTransform::Day,
-        Transform::Hour => OfficialTransform::Hour,
-        Transform::Void => OfficialTransform::Void,
-        Transform::Unknown => OfficialTransform::Unknown,
     }
 }
 
@@ -997,6 +1408,108 @@ fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scala
             "expected an Iceberg partition value of type {dtype}, got {value}"
         ))
     })
+}
+
+/// One character of a partition directory name: itself where every store's
+/// path holds it, `_` otherwise.
+const fn path_character(character: char) -> char {
+    if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '+' | '-') {
+        character
+    } else {
+        '_'
+    }
+}
+
+/// Read one `PARTITION:by` entry as the column it reads and the transform it
+/// spells: an identity, an epoch function the grammar maps to a transform,
+/// or `truncate(col, w)`. Any other derivation is a column of its own:
+/// [`Field::with_partition_by`] materialized it under the entry's name, the
+/// table computes it for every row written, and the spec partitions on that
+/// column as it is - an identity any engine reads. An entry that is neither,
+/// and a transform spelled wrongly, are refused by name.
+fn partition_entry<'schema>(
+    schema: &'schema Field,
+    entry: &Projection,
+) -> Result<(&'schema Field, Transform)> {
+    let refuse = |reason: &str| {
+        invalid(format_smolstr!(
+            "expected an Iceberg partition transform - a column, an epoch function over one, or \
+             truncate(column, width) - or a derivation materialized as a column, got `{entry}`: \
+             {reason}"
+        ))
+    };
+    let reason = match transform_entry(schema, entry, &refuse)? {
+        Ok(read) => return Ok(read),
+        Err(reason) => reason,
+    };
+    let name = partition_column_name(entry)?;
+    match schema.dtype().get_field_by_name(&name) {
+        Some(column) if column.as_transform().term()?.as_ref() == Some(entry.term()) => {
+            Ok((column, Transform::Identity))
+        }
+        _ => Err(refuse(reason)),
+    }
+}
+
+/// [`partition_entry`] for an entry an Iceberg transform spells: the inner
+/// `Err` is why no transform spells it, which leaves the entry to the column
+/// it may have materialized; the outer one is a transform spelled wrongly.
+fn transform_entry<'schema>(
+    schema: &'schema Field,
+    entry: &Projection,
+    refuse: &dyn Fn(&str) -> Error,
+) -> Result<std::result::Result<(&'schema Field, Transform), &'static str>> {
+    let term = entry.term();
+    if let Some(path) = term.as_path() {
+        return Ok(Ok((source_of(schema, path, refuse)?, Transform::Identity)));
+    }
+    let Term::Function(function, arguments) = term else {
+        return Ok(Err("not a function over a column"));
+    };
+    let Some(source) = arguments.first().and_then(Term::as_path) else {
+        return Ok(Err("the first argument is not a column"));
+    };
+    let source = source_of(schema, source, refuse)?;
+    if let Some(transform) = Transform::from_term(term) {
+        return Ok(Ok((source, transform)));
+    }
+    if *function == Function::Truncate {
+        // A whole-number width is the Iceberg truncation; a unit - `'hour'` -
+        // is a temporal floor no spec field holds.
+        let stated = arguments
+            .get(1)
+            .and_then(Term::as_literal)
+            .map(Literal::value)
+            .and_then(Scalar::as_i64);
+        if let Some(stated) = stated {
+            return match u32::try_from(stated).ok().filter(|width| *width > 0) {
+                Some(width) => Ok(Ok((source, Transform::Truncate(width)))),
+                None => Err(refuse("truncate takes a positive whole-number width")),
+            };
+        }
+    }
+    Ok(Err("not a transform a spec can hold"))
+}
+
+/// The schema column a path of struct children names, top level first.
+fn source_of<'schema>(
+    schema: &'schema Field,
+    path: &[FieldSegment],
+    refuse: &dyn Fn(&str) -> Error,
+) -> Result<&'schema Field> {
+    let mut current = schema;
+    for segment in path {
+        let FieldSegment::Field(name) = segment else {
+            return Err(refuse(
+                "a source is a column or a struct child, never an element",
+            ));
+        };
+        current = current
+            .dtype()
+            .get_field_by_name(name)
+            .ok_or_else(|| refuse(&format!("no column {name:?} to partition on")))?;
+    }
+    Ok(current)
 }
 
 /// Find the schema column one partition field reads.

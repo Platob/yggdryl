@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegoptionexerciseexpirationdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegoptionexerciseexpirationdatebusinesscenters",
-          "FIX:tag": "41515"
-        }
-      },
-      {
         "name": "legoptionexerciseexpirationdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legoptionexerciseexpirationdatebusinesscenters"
-        }
-      },
-      {
-        "name": "nolegoptionexerciseexpirationdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegoptionexerciseexpirationdates",
-          "FIX:tag": "41527"
         }
       },
       {

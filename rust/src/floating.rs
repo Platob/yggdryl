@@ -797,13 +797,24 @@ float_operators!(Float16, half::f16, as_f16, from_f16);
 float_operators!(Float32, f32, as_f32, from_f32);
 float_operators!(Float64, f64, as_f64, from_f64);
 
-/// Read a float out of its canonical spelling.
+/// What every refusal of a float spelling names.
+pub(crate) const FLOAT_SPELLINGS: &str = "a number, with an optional fraction or exponent";
+
+/// Read a float out of its canonical spelling: the one grammar every
+/// floating number in the crate reads, a setting's seconds as much as a cell.
 ///
 /// The reading is `f64`, which spells every finite value the three widths
-/// hold plus the infinities and NaN; the declared width then rounds it, as it
-/// does for a native `f64` a caller passes directly.
+/// hold plus the infinities and NaN - `inf`, `-infinity` and `nan` are
+/// spellings, so a caller that wants a finite number filters `is_finite`
+/// itself; the surrounding space is not part of the number.
+pub(crate) fn f64_from_text(text: &str) -> Option<f64> {
+    text.trim().parse().ok()
+}
+
+/// [`f64_from_text`] as the value a column stores; the declared width then
+/// rounds it, as it does for a native `f64` a caller passes directly.
 pub(crate) fn float_from_text(text: &str) -> Option<Scalar> {
-    text.trim().parse::<f64>().ok().map(Scalar::from)
+    f64_from_text(text).map(Scalar::from)
 }
 
 // ------------------------------------------------------------------------
@@ -858,3 +869,17 @@ mod arrow {
 }
 
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/floating.rs` pins and a caller cannot reach: the
+    //! one float grammar.
+    /// What every refusal of a float spelling names.
+    pub const FLOAT_SPELLINGS: &str = super::FLOAT_SPELLINGS;
+
+    /// Read a float out of text.
+    pub fn f64_from_text(text: &str) -> Option<f64> {
+        super::f64_from_text(text)
+    }
+}

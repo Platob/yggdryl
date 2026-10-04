@@ -74,7 +74,8 @@ about the line, which is held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
-groups as series beside their counter, components as structs.
+groups as series - each its list alone, its length the count - components
+as structs.
 :meth:`FixMsg.market_data` answers the typed graph leaves the message
 expands to - an order, a quote, an execution, a trade or, for a book ``W`` or
 ``X``, one per entry or one snapshot control - each a
@@ -111,8 +112,8 @@ capture is context and stamps nothing; the line's own ``currunix`` - an
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
 fields to their latest aliases, runs the crate's native derivations, reads
 the identifier maps off the fields that state them, splits an execution a
-report or a trade states - and a two-sided quote - into sided messages of
-their own, and settles the identity: ``SendingTime`` is the message's own, else
+report or a trade states into sided messages of their own - a quote stays
+one message holding both its legs - and settles the identity: ``SendingTime`` is the message's own, else
 a row cell reaching tag 52, else the ``currunix`` of the line it was read out
 of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
@@ -149,10 +150,13 @@ reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
 :meth:`FixCodec.book_arrow_reader` streams sorted messages through native
 market data and books into lifted ``marketdata`` batches, one
-``book_event`` row per book and book key - the ticker, else ``MIC:CFI`` -
-read back by :meth:`yggdryl.graph.MarketData.from_arrow_reader`;
-``snapshot_millis`` selects an epoch-aligned snapshot grid. Lifecycle
-enrichment remains an explicit composition.
+``book_event`` row per book and book key - the instrument's ISIN, else its
+ticker, else ``XX0000000000`` - read back by
+:meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
+selects an epoch-aligned snapshot grid, at which a book is written whole,
+every other book its deltas, and ``filter`` narrows what the books fold. A
+book folds orders, quotes and book messages and never an execution or a
+trade. Lifecycle enrichment remains an explicit composition.
 :meth:`FixCodec.market_data` is the sorted door: it collects a
 capture, admits what the book door admits, expands each message and answers
 the market data stably sorted by the instant a book folds them at, nothing a
@@ -208,9 +212,11 @@ and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
 field the file produces, and :meth:`FixRegistry.dialects` lists the names any
 field or definition carries.
 
-Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
-separate serie of ``Party`` components, reached by its name or by
-:meth:`FixRegistry.field_by_counter`. A crate Map is a group too: its
+Repeating counts such as ``NoPartyIDs`` are ``int32`` fields of the
+dictionary that frame a group on the wire and nothing else: ``Parties`` is a
+serie of ``Party`` components whose length is its count, reached by its name
+or by :meth:`FixRegistry.field_by_counter`, and no component, message, row or
+entry lists the counter beside it. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
 tag is its counter.
 
@@ -257,10 +263,11 @@ second copy of it. Its clock is ``mtime``, so the header dates each line it
 matches: the capture is consumed into the line's ``currunix`` - the
 ``recdunix`` of its messages and the sending clock of one stating no
 ``SendingTime(52)`` - and read at ``datetime64(ns, UTC)`` under the text
-options' ``timezone``, never the file's modification time. Four of the other
-six captures are named for the fields they fill - ``msgsessionid``,
-``msgctxid``, ``msgseqnum`` and ``msgpluginid`` - and ``msgthreadid`` and
-``loglevel`` name none and are the capture's own columns, carried in front.
+options' ``timezone``, never the file's modification time. The other four
+captures are named for the fields they fill - ``msgsessionid``, ``msgctxid``,
+``msgseqnum`` and ``msgpluginid`` - so the header carries no column of its
+own; the thread that wrote a line and the level it was logged at are matched
+and lifted into no column.
 Its clock reads what bridges write, a point or a comma before three digits or
 grouped microseconds, or no fraction at all - and a line a row header does not
 match carries no capture context, which is what the lifecycle folds

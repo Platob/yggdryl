@@ -5,8 +5,8 @@ use std::sync::Arc;
 use super::build::RowStamp;
 use super::{FixCodec, FixMsg};
 use crate::graph::element::InstantSequence;
+use crate::logging::warning::warned;
 use crate::text::TextEntries;
-use crate::warning::warned;
 use crate::{Error, Result};
 
 enum Source {
@@ -35,8 +35,8 @@ enum Source {
 /// frames yields one per frame, re-entering the frame reader where each
 /// opens over the page the row already holds, and each message read is
 /// followed by the messages it splits into - an order's execution, a
-/// trade's sided executions, an unsided quote's sided quotes - which the
-/// parse splits off once, here. Each message takes its
+/// trade's sided executions, a batch's entries - which the parse splits off
+/// once, here. Each message takes its
 /// [place](crate::graph::Event::get_seqnum) among the row's messages of its
 /// instant, so a report and the execution split off it are places zero and
 /// one, each naming its source by the identity its place gave it. Nothing
@@ -169,7 +169,13 @@ impl FixMessages {
                     return None;
                 }
                 Some(Ok(message)) => {
-                    let (message, split) = message.split();
+                    // The entries a batch splits into fill from the table
+                    // the door fixed, as the batch did.
+                    let instruments = match &self.source {
+                        Source::Frames { codec, .. } => codec.instruments(),
+                        _ => None,
+                    };
+                    let (message, split) = message.split(instruments.as_deref());
                     self.split = split.into_iter();
                     return Some(Ok(message));
                 }

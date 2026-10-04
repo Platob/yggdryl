@@ -104,8 +104,19 @@ pub struct IpcOptions {
     pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
-    /// Rows published per streamed-write commit; `None` publishes once.
-    pub commit_row_size: Option<usize>,
+    /// Whole batches published per streamed-write commit, never rows; `None`
+    /// is the destination's own cadence: a leaf, a folder and an Iceberg
+    /// table publish once, after the source ends - the table holding every
+    /// partition's rows under the process spill bound until then - an
+    /// overwrite's first commit replacing and every later one appending
+    /// while every commit of a merge merges by its key; a write session by
+    /// [`DEFAULT_COMMIT_BYTE_SIZE`](crate::media::DEFAULT_COMMIT_BYTE_SIZE).
+    /// The commits completed before a later failure stay published. The rule
+    /// is [`IORecordOptions::commit_batch_num`]'s.
+    pub commit_batch_num: Option<usize>,
+    /// The threads a write of several parts runs on at once; `None` is the
+    /// destination's own answer.
+    pub num_threads: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
 }
@@ -125,7 +136,8 @@ impl IpcOptions {
             max_row_size: None,
             row_offset: None,
             max_byte_size: None,
-            commit_row_size: None,
+            commit_batch_num: None,
+            num_threads: None,
             level: Level::DEFAULT,
         }
     }
@@ -967,11 +979,11 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         let opened = self.opened;
         match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
-            Ok(published) => {
+            Ok((published, result)) => {
                 // Closed media never begin caching as a side effect of a
                 // write. An already-open one keeps its cache coherent with the
                 // final field after all shaping and stored completion.
@@ -979,7 +991,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
                 if opened && let Some(published) = published {
                     let _ = self.cached_schema.set(published);
                 }
-                Ok(())
+                Ok(result)
             }
             Err(error) => {
                 // A later cadence may already be visible. The old cached field
@@ -1027,7 +1039,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
@@ -1036,7 +1048,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }

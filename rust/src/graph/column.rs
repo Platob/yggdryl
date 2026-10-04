@@ -64,7 +64,7 @@ pub enum EventColumn {
     SnapUnix,
     /// The identity of the event this one follows, where it follows one.
     PrevUuid,
-    /// Where the event stands in what it was read from, null at 0: a text
+    /// Where the event stands in what it was read from, never null: a text
     /// line's row number under `start_rownum`, a parsed or walked event's
     /// place among the events of its instant.
     SeqNum,
@@ -141,7 +141,7 @@ impl EventColumn {
             }
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
             Self::SeqNum => {
-                "Where the event stands in what it was read from, null at 0: a text line's row number under start_rownum, a parsed or walked event's place among the events of its instant."
+                "Where the event stands in what it was read from, 0 for the first: a text line's row number under start_rownum, a parsed or walked event's place among the events of its instant."
             }
             Self::State => {
                 "The state the event reached, as the code of a lifecycle-sorted enum; UNKNOWN where nothing states one, the furthest its chain knows once followed."
@@ -172,13 +172,14 @@ impl EventColumn {
     }
 
     /// Whether the column may hold a null: the facts the trait answers as
-    /// an option, or a place of zero, may, and so may the state, which an
-    /// event always answers - `UNKNOWN` where nothing states one - but a row
-    /// may leave unstated, a state having no neutral member for an empty
-    /// cell to read as; the instant is never absent.
+    /// an option may, and so may the state, which an event always answers -
+    /// `UNKNOWN` where nothing states one - but a row may leave unstated, a
+    /// state having no neutral member for an empty cell to read as; the
+    /// instant and the place among the events of it are never absent, the
+    /// first place being zero.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        !matches!(self, Self::CurrUnix)
+        !matches!(self, Self::CurrUnix | Self::SeqNum)
     }
 
     /// The column as a field: its name, datatype and nullability, with
@@ -225,7 +226,7 @@ impl EventColumn {
             Self::PrevUnix => event.get_prevunix().and_then(instant),
             Self::SnapUnix => event.get_snapunix().and_then(instant),
             Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
-            Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
+            Self::SeqNum => Some(Scalar::from(event.get_seqnum())),
             Self::State => Some(Scalar::State(*event.get_state())),
         }
     }

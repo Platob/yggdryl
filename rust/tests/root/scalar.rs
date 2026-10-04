@@ -238,7 +238,7 @@ mod internal {
         use yggdryl::{decimal, integer, serie};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
-        assert_eq!(leaf_display(&decimal).unwrap().to_string(), "12.50");
+        assert_eq!(leaf_display(&decimal).unwrap().to_string(), "12.5");
         assert_eq!(
             leaf_display(&Scalar::Int32(integer::Int32::new(7)))
                 .unwrap()
@@ -481,6 +481,24 @@ mod values {
             .collect::<Vec<_>>();
         entries.push((Scalar::from(64), Scalar::Null));
         assert!(Scalar::from_mapping(entries).is_err());
+    }
+
+    #[test]
+    fn a_mapping_in_ascending_key_order_is_unique_and_a_repeat_after_it_is_named() {
+        // Strictly ascending keys are distinct by that alone, short or wide;
+        // the key that repeats the last of them is refused at its own index.
+        for len in [4_u64, 128] {
+            let mut entries = (0..len)
+                .map(|index| (Scalar::from(index), Scalar::from(index)))
+                .collect::<Vec<_>>();
+            assert!(Scalar::from_mapping(entries.clone()).is_ok(), "{len}");
+            entries.push((Scalar::from(len - 1), Scalar::Null));
+            let refused = Scalar::from_mapping(entries).unwrap_err();
+            assert!(
+                matches!(refused, yggdryl::Error::Codec { position, .. } if position == usize::try_from(len).unwrap()),
+                "{len}: {refused}"
+            );
+        }
     }
 
     #[test]
@@ -1436,7 +1454,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let decimal = decimal::Decimal32::new(1_250, 2);
     assert_eq!(decimal.coefficient(), 1_250);
     assert_eq!(decimal.scale(), 2);
-    assert_eq!(decimal.to_string(), "12.50");
+    assert_eq!(decimal.to_string(), "12.5");
 
     let datetime = datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
     assert_eq!(datetime.count(), 7);
@@ -1754,17 +1772,18 @@ fn truthiness_reads_the_text_a_column_spells_false_with() {
         );
     }
 
-    // The cast reader stays strict - this coercion does not widen it.
-    assert!(
-        yggdryl::DataType::Boolean
-            .scalar(Scalar::from("off"))
-            .is_err()
-    );
+    // The value door reads what a column cast reads, and refuses what no
+    // boolean spells; this coercion still answers for any text.
     assert_eq!(
         yggdryl::DataType::Boolean
-            .scalar(Scalar::from("false"))
+            .scalar(Scalar::from("off"))
             .unwrap(),
         Scalar::from(false)
+    );
+    assert!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("n/a"))
+            .is_err()
     );
 }
 

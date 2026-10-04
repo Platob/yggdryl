@@ -215,18 +215,22 @@ mod grammar {
             plan.fields()[1].get_metadata("TRANSFORM:expression"),
             Some("i + 1")
         );
-        // A call over plain columns is stored as the function and its sources,
-        // the shape a signature and a partition spec share.
+        // A call over plain columns is stored as the function and the columns
+        // it reads, the shape a signature reads.
         assert_eq!(plan.fields()[2].get_metadata("TRANSFORM:expression"), None);
         assert_eq!(
             plan.fields()[2].get_metadata("TRANSFORM:function"),
             Some("lower")
         );
         assert_eq!(
-            plan.fields()[2].get_metadata("TRANSFORM:sources"),
+            plan.fields()[2].get_metadata("TRANSFORM:by"),
             Some(r#"["s"]"#)
         );
-        assert!(plan.as_transform().declares_derivation());
+        assert!(
+            plan.fields()[1..]
+                .iter()
+                .all(|field| field.as_transform().is_derived())
+        );
 
         // The reading is the `create table` one: every column with its type.
         let read = Selector::from_field(&plan);
@@ -273,40 +277,59 @@ mod grammar {
     }
 
     #[test]
-    fn a_partition_declaration_is_a_transform() {
-        let mut year = DataType::Int32.nullable_field("year");
-        year.as_partition_mut().set_sources(["event"]).unwrap();
-        year.as_partition_mut()
-            .set_transform(yggdryl::expression::Function::Year)
-            .unwrap();
+    fn a_derived_partition_column_is_a_transform() {
+        // A derived entry of `PARTITION:by` materializes as a `TRANSFORM:`
+        // column, marked as a partition, and reads back as a declaration.
+        let rows = DataType::from(
+            StructType::from_fields([DataType::date32().required_field("event")]).unwrap(),
+        )
+        .required_field("row")
+        .with_partition_by(["years(event)".parse().unwrap()])
+        .unwrap();
+        let year = rows.get_field_by_path("event_year").unwrap().clone();
+        assert!(year.is_partition());
+        assert_eq!(year.get_metadata("TRANSFORM:function"), Some("years"));
+        assert_eq!(year.get_metadata("TRANSFORM:by"), Some(r#"["event"]"#));
         assert!(year.as_transform().is_derived());
         assert_eq!(
             year.as_transform()
                 .term()
                 .unwrap()
                 .map(|term| term.to_string()),
-            Some("year(event)".to_owned())
+            Some("years(event)".to_owned())
         );
-        // An explicit term answers first, so a plan can override the pair.
+        assert_eq!(
+            Selector::from_field(&rows).to_string(),
+            "event date32 not null, years(event) as event_year int32 not null with (\"FIELD:partition\" = 'true')"
+        );
+        // A function with no `by` beside it is an incomplete declaration.
+        let mut bare = DataType::Int32.nullable_field("year");
+        bare.as_transform_mut().insert("function", "years").unwrap();
+        let error = bare.as_transform().term().unwrap_err().to_string();
+        assert!(error.contains("TRANSFORM:by"), "{error}");
+        // An explicit term answers first, and removing it leaves an ordinary
+        // column.
+        let mut year = year;
         year.as_transform_mut()
-            .set_term(&"year(event) + 1".parse().unwrap())
+            .set_term(&"years(event) + 1".parse().unwrap())
             .unwrap();
+        assert_eq!(year.get_metadata("TRANSFORM:function"), None);
         assert_eq!(
             year.as_transform()
                 .term()
                 .unwrap()
                 .map(|term| term.to_string()),
-            Some("year(event) + 1".to_owned())
+            Some("years(event) + 1".to_owned())
         );
         assert_eq!(
             year.as_transform_mut().remove_term(),
-            Some("year(event) + 1".to_owned())
+            Some("years(event) + 1".to_owned())
         );
-        assert!(year.as_transform().is_derived());
+        assert!(!year.as_transform().is_derived());
     }
 
     #[test]
-    fn a_stream_derives_every_batch_as_one_batch_does() {
+    fn a_root_and_a_nested_derivation_fill_every_batch() {
         use std::sync::Arc;
 
         use arrow_array::{
@@ -314,8 +337,8 @@ mod grammar {
         };
         use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-        // A derivation at the root and one inside a struct, applied over a
-        // stream: every batch it yields is the batch that batch derives alone.
+        // A derivation at the root and one inside a struct, each batch filled
+        // on its own, the empty one included.
         let mut year = DataType::Int32.nullable_field("year");
         year.as_transform_mut()
             .set_term(&"year(event)".parse().unwrap())
@@ -350,33 +373,226 @@ mod grammar {
             ])
             .unwrap()
         };
-        let batches = vec![
-            batch(&[19_723, 0], &[Some(1), None]),
-            batch(&[], &[]),
-            batch(&[-365], &[Some(-4)]),
+        let expected = [
+            (
+                batch(&[19_723, 0], &[Some(1), None]),
+                vec![Some(2024), Some(1970)],
+                vec![Some(2), None],
+            ),
+            (batch(&[], &[]), vec![], vec![]),
+            (
+                batch(&[-365], &[Some(-4)]),
+                vec![Some(1969)],
+                vec![Some(-8)],
+            ),
         ];
-        let stream = yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone());
-        let applied = root
-            .apply_arrow_reader(stream, false, true, false, yggdryl::ArrowCastOptions::new())
-            .unwrap();
-        let mut yielded = 0;
-        for (position, (streamed, batch)) in applied.zip(&batches).enumerate() {
-            let alone = root.as_transform().apply_arrow_batch(batch).unwrap();
-            assert_eq!(streamed.unwrap(), alone, "batch {position}");
-            yielded += 1;
+        for (position, (batch, years, twice)) in expected.into_iter().enumerate() {
+            let filled = root.as_transform().apply_arrow_batch(&batch).unwrap();
+            assert_eq!(
+                filled.column_by_name("year").unwrap().as_ref(),
+                &Int32Array::from(years) as &dyn Array,
+                "batch {position}"
+            );
+            let inner = filled.column_by_name("inner").unwrap();
+            let inner = inner.as_any().downcast_ref::<StructArray>().unwrap();
+            assert_eq!(
+                inner.column_by_name("twice").unwrap().as_ref(),
+                &Int64Array::from(twice) as &dyn Array,
+                "batch {position}"
+            );
         }
-        assert_eq!(yielded, batches.len());
+    }
 
-        let first = root.as_transform().apply_arrow_batch(&batches[0]).unwrap();
+    /// The partition instant a table root declares: `partunix` derived from
+    /// `currunix` by `time_bucket`, filled where it arrives absent or wholly
+    /// null and left alone where any row of it was written.
+    #[test]
+    fn a_time_bucket_term_fills_the_partition_instant_from_currunix() {
+        use yggdryl::{ArrowCastOptions, Serie};
+
+        let ns = DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        };
+        let term = "time_bucket('15 minutes', currunix)";
+        let mut partunix = ns.clone().nullable_field("partunix");
+        partunix
+            .as_transform_mut()
+            .set_term(&term.parse().unwrap())
+            .unwrap();
+        // A literal argument keeps the whole term under `expression`.
+        assert_eq!(partunix.get_metadata("TRANSFORM:expression"), Some(term));
+        assert_eq!(partunix.get_metadata("TRANSFORM:function"), None);
+        let root = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
+        )
+        .required_field("row");
+        let rows_only = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
+        )
+        .required_field("row");
+
+        let nanos =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let instants = [
+            899_999_999_999_i64,
+            900_000_000_000,
+            -1,
+            1_704_067_200_000_000_001,
+        ];
+        let floored = [
+            0_i64,
+            900_000_000_000,
+            -900_000_000_000,
+            1_704_067_200_000_000_000,
+        ];
+        let partunix_of = |batch: &arrow_array::RecordBatch| -> Vec<Scalar> {
+            let filled = root.as_transform().apply_arrow_batch(batch).unwrap();
+            let read =
+                Serie::from_arrow_batch(Some(&root), &filled, ArrowCastOptions::new()).unwrap();
+            (0..read.len())
+                .map(|position| read.scalar(position).unwrap().as_sequence().unwrap()[1].clone())
+                .collect()
+        };
+        let expected: Vec<Scalar> = floored.iter().map(|count| nanos(*count)).collect();
+
+        // Absent: the rows carry `currunix` alone.
+        let absent = Serie::from_scalars(
+            rows_only.clone(),
+            instants
+                .iter()
+                .map(|count| Scalar::from_sequence([nanos(*count)])),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        assert_eq!(partunix_of(&absent), expected);
+
+        // Present and null in every row: the declaration's default, filled.
+        let nulls = Serie::from_scalars(
+            root.clone(),
+            instants
+                .iter()
+                .map(|count| Scalar::from_sequence([nanos(*count), Scalar::Null])),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        assert_eq!(partunix_of(&nulls), expected);
+
+        // Written in any row: the column is the caller's, left as it came,
+        // its null rows included.
+        let written = Serie::from_scalars(
+            root.clone(),
+            instants.iter().enumerate().map(|(position, count)| {
+                Scalar::from_sequence([
+                    nanos(*count),
+                    if position == 0 {
+                        nanos(7)
+                    } else {
+                        Scalar::Null
+                    },
+                ])
+            }),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
         assert_eq!(
-            first.column_by_name("year").unwrap().as_ref(),
-            &Int32Array::from(vec![2024, 1970]) as &dyn Array
+            partunix_of(&written),
+            vec![nanos(7), Scalar::Null, Scalar::Null, Scalar::Null]
         );
-        let inner = first.column_by_name("inner").unwrap();
-        let inner = inner.as_any().downcast_ref::<StructArray>().unwrap();
+    }
+
+    #[test]
+    fn a_stream_is_filled_under_one_plan_and_states_its_columns_first() {
+        use arrow_array::RecordBatchReader as _;
+        use yggdryl::{ArrowCastOptions, Serie};
+
+        let ns = DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        };
+        let mut partunix = ns.clone().nullable_field("partunix");
+        partunix
+            .as_transform_mut()
+            .set_term(&"time_bucket('15 minutes', currunix)".parse().unwrap())
+            .unwrap();
+        let root = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
+        )
+        .required_field("row");
+        let rows_only = DataType::from(
+            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
+        )
+        .required_field("row");
+        let nanos =
+            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let batch = |counts: &[i64]| {
+            Serie::from_scalars(
+                rows_only.clone(),
+                counts
+                    .iter()
+                    .map(|count| Scalar::from_sequence([nanos(*count)])),
+            )
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+        };
+
+        // Two batches of one layout: the derived column is in the reader's
+        // schema before either is pulled, and every batch carries it.
+        let (first, second) = (batch(&[1, 900_000_000_001]), batch(&[1_800_000_000_000]));
+        let reader = yggdryl::arrow::batch_reader(first.schema(), [first, second]);
+        let filled = root.as_transform().apply_arrow_reader(reader).unwrap();
+        let schema = filled.schema();
         assert_eq!(
-            inner.column_by_name("twice").unwrap().as_ref(),
-            &Int64Array::from(vec![Some(2), None]) as &dyn Array
+            schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect::<Vec<_>>(),
+            ["currunix", "partunix"]
         );
+        let mut read = Vec::new();
+        for filled in filled {
+            let filled = filled.unwrap();
+            assert_eq!(filled.schema(), schema);
+            let rows =
+                Serie::from_arrow_batch(Some(&root), &filled, ArrowCastOptions::new()).unwrap();
+            for position in 0..rows.len() {
+                read.push(rows.scalar(position).unwrap().as_sequence().unwrap()[1].clone());
+            }
+        }
+        assert_eq!(
+            read,
+            vec![nanos(0), nanos(900_000_000_000), nanos(1_800_000_000_000)]
+        );
+
+        // A schema deriving nothing hands the reader back: its batches are
+        // the caller's own.
+        let plain = batch(&[5]);
+        let reader = yggdryl::arrow::batch_reader(plain.schema(), [plain.clone()]);
+        let mut same = rows_only.as_transform().apply_arrow_reader(reader).unwrap();
+        assert_eq!(same.schema(), plain.schema());
+        assert_eq!(same.next().unwrap().unwrap(), plain);
+
+        // Rows that cannot answer the term are refused before a batch is
+        // pulled, naming the column the term reads.
+        let other = Serie::from_scalars(
+            DataType::from(
+                StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+            )
+            .required_field("row"),
+            [Scalar::from_sequence([Scalar::from(1_i64)])],
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
+        let reader = yggdryl::arrow::batch_reader(other.schema(), [other]);
+        let Err(error) = root.as_transform().apply_arrow_reader(reader) else {
+            panic!("a stream without the term's column was filled");
+        };
+        assert!(error.to_string().contains("currunix"), "{error}");
     }
 }

@@ -164,9 +164,9 @@ assert.ok(state.asDigest().equals(symbol.digest()))
 ## Declare a row-digest column and fill it
 
 Mark one field `DIGEST:role=holder` (its `digest` view, or metadata at
-construction) and leave its sources ordinary columns; a state's
-`applyArrowBatch(root, batch, force?)` adds and fills it through a copied
-Arrow IPC batch.
+construction), name what it reads with `digest.by`, and leave those columns
+ordinary; a state's `applyArrowBatch(root, batch, force?)` adds and fills it
+through a copied Arrow IPC batch.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -175,7 +175,7 @@ const { DataType, Field, Scalar, xxhash } = require('yggdryl')
 
 const key = new Field('key', 'uint64', false)
 key.digest.set('role', 'holder')
-key.digest.set('sources', '["symbol"]')
+key.digest.by = ['symbol']
 const root = new Field(
   'row',
   DataType.fromFields([new Field('symbol', 'utf8', false), new Field('quantity', 'int64', false), key]),

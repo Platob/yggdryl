@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingpaymentstreamcompoundingdatesbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreamcompoundingdatesbusinesscenters",
-          "FIX:tag": "42915"
-        }
-      },
-      {
         "name": "underlyingpaymentstreamcompoundingdatesbusinesscenters",
         "dtype": {
           "type": "null"
@@ -33,17 +22,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingpaymentstreamcompoundingdatesbusinesscenters"
-        }
-      },
-      {
-        "name": "nounderlyingpaymentstreamcompoundingdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingpaymentstreamcompoundingdates",
-          "FIX:tag": "42901"
         }
       },
       {

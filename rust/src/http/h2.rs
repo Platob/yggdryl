@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::{Buf, Bytes};
 use h2::client::SendRequest;
@@ -274,10 +274,15 @@ impl Pool {
         let slot = self.slots.of(origin);
         let request = request_of(origin, wire, ureq::http::Version::HTTP_2)?;
         let timeout = wire.timeout;
+        let connect_timeout = wire.connect_timeout.unwrap_or(self.connect_timeout);
+        // The one bound on the whole attempt, the body's reads included.
+        let until = wire
+            .deadline
+            .and_then(|deadline| Instant::now().checked_add(deadline));
         // A body read from the caller's reader cannot be read again, so a
         // refusal found after it went out cannot fall back.
         let streamed = matches!(payload, Some(Payload::Reader { length, .. }) if length > 0);
-        let outcome = runtime::wait(async {
+        let exchange = async {
             // Opening a stream - connecting, or waiting for the peer to allow
             // one more - is bounded like any phase; nothing went out yet.
             // Every handle on a connection is counted under the lock all its
@@ -285,7 +290,9 @@ impl Pool {
             let Connection {
                 send: sender,
                 answered,
-            } = match runtime::within(timeout, self.connection(origin, &slot)).await {
+            } = match runtime::within(timeout, self.connection(origin, &slot, connect_timeout))
+                .await
+            {
                 None => {
                     return Err(Declined::Failed(ureq::Error::Timeout(
                         ureq::Timeout::Connect,
@@ -328,10 +335,14 @@ impl Pool {
                     }
                 }
             }
-        })
-        .map_err(|error| Declined::Failed(ureq::Error::Io(error)))?;
+        };
+        let outcome = runtime::wait(runtime::before(until, exchange))
+            .map_err(|error| Declined::Failed(ureq::Error::Io(error)))?
+            .unwrap_or(Err(Declined::Failed(ureq::Error::Timeout(
+                ureq::Timeout::Global,
+            ))));
         match outcome {
-            Ok(response) => Ok(answer(response, timeout)?),
+            Ok(response) => Ok(answer(response, timeout, until)?),
             Err(Declined::Http1) => {
                 self.http1.insert(origin.clone(), ());
                 Err(Declined::Http1)
@@ -340,12 +351,13 @@ impl Pool {
         }
     }
 
-    /// The live connection to `origin`, opened when there is none; `None`
-    /// when the origin answered TLS with HTTP/1.1.
+    /// The live connection to `origin`, opened within `connect_timeout` when
+    /// there is none; `None` when the origin answered TLS with HTTP/1.1.
     async fn connection(
         &self,
         origin: &Origin,
         slot: &Slot<Connection>,
+        connect_timeout: Duration,
     ) -> std::result::Result<Option<Connection>, ureq::Error> {
         if let Some(connection) = ready(slot).await {
             return Ok(Some(connection));
@@ -355,7 +367,7 @@ impl Pool {
         if let Some(connection) = ready(slot).await {
             return Ok(Some(connection));
         }
-        let opened = runtime::within(self.connect_timeout, self.open(origin)).await;
+        let opened = runtime::within(connect_timeout, self.open(origin)).await;
         let Some(send) = opened.ok_or(ureq::Error::Timeout(ureq::Timeout::Connect))?? else {
             return Ok(None);
         };
@@ -641,10 +653,11 @@ async fn capacity(
 }
 
 /// The answer an HTTP/2 response is: its head read, its body left on the
-/// stream.
+/// stream, each read bounded by `timeout` and all of them by `until`.
 fn answer(
     response: ureq::http::Response<h2::RecvStream>,
     timeout: Duration,
+    until: Option<Instant>,
 ) -> std::result::Result<Answer, ureq::Error> {
     let (parts, recv) = response.into_parts();
     Ok(Answer {
@@ -655,6 +668,7 @@ fn answer(
             recv,
             chunk: Bytes::new(),
             timeout,
+            until,
             done: false,
         }),
         attempts: 1,
@@ -687,6 +701,9 @@ struct Body {
     chunk: Bytes,
     /// How long one read waits for the next frame.
     timeout: Duration,
+    /// The deadline of the attempt the body answers, past which no read
+    /// waits.
+    until: Option<Instant>,
     done: bool,
 }
 
@@ -701,7 +718,8 @@ impl Read for Body {
             if self.done {
                 return Ok(0);
             }
-            match runtime::wait_for(self.timeout, self.recv.data())? {
+            let bound = runtime::capped(self.timeout, self.until);
+            match runtime::wait_for(bound, self.recv.data())? {
                 None => {
                     return Err(io::Error::new(
                         io::ErrorKind::TimedOut,

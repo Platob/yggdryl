@@ -19,7 +19,7 @@ filter = Filter("ccy = 'EUR' and price > 100")
 assert filter.columns() == ["ccy", "price"]
 
 bound = filter.bind(schema)
-assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100.00'"
+assert str(bound.term) == "ccy = 'EUR' and price > decimal32(9,2) '100'"
 
 assert bound.matches(["EUR", Decimal("150.00"), 5])
 assert bound.matches({"ccy": "EUR", "price": Decimal("150.00"), "size": 5})
@@ -182,7 +182,7 @@ schema = Field("trades", DataType.from_fields([year, Field("price", "decimal(9,2
 
 answerable, remaining = Term("year = 2024 and price > 100").bind(schema).partition_split()
 assert str(answerable) == "year = int32 '2024'"
-assert str(remaining) == "price > decimal32(9,2) '100.00'"
+assert str(remaining) == "price > decimal32(9,2) '100'"
 ```
 
 ## Push the filter and projection into a read
@@ -217,7 +217,9 @@ with tempfile.TemporaryDirectory() as root:
 ## Run a plan against storage
 
 `execute` reads the `from` target through its holder with the read sections
-pushed down; a write verb sends the shaped stream to its target.
+pushed down; a write verb sends the shaped stream to its target. A dotted
+path is the table registered at it in `SystemWarehouse`, and
+`execute_in(warehouse)` reads a `Warehouse` of your own.
 
 ```python
 import pathlib
@@ -306,7 +308,7 @@ assert big.where("size").apply_arrow_batch(batch).column("ccy").to_pylist() == [
 
 stored = Selector("skills.triple(size) as tripled").into_field(rows)
 assert stored.dtype["tripled"].transform["function"] == "skills.triple"
-assert stored.dtype["tripled"].transform["sources"] == '["size"]'
+assert stored.dtype["tripled"].transform.by == ["size"]
 
 for function in (triple, shout, big):
     assert function.unregister()
@@ -321,9 +323,9 @@ except ValueError as error:
 
 `into_field` writes a selector as the declaration it is, each computed column
 carrying `TRANSFORM:` metadata; `Selector.from_field` reads it back, and
-`Field.apply_arrow_batch` / `apply_arrow_reader` recomputes the derivations
-on a batch. Keep the source columns in the selector: the stored field is what
-the recompute reads.
+`field.transform.apply_arrow_batch` recomputes the derivations on a batch
+(`Field.apply_arrow_batch` is the cast alone). Keep the source columns in the
+selector: the stored field is what the recompute reads.
 
 ```python
 import pyarrow as pa
@@ -338,7 +340,7 @@ assert Selector.from_field(stored) == Selector("ccy utf8 null, size * 2 as doubl
 # Recompute: the derived column may arrive absent; the transform fills it.
 holder = Selector("ccy, size, size * 2 as doubled int32").into_field(root)
 batch = pa.record_batch({"ccy": ["EUR", "USD"], "size": pa.array([3, 4], pa.int64())})
-assert holder.apply_arrow_batch(batch).column("doubled").to_pylist() == [6, 8]
+assert holder.transform.apply_arrow_batch(batch).column("doubled").to_pylist() == [6, 8]
 ```
 
 ## Read the plan, the text and the document

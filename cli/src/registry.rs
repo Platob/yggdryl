@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use yggdryl::local::LocalFolder;
-use yggdryl::{Field, FixCategory, FixCommit, FixRegistry, Result};
+use yggdryl::{Field, FixCategory, FixCommit, FixKey, FixRegistry, Result};
 
 use crate::style;
 
@@ -317,20 +317,19 @@ pub fn delete_codeset(store: &mut Store, name: &str) -> Result<()> {
 
 /// The field a key reaches, by tag, name or path.
 ///
-/// A decimal key is a tag and never an identity: the canonical holder of the
-/// tag answers, then an alternate. Anything else is a name, resolved under
-/// the registry's one fold.
+/// A key of ASCII digits is a tag and never an identity, as the dictionary's
+/// own tag reader says - no sign, no blank, `035` the tag `35`: the canonical
+/// holder of the tag answers, then an alternate. Anything else is a name,
+/// resolved under the registry's one fold.
 pub fn resolve<'registry>(
     registry: &'registry FixRegistry,
     category: FixCategory,
     key: &str,
 ) -> Result<&'registry Field> {
-    if category == FixCategory::Fields
-        && let Ok(tag) = key.parse::<i32>()
-    {
-        return registry.field_by_tag(tag);
+    match FixKey::from_text(key) {
+        FixKey::Tag(tag) if category == FixCategory::Fields => registry.field_by_tag(tag),
+        _ => registry.definition(category, key),
     }
-    registry.definition(category, key)
 }
 
 /// Creates a definition, refusing an existing identity atomically.

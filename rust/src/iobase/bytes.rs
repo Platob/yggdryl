@@ -385,6 +385,188 @@ macro_rules! delegate_iobase {
     };
 }
 
+/// What a handle that resolves to nothing declares: no representation.
+pub(crate) static UNRESOLVED_MEDIA_TYPE: std::sync::LazyLock<crate::MediaType> =
+    std::sync::LazyLock::new(crate::MediaType::default);
+
+/// Every [`IOBase`] verb but `uri` and `url`, forwarded to a handle resolved
+/// on the first call that needs one: `$get` and `$get_mut` answer the
+/// resolved [`Holder`](crate::holder::Holder) as a `Result`, and `$held` is
+/// the `OnceLock` that keeps it. A verb that returns a `Result` carries the
+/// resolution's failure; an accessor that cannot answers the empty value;
+/// `opened` and `close` read the lock and resolve nothing. What
+/// [`Uri`](crate::Uri) and the warehouse's [`Handle`](crate::Handle) share.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __delegate_resolved_iobase {
+    ($get:ident, $get_mut:ident, $held:ident) => {
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
+            $crate::IOBase::pread(self.$get()?, offset, buffer)
+        }
+
+        fn pstream_bytes(
+            &self,
+            position: u64,
+            batch_size: usize,
+        ) -> $crate::Result<$crate::ByteStream<'_>> {
+            $crate::IOBase::pstream_bytes(self.$get()?, position, batch_size)
+        }
+
+        fn read_all_bytes(&self) -> $crate::Result<Vec<u8>> {
+            $crate::IOBase::read_all_bytes(self.$get()?)
+        }
+
+        fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
+            $crate::IOBase::read_range_bytes(self.$get()?, offset, length)
+        }
+
+        fn read_digest(
+            &self,
+            algorithm: $crate::DigestAlgorithm,
+        ) -> $crate::Result<$crate::Digest> {
+            $crate::IOBase::read_digest(self.$get()?, algorithm)
+        }
+
+        fn read_range_digest(
+            &self,
+            offset: u64,
+            length: usize,
+            algorithm: $crate::DigestAlgorithm,
+        ) -> $crate::Result<$crate::Digest> {
+            $crate::IOBase::read_range_digest(self.$get()?, offset, length, algorithm)
+        }
+
+        fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> $crate::Result<usize> {
+            $crate::IOBase::pwrite(self.$get_mut()?, offset, bytes)
+        }
+
+        fn write_all_bytes(&mut self, bytes: &[u8]) -> $crate::Result<()> {
+            $crate::IOBase::write_all_bytes(self.$get_mut()?, bytes)
+        }
+
+        fn append_bytes(&mut self, bytes: &[u8]) -> $crate::Result<u64> {
+            $crate::IOBase::append_bytes(self.$get_mut()?, bytes)
+        }
+
+        fn size(&self) -> u64 {
+            self.$get().map_or(0, $crate::IOBase::size)
+        }
+
+        fn capacity(&self) -> u64 {
+            self.$get().map_or(0, $crate::IOBase::capacity)
+        }
+
+        fn reserve(&mut self, capacity: u64) -> $crate::Result<()> {
+            $crate::IOBase::reserve(self.$get_mut()?, capacity)
+        }
+
+        fn truncate(&mut self, size: u64) -> $crate::Result<()> {
+            $crate::IOBase::truncate(self.$get_mut()?, size)
+        }
+
+        fn bound_location(&self) -> Option<&$crate::fs::BoundLocation> {
+            $crate::IOBase::bound_location(self.$get().ok()?)
+        }
+
+        fn mtime(&self) -> Option<i64> {
+            $crate::IOBase::mtime(self.$get().ok()?)
+        }
+
+        fn media_type(&self) -> &$crate::MediaType {
+            self.$get().map_or(
+                &$crate::iobase::UNRESOLVED_MEDIA_TYPE,
+                $crate::IOBase::media_type,
+            )
+        }
+
+        fn applied_codec(&self) -> $crate::Codec {
+            self.$get()
+                .map_or($crate::Codec::Identity, $crate::IOBase::applied_codec)
+        }
+
+        /// Declare the resolved handle's representation. A handle that
+        /// resolves to nothing has nothing to declare it on, and every
+        /// operation that could read it names why.
+        fn set_media_type(&mut self, media_type: $crate::MediaType) {
+            if let Ok(held) = self.$get_mut() {
+                $crate::IOBase::set_media_type(held, media_type);
+            }
+        }
+
+        fn flush(&mut self) -> $crate::Result<()> {
+            $crate::IOBase::flush(self.$get_mut()?)
+        }
+
+        fn open(&mut self) -> $crate::Result<()> {
+            $crate::IOBase::open(self.$get_mut()?)
+        }
+
+        fn opened(&self) -> bool {
+            self.$held
+                .get()
+                .is_some_and(|held| $crate::IOBase::opened(held.as_ref()))
+        }
+
+        fn close(&mut self) -> $crate::Result<()> {
+            match self.$held.get_mut() {
+                Some(held) => $crate::IOBase::close(held.as_mut()),
+                // Nothing was resolved, so nothing was opened to close.
+                None => Ok(()),
+            }
+        }
+
+        fn clear(&mut self) -> $crate::Result<()> {
+            $crate::IOBase::clear(self.$get_mut()?)
+        }
+
+        fn remove(&mut self, recursive: bool) -> $crate::Result<()> {
+            $crate::IOBase::remove(self.$get_mut()?, recursive)
+        }
+
+        fn parent(&self) -> Option<$crate::holder::Holder> {
+            $crate::IOBase::parent(self.$get().ok()?)
+        }
+
+        fn child_by_path(&self, path: &str) -> $crate::Result<$crate::holder::Holder> {
+            $crate::IOBase::child_by_path(self.$get()?, path)
+        }
+
+        fn ls(&self, recursive: bool, include_private: bool) -> $crate::Listing {
+            match self.$get() {
+                Ok(held) => $crate::IOBase::ls(held, recursive, include_private),
+                Err(error) => $crate::Listing::failing(error),
+            }
+        }
+
+        fn glob(&self, pattern: &str, include_private: bool) -> $crate::Result<$crate::Listing> {
+            $crate::IOBase::glob(self.$get()?, pattern, include_private)
+        }
+
+        fn partitions(&self) -> Vec<(String, String)> {
+            self.$get()
+                .map($crate::IOBase::partitions)
+                .unwrap_or_default()
+        }
+
+        fn kind(&self) -> $crate::IOKind {
+            self.$get()
+                .map_or($crate::IOKind::Unknown, $crate::IOBase::kind)
+        }
+
+        fn is_container(&self) -> bool {
+            self.$get().is_ok_and($crate::IOBase::is_container)
+        }
+
+        fn is_atomic(&self) -> bool {
+            self.$get().is_ok_and($crate::IOBase::is_atomic)
+        }
+
+        fn is_tabular(&self) -> bool {
+            self.$get().is_ok_and($crate::IOBase::is_tabular)
+        }
+    };
+}
+
 /// A streaming reader over an [`IOBase`], advancing its own offset.
 pub struct Reader<'source> {
     pub(super) source: &'source dyn IOBase,
@@ -495,6 +677,12 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::read_arrow_field(self.as_ref(), options)
     }
 
+    // Forwarded, because a handle can answer its rows other than through its
+    // bytes - an HTTP request walks the pages of a paginated document.
+    fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
+        IOMedia::read_serie(&**self, options)
+    }
+
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         IOMedia::read_arrow_reader(self.as_ref(), options)
     }
@@ -503,7 +691,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -519,7 +707,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
     }
 
@@ -527,7 +715,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -535,7 +723,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_batch(self.as_mut(), batch, options)
     }
 
@@ -543,7 +731,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -551,7 +739,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_batch(self.as_mut(), batch, options)
     }
 }

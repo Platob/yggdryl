@@ -17,19 +17,27 @@ mod bytes;
 mod datatype;
 #[path = "serie/enums.rs"]
 mod enums;
+#[path = "serie/join.rs"]
+mod join;
 #[cfg(feature = "internals")]
 #[path = "serie/layout.rs"]
 mod layout;
+#[path = "serie/lit.rs"]
+mod lit;
 #[path = "serie/mapping.rs"]
 mod mapping;
 #[path = "serie/null.rs"]
 mod null;
+#[path = "serie/order.rs"]
+mod order;
 #[path = "serie/primitive.rs"]
 mod primitive;
 #[path = "serie/runend.rs"]
 mod runend;
 #[path = "serie/sequence.rs"]
 mod sequence;
+#[path = "serie/spill.rs"]
+mod spill;
 #[path = "serie/string.rs"]
 mod string;
 #[path = "serie/structure.rs"]

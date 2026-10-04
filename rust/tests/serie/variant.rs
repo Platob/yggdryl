@@ -262,3 +262,14 @@ fn two_columns_of_one_field_append_run_to_run() {
     assert!(refusal.to_string().contains("payload"), "{refusal}");
     assert_eq!(required.len(), 1);
 }
+
+#[test]
+fn a_fresh_variant_column_is_resident_whole_and_not_spilled() {
+    let column = payloads();
+    let leaf = column.as_variant().expect("a variant column");
+
+    let memory = SerieValue::memory_size(leaf);
+    assert!(memory > 0, "a column of rows occupies bytes");
+    assert_eq!(SerieValue::resident_size(leaf), memory);
+    assert!(!SerieValue::is_spilled(leaf));
+}

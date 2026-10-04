@@ -316,7 +316,7 @@ fn coded_catalog() -> FixRegistry {
     registry
         .set_codeset(PARTY_CODESET, &[FixCode::new("Broker", "B")])
         .unwrap();
-    for field in [party.clone(), counter.clone()] {
+    for field in [party.clone(), counter] {
         registry.insert(field).unwrap();
     }
     party.as_fix_mut().set_field_ref("PartyID").unwrap();
@@ -331,8 +331,9 @@ fn coded_catalog() -> FixRegistry {
     registry.insert(group).unwrap();
     let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
-    counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructType::from_fields([counter, group])
+    // A group is its list alone: the counter is the dictionary's field and
+    // no member of the message beside it.
+    let mut message = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("Order");

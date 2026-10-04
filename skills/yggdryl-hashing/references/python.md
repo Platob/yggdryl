@@ -153,11 +153,12 @@ state.write_scalar(symbol)
 assert state.as_digest() == symbol.digest()
 ```
 
-## Declare a row-digest column and let the schema fill it
+## Declare a row-digest column and fill it with the digest view
 
-Mark one field a holder through its `digest` view and leave its sources
-ordinary columns; `Field.apply_arrow_batch` (cast, transform, then digest)
-adds and fills it. `root.digest.apply_arrow_batch` is the digest step alone.
+Mark one field a holder through its `digest` view, name what it reads with
+`digest.by`, and leave those columns ordinary; `root.digest.apply_arrow_batch`
+casts the batch to the root and adds and fills it. `Field.apply_arrow_batch` is
+the cast alone and fills none.
 
 ```python
 import pyarrow as pa
@@ -166,7 +167,7 @@ from yggdryl import DataType, Field, Scalar
 
 key = Field("key", "uint64", nullable=False)
 key.digest.set_holder()
-key.digest.sources = ["symbol"]
+key.digest.by = ["symbol"]
 root = Field(
     "row",
     DataType.from_fields([Field("symbol", "utf8", nullable=False), Field("quantity", "int64", nullable=False), key]),
@@ -174,11 +175,10 @@ root = Field(
 )
 batch = pa.record_batch({"symbol": ["AAPL", "MSFT"], "quantity": pa.array([100, 999], pa.int64())})
 
-filled = root.apply_arrow_batch(batch)
+filled = root.digest.apply_arrow_batch(batch)
 assert filled.schema.names == ["symbol", "quantity", "key"]
 assert filled.column("key").to_pylist() == [Scalar.from_([s]).stable_hash() for s in ("AAPL", "MSFT")]
-assert root.apply_arrow_batch(filled) == filled, "a written cell is preserved"
-assert root.digest.apply_arrow_batch(batch).column("key") == filled.column("key")
+assert root.digest.apply_arrow_batch(filled) == filled, "a written cell is preserved"
 assert root.digest_field_names == ["symbol", "quantity"]
 ```
 
@@ -383,7 +383,7 @@ batch = pa.record_batch(
     {"event": pa.array([1_700_000_000_999_999], pa.timestamp("us", tz="UTC")), "symbol": ["MSFT"]}
 )
 
-filled = root.apply_arrow_batch(batch)
+filled = root.digest.apply_arrow_batch(batch)
 value = txhash.TxHash.from_bytes("s", "xxh3-64", filled.column("key")[0].as_py())
 assert value.unix == 1_700_000_000
 row = Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, 999_999, tzinfo=dt.timezone.utc), "MSFT"])
@@ -401,6 +401,6 @@ assert value.digest == row.digest()
 - `True` is refused as an instant (`TypeError`), never read as `1`.
 - `TxHasher(seed=...)` drops a secret; give a secret through
   `TxHasher.from_state(xxhash.Xxh3(seed=..., secret=...))`.
-- `row_digests` ignores a holder's `DIGEST:sources`; narrowing belongs to the
+- `row_digests` ignores a holder's `DIGEST:by`; narrowing belongs to the
   holder fill.
 - xxHash is not cryptographic and is not Iceberg `bucket[N]` (murmur3).

@@ -6,7 +6,8 @@
 //! FIX message states, the party roles a FIX flow commonly carries - each a
 //! static word that costs nothing to hold or compare, and any other word as
 //! [`IdType::Other`]. A security type carries the rule its codes follow: an
-//! ISIN closes on its check digit, a pair is stored canonical.
+//! ISIN is held by its shape and ranked by its check digit, a pair is stored
+//! canonical.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -15,9 +16,9 @@ use std::sync::LazyLock;
 use smol_str::format_smolstr;
 
 use crate::bbg::BBG_WIDTH;
-use crate::identifier::{IDENTIFIER_KEY_WIDTH, IDENTIFIER_VALUE_WIDTH, id_vocabulary};
+use crate::identifier::{IDENTIFIER_VALUE_WIDTH, IDENTIFIER_WORD_WIDTH, id_vocabulary};
 use crate::ric::RIC_WIDTH;
-use crate::{Ccy, Cfi, Country, Cusip, Error, Figi, Forex, Isin, Result, Ric, Sedol};
+use crate::{Ccy, Cfi, Country, Cusip, DataType, Error, Figi, Forex, Isin, Result, Ric, Sedol};
 
 id_vocabulary! {
     /// The type of name an identifier is: `isin`, `clordid`,
@@ -26,12 +27,14 @@ id_vocabulary! {
     /// A spelling folds to lower case without the `_`, `-`, space and `#` a
     /// spelling breaks it with, so `ISIN_Number` and `isinnumber` are both
     /// [`IdType::Isin`]; each member also reads by the code-set names FIX
-    /// gives it. Any other folded word is an [`IdType::Other`].
+    /// gives it, and by the column a market view names it by - `isincode`,
+    /// `riccode`, `cficode`. Any other folded word is an [`IdType::Other`].
     ///
     /// ```
     /// use yggdryl::IdType;
     ///
     /// assert_eq!("ISIN_Number".parse::<IdType>().unwrap(), IdType::Isin);
+    /// assert_eq!("isincode".parse::<IdType>().unwrap(), IdType::Isin);
     /// assert_eq!("bloombergsymbol".parse::<IdType>().unwrap(), IdType::Bloomberg);
     /// assert_eq!(IdType::ClOrdId.as_str(), "clordid");
     /// let house = "House Code".parse::<IdType>().unwrap();
@@ -40,31 +43,31 @@ id_vocabulary! {
     /// ```
     IdType, "an identifier type" {
         /// A CUSIP, FIX `SecurityIDSource(22)` code `1`.
-        Cusip => "cusip",
+        Cusip => "cusip" | "cusipcode" | "cusipnumber" | "cusipid",
         /// A SEDOL, code `2`.
-        Sedol => "sedol",
+        Sedol => "sedol" | "sedolcode" | "sedolnumber" | "sedolid",
         /// A QUIK code, code `3`.
         Quik => "quik",
         /// An ISIN, code `4`.
-        Isin => "isin" | "isinnumber",
+        Isin => "isin" | "isinnumber" | "isincode" | "isinid",
         /// A Reuters instrument code, code `5`.
-        Ric => "ric" | "riccode",
+        Ric => "ric" | "riccode" | "ricsymbol" | "reuterscode" | "reuterssymbol" | "reuters",
         /// An ISO 4217 currency code, code `6`.
         IsoCcy => "isoccy" | "isocurrencycode",
         /// An ISO 3166 country code, code `7`.
         IsoCtry => "isoctry" | "isocountrycode",
         /// An exchange symbol, code `8`.
-        ExchSymb => "exchsymb" | "exchangesymbol",
+        ExchSymb => "exchsymb" | "exchangesymbol" | "exchsymbol",
         /// A Consolidated Tape Association symbol, code `9`.
         Cta => "cta" | "consolidatedtapeassociation" | "ctasymbol" | "consolidatedtapeassociationsymbol",
         /// A Bloomberg symbol, code `A`.
-        Bloomberg => "bloomberg" | "bbgsymb" | "bloombergsymbol",
+        Bloomberg => "bloomberg" | "bbgsymb" | "bloombergsymbol" | "bloombergcode" | "bbg" | "bbgcode" | "bbgsymbol" | "bloombergid" | "bloombergticker",
         /// A Wertpapierkennnummer, code `B`.
-        Wkn => "wkn" | "wertpapier",
+        Wkn => "wkn" | "wertpapier" | "wkncode" | "wknnumber",
         /// A Dutch security code, code `C`.
         Dutch => "dutch",
         /// A Valor number, code `D`.
-        Valor => "valor" | "valoren",
+        Valor => "valor" | "valoren" | "valorcode" | "valornumber" | "valorid",
         /// A SICOVAM code, code `E`.
         Sicovam => "sicovam",
         /// A Belgian security code, code `F`.
@@ -72,7 +75,9 @@ id_vocabulary! {
         /// A Common Code of Clearstream and Euroclear, code `G`.
         Common => "common" | "commoncode",
         /// A clearing house's or clearing organization's own code, code `H`.
-        ClearingHouse => "clearinghouse" | "clearingorganization" | "clearinghouseclearingorganization",
+        /// `clearingorganization` alone is the party role `PartyRole(452)`
+        /// `21` names.
+        ClearingHouse => "clearinghouse" | "clearinghouseclearingorganization",
         /// An ISDA FpML product specification, code `I`.
         FpmlSpec => "fpmlspec" | "isdafpmlspecification" | "isdafpmlproductspecification",
         /// An OPRA option symbol, code `J`.
@@ -92,7 +97,7 @@ id_vocabulary! {
         /// An ISDA commodity reference price, code `R`.
         IsdaCommodity => "isdacommodity" | "isdacommodityreferenceprice",
         /// A FIGI, code `S`.
-        Figi => "figi" | "financialinstrumentglobalidentifier",
+        Figi => "figi" | "financialinstrumentglobalidentifier" | "figicode" | "figiid" | "openfigi",
         /// A legal entity identifier, code `T`.
         Lei => "lei" | "legalentityidentifier",
         /// A synthetic instrument, code `U`.
@@ -111,7 +116,7 @@ id_vocabulary! {
         /// An ISO 10962 classification.
         Cfi => "cfi" | "cficode",
         /// A venue's or a bridge's own instrument key.
-        InstrumentId => "instrumentid",
+        InstrumentId => "instrumentid" | "instrumentcode",
         /// `OrderID(37)`.
         OrderId => "orderid",
         /// `ClOrdID(11)`.
@@ -194,6 +199,8 @@ id_vocabulary! {
         ExecutingSystem => "executingsystem",
         /// `PartyRole(452)` `17`.
         ContraFirm => "contrafirm",
+        /// `PartyRole(452)` `21`.
+        ClearingOrganization => "clearingorganization",
         /// `PartyRole(452)` `22`.
         Exchange => "exchange",
         /// `PartyRole(452)` `24`.
@@ -214,12 +221,13 @@ id_vocabulary! {
         InvestmentDecisionMaker => "investmentdecisionmaker",
         /// `PartyRole(452)` `131`.
         Algorithm => "algorithm",
-    }
+    },
+    aliases
 }
 
 /// The security types FIX's `SecurityIDSource(22)` code set names, each with
 /// its one-character code, in the code set's order.
-const FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
+pub(crate) static FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
     (IdType::Cusip, '1'),
     (IdType::Sedol, '2'),
     (IdType::Quik, '3'),
@@ -255,15 +263,16 @@ const FIX_SECURITY_SOURCES: [(IdType, char); 33] = [
     (IdType::Dti, 'Y'),
 ];
 
-/// The field-name prefixes that name another instrument's identifier, never
-/// this instrument's.
+/// The words that name another instrument's identifier, never this
+/// instrument's: a field name opening with one, and a key spelling one
+/// before a security type ([`IdType::from_key_end`]).
 const REFUSED_FIELD_PREFIXES: [&str; 5] = ["leg", "underlying", "contra", "related", "benchmark"];
 
 /// The field names that are a ticker, never a security type.
 const REFUSED_FIELD_NAMES: [&str; 3] = ["ticker", "symbol", "symbolticker"];
 
 /// The words a type's spelling opens with to name a parent of the type
-/// after them, in the order a base's [`IdType::parents`] lists them: the
+/// after them, in the order a type's [`IdType::parents`] lists them: the
 /// value it held before it last changed, then its chain's first.
 const PARENT_PREFIXES: [&str; 2] = ["parent", "orig"];
 
@@ -310,7 +319,7 @@ impl IdType {
         }
     }
 
-    /// The base this type is a parent of, and its place among the base's
+    /// The type this type is a parent of, and its place among that type's
     /// [`Self::parents`]: `origclordid` is `clordid`'s first,
     /// `parentorderid` `orderid`'s first and `origorderid` its second. A
     /// word spelled `origin` or `original` before an identifier is no
@@ -357,7 +366,7 @@ impl IdType {
             .max()
             .unwrap_or(0);
         (self.is_known() || self.as_str().ends_with("id"))
-            && self.as_str().len() + longest <= IDENTIFIER_KEY_WIDTH
+            && self.as_str().len() + longest <= IDENTIFIER_WORD_WIDTH
             && self.parent_of().is_none()
     }
 
@@ -374,7 +383,7 @@ impl IdType {
         PARENT_PREFIXES
             .iter()
             .filter_map(|prefix| {
-                let mut buffer = [0_u8; IDENTIFIER_KEY_WIDTH];
+                let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
                 let spelled = buffer.get_mut(..prefix.len() + word.len())?;
                 spelled[..prefix.len()].copy_from_slice(prefix.as_bytes());
                 spelled[prefix.len()..].copy_from_slice(word.as_bytes());
@@ -433,6 +442,7 @@ impl IdType {
                 | Self::OrderOriginationFirm
                 | Self::ExecutingSystem
                 | Self::ContraFirm
+                | Self::ClearingOrganization
                 | Self::Exchange
                 | Self::CustomerAccount
                 | Self::EnteringTrader
@@ -446,26 +456,102 @@ impl IdType {
         )
     }
 
-    /// The spellings that name an identifier at the end of a key: each type
-    /// the crate names whose spelling ends with `id`, the account, and the
-    /// security codes that close on a check digit - an ISIN, a CUSIP, a
-    /// SEDOL, a FIGI.
+    /// Whether a code of this type names one listing of an instrument - its
+    /// line on one market - rather than the instrument an ISIN numbers: a
+    /// RIC, a Bloomberg symbol, an exchange, CTA, Fidessa or uniform symbol,
+    /// a SEDOL, a FIGI, a marketplace's own identifier and an instrument
+    /// key. One instrument has as many as it has markets, so a code of this
+    /// type is never filled from one market onto another's.
+    ///
+    /// ```
+    /// use yggdryl::IdType;
+    ///
+    /// assert!(IdType::Ric.is_listing());
+    /// assert!(IdType::Bloomberg.is_listing());
+    /// assert!(!IdType::Isin.is_listing());
+    /// assert!(!IdType::Cusip.is_listing());
+    /// ```
+    #[must_use]
+    pub const fn is_listing(&self) -> bool {
+        matches!(
+            self,
+            Self::Ric
+                | Self::Bloomberg
+                | Self::ExchSymb
+                | Self::Cta
+                | Self::Sedol
+                | Self::Figi
+                | Self::MktAssigned
+                | Self::Fim
+                | Self::Umtf
+                | Self::InstrumentId
+        )
+    }
+
+    /// The datatype a column of this type's values declares: the registered
+    /// code a type is checked as - `isin`, `cusip`, `sedol`, `figi`, `ric`,
+    /// `bbg`, `ccy`, `country`, `cfi`, `forex` - and `utf8` for every other
+    /// type.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, IdType};
+    ///
+    /// assert_eq!(IdType::Isin.value_dtype(), DataType::isin());
+    /// assert_eq!(IdType::Bloomberg.value_dtype(), DataType::bbg());
+    /// assert_eq!(IdType::Valor.value_dtype(), DataType::utf8());
+    /// ```
+    #[must_use]
+    pub const fn value_dtype(&self) -> DataType {
+        match self {
+            Self::Isin => DataType::isin(),
+            Self::Cusip => DataType::cusip(),
+            Self::Sedol => DataType::sedol(),
+            Self::Figi => DataType::figi(),
+            Self::Ric => DataType::ric(),
+            Self::Bloomberg => DataType::bbg(),
+            Self::IsoCcy => DataType::ccy(),
+            Self::IsoCtry => DataType::country(),
+            Self::Cfi => DataType::cfi(),
+            Self::Forex => DataType::forex(),
+            _ => DataType::utf8(),
+        }
+    }
+
+    /// The spellings that name an identifier at the end of a key: each
+    /// spelling the crate reads a type by - an alias included - that ends
+    /// with `id`, the account, the security codes that close on a check
+    /// digit - an ISIN, a CUSIP, a SEDOL, a FIGI - and each security type's
+    /// spelling ending with `code`, `symbol`, `number` or `ticker`, so a
+    /// bridge's `OMS_RICCODE` names its `ric`, its `ULLINK.ISINCODE` its
+    /// `isin` and its `OMS_BloombergTicker` its `bloomberg`. A bare `ric` or
+    /// `cfi` ends no key, since `GENERIC` names none, and `ticker` alone is
+    /// no type's spelling.
     pub(crate) fn identifier_names<'name>() -> impl Iterator<Item = &'name str> + Clone {
         let spellings: &'name [&'name str] = &Self::SPELLINGS;
-        spellings.iter().copied().filter(|spelled| {
-            spelled.ends_with("id")
-                || matches!(*spelled, "account" | "isin" | "cusip" | "sedol" | "figi")
-        })
+        spellings
+            .iter()
+            .chain(Self::ALIASES)
+            .copied()
+            .filter(|spelled| {
+                spelled.ends_with("id")
+                    || matches!(*spelled, "account" | "isin" | "cusip" | "sedol" | "figi")
+                    || (["code", "symbol", "number", "ticker"]
+                        .iter()
+                        .any(|suffix| spelled.ends_with(suffix))
+                        && Self::from_folded(spelled).is_some_and(|kind| kind.is_security()))
+            })
     }
 
     /// The type the end of a folded key names, and where in the key it
     /// starts: the longest of `names` the key ends with, stepped back over a
     /// parentage word spelled before it - `parent`, `orig`, `origin`,
     /// `original` - which stays part of the type, so `firm.x.parentorderid`
-    /// ends with `parentorderid`. A security type is refused where the key
-    /// opens with another instrument's prefix - `leg`, `underlying`,
-    /// `contra`, `related`, `benchmark` - since it names that instrument's
-    /// code. `None` where the key ends with none of `names`.
+    /// ends with `parentorderid`. A security type is refused where another
+    /// instrument's word - `leg`, `underlying`, `contra`, `related`,
+    /// `benchmark` - opens the key or ends what is spelled before the type,
+    /// after any namespace (`omsunderlyingisin`, `fix.legisin`,
+    /// `firm.x.contracusip`), since it names that instrument's code. `None`
+    /// where the key ends with none of `names`.
     pub(crate) fn from_key_end<'name>(
         folded: &str,
         names: impl IntoIterator<Item = &'name str>,
@@ -485,9 +571,10 @@ impl IdType {
         let kind = folded[at..].parse::<Self>().ok()?;
         let security =
             kind.is_security() || kind.parent_of().is_some_and(|(base, _)| base.is_security());
+        let before = folded[..at].trim_end_matches('.');
         let other_instrument = REFUSED_FIELD_PREFIXES
             .iter()
-            .any(|prefix| folded.starts_with(prefix));
+            .any(|word| folded.starts_with(word) || before.ends_with(word));
         (!(security && other_instrument)).then_some((at, kind))
     }
 
@@ -541,7 +628,7 @@ impl IdType {
     ///
     /// A value no word folds from - a byte other than an ASCII letter, a
     /// digit, `.` and the breaks a fold drops, or more than
-    /// [`IDENTIFIER_KEY_WIDTH`] of them - `ticker` in any spelling, which
+    /// [`IDENTIFIER_WORD_WIDTH`] of them - `ticker` in any spelling, which
     /// is the name a person knows an instrument by rather than a security
     /// type, and a member that names an operation's or a party's
     /// identifier.
@@ -580,7 +667,7 @@ impl IdType {
     /// where that names no member or the name holds a byte no member
     /// spells.
     fn from_security_source_name(name: &str) -> Option<Self> {
-        let mut buffer = [0_u8; IDENTIFIER_KEY_WIDTH];
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
         let mut len = 0;
         let mut depth = 0_usize;
         for byte in name.bytes() {
@@ -639,7 +726,7 @@ impl IdType {
     #[must_use]
     pub fn from_field_name(name: &str) -> Option<Self> {
         let name = name.strip_prefix('#').unwrap_or(name);
-        let mut buffer = [0_u8; crate::identifier::IDENTIFIER_KEY_WIDTH];
+        let mut buffer = [0_u8; IDENTIFIER_WORD_WIDTH];
         let folded = crate::identifier::fold_into(name, &mut buffer).ok()?;
         let field_source = |text: &str| Self::from_folded(text).filter(Self::is_field_source);
         if let Some(kind) = field_source(folded) {
@@ -707,16 +794,90 @@ impl IdType {
         )
     }
 
+    /// `value` as this type stores its letters: copied into `buffer` and
+    /// upper-cased where the type folds case and `value` holds a lower-case
+    /// letter, else `value` as it is. The one fold [`Self::value_into`]
+    /// stores by and [`Self::rank`] reads by, so a spelling ranks as the
+    /// value it is stored as. A value wider than the buffer is answered
+    /// untouched: every checked code is narrower, and its constructor
+    /// refuses it by width.
+    fn folded<'value>(
+        &self,
+        value: &'value str,
+        buffer: &'value mut [u8; IDENTIFIER_VALUE_WIDTH],
+    ) -> &'value str {
+        if !self.folds_case()
+            || value.len() > IDENTIFIER_VALUE_WIDTH
+            || !value.bytes().any(|byte| byte.is_ascii_lowercase())
+        {
+            return value;
+        }
+        let slot = &mut buffer[..value.len()];
+        slot.copy_from_slice(value.as_bytes());
+        slot.make_ascii_uppercase();
+        std::str::from_utf8(slot).expect("upper-casing keeps UTF-8")
+    }
+
+    /// How real `value` is as a value of this type, from zero to
+    /// [`Self::max_rank`]: a code's own [`CodeValue::rank`](crate::CodeValue::rank)
+    /// for the registered codes - an ISIN closing under a listed prefix two,
+    /// a CUSIP, a SEDOL or a FIGI that closes one, a listed country or a
+    /// detailed CFI code - and one for every other type, which has nothing
+    /// partial about it; zero for a value the type refuses. What
+    /// [`Identifiers`](crate::Identifiers) decides a restated key by, so a
+    /// real value replaces a placeholder, a masked number or a typo
+    /// whatever the order. A lower-case spelling ranks as the upper-case
+    /// one it folds to, for every type that folds case - the spelling an
+    /// identifier of the type is stored under. Allocation-free: every code
+    /// is inline.
+    #[must_use]
+    pub fn rank(&self, value: &str) -> u8 {
+        use crate::CodeValue;
+        let mut buffer = [0_u8; IDENTIFIER_VALUE_WIDTH];
+        let value = self.folded(value, &mut buffer);
+        match self {
+            Self::Isin => Isin::new(value).map_or(0, |code| code.rank()),
+            Self::Cusip => Cusip::new(value).map_or(0, |code| code.rank()),
+            Self::Sedol => Sedol::new(value).map_or(0, |code| code.rank()),
+            Self::Figi => Figi::new(value).map_or(0, |code| code.rank()),
+            Self::Cfi => Cfi::new(value).map_or(0, |code| code.rank()),
+            Self::IsoCcy => Ccy::new(value).map_or(0, |code| code.rank()),
+            Self::IsoCtry => Country::new(value).map_or(0, |code| code.rank()),
+            _ => 1,
+        }
+    }
+
+    /// The rank a real value of this type holds: the code's
+    /// [`CodeValue::MAX_RANK`](crate::CodeValue::MAX_RANK) for a registered
+    /// code, one for every other type.
+    #[must_use]
+    pub fn max_rank(&self) -> u8 {
+        use crate::CodeValue;
+        match self {
+            Self::Isin => <Isin as CodeValue>::MAX_RANK,
+            Self::Cfi => <Cfi as CodeValue>::MAX_RANK,
+            _ => 1,
+        }
+    }
+
+    /// Whether `value` is as real as a value of this type gets:
+    /// [`Self::rank`] at [`Self::max_rank`].
+    #[must_use]
+    pub fn is_real(&self, value: &str) -> bool {
+        self.rank(value) == self.max_rank()
+    }
+
     /// `value`, already trimmed and stating something, as this type stores
     /// it, written into `buffer` where it moves: an ISIN, a CUSIP, a SEDOL
-    /// and a FIGI close on their check digit, a CFI parses and an ISO
-    /// currency or country code is one ISO 4217 or ISO 3166 names, each
-    /// upper-cased first; a RIC is one token of printable ASCII, its case
-    /// kept; a WKN is six of `[0-9A-HJ-NP-Z]`, a Valor number one to nine
-    /// digits without a leading zero; a pair is stored as its one canonical
-    /// spelling - `eurusd` is `EUR/USD`; every other security type FIX names
-    /// takes printable ASCII within [`Self::max_value_width`], and every
-    /// other type any text within it. Nothing allocates.
+    /// and a FIGI are held by their shape - the check digit as stated, its
+    /// closing being [`Self::rank`]'s reading - a CFI, an ISO currency and
+    /// an ISO country code by their width, each upper-cased first; a RIC is
+    /// one token of printable ASCII, its case kept; a WKN is six of
+    /// `[0-9A-HJ-NP-Z]`, a Valor number one to nine digits without a
+    /// leading zero; a pair is stored as its one canonical spelling -
+    /// `eurusd` is `EUR/USD`; every other security type FIX names takes
+    /// printable ASCII within [`Self::max_value_width`], and every other
+    /// type any text within it. Nothing allocates.
     pub(crate) fn value_into<'value>(
         &self,
         value: &'value str,
@@ -737,14 +898,7 @@ impl IdType {
                 value.len()
             )));
         }
-        let value = if self.folds_case() && value.bytes().any(|byte| byte.is_ascii_lowercase()) {
-            let slot = &mut buffer[..value.len()];
-            slot.copy_from_slice(value.as_bytes());
-            slot.make_ascii_uppercase();
-            std::str::from_utf8(slot).expect("upper-casing keeps UTF-8")
-        } else {
-            value
-        };
+        let value = self.folded(value, buffer);
         match self {
             Self::Isin => drop(Isin::new(value)?),
             Self::Cusip => drop(Cusip::new(value)?),

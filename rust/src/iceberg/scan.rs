@@ -32,12 +32,15 @@ use arrow_schema::{Schema as ArrowSchema, SchemaRef};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::{DataFile, EntryStatus, ManifestContent, ManifestEntry, ManifestFile};
+use super::metadata::SortOrder;
 use super::partition::{PartitionSpec, Transform};
 use super::value::single_to_value;
 use crate::arrow::BatchReader;
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
-use crate::expression::{Bound, Bounds};
+use crate::expression::eval::{EpochPeriod, TimeBucket};
+use crate::expression::{Bound, Bounds, Function, Term};
 use crate::holder::Holder;
+use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
@@ -159,9 +162,11 @@ pub(super) fn conjuncts(schema: &Field, filter: &Filter) -> Result<Vec<Bound>> {
 ///
 /// Only [`Transform::Identity`] answers: it is the one transform whose
 /// partition value *is* the column value, so every row of a file whose tuple
-/// holds it holds it. A bucket, a truncation, or a calendar transform stores
-/// something else, so a predicate on its source column falls through to the
-/// file's own statistics and then to the rows themselves.
+/// holds it holds it. A time transform stores the period the value falls in,
+/// which bounds the column as a range instead ([`period_column`]); a bucket
+/// or a truncation stores something no range of the source describes, so a
+/// predicate on its source column falls through to the file's own statistics
+/// and then to the rows themselves.
 pub(super) fn identity_column<'schema>(
     spec: &PartitionSpec,
     position: usize,
@@ -171,74 +176,345 @@ pub(super) fn identity_column<'schema>(
     if source.transform != Transform::Identity {
         return None;
     }
+    source_column(spec, position, schema)
+}
+
+/// The column a time partition field floors, with the period it floors to.
+///
+/// Every source value of a file whose tuple holds period `k` lies in
+/// `[start(k), start(k + 1))`, so the tuple bounds the source column as a
+/// range the way an identity tuple bounds it as one value - a coarser
+/// statistic, but one a predicate on the source column prunes by through
+/// the one rule every column statistic prunes by, with no second reading
+/// of the predicate onto the partition value. `year` through `hour` and
+/// `minutes[n]`, `week` and `quarter` all answer.
+pub(super) fn period_column<'schema>(
+    spec: &PartitionSpec,
+    position: usize,
+    schema: &'schema Field,
+) -> Option<(&'schema Field, EpochPeriod)> {
+    let period = spec.fields.get(position)?.transform.epoch_period()?;
+    Some((source_column(spec, position, schema)?, period))
+}
+
+/// The column a derived partition column floors, with the bucket it floors
+/// to.
+///
+/// A table computes the columns its schema derives for every row written to
+/// it, so a column declaring `time_bucket(width, x)` holds the bucket `x`
+/// falls in: its partition value bounds `x` as the range
+/// `[start, start + width)`, exactly as a time transform's period bounds its
+/// source ([`period_column`]). That is what lets a window on `x` rule out a
+/// manifest by its summary of the bucket, without the predicate naming the
+/// bucket at all. Only a declaration over one top-level column of the
+/// bucket's own datatype answers.
+pub(super) fn bucket_column<'schema>(
+    column: &Field,
+    schema: &'schema Field,
+) -> Option<(&'schema Field, TimeBucket)> {
+    let term = column.as_transform().term().ok()??;
+    let Term::Function(Function::TimeBucket, arguments) = &term else {
+        return None;
+    };
+    let [width, source] = &arguments[..] else {
+        return None;
+    };
+    let source = source.as_column()?;
+    let source = schema.fields().iter().find(|held| held.name() == source)?;
+    if source.dtype() != column.dtype() {
+        return None;
+    }
+    let bucket = TimeBucket::new(width.as_literal()?.value(), source.dtype()).ok()?;
+    Some((source, bucket))
+}
+
+/// The inclusive range of source values the buckets from `lower` to `upper`
+/// hold: from the first bucket's start to the last instant of the last one.
+fn bucket_range(
+    bucket: TimeBucket,
+    source: &DataType,
+    lower: Option<&Scalar>,
+    upper: Option<&Scalar>,
+) -> (Option<Scalar>, Option<Scalar>) {
+    let at = |count: i64| match source {
+        DataType::Date32 => i32::try_from(count).ok().map(Scalar::date32),
+        DataType::DateTime64 { unit, timezone } => Scalar::datetime64(count, *unit, *timezone).ok(),
+        _ => None,
+    };
+    let count = |value: &Scalar| match value {
+        Scalar::Date32(date) => Some(i64::from(date.count())),
+        other => other.temporal_count(),
+    };
+    let minimum = lower.and_then(count).and_then(at);
+    let maximum = upper
+        .and_then(count)
+        .and_then(|start| start.checked_add(bucket.step() - 1))
+        .and_then(at);
+    (minimum, maximum)
+}
+
+/// The top-level schema column a partition field reads.
+fn source_column<'schema>(
+    spec: &PartitionSpec,
+    position: usize,
+    schema: &'schema Field,
+) -> Option<&'schema Field> {
+    let source = spec.fields.get(position)?;
     schema
         .fields()
         .iter()
         .find(|column| column.parquet_field_id().ok().flatten() == Some(source.source_id))
 }
 
+/// The inclusive range of source values a span of periods holds.
+///
+/// `lower` and `upper` are partition values - period numbers, a `day`
+/// transform's as the `date32` it stores - and an end that is absent, or
+/// whose first instant the source's own count cannot hold, bounds nothing on
+/// its side.
+///
+/// A writer that truncated a count before the epoch toward zero rather than
+/// flooring it filed instants of period `k - 1` under period `k`, for every
+/// `k` up to zero: Apache Iceberg's Java writers once did for every such
+/// instant, and iceberg-rust 0.10 still does for the last second of a day
+/// before 1970. Java's reader keeps those files by widening its projection
+/// of a negative period to the period after it
+/// (`ProjectionUtil.fixInclusiveTimeProjection`), and the range here is the
+/// same widening seen from the file: a lowest period at or below zero bounds
+/// the source from the first instant of the period before it. Only the
+/// specification's transforms are widened, and exactly where Java widens
+/// them - `year`, `month`, `day` and `hour` of a timestamp, `year` and
+/// `month` of a date, whose `day` is the date itself - because this crate's
+/// own are written by no other writer and this one floors.
+fn period_range(
+    period: EpochPeriod,
+    source: &DataType,
+    lower: Option<&Scalar>,
+    upper: Option<&Scalar>,
+) -> (Option<Scalar>, Option<Scalar>) {
+    let number = |value: &Scalar| match value {
+        Scalar::Date32(date) => Some(i64::from(date.count())),
+        other => other.as_i64(),
+    };
+    let start = |number: i64| match source {
+        DataType::Date32 => period.start_days(number),
+        DataType::DateTime64 { unit, .. } => period.start_count(number, *unit),
+        _ => None,
+    };
+    let at = |count: i64| match source {
+        DataType::Date32 => i32::try_from(count).ok().map(Scalar::date32),
+        DataType::DateTime64 { unit, timezone } => Scalar::datetime64(count, *unit, *timezone).ok(),
+        _ => None,
+    };
+    let truncated_by_writers = match source {
+        DataType::Date32 => matches!(period, EpochPeriod::Year | EpochPeriod::Month),
+        _ => matches!(
+            period,
+            EpochPeriod::Year | EpochPeriod::Month | EpochPeriod::Day | EpochPeriod::Hour
+        ),
+    };
+    let minimum = lower
+        .and_then(number)
+        .and_then(|lowest| {
+            if truncated_by_writers && lowest <= 0 {
+                lowest.checked_sub(1)
+            } else {
+                Some(lowest)
+            }
+        })
+        .and_then(start)
+        .and_then(at);
+    let maximum = upper
+        .and_then(number)
+        .and_then(|number| number.checked_add(1))
+        .and_then(start)
+        .and_then(|next| next.checked_sub(1))
+        .and_then(at);
+    (minimum, maximum)
+}
+
+/// One column's bounds gathered from every statistic that states one.
+///
+/// Each statistic is sound on its own - every value of the column lies
+/// within it - so their intersection is too: the larger minimum, the
+/// smaller maximum, whatever order the statistics arrive in. A column two
+/// partition fields read, an identity beside a period or two periods, is
+/// bounded by the tighter of them, never by whichever the spec lists first.
+struct ColumnRange<'schema> {
+    column: &'schema Field,
+    minimum: Option<Scalar>,
+    maximum: Option<Scalar>,
+    nulls: Option<u64>,
+}
+
+impl<'schema> ColumnRange<'schema> {
+    /// Narrow to one more statistic of the same column.
+    fn narrow(&mut self, minimum: Option<Scalar>, maximum: Option<Scalar>) {
+        let dtype = self.column.dtype();
+        let keep =
+            |held: &mut Option<Scalar>, other: Option<Scalar>, wanted: std::cmp::Ordering| {
+                let Some(other) = other else {
+                    return;
+                };
+                match held {
+                    Some(current) => {
+                        if crate::expression::eval::order(dtype, &other, current) == Some(wanted) {
+                            *current = other;
+                        }
+                    }
+                    None => *held = Some(other),
+                }
+            };
+        keep(&mut self.minimum, minimum, std::cmp::Ordering::Greater);
+        keep(&mut self.maximum, maximum, std::cmp::Ordering::Less);
+    }
+}
+
+/// Fold one more statistic of `column` into the ranges gathered so far.
+fn gather<'schema>(
+    ranges: &mut Vec<ColumnRange<'schema>>,
+    column: &'schema Field,
+    minimum: Option<Scalar>,
+    maximum: Option<Scalar>,
+    nulls: Option<u64>,
+) {
+    match ranges
+        .iter_mut()
+        .find(|range| range.column.name() == column.name())
+    {
+        Some(range) => {
+            range.narrow(minimum, maximum);
+            range.nulls = range.nulls.or(nulls);
+        }
+        None => ranges.push(ColumnRange {
+            column,
+            minimum,
+            maximum,
+            nulls,
+        }),
+    }
+}
+
 /// The statistics a manifest-list row states about the files it names.
 ///
 /// This is the cheapest level there is: a summary is one row of the manifest
-/// list, so a manifest ruled out here is never opened at all. Only identity
-/// partition fields contribute, because only they bound a schema column.
+/// list, so a manifest ruled out here is never opened at all. An identity
+/// partition field bounds its schema column by the summary's own ends, and
+/// a time partition field by the first instant of its lowest period and the
+/// last of its highest; a bucket or a truncation bounds nothing. A column
+/// several fields read is bounded by the tightest of them.
 pub(super) fn manifest_bounds(
     manifest: &ManifestFile,
     spec: &PartitionSpec,
     schema: &Field,
 ) -> Bounds {
-    let mut bounds = Bounds::new(None);
+    let mut ranges: Vec<ColumnRange<'_>> = Vec::new();
     for (position, summary) in manifest.partitions.iter().enumerate() {
-        let Some(column) = identity_column(spec, position, schema) else {
+        // A summary says whether a null is present, never how many, so the
+        // only count it can state is zero. A time transform of a null is
+        // null and of a value a value, so its summary says the same of the
+        // source column.
+        let nulls = (!summary.contains_null).then_some(0);
+        if let Some(column) = identity_column(spec, position, schema) {
+            let dtype = column.dtype();
+            let decode = |held: &Option<Vec<u8>>| {
+                held.as_deref()
+                    .and_then(|bytes| single_to_value(bytes, dtype))
+            };
+            let (minimum, maximum) = if nan_free(dtype, summary.contains_nan.map(u64::from)) {
+                (decode(&summary.lower_bound), decode(&summary.upper_bound))
+            } else {
+                (None, None)
+            };
+            // The bucket of a null is null and of a value a value, so the
+            // summary says the same of the column it floors.
+            if let Some((source, bucket)) = bucket_column(column, schema) {
+                let (lowest, highest) =
+                    bucket_range(bucket, source.dtype(), minimum.as_ref(), maximum.as_ref());
+                gather(&mut ranges, source, lowest, highest, nulls);
+            }
+            gather(&mut ranges, column, minimum, maximum, nulls);
+            continue;
+        }
+        let Some((column, period)) = period_column(spec, position, schema) else {
             continue;
         };
-        let dtype = column.dtype();
+        let Ok(dtype) = spec.fields[position].transform.result_type(column.dtype()) else {
+            continue;
+        };
         let decode = |held: &Option<Vec<u8>>| {
             held.as_deref()
-                .and_then(|bytes| single_to_value(bytes, dtype))
+                .and_then(|bytes| single_to_value(bytes, &dtype))
         };
-        let (minimum, maximum) = if nan_free(dtype, summary.contains_nan.map(u64::from)) {
-            (decode(&summary.lower_bound), decode(&summary.upper_bound))
-        } else {
-            (None, None)
-        };
-        bounds = bounds.with_column(
-            column.name(),
-            minimum,
-            maximum,
-            // A summary says whether a null is present, never how many, so the
-            // only count it can state is zero.
-            (!summary.contains_null).then_some(0),
+        let (minimum, maximum) = period_range(
+            period,
+            column.dtype(),
+            decode(&summary.lower_bound).as_ref(),
+            decode(&summary.upper_bound).as_ref(),
         );
+        gather(&mut ranges, column, minimum, maximum, nulls);
     }
-    bounds
+    ranges.into_iter().fold(Bounds::new(None), |bounds, range| {
+        bounds.with_column(
+            range.column.name(),
+            range.minimum,
+            range.maximum,
+            range.nulls,
+        )
+    })
 }
 
 /// The statistics a manifest entry states about one data file.
 ///
-/// The partition tuple is the tighter of the two sources and wins: a value
-/// every row of the file shares is a minimum equal to its maximum, which is
-/// what lets a partition predicate settle a file outright rather than merely
-/// fail to rule it out.
+/// An identity partition value is the tighter of the two sources and wins: a
+/// value every row of the file shares is a minimum equal to its maximum,
+/// which is what lets a partition predicate settle a file outright rather
+/// than merely fail to rule it out. A time partition value is the period
+/// every row's source falls in, which narrows the column's own ends to the
+/// tightest of them all and stands in for a null count the file left
+/// unstated.
 pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
     let rows = u64::try_from(file.record_count).ok();
     let mut bounds = Bounds::new(rows);
     let mut settled: Vec<&str> = Vec::new();
+    let mut periods: Vec<ColumnRange<'_>> = Vec::new();
     for position in 0..spec.fields.len() {
-        let Some(column) = identity_column(spec, position, schema) else {
-            continue;
-        };
         let value = file
             .partition
             .get(position)
             .cloned()
             .unwrap_or(Scalar::Null);
-        settled.push(column.name());
-        if value.is_null() {
-            bounds = bounds.with_column(column.name(), None, None, rows);
+        if let Some(column) = identity_column(spec, position, schema) {
+            settled.push(column.name());
+            // A bucket bounds the column it floors as a period does: every
+            // row's source lies in it, and a null bucket is a null source.
+            let floored = bucket_column(column, schema);
+            if value.is_null() {
+                if let Some((source, _)) = floored {
+                    gather(&mut periods, source, None, None, rows);
+                }
+                bounds = bounds.with_column(column.name(), None, None, rows);
+                continue;
+            }
+            if let Some((source, bucket)) = floored {
+                let (minimum, maximum) =
+                    bucket_range(bucket, source.dtype(), Some(&value), Some(&value));
+                gather(&mut periods, source, minimum, maximum, Some(0));
+            }
+            bounds = bounds.with_column(column.name(), Some(value.clone()), Some(value), Some(0));
             continue;
         }
-        bounds = bounds.with_column(column.name(), Some(value.clone()), Some(value), Some(0));
+        let Some((column, period)) = period_column(spec, position, schema) else {
+            continue;
+        };
+        // A period of null is the period of a null source, so every row of
+        // the file holds null there; a period states no null at all.
+        if value.is_null() {
+            gather(&mut periods, column, None, None, rows);
+            continue;
+        }
+        let (minimum, maximum) = period_range(period, column.dtype(), Some(&value), Some(&value));
+        gather(&mut periods, column, minimum, maximum, Some(0));
     }
     for column in schema.fields() {
         if settled.contains(&column.name()) {
@@ -251,7 +527,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let decode = |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
         let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
         let nans = lookup(&file.nan_value_counts, id).and_then(|count| u64::try_from(count).ok());
-        let (minimum, maximum) = if nan_free(dtype, nans) {
+        let (mut minimum, mut maximum) = if nan_free(dtype, nans) {
             (
                 decode(bound(&file.lower_bounds, id)),
                 decode(bound(&file.upper_bounds, id)),
@@ -259,6 +535,16 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         } else {
             (None, None)
         };
+        let mut nulls = nulls;
+        if let Some(period) = periods
+            .iter_mut()
+            .find(|period| period.column.name() == column.name())
+        {
+            period.narrow(minimum, maximum);
+            minimum = period.minimum.take();
+            maximum = period.maximum.take();
+            nulls = nulls.or(period.nulls);
+        }
         if minimum.is_none() && maximum.is_none() && nulls.is_none() {
             continue;
         }
@@ -316,7 +602,10 @@ fn bound(bounds: &[(i32, Vec<u8>)], id: i32) -> Option<&[u8]> {
 ///
 /// `manifest_at` resolves a recorded manifest location into a handle, which is
 /// the table's business rather than the planner's - everything here works
-/// through what that closure returns.
+/// through what that closure returns. `ordered` names the column whose
+/// bounds a read-only plan keeps even when no filter consults them: the
+/// leading sort key an ordered record read opens a partition's files by
+/// ([`partition_groups`]).
 ///
 /// # Errors
 ///
@@ -329,6 +618,7 @@ pub(super) fn plan(
     conjuncts: &[Bound],
     schema: &Field,
     for_read: bool,
+    ordered: Option<i32>,
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
     for manifest in manifests {
@@ -357,7 +647,7 @@ pub(super) fn plan(
         // whose entries may be carried into a rewritten manifest decodes
         // everything, because a carried entry must keep its statistics.
         let entries = if for_read {
-            super::manifest::read_manifest_for_plan(&handle, !conjuncts.is_empty())?
+            super::manifest::read_planned_manifest(&handle, !conjuncts.is_empty(), ordered)?
         } else {
             super::manifest::read_manifest(&handle)?
         };
@@ -1040,7 +1330,7 @@ fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatc
         let id = field
             .metadata()
             .get(crate::metadata::PARQUET_FIELD_ID_KEY)
-            .and_then(|text| text.trim().parse::<i32>().ok());
+            .and_then(|text| integer_from_text_as::<i32>(text.as_str()));
         let target = id
             .and_then(|id| by_id.iter().find(|(candidate, _)| *candidate == id))
             .filter(|(_, target)| target.name() != field.name());
@@ -1087,10 +1377,8 @@ fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Res
         batch.schema().fields().iter().map(Arc::clone).collect();
     let mut columns = batch.columns().to_vec();
     for (field, value) in missing {
-        // The value lays out once under its field and repeats by index.
-        let column = crate::Serie::from_scalars(field.clone(), [value.clone()])
-            .map_err(crate::arrow::Error::from)
-            .and_then(|row| row.repeat(0, batch.num_rows()))
+        // The value is one constant column, laid out as it is exported.
+        let column = crate::Serie::lit(field.clone(), value.clone(), batch.num_rows())
             .and_then(|column| Ok(column.require_arrow_array()?))
             .map_err(|error| invalid(format_smolstr!("{error}")))?;
         columns.push(column);
@@ -1155,6 +1443,511 @@ pub(super) fn read_root(root: &Field, schema: &Field, filter: &Filter) -> Result
     )
 }
 
+/// Whether every row of one partition group holds the same value of the
+/// column `source_id` names: a column the spec takes by identity, unless it
+/// is floating - one group can hold both zeros, which an order tells apart.
+/// The rule the writer drops a sort key by, so a group is sorted on the
+/// keys its files were written in.
+pub(super) fn constant_in_group(spec: &PartitionSpec, schema: &Field, source_id: i32) -> bool {
+    spec.fields
+        .iter()
+        .any(|part| part.source_id == source_id && part.transform == Transform::Identity)
+        && super::partition::source_path(schema, source_id)
+            .is_ok_and(|(_, source)| !source.dtype().id().is_floating())
+}
+
+/// The first key a partition group's rows are sorted by - the first of the
+/// table's order no group holds constant - with the datatype its file
+/// bounds decode under. `None` where the order has no such key, or where
+/// it reads a nested column, for which a manifest keeps no bounds.
+struct LeadingKey {
+    /// The source column's field identifier, which keys the bounds.
+    id: i32,
+    /// The source column's datatype, which the bounds decode under.
+    dtype: DataType,
+    /// Whether the key descends.
+    descending: bool,
+}
+
+impl LeadingKey {
+    /// The leading key of `order` over `spec`, as [`Self`] states it.
+    fn of(order: &SortOrder, spec: &PartitionSpec, schema: &Field) -> Option<Self> {
+        let key = order
+            .fields
+            .iter()
+            .find(|key| !constant_in_group(spec, schema, key.source_id))?;
+        let (path, source) = super::partition::source_path(schema, key.source_id).ok()?;
+        (path.len() == 1).then(|| Self {
+            id: key.source_id,
+            dtype: source.dtype().clone(),
+            descending: key.direction == "desc",
+        })
+    }
+
+    /// Where a file's rows start in this key's direction: its lower bound
+    /// ascending, its upper bound descending; `None` where it records none.
+    fn start(&self, file: &DataFile) -> Option<Scalar> {
+        let bounds = if self.descending {
+            &file.upper_bounds
+        } else {
+            &file.lower_bounds
+        };
+        bound(bounds, self.id).and_then(|bytes| single_to_value(bytes, &self.dtype))
+    }
+
+    /// Order two starts in this key's direction, a file stating none last.
+    fn compare(&self, left: Option<&Scalar>, right: Option<&Scalar>) -> std::cmp::Ordering {
+        match (left, right) {
+            (Some(left), Some(right)) if self.descending => right.cmp(left),
+            (Some(left), Some(right)) => left.cmp(right),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+/// The column whose bounds an ordered record read opens a partition's files
+/// by, and so the one a read-only [`plan`] keeps them for: its `ordered`.
+pub(super) fn leading_key_id(
+    order: &SortOrder,
+    spec: &PartitionSpec,
+    schema: &Field,
+) -> Option<i32> {
+    LeadingKey::of(order, spec, schema).map(|key| key.id)
+}
+
+/// A read's planned files grouped by partition, in the order an ordered
+/// record read opens them - or handed back as they were planned when one
+/// belongs to a spec other than `spec`, whose tuples do not compare.
+///
+/// The groups follow their partition tuples ascending, position by
+/// position: a null where the sort key naming that identity column places
+/// it, else last; a transform's value orders as the value it is. Inside a
+/// group the files open by where their leading sort key starts
+/// ([`LeadingKey::start`]), a file stating no bound last, then by data
+/// sequence number and path - so a partition whose commits each cover a
+/// later stretch of the key arrives already in order, and the group is read
+/// once and never merged. Every field read is one the plan already holds;
+/// nothing is opened.
+pub(super) fn partition_groups(
+    tasks: Vec<ScanTask>,
+    spec: &PartitionSpec,
+    order: &SortOrder,
+    schema: &Field,
+) -> std::result::Result<Vec<Vec<ScanTask>>, Vec<ScanTask>> {
+    if tasks.iter().any(|task| task.spec.spec_id != spec.spec_id) {
+        return Err(tasks);
+    }
+    let nulls_first: Vec<bool> = spec
+        .fields
+        .iter()
+        .map(|part| {
+            part.transform == Transform::Identity
+                && order
+                    .fields
+                    .iter()
+                    .find(|key| {
+                        key.source_id == part.source_id && key.transform == Transform::Identity
+                    })
+                    .is_some_and(|key| key.null_order == "nulls-first")
+        })
+        .collect();
+    let lead = LeadingKey::of(order, spec, schema);
+    let mut keyed: Vec<(Option<Scalar>, ScanTask)> = tasks
+        .into_iter()
+        .map(|task| {
+            let start = lead
+                .as_ref()
+                .and_then(|lead| lead.start(&task.entry.data_file));
+            (start, task)
+        })
+        .collect();
+    keyed.sort_by(|(left_start, left), (right_start, right)| {
+        compare_tuples(
+            &left.entry.data_file.partition,
+            &right.entry.data_file.partition,
+            &nulls_first,
+        )
+        .then_with(|| {
+            lead.as_ref().map_or(std::cmp::Ordering::Equal, |lead| {
+                lead.compare(left_start.as_ref(), right_start.as_ref())
+            })
+        })
+        .then_with(|| left.entry.sequence_number.cmp(&right.entry.sequence_number))
+        .then_with(|| {
+            left.entry
+                .data_file
+                .file_path
+                .cmp(&right.entry.data_file.file_path)
+        })
+    });
+    let mut groups: Vec<Vec<ScanTask>> = Vec::new();
+    for (_, task) in keyed {
+        match groups.last_mut() {
+            Some(group)
+                if group.first().is_some_and(|first| {
+                    compare_tuples(
+                        &first.entry.data_file.partition,
+                        &task.entry.data_file.partition,
+                        &nulls_first,
+                    )
+                    .is_eq()
+                }) =>
+            {
+                group.push(task);
+            }
+            _ => groups.push(vec![task]),
+        }
+    }
+    Ok(groups)
+}
+
+/// Order two partition tuples position by position, a null at a position
+/// first where `nulls_first` says so and last otherwise.
+fn compare_tuples(left: &[Scalar], right: &[Scalar], nulls_first: &[bool]) -> std::cmp::Ordering {
+    for (position, (left, right)) in left.iter().zip(right).enumerate() {
+        let first = nulls_first.get(position).copied().unwrap_or(false);
+        let ordering = match (left.is_null(), right.is_null()) {
+            (true, true) => std::cmp::Ordering::Equal,
+            (true, false) if first => std::cmp::Ordering::Less,
+            (true, false) => std::cmp::Ordering::Greater,
+            (false, true) if first => std::cmp::Ordering::Greater,
+            (false, true) => std::cmp::Ordering::Less,
+            (false, false) => left.cmp(right),
+        };
+        if ordering.is_ne() {
+            return ordering;
+        }
+    }
+    left.len().cmp(&right.len())
+}
+
+/// The order an ordered record read proves over `landing` - the root its
+/// rows land under - once `select` has run: the table's order, its keys
+/// taken while `landing` binds them, `select` publishes the columns they
+/// read unchanged, and the groups were sorted on them (`sorted` keys of the
+/// writer's own, [`constant_in_group`] dropping the rest).
+///
+/// Only where partitions arriving in tuple order are the order's own
+/// leading keys: every spec field the identity of a column that is not
+/// floating, the order opening with those columns in spec order,
+/// ascending - an unpartitioned table vacuously. Anywhere else each
+/// partition is sorted on its own, and the stream across them proves no
+/// order at all.
+///
+/// Two keys are read off what the table stores rather than off the landed
+/// rows, so each holds only where `landing` reads its column as the table
+/// stores it: a column a group holds constant, ordered by the stored tuples
+/// the groups arrive in, and a transform, whose group was sorted on the
+/// column it reads. A transform is the last key declared: the image of a
+/// sorted column keeps its order, but ties within one image are in the
+/// column's order, not the next key's.
+pub(super) fn proven_order(
+    spec: &PartitionSpec,
+    order: &SortOrder,
+    schema: &Field,
+    landing: &Field,
+    select: &crate::Selector,
+    sorted: usize,
+) -> Vec<crate::expression::Ordering> {
+    let leading = spec.fields.iter().enumerate().all(|(position, part)| {
+        part.transform == Transform::Identity
+            && order.fields.get(position).is_some_and(|key| {
+                key.source_id == part.source_id
+                    && key.transform == Transform::Identity
+                    && key.direction == "asc"
+            })
+            && identity_column(spec, position, schema)
+                .is_some_and(|column| !column.dtype().id().is_floating())
+    });
+    if !leading {
+        return Vec::new();
+    }
+    let Ok(keys) = order.into_orderings(schema) else {
+        return Vec::new();
+    };
+    let mut proven = Vec::with_capacity(keys.len());
+    let mut sorting = 0;
+    for (field, key) in order.fields.iter().zip(keys) {
+        let constant = constant_in_group(spec, schema, field.source_id);
+        if !constant {
+            if sorting == sorted {
+                break;
+            }
+            sorting += 1;
+        }
+        if key.term().bind(landing).is_err() || !publishes_unchanged(select, key.term()) {
+            break;
+        }
+        let transformed = field.transform != Transform::Identity;
+        if (constant || transformed) && !lands_as_stored(landing, schema, field.source_id) {
+            break;
+        }
+        proven.push(key);
+        if transformed && !constant {
+            break;
+        }
+    }
+    proven
+}
+
+/// Whether `landing` reads the column `source_id` names as `schema` stores
+/// it: the same path, the same datatype.
+fn lands_as_stored(landing: &Field, schema: &Field, source_id: i32) -> bool {
+    let Ok((path, source)) = super::partition::source_path(schema, source_id) else {
+        return false;
+    };
+    let mut landed = Some(landing);
+    for name in &path {
+        landed = landed.and_then(|field| field.dtype().get_field_by_name(name));
+    }
+    landed.is_some_and(|landed| landed.dtype() == source.dtype())
+}
+
+/// Whether `select` publishes every column `term` reads as it is stored,
+/// under its own name, one row per row: so a key the rows are ordered by
+/// binds, and orders them, on the far side of it too.
+fn publishes_unchanged(select: &crate::Selector, term: &crate::Term) -> bool {
+    if select.is_all() {
+        return true;
+    }
+    if select.unnests() {
+        return false;
+    }
+    term.columns().iter().all(|column| {
+        let starred = select.has_star()
+            && !select
+                .excluded()
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(column))
+            && !select
+                .projections()
+                .iter()
+                .any(|projection| projection.name().eq_ignore_ascii_case(column));
+        starred
+            || select.projections().iter().any(|projection| {
+                projection.is_column() && projection.term().as_column() == Some(column.as_str())
+            })
+    })
+}
+
+/// `root` declaring `keys` as the order its rows keep; as it is for none.
+///
+/// # Errors
+///
+/// Returns an error when the declaration cannot be written.
+pub(super) fn declaring(mut root: Field, keys: Vec<crate::expression::Ordering>) -> Result<Field> {
+    if !keys.is_empty() {
+        root.as_sort_mut().set_by(keys)?;
+    }
+    Ok(root)
+}
+
+/// What every partition group of an ordered read is decoded under: the
+/// arguments [`reader`] takes, kept so each group opens its own.
+pub(super) struct GroupScan {
+    /// The root the rows land under, declaring no order.
+    pub(super) root: Field,
+    /// That root plus the columns the filters read.
+    pub(super) read_root: Field,
+    /// The read root of the root that declares what the read proves: what
+    /// the transport face casts each file's batches into, so they cross
+    /// under that root's schema.
+    pub(super) declared_read_root: Field,
+    /// The column pushdown handed to each file, when the caller gave one.
+    pub(super) target: Option<Field>,
+    /// The conjuncts, indexed by every part's residual list.
+    pub(super) predicates: Vec<Bound>,
+    /// The parallel-read decision every group's reader makes.
+    pub(super) parallel: super::options::ReadSettings,
+    /// Whether a file may store a column under another name.
+    pub(super) renamed: bool,
+}
+
+/// The records an ordered read yields: partition after partition, each
+/// group's rows in the order `sorting` states.
+///
+/// A group is opened only when the one before it has yielded its last
+/// record, so a satisfied consumer - a row limit - never decodes the next.
+/// A group that needs no sort streams its scan's batches as they land; one
+/// that does lands them into one [`ChunkedSerie`](crate::ChunkedSerie) - spilled under the
+/// process bound as they arrive - and yields its chunks: as they landed
+/// where they already keep the order, chunk by chunk and edge by edge,
+/// else sorted out of core and merged. At most one group is held at once.
+/// Every record is relabelled under `root`, which declares what the read
+/// proves.
+///
+/// Two faces: [`Self::into_serie_reader`], the records, and
+/// [`Self::into_arrow_reader`], the transport - which, where no group needs
+/// a sort, is the scan itself and lands nothing.
+pub(super) struct Partitions {
+    /// The groups not yet opened, in the order they are yielded.
+    groups: std::vec::IntoIter<Vec<ScanPart>>,
+    /// How every group is decoded.
+    scan: GroupScan,
+    /// The keys each group is sorted by; none to stream it.
+    sorting: Vec<crate::expression::Ordering>,
+    /// The root every yielded record is typed by.
+    root: Arc<Field>,
+    /// The group being yielded.
+    open: Option<Group>,
+}
+
+/// One opened partition group.
+enum Group {
+    /// A group needing no sort: its scan's batches as they land.
+    Streamed(crate::SerieReader),
+    /// A sorted group's chunks.
+    Held(std::vec::IntoIter<crate::Serie>),
+}
+
+impl Partitions {
+    /// The ordered read of `groups`, each decoded under `scan`, sorted by
+    /// `sorting`, and yielded under `root`.
+    ///
+    /// Groups needing no sort are never held, so their files stream as one
+    /// scan - the groups' files in group order - decoded side by side
+    /// across partitions where the plan is worth it, as any scan is.
+    pub(super) fn new(
+        groups: Vec<Vec<ScanPart>>,
+        scan: GroupScan,
+        sorting: Vec<crate::expression::Ordering>,
+        root: Arc<Field>,
+    ) -> Self {
+        let groups = if sorting.is_empty() {
+            vec![groups.into_iter().flatten().collect()]
+        } else {
+            groups
+        };
+        Self {
+            groups: groups.into_iter(),
+            scan,
+            sorting,
+            root,
+            open: None,
+        }
+    }
+
+    /// Decode one group's files, and hold and sort them where it needs it.
+    fn open_group(&self, parts: Vec<ScanPart>) -> crate::arrow::Result<Group> {
+        let scan = &self.scan;
+        let batches = reader(
+            parts,
+            scan.root.clone(),
+            scan.read_root.clone(),
+            scan.target.clone(),
+            scan.predicates.clone(),
+            &scan.parallel,
+            scan.renamed,
+        )?;
+        let landed = crate::SerieReader::from_arrow_reader(
+            Some(&scan.root),
+            batches,
+            ArrowCastOptions::new(),
+        )?;
+        if self.sorting.is_empty() {
+            return Ok(Group::Streamed(landed));
+        }
+        // The same two calls a partition group is written through: the
+        // chunks as they landed where they already keep the order, read
+        // once chunk by chunk and edge by edge, else each sorted on its
+        // own and merged, the output settled.
+        let hold = crate::ChunkedSerie::from_serie_reader(landed)?;
+        let hold = if hold.keeps_order(&self.sorting)? {
+            hold
+        } else {
+            hold.into_sort_by(self.sorting.as_slice())?
+        };
+        Ok(Group::Held(hold.chunks().to_vec().into_iter()))
+    }
+
+    /// Stop: nothing more is opened or yielded.
+    fn fuse(&mut self) {
+        self.groups = Vec::new().into_iter();
+        self.open = None;
+    }
+
+    /// The read's records, under `root`.
+    ///
+    /// Lazy, so no record is verified again on its way out: every group
+    /// was proven in its order where it was held - `keeps_order` read it
+    /// chunk by chunk and edge by edge, or `into_sort_by` laid it out - and
+    /// the groups arrive in tuple order, which is the order's own leading
+    /// keys wherever the root declares one ([`proven_order`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root does not project into Arrow.
+    pub(super) fn into_serie_reader(self) -> crate::arrow::Result<crate::SerieReader> {
+        crate::SerieReader::from_landed_iter(Arc::clone(&self.root), self)
+    }
+
+    /// The read as transport, under `root`'s schema.
+    ///
+    /// Where no group needs a sort the batches are the scan's own - the
+    /// groups' files in group order, each batch reconciled to `root` and
+    /// never landed, so nothing is proven or copied that a scan does not
+    /// prove or copy. Otherwise the held groups' records, as batches.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the root does not project into Arrow.
+    pub(super) fn into_arrow_reader(self) -> crate::arrow::Result<BatchReader> {
+        if !self.sorting.is_empty() {
+            return Ok(self.into_serie_reader()?.into_arrow_reader());
+        }
+        let Self {
+            groups, scan, root, ..
+        } = self;
+        Ok(reader(
+            groups.flatten().collect(),
+            Arc::unwrap_or_clone(root),
+            scan.declared_read_root,
+            scan.target,
+            scan.predicates,
+            &scan.parallel,
+            scan.renamed,
+        )?)
+    }
+}
+
+impl Iterator for Partitions {
+    type Item = crate::arrow::Result<crate::Serie>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let pulled = match self.open.as_mut() {
+                Some(Group::Streamed(records)) => records.next(),
+                // A sorted group's empty chunk - a file the residual
+                // emptied - has nothing to yield.
+                Some(Group::Held(chunks)) => chunks.find(|chunk| !chunk.is_empty()).map(Ok),
+                None => None,
+            };
+            match pulled {
+                Some(Ok(record)) => {
+                    return Some(Ok(record.into_relabeled(Arc::clone(&self.root))));
+                }
+                Some(Err(error)) => {
+                    self.fuse();
+                    return Some(Err(error));
+                }
+                None => self.open = None,
+            }
+            let parts = self.groups.next()?;
+            match self.open_group(parts) {
+                Ok(group) => self.open = Some(group),
+                Err(error) => {
+                    self.fuse();
+                    return Some(Err(error));
+                }
+            }
+        }
+    }
+}
+
+impl std::iter::FusedIterator for Partitions {}
+
 /// Report a scan a table's metadata cannot describe.
 fn invalid(reason: SmolStr) -> Error {
     Error::Codec {
@@ -1203,6 +1996,24 @@ pub mod internals {
         super::identity_column(spec, position, schema)
     }
 
+    /// The statistics a manifest-list row states about the files it names.
+    pub fn manifest_bounds(
+        manifest: &ManifestFile,
+        spec: &PartitionSpec,
+        schema: &Field,
+    ) -> Bounds {
+        super::manifest_bounds(manifest, spec, schema)
+    }
+
+    /// The source column a time partition field bounds, by name.
+    pub fn period_column_name(
+        spec: &PartitionSpec,
+        position: usize,
+        schema: &Field,
+    ) -> Option<String> {
+        super::period_column(spec, position, schema).map(|(column, _)| column.name().to_owned())
+    }
+
     /// Fill one null data-file row id from its v3 manifest range.
     pub fn inherit_first_row_id(
         entry: &mut ManifestEntry,
@@ -1220,7 +2031,15 @@ pub mod internals {
         schema: &Field,
         for_read: bool,
     ) -> Result<ScanPlan> {
-        super::plan(manifests, spec_of, manifest_at, conjuncts, schema, for_read)
+        super::plan(
+            manifests,
+            spec_of,
+            manifest_at,
+            conjuncts,
+            schema,
+            for_read,
+            None,
+        )
     }
 
     /// Reject a manifest row a data scan cannot interpret.

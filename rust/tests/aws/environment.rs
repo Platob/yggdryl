@@ -111,7 +111,10 @@ fn a_session_that_consults_no_environment_reads_no_variable_even_one_it_was_hand
     }
     assert_eq!(session.profile_name(), "default");
     assert_eq!(session.region(), None);
-    assert_eq!(session.endpoint_url("s3"), None);
+    assert_eq!(
+        session.endpoint_url("s3").expect("a readable endpoint"),
+        None
+    );
     assert!(!session.use_fips_endpoint());
 
     let consulting = session.with_environment(true);
@@ -143,14 +146,16 @@ fn a_session_over_the_process_environment_reads_it() {
 }
 
 #[test]
-fn a_boolean_variable_is_true_in_the_spellings_the_tools_accept_and_false_otherwise() {
-    for value in ["true", "TRUE", " True ", "1", "yes", "on"] {
+fn a_boolean_variable_reads_the_one_boolean_table_and_is_false_otherwise() {
+    for value in [
+        "true", "TRUE", " True ", "t", "tru", "1", "yes", "y", "ye", "on",
+    ] {
         let session = Session::new()
             .with_variables([("AWS_USE_FIPS_ENDPOINT", value)])
             .with_directory(scratch("environment-flag-true"));
         assert!(session.use_fips_endpoint(), "{value:?} spells true");
     }
-    for value in ["false", "0", "no", "off", "maybe", ""] {
+    for value in ["false", "f", "0", "no", "n", "off", "of", "maybe", ""] {
         let session = Session::new()
             .with_variables([("AWS_USE_FIPS_ENDPOINT", value)])
             .with_directory(scratch("environment-flag-false"));
@@ -222,6 +227,24 @@ mod internal {
             "AWS_ENDPOINT_URL_DYNAMODB",
         ] {
             assert!(is_native(name), "{name} names one service's endpoint");
+        }
+    }
+
+    #[test]
+    fn a_variable_the_session_reads_is_its_own_in_any_case() {
+        // A name is the session's whatever its case: on Windows the session
+        // reads `aws_endpoint_url_s3` as `AWS_ENDPOINT_URL_S3`, and on POSIX
+        // it is a name the AWS tools never read - neither is the sweep's to
+        // turn into a knob of its own.
+        for name in [
+            "aws_endpoint_url_s3",
+            "Aws_Endpoint_Url_Sts",
+            "aws_endpoint_url",
+            "aws_ignore_configured_endpoint_urls",
+            "aws_region",
+            "aws_access_key_id",
+        ] {
+            assert!(is_native(name), "{name} is the session's to read");
         }
     }
 

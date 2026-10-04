@@ -33,8 +33,8 @@
 //! secret - for every value, row, or batch it answers. The [`arrow`] module
 //! answers whole columns: a timestamp, date, or integer column beside a batch
 //! becomes one `fixed_size_binary` column of coupled values, and a digest
-//! holder declaring `DIGEST:time` is filled the same way by every
-//! `apply_arrow_batch`.
+//! holder declaring `DIGEST:time` is filled the same way by every digest
+//! fill's `apply_arrow_batch`.
 //!
 //! # What the instant means
 //!

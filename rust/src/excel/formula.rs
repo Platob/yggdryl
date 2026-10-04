@@ -102,18 +102,28 @@ impl Clock {
     /// Use the system UTC instant, interpreted in `timezone` once per pass.
     #[must_use]
     pub const fn system(timezone: Timezone) -> Self {
-        Self { source: ClockSource::System, timezone, seed: 0 }
+        Self {
+            source: ClockSource::System,
+            timezone,
+            seed: 0,
+        }
     }
 
     /// Use one Unix nanosecond instant and a deterministic random seed.
     #[must_use]
     pub const fn fixed(unix_nanos: i64, timezone: Timezone, seed: u64) -> Self {
-        Self { source: ClockSource::Fixed(unix_nanos), timezone, seed }
+        Self {
+            source: ClockSource::Fixed(unix_nanos),
+            timezone,
+            seed,
+        }
     }
 }
 
 impl Default for Clock {
-    fn default() -> Self { Self::system(Timezone::UTC) }
+    fn default() -> Self {
+        Self::system(Timezone::UTC)
+    }
 }
 
 /// One instant and random seed for a successful-or-rolled-back calculation pass.
@@ -132,22 +142,32 @@ impl Clock {
             ClockSource::Fixed(nanos) => i128::from(nanos),
             ClockSource::System => {
                 let sampled = SystemTime::now().duration_since(UNIX_EPOCH);
-                let magnitude = sampled.as_ref().map_or_else(
-                    |early| early.duration().as_nanos(),
-                    |late| late.as_nanos(),
-                );
+                let magnitude = sampled
+                    .as_ref()
+                    .map_or_else(|early| early.duration().as_nanos(), |late| late.as_nanos());
                 let magnitude = i128::try_from(magnitude).map_err(|_| Error::InvalidRecord {
                     path: "$.clock".into(),
-                    reason: "expected a representable system instant, got an out-of-range clock".into(),
+                    reason: "expected a representable system instant, got an out-of-range clock"
+                        .into(),
                 })?;
-                if sampled.is_ok() { magnitude } else { -magnitude }
+                if sampled.is_ok() {
+                    magnitude
+                } else {
+                    -magnitude
+                }
             }
         };
         let seed = match self.source {
             ClockSource::System => self.seed ^ crate::xxhash::xxh3(&nanos.to_le_bytes()),
             ClockSource::Fixed(_) => self.seed,
         };
-        Ok(PassClock { nanos, timezone: self.timezone, seed, pass, serial: None })
+        Ok(PassClock {
+            nanos,
+            timezone: self.timezone,
+            seed,
+            pass,
+            serial: None,
+        })
     }
 }
 
@@ -156,29 +176,46 @@ impl PassClock {
         let now = match self.serial {
             Some(now) => now,
             None => {
-                let seconds = i64::try_from(self.nanos.div_euclid(1_000_000_000))
-                    .map_err(|_| Error::InvalidRecord {
-                        path: "$.clock".into(),
-                        reason: "expected an Excel date-system instant, got an out-of-range clock".into(),
+                let seconds =
+                    i64::try_from(self.nanos.div_euclid(1_000_000_000)).map_err(|_| {
+                        Error::InvalidRecord {
+                            path: "$.clock".into(),
+                            reason:
+                                "expected an Excel date-system instant, got an out-of-range clock"
+                                    .into(),
+                        }
                     })?;
                 let local = if self.timezone.is_naive() {
                     seconds
                 } else {
-                    self.timezone.into_local(seconds).map_err(|error| Error::InvalidRecord {
-                        path: "$.clock.timezone".into(),
-                        reason: format_smolstr!("expected a resolved wall-clock zone, got {error}"),
-                    })?
+                    self.timezone
+                        .into_local(seconds)
+                        .map_err(|error| Error::InvalidRecord {
+                            path: "$.clock.timezone".into(),
+                            reason: format_smolstr!(
+                                "expected a resolved wall-clock zone, got {error}"
+                            ),
+                        })?
                 };
-                let millis = local.checked_mul(1_000)
-                    .and_then(|value| value.checked_add((self.nanos.rem_euclid(1_000_000_000) / 1_000_000) as i64))
+                let millis = local
+                    .checked_mul(1_000)
+                    .and_then(|value| {
+                        value.checked_add((self.nanos.rem_euclid(1_000_000_000) / 1_000_000) as i64)
+                    })
                     .ok_or_else(|| Error::InvalidRecord {
                         path: "$.clock".into(),
-                        reason: "expected an Excel date-system instant, got an out-of-range clock".into(),
+                        reason: "expected an Excel date-system instant, got an out-of-range clock"
+                            .into(),
                     })?;
-                let now = system.serial_from_millis(millis).map_err(|error| Error::InvalidRecord {
-                    path: "$.clock".into(),
-                    reason: format_smolstr!("expected an Excel date-system instant, got {error}"),
-                })?;
+                let now =
+                    system
+                        .serial_from_millis(millis)
+                        .map_err(|error| Error::InvalidRecord {
+                            path: "$.clock".into(),
+                            reason: format_smolstr!(
+                                "expected an Excel date-system instant, got {error}"
+                            ),
+                        })?;
                 self.serial = Some(now);
                 now
             }

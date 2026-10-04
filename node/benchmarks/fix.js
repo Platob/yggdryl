@@ -110,7 +110,6 @@ const order = fields.struct(
   [
     registry.fieldByTag(55),
     registry.fieldByTag(38),
-    registry.fieldByName('NoPartyIDs'),
     registry.fieldByName('Parties'),
   ],
   { nullable: false },
@@ -120,7 +119,6 @@ const message = new fix.FixMsg(
   {
     symbol: 'AAPL',
     orderqty: Scalar.decimal(100n * 10n ** 18n, 18),
-    nopartyids: 1,
     parties: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
   },
   registry,
@@ -142,8 +140,9 @@ parties.fix.component = 'Party'
 catalog.insert(parties)
 const occurrence = catalog.fieldByName('Parties')
 occurrence.fix.group = 'Parties'
-counter.fix.fieldRef = 'NoPartyIDs'
-const definition = fields.struct('NewOrderSingle', [counter, occurrence], { nullable: false })
+// A group is its list alone: the counter is the dictionary's field and no
+// member of the message beside it.
+const definition = fields.struct('NewOrderSingle', [occurrence], { nullable: false })
 definition.fix.msgtype = 'D'
 catalog.insert(definition)
 const snapshot = catalog.intoJson()

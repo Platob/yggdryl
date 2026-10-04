@@ -11,10 +11,17 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, IOBase, fields } = require('yggdryl')
+const { BatchReader, Field, IOBase, IOResult, fields } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-entrypoints-'))
+}
+
+// What a write answered: the rows it read, wrote and skipped, as the core
+// counted them.
+function counts(result) {
+  assert.ok(result instanceof IOResult, `expected an IOResult, got ${result}`)
+  return [result.readRows, result.writtenRows, result.skippedRows]
 }
 
 function table(ids = [1n, 2n], venues = ['XNAS', 'XNYS']) {
@@ -55,7 +62,7 @@ function optionsForIntent(handle, intent, cadence = null) {
     .recordOptions()
     .withField(handle.readArrowField())
     .withBatchRowSize(2)
-  if (cadence !== null) options = options.withCommitRowSize(cadence)
+  if (cadence !== null) options = options.withCommitBatchNum(cadence)
   if (intent === 'merge') options = options.withMergeBy(['id'])
   return options
 }
@@ -88,11 +95,27 @@ test('reader, table, and record-batch entry points preserve explicit intent', (t
 
   for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch']) {
     const handle = new IOBase(path.join(root, `${suffix}.arrows`))
-    handle[`overwrite${suffix}`](sourceFor(suffix, table()))
-    handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON'])))
-    handle[`merge${suffix}`](
-      sourceFor(suffix, table([2n, 4n], ['XPAR', 'XTKS'])),
-      handle.recordOptions().withMergeBy(['id']),
+    // Each intent answers the rows it took from its source and wrote, never
+    // the rows the resource holds after it.
+    assert.deepEqual(
+      counts(handle[`overwrite${suffix}`](sourceFor(suffix, table()))),
+      [2, 2, 0],
+      suffix,
+    )
+    assert.deepEqual(
+      counts(handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON'])))),
+      [1, 1, 0],
+      suffix,
+    )
+    assert.deepEqual(
+      counts(
+        handle[`merge${suffix}`](
+          sourceFor(suffix, table([2n, 4n], ['XPAR', 'XTKS'])),
+          handle.recordOptions().withMergeBy(['id']),
+        ),
+      ),
+      [2, 2, 0],
+      suffix,
     )
 
     const stored = rowsOf(handle)
@@ -112,18 +135,27 @@ test('generic write entry points dispatch every representation by mode', (t) => 
 
   for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
     const handle = new IOBase(path.join(root, `generic-${suffix}.arrows`))
-    handle[`write${suffix}`](
+    const overwritten = handle[`write${suffix}`](
       committedSourceFor(suffix, [1n, 2n], ['XNAS', 'XNYS']),
       'overwrite',
     )
-    handle[`write${suffix}`](
+    const appended = handle[`write${suffix}`](
       committedSourceFor(suffix, [3n], ['XLON']),
       'append',
     )
-    handle[`write${suffix}`](
+    const merged = handle[`write${suffix}`](
       committedSourceFor(suffix, [2n, 4n], ['XPAR', 'XTKS']),
       'merge',
       handle.recordOptions().withMergeBy(['id']),
+    )
+    assert.deepEqual(
+      [overwritten, appended, merged].map(counts),
+      [
+        [2, 2, 0],
+        [1, 1, 0],
+        [2, 2, 0],
+      ],
+      suffix,
     )
 
     assert.deepEqual(
@@ -145,11 +177,14 @@ test('generic write mode is required and validated before input inspection', (t)
   const handle = new IOBase(path.join(root, 'generic-preflight.arrows'))
   handle.overwriteArrowTable(table())
 
-  for (const mode of [undefined, null, 'replace']) {
+  // A mode is read by the core's `IOMode` vocabulary, and one that writes
+  // nothing is refused as a write mode.
+  const refused = /mode must be|expected one of overwrite, append, merge|expected a write mode - overwrite, append, merge - got readonly/
+  for (const mode of [undefined, null, 'replace', 'readonly']) {
     const reader = BatchReader.from(table())
     assert.throws(
       () => handle.writeArrowReader(reader, mode),
-      /mode must be|unknown write mode/,
+      refused,
     )
     assert.equal(reader.consumed, false, `reader mode=${String(mode)}`)
 
@@ -163,11 +198,14 @@ test('generic write mode is required and validated before input inspection', (t)
       })
       assert.throws(
         () => handle[`write${suffix}`](untouched, mode),
-        /mode must be|unknown write mode/,
+        refused,
       )
       assert.equal(accesses, 0, `${suffix} mode=${String(mode)}`)
     }
   }
+  // Any case and surrounding blanks spell the same mode.
+  handle.writeArrowTable(table(), ' APPEND ')
+  assert.equal(rowsOf(handle).numRows, table().numRows * 2)
 })
 
 test('commit cadence has parity across every synchronous representation and intent', (t) => {
@@ -190,9 +228,10 @@ test('commit cadence has parity across every synchronous representation and inte
     merge: [baseline[0], incoming[1], incoming[0], ...incoming.slice(2)],
   }
 
-  // 1 publishes every row, 8 is larger than the stream, and 3 neither
-  // divides the five rows nor the two-row conversion batch.
-  for (const cadence of [1, 8, 3]) {
+  // A cadence counts whole batches: 1 publishes every batch, 8 is larger
+  // than the stream, and 2 does not divide the three batches the five rows
+  // convert into at two rows a batch.
+  for (const cadence of [1, 8, 2]) {
     for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch', 'Records']) {
       for (const intent of ['overwrite', 'append', 'merge']) {
         const label = `${suffix} ${intent} commit=${cadence}`
@@ -204,7 +243,7 @@ test('commit cadence has parity across every synchronous representation and inte
           ),
         )
         const options = optionsForIntent(handle, intent, cadence)
-        handle[`${intent}${suffix}`](
+        const result = handle[`${intent}${suffix}`](
           committedSourceFor(
             suffix,
             incoming.map(({ id }) => id),
@@ -213,6 +252,8 @@ test('commit cadence has parity across every synchronous representation and inte
           options,
         )
         assert.deepEqual(snapshotOf(handle), expected[intent], label)
+        // A write cut into several commits answers their sum.
+        assert.deepEqual(counts(result), [5, 5, 0], label)
       }
     }
   }
@@ -323,7 +364,10 @@ test('zero write limits never inspect any representation source', (t) => {
         if (intent === 'merge') {
           assert.throws(write, /max_(row|byte)_size.*merge_by|merge_by.*max_/i)
         } else {
-          assert.equal(write(), undefined)
+          // Nothing read and nothing written: the empty result.
+          const result = write()
+          assert.deepEqual(counts(result), [0, 0, 0], `${bound} ${suffix} ${intent}`)
+          assert.equal(result.isEmpty(), true)
         }
         assert.equal(inspected, 0, `${bound} ${suffix} ${intent}`)
         if (reader !== undefined) assert.equal(reader.consumed, false)
@@ -345,7 +389,7 @@ test('zero commit cadence is rejected without inspecting any source', (t) => {
   const options = handle
     .recordOptions()
     .withField(BatchReader.from(table()).field)
-    .withCommitRowSize(0)
+    .withCommitBatchNum(0)
   let inspected = 0
   const source = new Proxy({}, {
     get() {
@@ -357,7 +401,7 @@ test('zero commit cadence is rejected without inspecting any source', (t) => {
   for (const suffix of ['ArrowTable', 'ArrowBatch', 'Records']) {
     assert.throws(
       () => handle[`overwrite${suffix}`](source, options),
-      /commit_row_size|commitRowSize/,
+      /commit_batch_num|commitBatchNum/,
     )
   }
   assert.equal(inspected, 0)
@@ -445,7 +489,9 @@ test('empty records require options.field and then form a typed no-op', (t) => {
   const declared = handle.recordOptions().withField(
     fields.struct('row', [Field.from('id: int64')], { nullable: false }),
   )
-  assert.doesNotThrow(() => handle.overwriteRecords([], declared))
+  const result = handle.overwriteRecords([], declared)
+  assert.deepEqual(counts(result), [0, 0, 0])
+  assert.equal(result.isEmpty(), true)
 })
 
 test('a record generator crosses in bounded chunks under one atomic write', (t) => {
@@ -463,7 +509,7 @@ test('a record generator crosses in bounded chunks under one atomic write', (t) 
     }
   }
 
-  handle.overwriteRecords(records(), options)
+  assert.deepEqual(counts(handle.overwriteRecords(records(), options)), [257, 257, 0])
   assert.equal(pulled, 257)
   assert.equal(rowsOf(handle).numRows, 257)
 
@@ -512,8 +558,17 @@ test('an async record sequence returns a promise and uses the same adapter', asy
     handle.recordOptions().withBatchRowSize(1),
   )
   assert.ok(pending instanceof Promise)
-  await pending
+  assert.deepEqual(counts(await pending), [3, 3, 0])
   assert.equal(rowsOf(handle).numRows, 3)
+
+  // A cadence writes through the session the core holds between awaits, and
+  // its finish answers what every pushed chunk carried.
+  const committed = await handle.appendRecords(
+    records(),
+    handle.recordOptions().withBatchRowSize(2).withCommitBatchNum(1),
+  )
+  assert.deepEqual(counts(committed), [3, 3, 0])
+  assert.equal(rowsOf(handle).numRows, 6)
 })
 
 test('unset async cadence keeps every intent unpublished through a source failure', async (t) => {
@@ -549,7 +604,7 @@ test('unset async cadence keeps every intent unpublished through a source failur
   }
 })
 
-test('bounded async records publish a non-dividing prefix for every intent', async (t) => {
+test('bounded async records publish whole cadences of batches for every intent', async (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const baseline = [
@@ -560,11 +615,16 @@ test('bounded async records publish a non-dividing prefix for every intent', asy
     { id: 1n, venue: 'NEW' },
     { id: 2n, venue: 'TWO' },
     { id: 3n, venue: 'THREE' },
+    { id: 4n, venue: 'FOUR' },
+    { id: 5n, venue: 'INCOMPLETE' },
   ]
+  // Two-row batches at a two-batch cadence: rows 1 to 4 are one complete
+  // cadence, and the fifth row's partial batch is discarded with the failure.
+  const published = incoming.slice(0, 4)
   const expected = {
-    overwrite: incoming,
-    append: [...baseline, ...incoming],
-    merge: [incoming[0], baseline[1], ...incoming.slice(1)],
+    overwrite: published,
+    append: [...baseline, ...published],
+    merge: [published[0], baseline[1], ...published.slice(1)],
   }
 
   for (const intent of ['overwrite', 'append', 'merge']) {
@@ -578,7 +638,7 @@ test('bounded async records publish a non-dividing prefix for every intent', asy
     const controlled = controlledAsyncFailure(incoming)
     const pending = handle[`${intent}Records`](
       controlled.source,
-      optionsForIntent(handle, intent, 3),
+      optionsForIntent(handle, intent, 2),
     )
     await controlled.staged
     assert.deepEqual(snapshotOf(handle), expected[intent], `${intent} visible prefix`)
@@ -615,10 +675,11 @@ test('generic writeRecords retains each completed async cadence by mode', async 
       ),
     )
     const controlled = controlledAsyncFailure(incoming)
+    // One two-row batch is one complete cadence; the third row's batch is not.
     const pending = handle.writeRecords(
       controlled.source,
       mode,
-      optionsForIntent(handle, mode, 2),
+      optionsForIntent(handle, mode, 1),
     )
     assert.ok(pending instanceof Promise)
     await controlled.staged
@@ -656,12 +717,15 @@ test('bounded async row and byte limits stop without another source pull', async
       },
     }
     const options = limited(
-      handle.recordOptions().withBatchRowSize(2).withCommitRowSize(2),
+      handle.recordOptions().withBatchRowSize(2).withCommitBatchNum(1),
     )
-    await handle.overwriteRecords(source, options)
+    const result = await handle.overwriteRecords(source, options)
     assert.ok(closed)
     assert.equal(rowsOf(handle).numRows, name === 'rows' ? 3 : 1)
     assert.equal(pulls, name === 'rows' ? 3 : 2)
+    // The row bound converts no record past it; the byte bound cuts the
+    // first two-row batch to its one row, the other read and skipped.
+    assert.deepEqual(counts(result), name === 'rows' ? [3, 3, 0] : [2, 1, 1], name)
   }
 })
 
@@ -691,7 +755,7 @@ test('async record spools are removed on success, source failure, and invalid in
     yield { id: 1n, venue: 'XNAS' }
     yield { id: 2n, venue: 'XNYS' }
   }
-  await handle.overwriteRecords(valid(), options)
+  assert.deepEqual(counts(await handle.overwriteRecords(valid(), options)), [2, 2, 0])
   assert.deepEqual(fs.readdirSync(spoolRoot), [])
 
   async function* failing() {

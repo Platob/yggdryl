@@ -10,6 +10,7 @@ pub mod buffered;
 pub mod counted;
 
 pub use buffer::Buffer;
+pub(crate) use buffer::memory_identity;
 
 use crate::coding::Coded;
 use crate::holder::buffered::{Buffered, BufferedOptions};
@@ -135,6 +136,17 @@ pub enum Holder {
     /// resolved through [`Self::from_url`] on the first operation that needs
     /// one: building it touches nothing, and even the backend is chosen late.
     Uri(Uri),
+    /// A catalog of a warehouse: a container of namespaces and tables, its
+    /// children the handles they are.
+    ///
+    /// Boxed, as every object variant is: an object carries its description
+    /// and its resolved handle, which is a `Holder` of its own.
+    Catalog(Box<crate::Catalog>),
+    /// A namespace of a warehouse: a container of namespaces and tables.
+    Namespace(Box<crate::Namespace>),
+    /// A table of a warehouse: every byte and record verb its
+    /// implementation's.
+    Table(Box<crate::Table>),
 }
 
 impl Holder {
@@ -179,6 +191,9 @@ impl Holder {
             Self::Text(inner) => inner.handle().exists(),
             Self::Media(inner) => inner.handle().exists(),
             Self::Uri(inner) => inner.held().is_ok_and(Self::exists),
+            // An object is a description, and a description is there.
+            Self::Catalog(_) | Self::Namespace(_) => true,
+            Self::Table(inner) => inner.exists(),
         }
     }
 
@@ -245,7 +260,10 @@ impl Holder {
         Ok(Self::LocalPath(crate::local::LocalPath::new(path)?))
     }
 
-    /// Hold the resource a URL names, opened with properties.
+    /// Hold the resource a location names, opened with properties.
+    ///
+    /// `location` is a [`Url`], or any identifier that locates one
+    /// ([`Uri::locator`]): a relative path, a URN, an ARN.
     ///
     /// This is the one door every backend is behind, and what a plan's
     /// target opens: a `file:` URL is a local path, resolved to a folder or a
@@ -255,15 +273,31 @@ impl Holder {
     /// by the properties the store's own tooling names, read the way the
     /// object store options read them; an `http:` or `https:` URL is held
     /// through the `http` feature as the request that reads and writes the
-    /// resource, configured by the `HttpOptions` properties.
+    /// resource, configured by the `HttpOptions` properties; an `s3tables:`
+    /// URL is held through the `s3tables` feature as what it names in an
+    /// Amazon S3 Tables table bucket - `s3tables://<bucket>` the bucket's
+    /// catalog, `s3tables://<bucket>/<namespace>` a namespace, each a
+    /// description costing no request, and
+    /// `s3tables://<bucket>/<namespace>/<table>` the Iceberg table, one
+    /// `GetTableMetadataLocation` after the one `ListTableBuckets` per page
+    /// that finds the bucket where neither a `warehouse` property nor
+    /// `account_id` states its ARN - under the properties the bucket's
+    /// catalog reads ([`Catalog::from_url`](crate::Catalog::from_url)); a
+    /// trailing slash names nothing, and more than a namespace and a table
+    /// below the bucket is refused at `$.url`. An ARN of that service is
+    /// read as the ARN rather than as the location it locates: a table
+    /// bucket's is the catalog, its region and account kept, and a table's -
+    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
+    /// is the table that identifier is, at one `GetTable`, since the
+    /// location it lowers to spells the identifier where a namespace goes.
     ///
-    /// Two properties are read here whatever the scheme: `media_type` (or
-    /// `mime_type`, `content_type`) declares what the bytes are, and `codec`
-    /// (or `content_encoding`) presents them decoded - over a value, since a
-    /// location spelling a container (a glob, a trailing `/`) streams leaves
-    /// that each take off the coding their own name declares, and takes none.
-    /// Every other property is left to the backend, which ignores what it
-    /// does not know.
+    /// Two properties are read here whatever the byte backend: `media_type`
+    /// (or `mime_type`, `content_type`) declares what the bytes are, and
+    /// `codec` (or `content_encoding`) presents them decoded - over a value,
+    /// since a location spelling a container (a glob, a trailing `/`)
+    /// streams leaves that each take off the coding their own name declares,
+    /// and takes none. Every other property is left to the backend, which
+    /// ignores what it does not know.
     ///
     /// ```
     /// use yggdryl::holder::Holder;
@@ -279,17 +313,41 @@ impl Holder {
     ///
     /// # Errors
     ///
-    /// Returns an error when the scheme is one no backend of this build
-    /// holds, or a property this method reads does not parse.
-    pub fn from_url<K, V>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>
+    /// Returns the identifier's own refusal when it names no location, an
+    /// error when the scheme is one no backend of this build holds, or a
+    /// property this method reads does not parse.
+    pub fn from_url<K, V>(
+        location: impl AsRef<Uri>,
+        properties: impl IntoIterator<Item = (K, V)>,
+    ) -> Result<Self>
     where
         K: AsRef<str>,
         V: AsRef<str>,
     {
+        let location = location.as_ref();
         let properties: Vec<(String, String)> = properties
             .into_iter()
             .map(|(name, value)| (name.as_ref().to_owned(), value.as_ref().to_owned()))
             .collect();
+        // An object of a catalog service, not bytes: it declares no media
+        // type and takes no coding - and it is read before the identifier is
+        // lowered, because a table's ARN says what its location cannot.
+        #[cfg(feature = "s3tables")]
+        if location.names_s3_tables() {
+            let properties: crate::Properties = properties
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect();
+            return Ok(crate::s3tables::locate(location, &properties)?.into_holder());
+        }
+        let url = &location.locator()?;
+        #[cfg(not(feature = "s3tables"))]
+        if url.scheme().is_s3_tables() {
+            return Err(crate::Error::unsupported(
+                "holding an S3 Tables location without the s3tables feature",
+                url.scheme().as_str(),
+            ));
+        }
         let mut held = if url.is_local() {
             if url
                 .fragment(false)?
@@ -352,6 +410,28 @@ impl Holder {
             }
         }
         Ok(held)
+    }
+
+    /// Whether `name` is a property the backend `url` selects reads for
+    /// itself - who signs, where the store is, how it is addressed - rather
+    /// than one it leaves to the object it holds: the object store options'
+    /// under `s3`, the HTTP options' under `http`, and none for a local
+    /// path, which opens under nothing. The two names [`Self::from_url`]
+    /// reads whatever the backend, `media_type` and `codec`, describe the
+    /// bytes and are not the backend's own. An Iceberg table opened by its
+    /// location states its properties less these.
+    #[cfg(feature = "iceberg")]
+    #[cfg_attr(not(any(feature = "s3", feature = "http")), allow(unused_variables))]
+    pub(crate) fn is_backend_property(url: &Url, name: &str) -> bool {
+        if url.scheme().is_object_store() {
+            #[cfg(feature = "s3")]
+            return crate::s3::S3Options::is_property(name);
+        }
+        if url.scheme().is_http() {
+            #[cfg(feature = "http")]
+            return crate::http::HttpOptions::is_property(name);
+        }
+        false
     }
 
     /// Hold the members of the archive `handle` addresses.
@@ -585,7 +665,8 @@ impl Holder {
     /// Return whether this holder already retains a media implementation.
     fn has_media_surface(&self) -> bool {
         match self {
-            Self::Media(_) | Self::Text(_) => true,
+            // A table answers records through its implementation already.
+            Self::Media(_) | Self::Text(_) | Self::Table(_) => true,
             Self::Buffered(buffered) => buffered.handle().has_media_surface(),
             _ => false,
         }
@@ -706,6 +787,9 @@ impl Holder {
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_ref(),
+            Self::Namespace(inner) => inner.as_ref(),
+            Self::Table(inner) => inner.as_ref(),
         }
     }
 
@@ -741,6 +825,9 @@ impl Holder {
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_mut(),
+            Self::Namespace(inner) => inner.as_mut(),
+            Self::Table(inner) => inner.as_mut(),
         }
     }
 
@@ -776,6 +863,9 @@ impl Holder {
             Self::Text(inner) => inner.as_ref(),
             Self::Media(inner) => inner.as_ref(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_ref(),
+            Self::Namespace(inner) => inner.as_ref(),
+            Self::Table(inner) => inner.as_ref(),
         }
     }
 
@@ -811,6 +901,9 @@ impl Holder {
             Self::Text(inner) => inner.as_mut(),
             Self::Media(inner) => inner.as_mut(),
             Self::Uri(inner) => inner,
+            Self::Catalog(inner) => inner.as_mut(),
+            Self::Namespace(inner) => inner.as_mut(),
+            Self::Table(inner) => inner.as_mut(),
         }
     }
 }
@@ -862,18 +955,18 @@ impl crate::IOMedia for Holder {
 
     /// Forwarded, because a handle can answer its rows other than through
     /// its bytes - an HTTP request walks the pages of a paginated document.
-    fn read_arrow(
+    fn read_serie(
         &self,
         options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::SerieReader> {
-        crate::IOMedia::read_arrow(self.as_media(), options)
+        crate::IOMedia::read_serie(self.as_media(), options)
     }
 
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -889,7 +982,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -897,7 +990,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -905,7 +998,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -913,7 +1006,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -921,7 +1014,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }
@@ -1112,6 +1205,34 @@ impl From<crate::Arn> for Holder {
     /// Hold the resource an ARN names, resolved on first use.
     fn from(value: crate::Arn) -> Self {
         Self::Uri(value.into_uri())
+    }
+}
+
+impl From<crate::Catalog> for Holder {
+    /// Hold a catalog as the container of handles it is.
+    fn from(value: crate::Catalog) -> Self {
+        Self::Catalog(Box::new(value))
+    }
+}
+
+impl From<crate::Namespace> for Holder {
+    /// Hold a namespace as the container of handles it is.
+    fn from(value: crate::Namespace) -> Self {
+        Self::Namespace(Box::new(value))
+    }
+}
+
+impl From<crate::Table> for Holder {
+    /// Hold a table as the handle its implementation is.
+    fn from(value: crate::Table) -> Self {
+        Self::Table(Box::new(value))
+    }
+}
+
+impl From<crate::Object> for Holder {
+    /// Hold an object as the handle its kind is.
+    fn from(value: crate::Object) -> Self {
+        value.into_holder()
     }
 }
 

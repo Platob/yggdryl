@@ -102,17 +102,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -211,17 +200,6 @@
         }
       },
       {
-        "name": "nostrategyparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrategyparameters",
-          "FIX:tag": "957"
-        }
-      },
-      {
         "name": "strategyparameters",
         "dtype": {
           "type": "null"
@@ -232,17 +210,6 @@
         }
       },
       {
-        "name": "noalgosystemmodules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noalgosystemmodules",
-          "FIX:tag": "3025"
-        }
-      },
-      {
         "name": "algosystemmodules",
         "dtype": {
           "type": "null"
@@ -250,17 +217,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "algosystemmodules"
-        }
-      },
-      {
-        "name": "notestscenarios",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestscenarios",
-          "FIX:tag": "3028"
         }
       },
       {

@@ -9,17 +9,17 @@ A code is not a string with a charset - a currency is ISO 4217's, or a digital-a
 | Aspect | Rule |
 | --- | --- |
 | Owns | Twelve `DataType` variants, twelve `Field` leaves, twelve `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
-| Validates | At the value door, once: US-ASCII, no NUL, at most the code's width, then the code's own rule - a check digit, a category grid, a published spelling |
+| Validates | At the value door, once: US-ASCII, no NUL, at most the code's width, then the code's own shape - a fixed length, character classes, the case folded where the code folds it, a published spelling. Validity - a closing check digit, a listed country, a classified CFI - is a [rank](#rank), never a gate |
 | Lazy | Nothing - a code has no children, no registry lookup and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
-| Refuses | A byte past `0x7F`, a NUL, text longer than the width, and whatever the code's own rule refuses; `string_parameters`, which a code has none of |
+| Refuses | A byte past `0x7F`, a NUL, text longer than the width, and whatever the code's own shape refuses; `string_parameters`, which a code has none of |
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the code's own name; Python `ValueError`; JavaScript throws |
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Forex("EUR/USD")` and `Bbg("EUR/USD")` are two values |
-| Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
+| Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` with its `MAX_RANK`, `rank`, `is_real` and `merge_with`, `IdType::rank`, `max_rank` and `is_real`, `Scalar::code_storage` and `Scalar::is_code` |
 
-The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the twelve is then one file of its own, holding its datatype, its field marker and its value in that order.
+The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `MAX_RANK`, `rank`, `is_real`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the twelve is then one file of its own, holding its datatype, its field marker and its value in that order.
 
 ## Pages
 
@@ -29,11 +29,11 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 | [Country](country.md) | ISO 3166-1 alpha-2 | 2 | `yggdryl.country` |
 | [MIC](mic.md) | ISO 10383 market identifier | 4 | `yggdryl.mic` |
 | [CFI](cfi.md) | ISO 10962 classification | 6 | `yggdryl.cfi` |
-| [ISIN](isin.md) | ISO 6166, closed by a check digit | 12 | `yggdryl.isin` |
-| [CUSIP](cusip.md) | CUSIP Global Services, closed by a check digit | 9 | `yggdryl.cusip` |
-| [SEDOL](sedol.md) | London Stock Exchange, closed by a check digit | 7 | `yggdryl.sedol` |
+| [ISIN](isin.md) | ISO 6166, ranked by its check digit and prefix | 12 | `yggdryl.isin` |
+| [CUSIP](cusip.md) | CUSIP Global Services, ranked by its check digit | 9 | `yggdryl.cusip` |
+| [SEDOL](sedol.md) | London Stock Exchange, ranked by its check digit | 7 | `yggdryl.sedol` |
 | [Bbg](bbg.md) | A Bloomberg terminal identifier no standard closes | 32 | `yggdryl.bbg` |
-| [FIGI](figi.md) | ANSI X9.145, closed by a check digit | 12 | `yggdryl.figi` |
+| [FIGI](figi.md) | ANSI X9.145, ranked by its check digit | 12 | `yggdryl.figi` |
 | [RIC](ric.md) | LSEG's Refinitiv Identification Code, one token no standard closes | 32 | `yggdryl.ric` |
 | [Forex](forex.md) | ISO 4217 currency pair, `CCY/CCY` | 7 | `yggdryl.forex` |
 | [Unit](unit.md) | FIX `UnitOfMeasure(996)`, the text it is | 32 | `yggdryl.unit` |
@@ -154,14 +154,48 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(Scalar.from('USD').kind, 'string')
     ```
 
+## Shape and rank { #rank }
+
+A code's `new` and its value door admit the code's shape and refuse only that. What the shape leaves open - whether a number closes on its check digit, whether a registry lists the code, whether the text is the one that states no value - is a rank: `CodeValue::rank` answers it from zero to the code's `MAX_RANK`, and `is_real` whether it is at `MAX_RANK`. A masked line's `XX0000000001`, a typo and an unlisted country are values of a lower rank rather than refusals, every [merge](#the-code-family-value) reads the rank, so a real value replaces a placeholder whichever was stated first, and a derivation that needs a real value asks the reading first. An identifier carried as text is ranked by its type: `IdType::rank(value)`, `max_rank()` and `is_real(value)` answer the registered code's rank for `isin`, `cusip`, `sedol`, `figi`, `cfi`, `isoccy` and `isoctry`, a lower-case spelling ranking as the upper case the type stores it under, zero for a value the type refuses, and one for every other type - which is what a [graph element's identifiers](../../graph/identifier.md) decide a restated key by. `is_canonical` (ISIN, CUSIP, SEDOL, FIGI, Bbg, RIC, Forex) is the strict question a column's bytes are held to: upper case where the code folds it, and the shape. Rust only.
+
+| Code | Shape: what `new` admits | Rank | `MAX_RANK` |
+| --- | --- | --- | ---: |
+| [`ccy`](ccy.md) | at most 8 bytes, case kept | `XXX` (`Ccy::none()`, `is_none()`) 0, any other 1; the ISO listing is no rank | 1 |
+| [`country`](country.md) | at most 2 bytes | 1 where ISO 3166 lists it (`Country::is_listed`), else 0 | 1 |
+| [`mic`](mic.md) | at most 4 bytes | `XXXX` (`Mic::none()`, `is_none()`) 0, any other 1; the partial registry is no rank | 1 |
+| [`cfi`](cfi.md) | at most 6 bytes | unclassified 0, classified (`Cfi::is_classified`) 1, detailed (`Cfi::is_detailed`) 2 | 2 |
+| [`isin`](isin.md) | two letters, nine alphanumerics, a digit; upper-cased | one each for `Isin::is_closed` and `Isin::is_listed_prefix` (`Isin::rank_of`) | 2 |
+| [`cusip`](cusip.md) | eight alphanumerics, a digit; upper-cased | 1 where `Cusip::is_closed`, else 0 | 1 |
+| [`sedol`](sedol.md) | six alphanumerics, a digit; upper-cased | 1 where `Sedol::is_closed`, else 0 | 1 |
+| [`figi`](figi.md) | two unreserved consonants, `G`, eight consonants or digits, a digit; upper-cased | 1 where `Figi::is_closed`, else 0 | 1 |
+| [`unit`](unit.md) | at most 32 bytes | empty (`Unit::none()`, `is_none()`) 0, any other 1 | 1 |
+| [`bbg`](bbg.md), [`ric`](ric.md), [`forex`](forex.md) | each its own shape | 1: nothing partial about a value | 1 |
+
+```rust
+use yggdryl::{CodeValue, Country, Cusip, IdType, Isin};
+
+// The shape is admitted; validity is a rank.
+let typo = Cusip::new("037833101")?;
+assert_eq!(typo.rank(), 0);
+assert!(Cusip::new("037833100")?.is_real());
+assert!(!Country::new("XX")?.is_listed());
+assert_eq!(<Isin as CodeValue>::MAX_RANK, 2);
+
+// An identifier's type reads the same rank off its text, case folded.
+assert_eq!(IdType::Isin.rank("us0378331005"), 2);
+assert_eq!(IdType::Isin.max_rank(), 2);
+assert!(!IdType::Isin.is_real("XX0000000001"));
+assert_eq!(IdType::Isin.rank("not an isin"), 0);
+```
+
 ## `CodeValue::merge_with` { #the-code-family-value }
 
 The twelve share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. What "less" means is each code's own: a `ccy` `XXX`, a `mic` `XXXX` and a `unit` stated as none take the other; an unclassified `cfi` yields whole to a classified one, and otherwise fills every `X` from the other where the two describe one instrument; an `isin` numbered `ZZ` - ISO 6166's placeholder for a derivative no agency has numbered yet - yields to another prefix; and every other identifier stands as it is. Rust only.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. It reads the [rank](#rank): the other value where it outranks this one, else this one, so a real value replaces a lower one whichever leads and two values of one rank keep the one that leads. A `ccy` `XXX`, a `mic` `XXXX` and a `unit` stated as none take any stated one; an unlisted `country` takes a listed one; an `isin`, `cusip`, `sedol` or `figi` its digit does not close takes one it closes, and an `isin` listed nowhere - `ZZ`, ISO 6166's placeholder for a derivative no agency has numbered yet, or a masked `XX` - one an agency numbers; a `cfi` folds further, filling every `X` from the other where the two describe one instrument ([CFI](cfi.md#two-statements-of-one-instrument)); and every other code stands as it is. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Ccy, Cfi, DataTypeKind, Isin, Mic, Scalar};
+use yggdryl::{CodeValue, Ccy, Cfi, Country, DataTypeKind, Isin, Mic, Scalar};
 
 // A code is its own leaf, in the code family's range; its text is not a code.
 let usd = Scalar::Ccy(Ccy::new("USD")?);
@@ -176,9 +210,15 @@ assert_eq!(Mic::none().merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
 // An unclassified code yields to a classified one.
 assert_eq!(Cfi::new("XXXXXX")?.merge_with(&Cfi::new("ESVUFR")?).as_str(), "ESVUFR");
 
-// A `ZZ` number is a placeholder a real one replaces ...
+// A listed country replaces an unlisted one, whichever leads.
+let swiss = Country::new("CH")?;
+assert_eq!(Country::new("XX")?.merge_with(&swiss), swiss);
+assert_eq!(swiss.clone().merge_with(&Country::new("XX")?), swiss);
+
+// A `ZZ` number or a typo is a lower rank a real number replaces, either way ...
 let apple = Isin::new("US0378331005")?;
 assert_eq!(Isin::new("ZZ0000000008")?.merge_with(&apple), apple);
+assert_eq!(apple.clone().merge_with(&Isin::new("US0378331006")?), apple);
 // ... and two real numbers are two statements: this one stands.
 assert_eq!(apple.clone().merge_with(&Isin::new("US5949181045")?), apple);
 ```
@@ -504,7 +544,7 @@ crate's own [`forex`](forex.md#the-forex-security-identifier) key.
 - `Scalar::kind()` -> the code's id: `ccy`, `forex`, `unit`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
 - A code's equality, order and hash carry the identity first, then the text: `Forex("EUR/USD") != Bbg("EUR/USD")`. A code and a plain string of the same bytes are two values.
 - `utf8` under `yggdryl.ccy` -> `ccy`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.ccy` over any other storage imports as that storage.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md) and [Forex](forex.md) are the exceptions, because their value door gates the space rather than holding it, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bbg](bbg.md), [RIC](ric.md) and [Forex](forex.md) are the exceptions, because the empty text is not their shape, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> the row and the column, never the default, for a code exactly as for a string ([Cast](../cast.md#required-columns)).
 - [Merged](../field.md#merging-two-schemas) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string. Narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
 - `ccy` beside `country` -> `sized_ascii(8)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.

@@ -164,7 +164,7 @@ assert!(refused.contains("$.v"), "{refused}");
 
 ## Write and read rows as values
 
-`*_records` takes anything `Into<Scalar>` in the field's column order; `read_arrow` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
+`*_records` takes anything `Into<Scalar>` in the field's column order; `read_serie` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
 
 ```rust
 use yggdryl::holder::Buffer;
@@ -191,7 +191,7 @@ handle.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")], &options)?;
 handle.append_records([Trade(3, "XLON")], &options)?;
 
 let mut venues = Vec::new();
-for records in handle.read_arrow(Some(&options.clone().with_filter("id >= 2")?))? {
+for records in handle.read_serie(Some(&options.clone().with_filter("id >= 2")?))? {
     let records = records?;
     let venue = records.child("venue").expect("a venue column");
     for row in 0..venue.len() {
@@ -241,12 +241,12 @@ assert!(refused.to_string().contains("merge_by"), "{refused}");
 
 ## Choose the write mode at run time
 
-`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`; `write_arrow`/`read_arrow` take and answer a `SerieReader` and are also the record door of JSON, JSON Lines, YAML, TOML and XML handles.
+`write_arrow_reader`/`write_arrow_batch`/`write_records` take an `IOMode`, and so does `write_serie`, whose `overwrite_serie`/`append_serie`/`merge_serie` name it: they take a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource` (`.into()`), written as the batches it already is, and with `read_serie` are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. `None` options are the handle's own.
 
 ```rust
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
+use yggdryl::{ChunkedSerie, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Serie, SerieReader, StructType, Url};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("symbol"),
@@ -265,20 +265,25 @@ for mode in [IOMode::Overwrite, IOMode::Append] {
 }
 assert_eq!(stream.row_size()?, 2);
 
-// A JSON Lines handle takes rows as documents through write_arrow.
-let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
-lines.write_arrow(SerieReader::from_serie(rows.clone())?, IOMode::Overwrite, None)?;
-let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-assert_eq!(lines.read_arrow(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+// The Serie doors take a held column, held chunks or a stream; None options are the handle's own.
+stream.write_serie(rows.clone().into(), IOMode::Append, None)?;
+stream.append_serie(ChunkedSerie::from_serie(rows.clone())?.into(), None)?;
+assert_eq!(stream.row_size()?, 4);
 
-// A document is written whole: write_arrow on it takes IOMode::Overwrite only.
-let refused = lines.write_arrow(SerieReader::from_serie(rows)?, IOMode::Append, None).unwrap_err();
+// A JSON Lines handle takes rows as documents through overwrite_serie.
+let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
+lines.overwrite_serie(SerieReader::from_serie(rows.clone())?.into(), None)?;
+let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
+assert_eq!(lines.read_serie(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+
+// A document is written whole: write_serie on it takes IOMode::Overwrite only.
+let refused = lines.append_serie(rows.into(), None).unwrap_err();
 assert!(refused.to_string().contains("expected overwrite, got append"), "{refused}");
 ```
 
 ## Bound memory on large writes
 
-`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
+`with_commit_batch_num(N)` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch. Unset is the destination's own cadence - a leaf, a folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends; what any cadence holds between publications is held under that bound, heaviest batches spilled first; `0` is refused before any input is pulled. `with_num_threads(n)` is how many partition groups an Iceberg commit writes at once (unset: `write.parallelism`, else `read.parallelism`, else the host), `0` refused naming `$.num_threads`. `with_batch_row_size` bounds the batches any record read yields - Parquet, Arrow IPC, Avro, and plain text alike.
 
 ```rust
 use std::sync::Arc;
@@ -295,9 +300,11 @@ let batch = RecordBatch::try_new(Arc::clone(&arrow_schema), vec![Arc::new(Int64A
 
 let mut handle = Buffer::new().with_media_type(MimeType::PARQUET.into());
 let options = handle.record_options()?;
+// Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+let batches = [batch.slice(0, 4), batch.slice(4, 4), batch.slice(8, 2)];
 handle.overwrite_arrow_reader(
-    arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]),
-    &options.clone().with_commit_row_size(4),
+    arrow::batch_reader(Arc::clone(&arrow_schema), batches),
+    &options.clone().with_commit_batch_num(2),
 )?;
 assert_eq!(handle.row_size()?, 10);
 
@@ -309,9 +316,9 @@ assert_eq!(sizes.iter().sum::<usize>(), 10);
 assert!(sizes.iter().all(|rows| *rows <= 4));
 
 let refused = handle
-    .overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options.with_commit_row_size(0))
+    .overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options.with_commit_batch_num(0))
     .unwrap_err();
-assert!(refused.to_string().contains("commit_row_size"), "{refused}");
+assert!(refused.to_string().contains("commit_batch_num"), "{refused}");
 ```
 
 ## Parquet: compression, pruning, footer answers
@@ -444,7 +451,7 @@ text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
 text_options.set_framing(true);
 let text = source.into_text_with(text_options);
 
-let records = text.read_arrow(Some(&text.record_options()?))?.next().expect("one batch")?;
+let records = text.read_serie(None)?.next().expect("one batch")?;
 let body = records.child("body").expect("the body column");
 let id = records.child("id").expect("a capture column");
 assert_eq!(body.scalar(0)?, Scalar::from("first\n detail A"));
@@ -487,7 +494,7 @@ assert_eq!((handle.row_size()?, handle.column_size()?), (3, 2));
 
 // Declared, every cell crosses the column's contract; a null and "" stay apart.
 let mut symbols = Vec::new();
-for records in handle.read_arrow(Some(&declared))? {
+for records in handle.read_serie(Some(&declared))? {
     let records = records?;
     let symbol = records.child("symbol").expect("a symbol column");
     for row in 0..symbol.len() {
@@ -570,20 +577,18 @@ let _ = std::fs::remove_dir_all(&root);
 
 ## Derive a partition column from another column
 
-`PARTITION:sources` and `PARTITION:transform` on the derived field; `apply_arrow_batch` on the root fills it where absent or all null and leaves values alone.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `with_partition_by` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata; `apply_arrow_batch` on the transform view of the root fills it where absent or all null and leaves values alone. A write only casts, so fill the column through `root.as_transform().apply_arrow_batch` before a partitioned write: a required derived column the rows lack is refused by path, a nullable one lands null.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-use yggdryl::expression::Function;
 use yggdryl::{DataType, StructType};
 
-let mut year = DataType::Int32.nullable_field("year");
-year.as_partition_mut().set_sources(["event"])?;
-year.as_partition_mut().set_transform(Function::Year)?;
-let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-    .required_field("row");
+let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+    .required_field("row")
+    .with_partition_by(["year(event) as year".parse()?])?;
+assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
 let batch = RecordBatch::try_from_iter([(
     "event",
@@ -603,7 +608,7 @@ A table is a folder reached through one handle; no catalog is required. Scans ar
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
-use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, Table};
+use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, IcebergTable};
 use yggdryl::local::LocalFolder;
 use yggdryl::{arrow, DataType, Selector, StructType};
 
@@ -632,11 +637,11 @@ let count = |reader: arrow::BatchReader| reader.map(|batch| batch.map(|batch| ba
 let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-iceberg");
 let _ = std::fs::remove_dir_all(&path);
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
-assert!(table.current_snapshot().is_none());
+let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+assert!(table.current_snapshot()?.is_none());
 
 table.commit_append(rows(vec![1, 2, 3], vec!["XNAS", "XNYS", "XNAS"], vec![1.0, 2.0, 3.0]))?;
-let first = table.current_snapshot().expect("a snapshot").snapshot_id;
+let first = table.current_snapshot()?.expect("a snapshot").snapshot_id;
 table.commit_merge(rows(vec![3, 4], vec!["XNAS", "XNAS"], vec![30.0, 4.0]), &"id".parse::<Selector>()?, true)?;
 
 assert_eq!(count(table.scan(None)?)?, 4);
@@ -644,20 +649,20 @@ assert_eq!(count(table.scan_matching("px > 2.5", None)?)?, 2);
 assert_eq!(table.plan_matching("venue = 'XNYS'")?.tasks.len(), 1);
 assert_eq!(count(table.scan_at(first, &[], None)?)?, 3); // time travel
 
-let reopened = Table::open(LocalFolder::new(&path)?)?;
-assert_eq!(reopened.current_snapshot().expect("a snapshot").operation(), "overwrite");
+let reopened = IcebergTable::open(LocalFolder::new(&path)?)?;
+assert_eq!(reopened.current_snapshot()?.expect("a snapshot").operation(), "overwrite");
 let _ = std::fs::remove_dir_all(&path);
 ```
 
 ## Evolve an Iceberg schema
 
-`SchemaUpdate` records column operations; `Table::update_schema` replays them onto the schema each commit attempt reads - so a commit beaten by another writer rebases rather than overwrites - keeps field IDs, never reuses a dropped one, and answers the schema id it made current. `evolve_schema(field)` replaces the schema whole.
+`SchemaUpdate` records column operations; `IcebergTable::update_schema` replays them onto the schema each commit attempt reads - so a commit beaten by another writer rebases rather than overwrites - keeps field IDs, never reuses a dropped one, and answers the schema id it made current. `evolve_schema(field)` replaces the schema whole.
 
 ```rust
 use std::sync::Arc;
 
 use arrow_array::{Int32Array, RecordBatch};
-use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, SchemaUpdate, Table};
+use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, SchemaUpdate, IcebergTable};
 use yggdryl::local::LocalFolder;
 use yggdryl::{arrow, DataType, StructType};
 
@@ -666,15 +671,15 @@ let mut schema = DataType::from(StructType::from_fields([DataType::Int32.require
 assign_field_ids(&mut schema, 1)?;
 let path = LocalFolder::temporary()?.path()?.join("yggdryl-skill-records-evolve");
 let _ = std::fs::remove_dir_all(&path);
-let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+let mut table = IcebergTable::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
 let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int32Array::from(vec![1]))])?;
 table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 
-let mut update = SchemaUpdate::from_metadata(table.metadata())?;
+let mut update = SchemaUpdate::from_metadata(table.metadata()?)?;
 update.add_column("", DataType::utf8().nullable_field("note"));
 update.update_type("id", DataType::Int64);
 let schema_id = table.update_schema(&update)?;
-assert_eq!(schema_id, table.metadata().current_schema_id());
+assert_eq!(schema_id, table.metadata()?.current_schema_id());
 
 assert_eq!(table.schema()?.field_len(), 2);
 let first = table.scan(None)?.next().expect("one batch")?;
@@ -732,11 +737,11 @@ std::fs::remove_dir_all(&root)?;
 ## Gotchas in Rust
 
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
-- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
-- `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_row_size` do not.
+- Every verb that decodes, casts, or writes rows takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `row_size()`, `column_size()`, `record_options()` and `read_parquet_statistics()` take none: they derive their own options internally. `read_serie` and the `*_serie` writes take `Option<&RecordOptions>`, `None` the handle's own.
+- `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_batch_num` do not.
 - `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
-- `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
+- `write_serie` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only - `overwrite_serie` - and reads only the declared `field` off the options: a document is written whole. A run, or a record holding an absent row, is refused before any handle is touched.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
-- There is no `read_records` in Rust: rows out are `read_arrow` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
+- There is no `read_records` in Rust: rows out are `read_serie` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
 - A CSV byte role is a `u8` (`b';'`), one ASCII byte that is no line break and no other role's; `set_csv_*` on another encoding's options is an error, and `csv_*` on them answers `None`. `linesep` is `CsvOptions::with_linesep` only.
 - Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet-only setter on another encoding's options is an error, not a no-op.

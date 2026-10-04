@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "noapplids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noapplids",
-          "FIX:tag": "1351"
-        }
-      },
-      {
         "name": "applidreportgrp",
         "dtype": {
           "type": "null"

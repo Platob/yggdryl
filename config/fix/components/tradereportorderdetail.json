@@ -92,17 +92,6 @@
         }
       },
       {
-        "name": "noorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorders",
-          "FIX:tag": "73"
-        }
-      },
-      {
         "name": "relatedordergrp",
         "dtype": {
           "type": "null"
@@ -233,17 +222,6 @@
         }
       },
       {
-        "name": "nomatchinst",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomatchinst",
-          "FIX:tag": "1624"
-        }
-      },
-      {
         "name": "matchinginstructions",
         "dtype": {
           "type": "null"
@@ -360,17 +338,6 @@
         "metadata": {
           "FIX:field": "orderorigination",
           "FIX:tag": "1724"
-        }
-      },
-      {
-        "name": "noorderattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noorderattributes",
-          "FIX:tag": "2593"
         }
       },
       {

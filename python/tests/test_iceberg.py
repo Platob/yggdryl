@@ -9,6 +9,7 @@ suite with it.
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import pathlib
 import pickle
@@ -17,18 +18,30 @@ import time
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, IOBase, MimeType, UnknownPropertyWarning
-from yggdryl.iceberg import (
+from yggdryl import (
     Catalog,
+    DataType,
+    Field,
+    IOBase,
+    MimeType,
+    Namespace,
+    Table,
+    UnknownPropertyWarning,
+    Uri,
+    Url,
+)
+from yggdryl.iceberg import (
     Compaction,
     DataFile,
+    IcebergCatalog,
+    IcebergNamespace,
     IcebergOptions,
+    IcebergTable,
     ManifestFile,
     PartitionField,
     PartitionSpec,
     ScanPlan,
     Snapshot,
-    Table,
     assign_field_ids,
     can_promote,
     schema_from_json,
@@ -65,15 +78,15 @@ def numbered() -> object:
 
 
 @pytest.fixture
-def table(tmp_path: pathlib.Path, numbered: object) -> Table:
+def table(tmp_path: pathlib.Path, numbered: object) -> IcebergTable:
     """A partitioned table with nothing written to it yet."""
-    return Table.create(IOBase(tmp_path / "trades"), numbered, ["venue"])
+    return IcebergTable.create(IOBase(tmp_path / "trades"), numbered, ["venue"])
 
 
 @pytest.fixture
-def narrow(tmp_path: pathlib.Path) -> Table:
+def narrow(tmp_path: pathlib.Path) -> IcebergTable:
     """An unpartitioned table holding one row under a 32-bit id."""
-    table = Table.create(IOBase(tmp_path / "narrow"), assign_field_ids(NARROW))
+    table = IcebergTable.create(IOBase(tmp_path / "narrow"), assign_field_ids(NARROW))
     table.append(pa.record_batch({"id": [1], "venue": ["XNAS"]}, schema=NARROW))
     return table
 
@@ -98,7 +111,7 @@ class TestSchemasCarryIdentifiers:
         self, tmp_path: pathlib.Path
     ) -> None:
         with pytest.raises(ValueError):
-            Table.create(IOBase(tmp_path / "scalar"), "row:int64 not null")
+            IcebergTable.create(IOBase(tmp_path / "scalar"), "row:int64 not null")
 
     def test_a_schema_document_round_trips(self) -> None:
         document = {
@@ -125,10 +138,132 @@ class TestSchemasCarryIdentifiers:
             schema_from_json("row", {"type": "long"})
 
 
+TIMED = pa.schema(
+    [
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("ts", pa.timestamp("us"), nullable=False),
+        pa.field("name", pa.string()),
+    ]
+)
+
+MINUTE = 60_000_000
+DAY = 86_400_000_000
+
+
+def _timed(ids: list[int], instants: list[int]) -> pa.RecordBatch:
+    """Rows at `instants`, microseconds since the epoch."""
+    return pa.record_batch(
+        {
+            "id": ids,
+            "ts": pa.array(instants, pa.timestamp("us")),
+            "name": [f"n{id}" for id in ids],
+        },
+        schema=TIMED,
+    )
+
+
+class TestPartitionByEntries:
+    """`partition_by` is a `PARTITION:by` declaration the core reads into a spec."""
+
+    def test_a_bare_column_is_an_identity_field(self, tmp_path: pathlib.Path) -> None:
+        table = IcebergTable.create(IOBase(tmp_path / "names"), assign_field_ids(TIMED), ["name"])
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("name", "identity")
+        ]
+
+    def test_a_day_partition_writes_one_data_file_per_utc_day(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = IcebergTable.create(IOBase(tmp_path / "days"), assign_field_ids(TIMED), ["days(ts)"])
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_day", "day")
+        ]
+        # The table reports the declaration it was created with.
+        assert table.schema.partition.by == ["days(ts)"]
+
+        table.append(_timed([1, 2, 3, 4], [0, 60 * MINUTE, DAY + 1, 2 * DAY + 5]))
+
+        files = table.data_files()
+        assert len(files) == 3
+        assert sorted(data_file.partition for data_file, _ in files) == [
+            (datetime.date(1970, 1, 1),),
+            (datetime.date(1970, 1, 2),),
+            (datetime.date(1970, 1, 3),),
+        ]
+        assert sorted(data_file.record_count for data_file, _ in files) == [1, 1, 2]
+        assert sorted(table.scan().read_all().column("id").to_pylist()) == [1, 2, 3, 4]
+
+    def test_a_minutes_partition_cuts_one_file_per_period(self, tmp_path: pathlib.Path) -> None:
+        table = IcebergTable.create(
+            IOBase(tmp_path / "quarters"), assign_field_ids(TIMED), ["minutes(ts, 15)"]
+        )
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_minutes", "minutes[15]")
+        ]
+
+        table.append(_timed([1, 2, 3, 4], [0, 14 * MINUTE, 15 * MINUTE, 31 * MINUTE]))
+
+        assert sorted(data_file.partition for data_file, _ in table.data_files()) == [
+            (0,),
+            (1,),
+            (2,),
+        ]
+        assert sorted(table.scan().read_all().column("id").to_pylist()) == [1, 2, 3, 4]
+
+    def test_an_alias_names_the_field_and_a_term_crosses_as_its_text(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        table = IcebergTable.open_or_create(
+            IOBase(tmp_path / "aliased"),
+            assign_field_ids(TIMED),
+            ["weeks(ts) as week", ("truncate(name, 2)", "prefix")],
+        )
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("week", "week"),
+            ("prefix", "truncate[2]"),
+        ]
+
+    def test_without_partition_by_the_schema_s_own_declaration_is_read(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        declared = Field.from_arrow_schema(TIMED)
+        declared.partition.by = ["days(ts)"]
+        table = IcebergTable.create(IOBase(tmp_path / "declared"), declared)
+        assert [(field.name, field.transform) for field in table.spec.fields] == [
+            ("ts_day", "day")
+        ]
+        # An explicit argument wins over the declaration.
+        explicit = IcebergTable.create(IOBase(tmp_path / "explicit"), declared, ["name"])
+        assert [field.name for field in explicit.spec.fields] == ["name"]
+        # A schema declaring nothing is unpartitioned.
+        plain = IcebergTable.create(IOBase(tmp_path / "plain"), assign_field_ids(TIMED))
+        assert plain.spec.fields == []
+        # `None` is a value: it partitions nothing, whatever the schema declares,
+        # and so does an empty list.
+        for name, stated in [("none", None), ("empty", [])]:
+            flat = IcebergTable.create(IOBase(tmp_path / name), declared, stated)
+            assert flat.spec.is_unpartitioned(), name
+        reopened = IcebergTable.open_or_create(IOBase(tmp_path / "flat"), declared, None)
+        assert reopened.spec.is_unpartitioned()
+
+    def test_an_entry_no_spec_can_hold_is_refused_naming_it(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        numbered = assign_field_ids(TIMED)
+        with pytest.raises(ValueError, match="got `lower\\(name\\)`"):
+            IcebergTable.create(IOBase(tmp_path / "lower"), numbered, ["lower(name)"])
+        with pytest.raises(ValueError, match='no column "missing"'):
+            IcebergTable.create(IOBase(tmp_path / "missing"), numbered, ["missing"])
+        with pytest.raises(ValueError, match='entry "year\\("'):
+            IcebergTable.create(IOBase(tmp_path / "malformed"), numbered, ["year("])
+        with pytest.raises(TypeError, match="not one string"):
+            IcebergTable.create(IOBase(tmp_path / "one"), numbered, "name")  # type: ignore[arg-type]
+
+
 class TestCreatingAndOpening:
     """A table is a folder, and it is found without a catalog."""
 
-    def test_a_new_table_has_a_schema_and_no_snapshot(self, table: Table) -> None:
+    def test_a_new_table_has_a_schema_and_no_snapshot(self, table: IcebergTable) -> None:
         assert table.format_version == 2
         assert table.version == 1
         assert table.current_snapshot is None
@@ -140,7 +275,7 @@ class TestCreatingAndOpening:
         assert table.scan().read_all().num_rows == 0
 
     def test_immutable_metadata_views_use_complete_native_scalar_protocols(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
         spec = table.spec
@@ -299,7 +434,7 @@ class TestCreatingAndOpening:
         self, tmp_path: pathlib.Path
     ) -> None:
         """A schema without ids is numbered at create, partitioning included."""
-        table = Table.create(IOBase(tmp_path / "plain"), SCHEMA, ["venue"])
+        table = IcebergTable.create(IOBase(tmp_path / "plain"), SCHEMA, ["venue"])
 
         ids = [child.parquet_field_id for child in table.schema.dtype]
         assert ids == [1, 2]
@@ -309,7 +444,7 @@ class TestCreatingAndOpening:
         assert table.scan().read_all().num_rows == 3
 
     def test_the_metadata_document_is_where_a_reader_looks(
-        self, table: Table, tmp_path: pathlib.Path
+        self, table: IcebergTable, tmp_path: pathlib.Path
     ) -> None:
         assert table.metadata_file_name == "v1.metadata.json"
         assert table.metadata_location.endswith(f"metadata/{table.metadata_file_name}")
@@ -322,34 +457,160 @@ class TestCreatingAndOpening:
         assert metadata.joinpath("version-hint.text").read_text() == "1"
 
     def test_open_finds_the_current_document(
-        self, table: Table, tmp_path: pathlib.Path
+        self, table: IcebergTable, tmp_path: pathlib.Path
     ) -> None:
         table.append(_rows())
 
-        reopened = Table.open(IOBase(tmp_path / "trades"))
+        reopened = IcebergTable(IOBase(tmp_path / "trades"))
         assert reopened.version == table.version
         assert reopened.table_uuid == table.table_uuid
         assert reopened.scan().read_all().num_rows == 3
 
     def test_open_or_create_does_not_write_over_a_table(
-        self, table: Table, tmp_path: pathlib.Path, numbered: object
+        self, table: IcebergTable, tmp_path: pathlib.Path, numbered: object
     ) -> None:
         table.append(_rows())
 
-        same = Table.open_or_create(IOBase(tmp_path / "trades"), numbered, ["venue"])
+        same = IcebergTable.open_or_create(IOBase(tmp_path / "trades"), numbered, ["venue"])
         assert same.scan().read_all().num_rows == 3
 
     def test_a_buffer_is_not_a_table(self, numbered: object) -> None:
         # A table is a folder, and an in-memory buffer names no folder: its
         # address is an identity, and no backend holds a `mem:` location.
         with pytest.raises(ValueError, match='"mem" does not support'):
-            Table.create(IOBase.from_bytes(), numbered)
+            IcebergTable.create(IOBase.from_bytes(), numbered)
+
+
+class TestLocations:
+    """A table named by its location alone: the core opens it, and nothing is
+    built first. None of this reaches a network."""
+
+    def test_a_location_creates_reopens_and_drops_the_table_its_folder_is(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        folder = tmp_path / "located"
+
+        # A path-like names the folder; the version and the spec a create
+        # states neither of are the schema's own.
+        created = IcebergTable.create(folder, SCHEMA, ["venue"])
+        assert created.name == "located"
+        assert created.format_version == 2
+        assert [field.name for field in created.spec.fields] == ["venue"]
+        assert created.metadata_file_name == "v1.metadata.json"
+        created.append(_rows())
+
+        # A path, its text, its URL and its identifier are one location.
+        for root in (folder, str(folder), Url.from_path(folder), Uri.from_path(folder)):
+            reopened = IcebergTable(root)
+            assert type(reopened) is IcebergTable
+            assert reopened.table_uuid == created.table_uuid
+            assert reopened.scan().read_all().num_rows == 3
+
+        # Opening or creating opens what is there as it is, and creates what
+        # is not - under the version and the partitioning stated.
+        same = IcebergTable.open_or_create(str(folder), SCHEMA, None, format_version=1)
+        assert same.table_uuid == created.table_uuid
+        assert same.format_version == 2
+        other = IcebergTable.open_or_create(tmp_path / "other", SCHEMA, None, format_version=1)
+        assert other.format_version == 1
+        assert other.spec.is_unpartitioned()
+
+        # A second create at the location does not write over the table.
+        with pytest.raises(ValueError):
+            IcebergTable.create(folder, SCHEMA)
+        assert IcebergTable(folder).scan().read_all().num_rows == 3
+
+        # Dropped as the folder it is, and then nothing is there to open.
+        IcebergTable(folder).remove(recursive=True)
+        assert not folder.exists()
+        with pytest.raises(ValueError, match="metadata"):
+            IcebergTable(folder)
+
+    def test_properties_open_a_location_and_never_a_handle(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Beside a location they are what the table states: the format
+        # version a create that names none takes is one of them.
+        table = IcebergTable.create(tmp_path / "stated", SCHEMA, **{"format-version": "3"})
+        assert table.format_version == 3
+        assert table.properties["format-version"] == "3"
+
+        # An explicit argument wins over the property, and `...` is a
+        # property that was not given.
+        explicit = IcebergTable.create(
+            tmp_path / "explicit", SCHEMA, format_version=1, **{"format-version": "3"}
+        )
+        assert explicit.format_version == 1
+        skipped = IcebergTable.create(tmp_path / "skipped", SCHEMA, **{"format-version": ...})
+        assert skipped.format_version == 2
+
+        # A handle was opened by whoever built it: properties beside one have
+        # nothing to open, and are refused by name rather than dropped.
+        handle = IOBase(tmp_path / "stated")
+        for refused in (
+            lambda: IcebergTable(handle, region="eu-west-3"),
+            lambda: IcebergTable.create(handle, SCHEMA, region="eu-west-3"),
+            lambda: IcebergTable.open_or_create(handle, SCHEMA, region="eu-west-3"),
+        ):
+            with pytest.raises(ValueError, match="beside a handle"):
+                refused()
+        assert IcebergTable(handle).format_version == 3
+
+    def test_a_table_bucket_location_names_at_most_a_namespace_and_a_table(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Refused where the location is read. Nothing here counts requests -
+        # the core's suite does, against its fake control plane - so the
+        # identity is stated in full and the endpoint is a closed loopback
+        # port: a request these doors should not send would fail on this
+        # machine rather than leave it, and nothing of the operator's is
+        # read to sign one.
+        sealed = {
+            "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+            "secret_access_key": "a-secret",
+            "config_file": str(tmp_path / "config"),
+            "shared_credentials_file": str(tmp_path / "credentials"),
+            "s3tables.region": "us-east-1",
+            "s3tables.endpoint": "http://127.0.0.1:1",
+        }
+        deep = "s3tables://bucket/a/b/c"
+        for refused in (
+            lambda: IcebergTable(deep, **sealed),
+            lambda: IcebergTable.create(deep, SCHEMA, **sealed),
+            lambda: IcebergTable.open_or_create(deep, SCHEMA, **sealed),
+            # A handle takes no properties: this one is refused before an
+            # identity is so much as built.
+            lambda: IOBase(deep),
+        ):
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                refused()
+
+        # A bucket or a namespace is no table, whichever door is asked, and
+        # a create names one by its namespace and its name.
+        for location in ("s3tables://bucket", "s3tables://bucket/desk"):
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable(location, **sealed)
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable.create(location, SCHEMA, **sealed)
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable.open_or_create(location, SCHEMA, **sealed)
+
+    def test_a_table_bucket_location_is_the_object_it_names(self) -> None:
+        # A description each: the bucket is its catalog and a segment below
+        # it a namespace, as the handle each is, and describing one asks
+        # nothing of the service.
+        catalog = IOBase("s3tables://bucket")
+        assert isinstance(catalog, Catalog)
+        assert catalog.path == ("bucket",)
+        namespace = IOBase("s3tables://bucket/desk/")
+        assert isinstance(namespace, Namespace)
+        assert str(namespace) == "bucket.desk"
 
 
 class TestCommits:
     """Each commit writes data files, a manifest, a list, and a document."""
 
-    def test_appending_keeps_what_is_already_stored(self, table: Table) -> None:
+    def test_appending_keeps_what_is_already_stored(self, table: IcebergTable) -> None:
         table.append(_rows())
         table.append(_rows(4))
 
@@ -362,7 +623,7 @@ class TestCommits:
             table.current_snapshot.parent_snapshot_id == table.snapshots[0].snapshot_id
         )
 
-    def test_overwriting_replaces_every_row(self, table: Table) -> None:
+    def test_overwriting_replaces_every_row(self, table: IcebergTable) -> None:
         table.append(_rows())
         table.overwrite(_rows(10))
 
@@ -374,7 +635,7 @@ class TestCommits:
         assert len(table.snapshots) == 2
 
     def test_a_commit_takes_the_rows_the_record_surface_takes(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         # The same inference point `append_records` uses, with the table's
         # stored schema as the declared field - so plain rows need no Arrow
@@ -395,29 +656,33 @@ class TestCommits:
         with pytest.raises(TypeError, match="expected rows"):
             table.append(12)
 
-        # A table that declared its schema can be emptied by writing no rows,
-        # which is how JavaScript already spelled the same delete.
+        # An overwrite replaces the partitions its rows fall in, so no row
+        # replaces nothing on a partitioned table; the scope that names every
+        # row is what empties it.
         table.overwrite([])
+        assert table.scan().read_all().num_rows == 3
+        table.overwrite_where(None, [])
         assert table.scan().read_all().num_rows == 0
 
     def test_a_named_write_types_rows_against_the_table_it_lands_in(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
+        nyc = catalog.namespaces.create("nyc")
 
         # Nothing declares a schema on the first write, so the rows do.
-        created = catalog.append("nyc.trades", [{"id": 1, "venue": "XNAS"}])
+        created = catalog.tables.append("nyc.trades", [{"id": 1, "venue": "XNAS"}])
         assert created.scan().read_all().num_rows == 1
 
         # The second write types against the schema the first one created,
         # through either spelling of the same view.
-        catalog.append("nyc.trades", [{"id": 2, "venue": "XNYS"}])
-        catalog.tables.append("nyc.trades", [{"id": 3, "venue": None}])
+        catalog.tables.append("nyc.trades", [{"id": 2, "venue": "XNYS"}])
+        nyc.tables.append("trades", [{"id": 3, "venue": None}])
         assert catalog.table("nyc.trades").scan().read_all().column(
             "id"
         ).to_pylist() == [1, 2, 3]
 
-    def test_a_commit_takes_anything_pyarrow_streams(self, table: Table) -> None:
+    def test_a_commit_takes_anything_pyarrow_streams(self, table: IcebergTable) -> None:
         table.append(pa.Table.from_batches([_rows()]))
         table.append(pa.RecordBatchReader.from_batches(SCHEMA, [_rows(4)]))
 
@@ -428,7 +693,7 @@ class TestPartitioning:
     """The manifest is the authority on a partition value; the path is layout."""
 
     def test_one_file_per_partition_lands_in_a_named_directory(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
 
@@ -443,7 +708,7 @@ class TestPartitioning:
         assert {file.record_count for file, _ in files} == {1}
 
     def test_a_null_partition_is_the_absence_and_not_the_word(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
 
@@ -456,7 +721,7 @@ class TestPartitioning:
         assert rows.column("venue").to_pylist() == ["XNAS", "XNYS", None]
 
     def test_a_data_file_is_a_child_of_the_table(
-        self, table: Table, tmp_path: pathlib.Path
+        self, table: IcebergTable, tmp_path: pathlib.Path
     ) -> None:
         table.append(_rows())
         file, _ = table.data_files()[0]
@@ -466,7 +731,7 @@ class TestPartitioning:
         assert file.value_counts != {}
         assert file.content == 0, "rows, not deletes"
 
-    def test_a_bound_travels_as_the_encoded_value(self, table: Table) -> None:
+    def test_a_bound_travels_as_the_encoded_value(self, table: IcebergTable) -> None:
         table.append(_rows())
         file, _ = table.data_files()[0]
 
@@ -476,7 +741,7 @@ class TestPartitioning:
         assert file.lower_bounds[1] == file.upper_bounds[1]
         assert file.null_value_counts[1] == 0
 
-    def test_the_manifest_describes_what_the_commit_added(self, table: Table) -> None:
+    def test_the_manifest_describes_what_the_commit_added(self, table: IcebergTable) -> None:
         table.append(_rows())
 
         manifests = table.manifests()
@@ -489,7 +754,7 @@ class TestPartitioning:
     def test_an_unpartitioned_table_writes_one_file(
         self, tmp_path: pathlib.Path, numbered: object
     ) -> None:
-        table = Table.create(IOBase(tmp_path / "flat"), numbered)
+        table = IcebergTable.create(IOBase(tmp_path / "flat"), numbered)
 
         assert table.spec.is_unpartitioned()
         table.append(_rows())
@@ -507,7 +772,7 @@ class TestPartitioning:
 class TestScans:
     """A scan pushes columns down to each file and casts to the scan root."""
 
-    def test_a_projected_scan_reads_the_columns_it_names(self, table: Table) -> None:
+    def test_a_projected_scan_reads_the_columns_it_names(self, table: IcebergTable) -> None:
         table.append(_rows())
         wanted = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 
@@ -515,7 +780,7 @@ class TestScans:
         assert projected.column_names == ["id"]
         assert projected.num_rows == 3
 
-    def test_an_evolved_schema_reads_as_one_shape(self, table: Table) -> None:
+    def test_an_evolved_schema_reads_as_one_shape(self, table: IcebergTable) -> None:
         table.append(_rows())
 
         widened = assign_field_ids(
@@ -556,7 +821,7 @@ class TestScans:
         ]
 
     def test_a_scan_is_a_reader_that_knows_its_schema_first(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
 
@@ -567,14 +832,49 @@ class TestScans:
 
 
 class TestCatalog:
-    """A catalog is a warehouse folder, and a dotted name is nested folders."""
+    """An Iceberg catalog is a warehouse folder on the warehouse abstraction:
+    the generic views walk it, and every object it answers is the Iceberg
+    subclass of its kind."""
+
+    def test_the_iceberg_classes_are_the_generic_kinds(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse", description="the lake")
+
+        # A description: nothing is touched, and every object answers the
+        # members its kind has beside its own.
+        assert isinstance(catalog, Catalog)
+        assert type(catalog) is IcebergCatalog
+        assert catalog.name == "lake"
+        assert catalog.path == ("lake",)
+        assert catalog.description == "the lake"
+        assert catalog.namespace_levels is None
+        assert catalog.properties == {}
+        assert not (tmp_path / "warehouse").exists()
+
+        nyc = catalog.namespaces.create("nyc", owner="ops")
+        assert isinstance(nyc, Namespace)
+        assert type(nyc) is IcebergNamespace
+        assert nyc.name == "nyc"
+        assert str(nyc) == "lake.nyc"
+        assert nyc.properties == {"owner": "ops"}
+        assert (tmp_path / "warehouse/nyc/metadata/namespace.json").is_file()
+
+        table = nyc.tables.create("taxis", SCHEMA)
+        assert isinstance(table, Table)
+        assert type(table) is IcebergTable
+        assert str(table) == "lake.nyc.taxis"
+        assert table.storage == "table"
+        assert table.field() == table.schema
+        assert table.properties == {"owner": "ops"}, "the parent's reach the child"
+        assert repr(table).startswith("IcebergTable(")
+        assert catalog.table("nyc.taxis") == table
+        assert catalog.resolve(["nyc", "taxis"]) == table
 
     def test_the_views_chain_a_catalog_to_namespaces_to_tables(
         self, tmp_path: pathlib.Path
     ) -> None:
-        import pyarrow as pa
-
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
 
         # The views are lazy: constructing them touches nothing, and an empty
         # warehouse answers empty rather than failing.
@@ -604,16 +904,15 @@ class TestCatalog:
         assert len(analytics.tables) == 1
 
         # Indexing opens the table; a missing one is a KeyError, as a map
-        # spells absence - carrying the native message unchanged.
+        # spells absence - carrying the native message unchanged, which names
+        # the level that failed.
         table = catalog.namespaces["analytics"].tables["trades"]
         table.append(pa.table({"id": [1, 2], "venue": ["XNAS", None]}))
         chained = catalog.namespaces["analytics"].tables["trades"]
         assert chained.scan().read_all().num_rows == 2
         with pytest.raises(KeyError, match="expected a table at .*absent.*, got nothing"):
             catalog.namespaces["analytics"].tables["absent"]
-        with pytest.raises(
-            KeyError, match="expected a namespace at .*missing.*, got nothing"
-        ):
+        with pytest.raises(KeyError, match="expected a table at .*missing.*, got nothing"):
             catalog.namespaces["missing"]
 
         # The write conveniences on the view create on first write, from the
@@ -626,16 +925,23 @@ class TestCatalog:
     def test_namespaces_cascade_and_create_is_strict(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
 
         nyc = catalog.namespaces.create("nyc")
         yellow = nyc.namespaces.create("yellow")
-        assert yellow.name == "nyc.yellow"
+        assert yellow.name == "yellow"
+        assert yellow.path == ("lake", "nyc", "yellow")
+        assert str(yellow) == "lake.nyc.yellow"
         assert list(nyc.namespaces) == ["yellow"]
 
-        # Creating what exists is refused by name; a table is not a namespace.
+        # Creating what exists is refused by name; a table is not a namespace;
+        # a create descends through existing namespaces only, so a table under
+        # namespaces that are not there is the absence of the first missing
+        # one.
         with pytest.raises(ValueError, match="expected to create a namespace"):
             catalog.namespaces.create("nyc")
+        with pytest.raises(ValueError, match='expected a table at "lake.sales", got nothing'):
+            catalog.tables.create("sales.eu.orders", SCHEMA)
         yellow.tables.create("taxis", SCHEMA)
         assert "taxis" not in yellow.namespaces
         assert catalog.namespaces["nyc"].namespaces["yellow"].tables[
@@ -645,10 +951,10 @@ class TestCatalog:
     def test_a_pyarrow_append_creates_a_partitioned_table_on_first_write(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
-        assert catalog.warehouse.name == "warehouse"
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
         assert list(catalog.namespaces) == []
         assert "nyc.taxis" not in catalog.tables
+        catalog.namespaces.create("nyc")
 
         # The schema's own marks say which columns the layout spells out, and
         # they ride the Arrow fields' metadata into the very first append.
@@ -667,9 +973,8 @@ class TestCatalog:
             {"id": [1, 2, 3], "venue": ["XNAS", "XNYS", None]}, schema=columns
         )
 
-        table = catalog.append("nyc.taxis", rows)
+        table = catalog.tables.append("nyc.taxis", rows)
         assert "nyc.taxis" in catalog.tables
-        assert list(catalog.namespaces) == ["nyc"]
         assert list(catalog.namespaces["nyc"].tables) == ["taxis"]
 
         # The schema was inferred from the reader and numbered, and the marked
@@ -679,24 +984,21 @@ class TestCatalog:
         assert table.spec.fields[0].transform == "identity"
         assert table.scan().read_all().num_rows == 3
 
-        # Appending again through the catalog keeps what is stored, and the
-        # name opens the same table it created.
-        assert catalog.append("nyc.taxis", rows).scan().read_all().num_rows == 6
+        # Appending again through the view keeps what is stored, and the name
+        # opens the same table it created.
+        assert catalog.tables.append("nyc.taxis", rows).scan().read_all().num_rows == 6
         assert catalog.table("nyc.taxis").table_uuid == table.table_uuid
 
-    def test_tables_create_takes_an_iterable_of_fields(
-        self, tmp_path: pathlib.Path
-    ) -> None:
-        catalog = Catalog(IOBase(tmp_path / "warehouse"))
+    def test_tables_create_takes_a_field(self, tmp_path: pathlib.Path) -> None:
+        catalog = IcebergCatalog("lake", IOBase(tmp_path / "warehouse"))
+        catalog.namespaces.create("ns")
 
-        table = catalog.tables.create(
-            "ns.trades", [Field("id", "int64", nullable=False)]
-        )
+        table = catalog.tables.create("ns.trades", SCHEMA)
         assert list(catalog.namespace("ns").tables) == ["trades"]
         assert table.spec.is_unpartitioned()
 
         with pytest.raises(ValueError, match="expected to create a table"):
-            catalog.tables.create("ns.trades", [Field("id", "int64", nullable=False)])
+            catalog.tables.create("ns.trades", SCHEMA)
         # An existing table is opened as it is; the schema describes only the
         # table the call would create.
         same = catalog.tables.open_or_create("ns.trades", SCHEMA)
@@ -705,28 +1007,26 @@ class TestCatalog:
     def test_overwrite_replaces_and_a_missing_table_is_named(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
 
-        catalog.overwrite("flat", pa.Table.from_batches([_rows()]))
-        replaced = catalog.overwrite("flat", pa.Table.from_batches([_rows(10)]))
+        # A table directly under the warehouse: no namespace to make first.
+        catalog.tables.overwrite("flat", pa.Table.from_batches([_rows()]))
+        replaced = catalog.tables.overwrite("flat", pa.Table.from_batches([_rows(10)]))
         assert replaced.scan().read_all().column("id").to_pylist() == [10, 11, 12]
         # The previous snapshot is retained, which is what makes it reversible.
         assert len(replaced.snapshots) == 2
 
         with pytest.raises(ValueError, match="expected a table"):
             catalog.table("absent")
-        with pytest.raises(ValueError, match="path separators"):
+        with pytest.raises(ValueError, match="a/b"):
             catalog.tables.create("a/b", SCHEMA)
 
-    def test_a_dotted_create_into_an_empty_warehouse_is_one_call(
+    def test_a_dotted_name_descends_through_existing_namespaces(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
-
-        # The namespace view exists before its folder does, so the chain
-        # writes into an empty warehouse: the table's first metadata document
-        # is what brings every ancestor namespace into being.
-        created = catalog.namespace("sales.eu").tables.create("orders", SCHEMA)
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
+        eu = catalog.namespaces.create("sales").namespaces.create("eu")
+        created = eu.tables.create("orders", SCHEMA)
 
         # The same table, every spelling: the catalog's dotted entry point,
         # the root tables view, and the strict indexed cascade.
@@ -743,7 +1043,7 @@ class TestCatalog:
     def test_the_views_speak_every_mapping_spelling(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
         sales = catalog.namespaces.create("sales")
         sales.tables.create("orders", SCHEMA)
         sales.tables.create("returns", SCHEMA)
@@ -768,21 +1068,25 @@ class TestCatalog:
         assert "orders" in sales.tables
         assert len(sales.tables) == 2
 
-    def test_values_opens_one_table_per_next(self, tmp_path: pathlib.Path) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+    def test_a_table_is_read_when_it_is_asked(self, tmp_path: pathlib.Path) -> None:
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
+        catalog.namespaces.create("ns")
         catalog.tables.create("ns.aaa", SCHEMA)
-        # A sibling that lists as a table but cannot open: its current
+        # A sibling that lists as a table but cannot be read: its current
         # metadata document is not table metadata at all.
         poisoned = tmp_path / "warehouse" / "ns" / "zzz" / "metadata"
         poisoned.mkdir(parents=True)
         (poisoned / "v1.metadata.json").write_bytes(b"{}")
 
-        # values() is lazy: taking the first value opens exactly that table,
-        # so the poisoned sibling is never touched - draining raises at it.
+        # Listing describes; nothing is read until a table is asked about
+        # itself, so the poisoned sibling is answered and refuses by name only
+        # then.
         values = catalog.namespace("ns").tables.values()
         assert next(values).root.name == "aaa"
-        with pytest.raises((ValueError, KeyError)):
-            list(values)
+        broken = next(values)
+        assert broken.name == "zzz"
+        with pytest.raises(ValueError):
+            broken.location
         items = catalog.namespace("ns").tables.items()
         name, table = next(items)
         assert name == "aaa"
@@ -791,7 +1095,7 @@ class TestCatalog:
     def test_catalog_and_namespace_carry_properties(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
 
         # Absent means empty, and a call given nothing writes nothing.
         assert catalog.properties == {}
@@ -807,20 +1111,59 @@ class TestCatalog:
         with pytest.raises(ValueError, match="reserved .*ICEBERG:"):
             catalog.update_properties({"ICEBERG:x": "1"})
 
+        # A namespace's stored properties sit over the catalog's, which it
+        # inherits; what was stated on the catalog is never written.
         sales = catalog.namespaces.create("sales")
-        assert sales.properties == {}
+        assert sales.properties == {"region": "eu"}
         sales.update_properties({"team": "emea"})
-        assert sales.properties == {"team": "emea"}
-        assert catalog.namespaces["sales"].properties == {"team": "emea"}
+        assert sales.properties == {"region": "eu", "team": "emea"}
+        assert catalog.namespaces["sales"].properties == {"region": "eu", "team": "emea"}
         with pytest.raises(ValueError, match="reserved .*ICEBERG:"):
             sales.update_properties({"ICEBERG:x": "1"})
+
+        stated = IcebergCatalog("lake", tmp_path / "warehouse", owner="ops")
+        assert stated.properties == {"region": "eu", "owner": "ops"}
+        assert (tmp_path / "warehouse/metadata/catalog.json").read_text().count("ops") == 0
+
+    def test_a_catalog_is_created_and_registered_by_name(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from yggdryl import Warehouse
+
+        # Creating the catalog writes its document, which is what creates the
+        # folder; a second create is the conflict, and open_or_create absorbs
+        # it. A folder of warehouses is registered catalog by catalog.
+        lake = IcebergCatalog.create("lake", tmp_path / "lake")
+        assert (tmp_path / "lake/metadata/catalog.json").is_file()
+        with pytest.raises(ValueError, match="expected to create a catalog"):
+            IcebergCatalog.create("lake", tmp_path / "lake")
+        assert IcebergCatalog.open_or_create("lake", tmp_path / "lake") == lake
+        pond = IcebergCatalog.open_or_create("pond", tmp_path / "pond")
+
+        warehouse = Warehouse()
+        warehouse.register(lake)
+        warehouse.register(pond)
+        assert [catalog.name for catalog in warehouse.catalogs] == ["lake", "pond"]
+        lake.namespaces.create("nyc")
+        lake.tables.append("nyc.taxis", pa.Table.from_batches([_rows()]))
+        table = warehouse.table("lake.nyc.taxis")
+        assert type(table) is IcebergTable
+        assert table.scan().read_all().num_rows == 3
+        with pytest.raises(ValueError, match="expected a table"):
+            warehouse.table("pond.nyc.taxis")
+
+        # A type names the implementation from a URL, and the standalone
+        # namespace is the same description its catalog answers.
+        built = Catalog.from_url(tmp_path / "lake", type="hadoop", name="lake")
+        assert type(built) is IcebergCatalog
+        assert IcebergNamespace("lake.nyc", tmp_path / "lake" / "nyc") == lake.namespace("nyc")
 
 
 class TestTimeTravel:
     """Every retained snapshot is a complete table, read by ordinary scans."""
 
     def test_scan_at_reads_the_snapshot_an_overwrite_replaced(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
         assert table.current_snapshot is not None
@@ -841,7 +1184,7 @@ class TestTimeTravel:
         assert filtered.column("id").to_pylist() == [1]
 
     def test_a_snapshot_the_table_does_not_retain_is_named(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
 
@@ -852,7 +1195,7 @@ class TestTimeTravel:
         self, tmp_path: pathlib.Path, numbered: object
     ) -> None:
         location = tmp_path / "v1"
-        table = Table.create(IOBase(location), numbered, format_version=1)
+        table = IcebergTable.create(IOBase(location), numbered, format_version=1)
         table.append(_rows())
         snapshot = table.current_snapshot
         assert snapshot is not None
@@ -864,7 +1207,7 @@ class TestTimeTravel:
         del document["snapshots"][0]["manifest-list"]
         metadata_path.write_text(json.dumps(document), encoding="utf-8")
 
-        reopened = Table.open(IOBase(location))
+        reopened = IcebergTable(IOBase(location))
         v1 = reopened.current_snapshot
         assert v1 is not None
         assert v1.manifest_list == ""
@@ -881,7 +1224,7 @@ class TestTimeTravel:
         )
         assert retained.manifests == tuple(direct)
 
-    def test_snapshot_by_ref_follows_main(self, table: Table) -> None:
+    def test_snapshot_by_ref_follows_main(self, table: IcebergTable) -> None:
         table.append(_rows())
         current = table.current_snapshot
         assert current is not None
@@ -889,7 +1232,7 @@ class TestTimeTravel:
         assert table.snapshot_by_ref("main").snapshot_id == current.snapshot_id
 
     def test_a_ref_the_table_does_not_have_names_the_refs_it_has(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
 
@@ -901,7 +1244,7 @@ class TestSchemaUpdates:
     """A column change is a new schema, recorded first and committed once."""
 
     def test_a_with_block_commits_the_recorded_operations_as_one_document(
-        self, narrow: Table
+        self, narrow: IcebergTable
     ) -> None:
         first = narrow.current_snapshot
         assert first is not None
@@ -948,7 +1291,7 @@ class TestSchemaUpdates:
         )
         assert narrow.scan().read_all().column("market").to_pylist()[-1] == "XNYS"
 
-    def test_an_exception_discards_the_update(self, narrow: Table) -> None:
+    def test_an_exception_discards_the_update(self, narrow: IcebergTable) -> None:
         before = narrow.version
 
         with pytest.raises(RuntimeError, match="stop"):
@@ -960,7 +1303,7 @@ class TestSchemaUpdates:
         assert [child.name for child in narrow.schema.dtype] == ["id", "venue"]
 
     def test_an_update_that_records_nothing_commits_nothing(
-        self, narrow: Table
+        self, narrow: IcebergTable
     ) -> None:
         before = narrow.version
 
@@ -969,7 +1312,7 @@ class TestSchemaUpdates:
 
         assert narrow.version == before
 
-    def test_commit_answers_the_schema_id_it_made_current(self, narrow: Table) -> None:
+    def test_commit_answers_the_schema_id_it_made_current(self, narrow: IcebergTable) -> None:
         before = narrow.version
 
         schema_id = narrow.update_schema().add_column("", "price: float64").commit()
@@ -1000,7 +1343,7 @@ class TestSchemaUpdates:
         assert len(narrow.schemas) == 2
 
     def test_an_illegal_promotion_is_refused_naming_both_sides(
-        self, narrow: Table
+        self, narrow: IcebergTable
     ) -> None:
         before = narrow.version
 
@@ -1012,15 +1355,17 @@ class TestSchemaUpdates:
 
         assert narrow.version == before
 
-    def test_docs_and_nullability_evolve_too(self, narrow: Table) -> None:
+    def test_docs_and_nullability_evolve_too(self, narrow: IcebergTable) -> None:
         with narrow.update_schema() as update:
             update.update_doc("id", "row identifier").make_nullable("id")
 
         evolved = narrow.schema.dtype[0]
         assert evolved.nullable
-        assert evolved.iceberg["doc"] == "row identifier"
+        # A column's doc is its own description, never an `ICEBERG:` property.
+        assert evolved.description == "row identifier"
+        assert "doc" not in evolved.iceberg
 
-    def test_a_dropped_column_retires_its_identifier(self, narrow: Table) -> None:
+    def test_a_dropped_column_retires_its_identifier(self, narrow: IcebergTable) -> None:
         with narrow.update_schema() as update:
             update.drop_column("venue").add_column("", "note: string")
 
@@ -1029,7 +1374,7 @@ class TestSchemaUpdates:
         # The added column is numbered above the dropped one, never as it.
         assert children[1].parquet_field_id == 3
 
-    def test_a_spent_update_is_refused(self, narrow: Table) -> None:
+    def test_a_spent_update_is_refused(self, narrow: IcebergTable) -> None:
         update = narrow.update_schema()
         update.add_column("", "price: float64")
         assert repr(update) == "SchemaUpdate(empty=False, open=True)"
@@ -1046,7 +1391,7 @@ class TestProperties:
     """A property change is a metadata-only commit, and a no-op is free."""
 
     def test_update_properties_round_trips_and_reaches_the_write_target(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         assert table.target_file_size == 512 * 1024 * 1024
         before = table.version
@@ -1067,7 +1412,7 @@ class TestProperties:
         assert table.properties["commit.retry.num-retries"] == "4"
         assert table.target_file_size == 512 * 1024 * 1024
 
-    def test_a_call_given_nothing_commits_nothing(self, table: Table) -> None:
+    def test_a_call_given_nothing_commits_nothing(self, table: IcebergTable) -> None:
         before = table.version
 
         table.update_properties()
@@ -1082,7 +1427,7 @@ class TestCompaction:
     def test_compact_merges_the_small_files_of_a_partition(
         self, tmp_path: pathlib.Path, numbered: object
     ) -> None:
-        table = Table.create(IOBase(tmp_path / "flat"), numbered)
+        table = IcebergTable.create(IOBase(tmp_path / "flat"), numbered)
         for start in (1, 4, 7):
             table.append(_rows(start))
 
@@ -1115,7 +1460,7 @@ class TestCompaction:
     def test_a_table_with_nothing_to_do_commits_nothing(
         self, tmp_path: pathlib.Path, numbered: object
     ) -> None:
-        table = Table.create(IOBase(tmp_path / "flat"), numbered)
+        table = IcebergTable.create(IOBase(tmp_path / "flat"), numbered)
         table.append(_rows())
         version = table.version
 
@@ -1133,7 +1478,7 @@ class TestInspection:
     """The table's own record renders as record batches."""
 
     def test_the_inspection_readers_use_pyiceberg_column_names(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows())
         table.overwrite(_rows(10))
@@ -1253,7 +1598,7 @@ class TestIcebergOptions:
             options.write_staging = 7
 
     def test_puffin_is_a_native_format_but_not_a_table_data_writer(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         options = IcebergOptions(data_mime_type=MimeType.PUFFIN)
         assert options.data_mime_type == MimeType.PUFFIN
@@ -1299,7 +1644,6 @@ class TestIcebergOptions:
             ("read_parallel_min_file_size", 1),
             ("write_parallelism", 1),
             ("write_staging", "off"),
-            ("compact_after_commits", 1),
             ("data_mime_type", "avro"),
         ]:
             with pytest.raises(TypeError, match="hashed IcebergOptions"):
@@ -1315,7 +1659,7 @@ class TestIcebergOptions:
             unlocked.commit_retries = 2
             assert unlocked.commit_retries == 2
 
-    def test_append_takes_one_explicit_options_value(self, table: Table) -> None:
+    def test_append_takes_one_explicit_options_value(self, table: IcebergTable) -> None:
         options = IcebergOptions(
             target_file_size=1024, commit_retries=1, data_mime_type="avro"
         )
@@ -1325,7 +1669,7 @@ class TestIcebergOptions:
         assert options.data_mime_type == MimeType.AVRO
 
     def test_an_avro_append_scans_back_and_mixes_with_parquet(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.append(_rows(), options=IcebergOptions(data_mime_type="avro"))
         table.append(_rows(10))
@@ -1335,21 +1679,21 @@ class TestIcebergOptions:
         assert got.column("id").to_pylist() == [1, 2, 3, 10, 11, 12]
 
     def test_the_record_options_type_is_refused_by_name(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         from yggdryl import RecordOptions
 
         with pytest.raises(TypeError, match="expected IcebergOptions"):
             table.append(_rows(), options=RecordOptions("application/vnd.apache.parquet"))
 
-    def test_a_keyword_is_an_option_for_this_call(self, table: Table) -> None:
+    def test_a_keyword_is_an_option_for_this_call(self, table: IcebergTable) -> None:
         # Set on a copy of the table's own override for this call alone.
         table.append(_rows(), data_mime_type="avro")
         table.append(_rows(10))
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO, MimeType.PARQUET}
 
-    def test_an_unknown_keyword_warns_naming_it(self, table: Table) -> None:
+    def test_an_unknown_keyword_warns_naming_it(self, table: IcebergTable) -> None:
         with pytest.warns(UnknownPropertyWarning, match="'data_fromat'"):
             table.append(_rows(), data_fromat="avro")
         with pytest.warns(UnknownPropertyWarning, match="'parallelism'"):
@@ -1357,7 +1701,7 @@ class TestIcebergOptions:
         assert {file.mime_type for file, _ in table.data_files()} == {MimeType.PARQUET}
 
     def test_set_options_stores_a_handle_wide_override(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.set_options(IcebergOptions(data_mime_type="avro"))
         table.append(_rows())
@@ -1376,7 +1720,7 @@ class TestIcebergOptions:
         assert table.options().data_mime_type == MimeType.AVRO
 
     def test_the_property_layer_sets_the_format_per_table(
-        self, table: Table
+        self, table: IcebergTable
     ) -> None:
         table.update_properties({"write.format.default": "avro"})
         table.append(_rows())
@@ -1387,27 +1731,26 @@ class TestIcebergOptions:
         with pytest.raises(ValueError, match="write.format.default"):
             table.append(_rows(10))
 
-    def test_the_catalog_write_paths_take_the_same_options_value(
+    def test_a_table_a_catalog_answers_takes_the_same_options_value(
         self, tmp_path: pathlib.Path
     ) -> None:
-        catalog = Catalog(tmp_path / "warehouse")
-        table = catalog.append(
-            "sales.orders",
-            _rows(),
-            options=IcebergOptions(data_mime_type="avro"),
-        )
+        catalog = IcebergCatalog("lake", tmp_path / "warehouse")
+        sales = catalog.namespaces.create("sales")
+
+        # The generic views hand back Iceberg tables, whose own writes take
+        # the per-call options every other Iceberg write takes.
+        table = sales.tables.create("orders", SCHEMA)
+        assert isinstance(table, IcebergTable)
+        table.append(_rows(), options=IcebergOptions(data_mime_type="avro"))
         formats = {file.mime_type for file, _ in table.data_files()}
         assert formats == {MimeType.AVRO}
 
-        tables = catalog.namespaces["sales"].tables
-        table = tables.append(
-            "orders", _rows(10), options=IcebergOptions(target_file_size=1024)
-        )
-        assert table.scan().read_all().num_rows == 6
-        table = tables.overwrite(
-            "orders", _rows(), options=IcebergOptions(data_mime_type="avro")
-        )
-        assert table.scan().read_all().num_rows == 3
+        reopened = catalog.tables["sales.orders"]
+        assert isinstance(reopened, IcebergTable)
+        reopened.append(_rows(10), options=IcebergOptions(target_file_size=1024))
+        assert reopened.scan().read_all().num_rows == 6
+        reopened.overwrite(_rows(), options=IcebergOptions(data_mime_type="avro"))
+        assert reopened.scan().read_all().num_rows == 3
 
 SCHEMA_planning = pa.schema(
     [
@@ -1437,13 +1780,13 @@ def numbered_planning() -> object:
 
 
 @pytest.fixture
-def table_planning(tmp_path: pathlib.Path, numbered_planning: object) -> Table:
+def table_planning(tmp_path: pathlib.Path, numbered_planning: object) -> IcebergTable:
     """A partitioned table with nothing written to it yet."""
-    return Table.create(IOBase(tmp_path / "trades"), numbered_planning, ["venue"])
+    return IcebergTable.create(IOBase(tmp_path / "trades"), numbered_planning, ["venue"])
 
 
 @pytest.fixture
-def filled(table_planning: Table) -> Table:
+def filled(table_planning: IcebergTable) -> IcebergTable:
     """Two commits over the same three partitions: six files, two manifests.
 
     Two commits rather than one is what makes the manifest counts mean
@@ -1459,7 +1802,7 @@ class TestFilteredScans:
     """A filter is answered by the plan for a partition column, by rows for the rest."""
 
     def test_a_filtered_scan_reads_only_the_matching_partition(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         rows = filled.scan_where({"venue": "XNAS"}).read_all()
 
@@ -1470,7 +1813,7 @@ class TestFilteredScans:
         assert filled.plan({"venue": "XNAS"}).files_planned == 2
 
     def test_a_filter_naming_a_column_the_schema_does_not_declare_is_refused(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         # A misspelled column must not read as "matches nothing": an empty
         # answer to a typo is the failure this refusal exists to catch.
@@ -1478,7 +1821,7 @@ class TestFilteredScans:
             filled.scan_where({"market": "XNAS"})
 
     def test_the_absence_of_a_partition_value_is_spelled_null(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         rows = filled.scan_where({"venue": "null"}).read_all()
 
@@ -1486,7 +1829,7 @@ class TestFilteredScans:
         assert sorted(rows.column("id").to_pylist()) == [3, 6]
 
     def test_a_filter_on_a_column_no_partition_carries_still_selects_rows(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         # `id` is not a partition column, so statistics can only bound a file;
         # the rows that come back must still be exactly the matching rows.
@@ -1494,7 +1837,7 @@ class TestFilteredScans:
 
         assert rows.to_pydict() == {"id": [5], "venue": ["XNYS"]}
 
-    def test_a_projection_rides_alongside_the_filter(self, filled: Table) -> None:
+    def test_a_projection_rides_alongside_the_filter(self, filled: IcebergTable) -> None:
         wanted = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 
         rows = filled.scan_where([("venue", "XNYS")], wanted).read_all()
@@ -1502,7 +1845,7 @@ class TestFilteredScans:
         assert rows.column_names == ["id"]
         assert sorted(rows.column("id").to_pylist()) == [2, 5]
 
-    def test_filtering_by_nothing_reads_the_whole_table(self, filled: Table) -> None:
+    def test_filtering_by_nothing_reads_the_whole_table(self, filled: IcebergTable) -> None:
         # The filters are optional, so `scan_where()` has to be `scan()` rather
         # than an accidental empty read.
         assert filled.scan_where().read_all().num_rows == 6
@@ -1513,7 +1856,7 @@ class TestRefScans:
     """A branch or tag is read as the snapshot it names, not as the present."""
 
     def test_a_branch_reads_the_snapshot_it_names_rather_than_the_current_one(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         table_planning.append(_rows_planning())
         assert table_planning.current_snapshot is not None
@@ -1528,7 +1871,7 @@ class TestRefScans:
         assert pinned.to_pydict() == {"id": [1], "venue": ["XNAS"]}
 
     def test_a_ref_the_table_does_not_carry_names_the_refs_it_does(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         with pytest.raises(ValueError, match=r'got "nightly"; it has \[main\]'):
             filled.scan_ref("nightly")
@@ -1538,7 +1881,7 @@ class TestPlanning:
     """A plan is what the metadata decided, before a single row was read."""
 
     def test_a_plan_accounts_for_every_live_file_it_did_not_read(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         total = len(filled.data_files())
         assert total == 6
@@ -1554,7 +1897,7 @@ class TestPlanning:
         assert plan.manifests_read == 2
 
     def test_a_plan_reports_the_rows_the_equivalent_scan_yields(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         # An identity partition filter is settled by the plan alone - every row
         # of a matching file holds the value - so the counted rows and the read
@@ -1568,7 +1911,7 @@ class TestPlanning:
     def test_a_plan_counts_the_rows_of_the_files_and_not_of_the_answer(
         self, tmp_path: pathlib.Path, numbered_planning: object
     ) -> None:
-        flat = Table.create(IOBase(tmp_path / "flat"), numbered_planning)
+        flat = IcebergTable.create(IOBase(tmp_path / "flat"), numbered_planning)
         flat.append(_rows_planning())
 
         plan = flat.plan({"id": "1"})
@@ -1582,7 +1925,7 @@ class TestPlanning:
         assert flat.scan_where({"id": "1"}).read_all().num_rows == 1
 
     def test_a_filter_matching_no_partition_opens_no_manifest_at_all(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         plan = filled.plan({"venue": "XLON"})
 
@@ -1594,7 +1937,7 @@ class TestPlanning:
         assert plan.manifests_skipped == 2
 
     def test_a_filter_no_row_can_satisfy_still_reports_the_manifests_it_read(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         plan = filled.plan({"id": "999"})
 
@@ -1608,7 +1951,7 @@ class TestPlanning:
         assert filled.scan_where({"id": "999"}).read_all().num_rows == 0
 
     def test_planning_an_earlier_snapshot_reports_that_snapshot(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         first = filled.snapshots[0].snapshot_id
 
@@ -1621,13 +1964,13 @@ class TestPlanning:
         assert filled.plan_at(first, {"venue": "XNAS"}).files_planned == 1
 
     def test_planning_a_snapshot_the_table_does_not_retain_is_refused(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         with pytest.raises(ValueError, match="expected a retained snapshot id"):
             filled.plan_at(999)
 
     def test_an_empty_table_plans_nothing_rather_than_failing(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         # A table with no snapshot has no manifests, which is an answer and not
         # an error - the same way an empty scan reads as no rows.
@@ -1637,7 +1980,7 @@ class TestPlanning:
         assert (plan.manifests_read, plan.manifests_skipped) == (0, 0)
 
     def test_a_plan_refuses_an_undeclared_filter_column_as_a_scan_does(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         with pytest.raises(ValueError, match='got "market"'):
             filled.plan({"market": "XNAS"})
@@ -1649,7 +1992,7 @@ class TestOverwritingAPartition:
     """Replacing one partition is the whole point: every other file is carried."""
 
     def test_replacing_one_partition_leaves_every_other_partition_untouched(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         untouched = filled.scan_where({"venue": "XNYS"}).read_all().to_pydict()
         absent = filled.scan_where({"venue": "null"}).read_all().to_pydict()
@@ -1673,7 +2016,7 @@ class TestOverwritingAPartition:
         ]
 
     def test_the_replaced_snapshot_is_retained_and_still_reads_the_old_rows(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         assert filled.current_snapshot is not None
         before = filled.current_snapshot.snapshot_id
@@ -1688,7 +2031,7 @@ class TestOverwritingAPartition:
         assert sorted(old.column("id").to_pylist()) == [1, 2, 3, 4, 5, 6]
 
     def test_an_undeclared_filter_column_is_refused_before_anything_is_written(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         before = filled.version
 
@@ -1699,7 +2042,7 @@ class TestOverwritingAPartition:
         assert filled.version == before
         assert filled.scan().read_all().num_rows == 6
 
-    def test_overwriting_by_no_filter_replaces_every_row(self, filled: Table) -> None:
+    def test_overwriting_by_no_filter_replaces_every_row(self, filled: IcebergTable) -> None:
         filled.overwrite_where({}, _row(100, "XNAS"))
 
         assert filled.scan().read_all().to_pydict() == {
@@ -1712,7 +2055,7 @@ class TestMerging:
     """A merge is the upsert: a stored key is updated, an unknown one appended."""
 
     def test_a_merge_updates_a_stored_key_and_appends_an_unknown_one(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         table_planning.append(_rows_planning())
 
@@ -1734,7 +2077,7 @@ class TestMerging:
         }
 
     def test_a_merge_scoped_to_one_partition_leaves_the_others_as_they_were(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         others = sorted(
             filled.scan_where({"venue": "XNAS"}).read_all().column("id").to_pylist()
@@ -1760,7 +2103,7 @@ class TestMerging:
         )
         assert filled.scan().read_all().num_rows == 7
 
-    def test_merging_on_no_column_at_all_is_an_overwrite(self, table_planning: Table) -> None:
+    def test_merging_on_no_column_at_all_is_an_overwrite(self, table_planning: IcebergTable) -> None:
         table_planning.append(_rows_planning())
 
         # Every row would match every row, so the only honest reading of "no
@@ -1772,7 +2115,7 @@ class TestMerging:
         assert table_planning.current_snapshot.operation == "overwrite"
 
     def test_a_match_key_the_schema_does_not_declare_is_refused(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         before = filled.version
 
@@ -1782,7 +2125,7 @@ class TestMerging:
         assert filled.version == before
         assert filled.scan().read_all().num_rows == 6
 
-    def test_one_string_is_the_selector_text(self, filled: Table) -> None:
+    def test_one_string_is_the_selector_text(self, filled: IcebergTable) -> None:
         # "id" is selector text, so one string names one match key rather
         # than reading as the characters it is made of.
         before = filled.version
@@ -1791,7 +2134,7 @@ class TestMerging:
         assert filled.scan().read_all().num_rows == 7
 
     def test_a_value_the_column_cannot_read_is_refused_under_a_strict_cast(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         before = filled.version
         text = pa.schema(
@@ -1808,7 +2151,7 @@ class TestMerging:
         assert filled.version == before
 
     def test_a_merge_filter_the_schema_does_not_declare_is_refused(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         with pytest.raises(ValueError, match='got "market"'):
             filled.merge_where({"market": "XNAS"}, _row(100, "XNAS"), ["id"])
@@ -1817,7 +2160,7 @@ class TestMerging:
 class TestExpiringSnapshots:
     """Expiry drops what retention no longer names, and nothing else."""
 
-    def test_defaults_retain_override_and_explicit_ids(self, filled: Table) -> None:
+    def test_defaults_retain_override_and_explicit_ids(self, filled: IcebergTable) -> None:
         first = filled.snapshots[0].snapshot_id
         assert filled.current_snapshot is not None
         current = filled.current_snapshot.snapshot_id
@@ -1841,7 +2184,7 @@ class TestExpiringSnapshots:
         assert filled.scan().read_all().num_rows == 6
 
     def test_a_cutoff_older_than_everything_expires_nothing_and_spends_no_version(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         before = filled.version
         retained = [snapshot.snapshot_id for snapshot in filled.snapshots]
@@ -1854,7 +2197,7 @@ class TestExpiringSnapshots:
         assert [snapshot.snapshot_id for snapshot in filled.snapshots] == retained
 
     def test_a_cutoff_past_an_early_snapshot_expires_it_and_the_current_survives(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         for start in (1, 4, 7):
             table_planning.append(_rows_planning(start))
@@ -1875,7 +2218,7 @@ class TestExpiringSnapshots:
         assert table_planning.scan().read_all().num_rows == 9
 
     def test_an_expired_snapshot_is_no_longer_one_the_table_will_read(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         table_planning.append(_rows_planning())
         table_planning.append(_rows_planning(4))
@@ -1891,7 +2234,7 @@ class TestExpiringSnapshots:
             table_planning.plan_at(first)
 
     def test_a_tagged_snapshot_survives_a_cutoff_that_would_reach_it(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         table_planning.append(_rows_planning())
         first = table_planning.snapshots[0].snapshot_id
@@ -1907,7 +2250,7 @@ class TestExpiringSnapshots:
 class TestFastForward:
     """A branch moves only forward, which is why it cannot lose history."""
 
-    def test_a_branch_moves_to_a_descendant_snapshot(self, table_planning: Table) -> None:
+    def test_a_branch_moves_to_a_descendant_snapshot(self, table_planning: IcebergTable) -> None:
         table_planning.append(_rows_planning())
         assert table_planning.current_snapshot is not None
         first = table_planning.current_snapshot.snapshot_id
@@ -1922,7 +2265,7 @@ class TestFastForward:
         assert table_planning.scan_ref("nightly").read_all().num_rows == 6
 
     def test_a_target_that_is_not_a_descendant_is_refused_naming_both_ends(
-        self, table_planning: Table
+        self, table_planning: IcebergTable
     ) -> None:
         table_planning.append(_rows_planning())
         assert table_planning.current_snapshot is not None
@@ -1941,14 +2284,14 @@ class TestFastForward:
         assert table_planning.snapshot_by_ref("nightly").snapshot_id == second
 
     def test_moving_a_branch_the_table_does_not_have_is_refused(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         assert filled.current_snapshot is not None
 
         with pytest.raises(ValueError, match='expected a branch named "nightly"'):
             filled.fast_forward("nightly", filled.current_snapshot.snapshot_id)
 
-    def test_a_target_the_table_does_not_retain_is_refused(self, table_planning: Table) -> None:
+    def test_a_target_the_table_does_not_retain_is_refused(self, table_planning: IcebergTable) -> None:
         table_planning.append(_rows_planning())
 
         with pytest.raises(ValueError, match="unknown snapshot id 999"):
@@ -1959,7 +2302,7 @@ class TestManifestsOfASnapshot:
     """A snapshot is named by identifier, because the table owns what it retains."""
 
     def test_the_manifests_of_a_retained_snapshot_are_that_snapshots(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         first = filled.snapshots[0].snapshot_id
 
@@ -1979,7 +2322,7 @@ class TestManifestsOfASnapshot:
         assert earlier[0].added_rows_count == 3
 
     def test_an_id_the_table_does_not_retain_is_refused_naming_the_ids_it_does(
-        self, filled: Table
+        self, filled: IcebergTable
     ) -> None:
         retained = ", ".join(
             str(snapshot.snapshot_id) for snapshot in filled.snapshots

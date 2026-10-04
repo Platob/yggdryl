@@ -4,7 +4,9 @@
 mod internal {
     use serde_json::Value;
     use yggdryl::excel::ExcelError;
-    use yggdryl::internals::excel_formula_number::{equal, finite, parity_round, quotient, round, round_direction};
+    use yggdryl::internals::excel_formula_number::{
+        equal, finite, parity_round, quotient, round, round_direction,
+    };
 
     #[test]
     fn directional_rounding_reuses_decimal_and_raw_quotient_boundaries() {
@@ -13,7 +15,10 @@ mod internal {
         assert_eq!(round_direction(3.2, -2.0, false), Some(Ok(0.0)));
         assert_eq!(round_direction(0.3, 0.1, true), Some(Ok(1.0)));
         assert_eq!(round_direction(0.3, 0.1, false), Some(Ok(0.0)));
-        assert_eq!(round_direction(1.23456789012345, 1_000_000.0, true), Some(Ok(1.23456789012345)));
+        assert_eq!(
+            round_direction(1.23456789012345, 1_000_000.0, true),
+            Some(Ok(1.23456789012345))
+        );
         assert_eq!(round_direction(f64::from_bits(1), 0.0, true), None);
         assert_eq!(parity_round(2.5, false), Some(Ok(4.0)));
         assert_eq!(parity_round(-2.5, true), Some(Ok(-3.0)));
@@ -350,10 +355,14 @@ fn ordered_comparisons_share_numeric_equality_and_finite_boundaries() {
     use yggdryl::excel::ExcelError;
     use yggdryl::internals::excel_formula_number::compare;
     for (left, right, expected) in [
-        (0.1 + 0.2, 0.3, Equal), (1.0, 1.0 + 2.0_f64.powi(-49), Equal),
-        (1.0, 1.0 + 2.0_f64.powi(-46), Less), (-1.0, -2.0, Greater),
-        (0.0, -0.0, Equal), (f64::from_bits(1), 0.0, Equal),
-        (f64::MIN_POSITIVE, 0.0, Greater), (f64::MAX, f64::MAX / 2.0, Greater),
+        (0.1 + 0.2, 0.3, Equal),
+        (1.0, 1.0 + 2.0_f64.powi(-49), Equal),
+        (1.0, 1.0 + 2.0_f64.powi(-46), Less),
+        (-1.0, -2.0, Greater),
+        (0.0, -0.0, Equal),
+        (f64::from_bits(1), 0.0, Equal),
+        (f64::MIN_POSITIVE, 0.0, Greater),
+        (f64::MAX, f64::MAX / 2.0, Greater),
         (f64::MAX, f64::from_bits(f64::MAX.to_bits() - 1), Equal),
     ] {
         assert_eq!(compare(left, right), Ok(expected), "{left:?}/{right:?}");
@@ -376,7 +385,10 @@ fn integer_floor_and_decimal_truncate_share_native_boundaries() {
         (-1.2, -2.0),
         (123.456, 123.0),
     ] {
-        assert_eq!(integer_floor(value).unwrap().unwrap().to_bits(), expected.to_bits());
+        assert_eq!(
+            integer_floor(value).unwrap().unwrap().to_bits(),
+            expected.to_bits()
+        );
     }
     for (value, places, expected) in [
         (0.9999999999999998, 0.0, 1.0_f64),
@@ -384,8 +396,11 @@ fn integer_floor_and_decimal_truncate_share_native_boundaries() {
         (-123.456, 1.0, -123.4),
         (123.456, -1.0, 120.0),
     ] {
-        assert_eq!(truncate(value, places).unwrap().unwrap().to_bits(),
-            expected.to_bits(), "{value:?}, {places}");
+        assert_eq!(
+            truncate(value, places).unwrap().unwrap().to_bits(),
+            expected.to_bits(),
+            "{value:?}, {places}"
+        );
     }
     assert_eq!(integer_floor(f64::INFINITY), Some(Err(ExcelError::Num)));
     assert_eq!(integer_floor(f64::from_bits(1)), None);
@@ -405,24 +420,63 @@ fn native_pure_math_first_slice_replays_164_typed_cases() {
 
 #[test]
 fn native_cosine_and_inverse_sine_replay_all_82_cases() {
-    super::native_function_fixture(include_str!("../fixtures/pure_math_trig_native.json"),82);
+    super::native_function_fixture(include_str!("../fixtures/pure_math_trig_native.json"), 82);
 }
 
 #[test]
 fn native_trigonometry_large_angles_refuse_unsettled_reduction_and_report_domain_errors() {
-    use yggdryl::excel::{Workbook,Cell,CellRef,DateSystem,Formula};
-    let fixture: serde_json::Value=serde_json::from_str(include_str!("../fixtures/trig_limit_native.json")).unwrap();
-    assert_eq!(fixture["native_run_passed"],true);
-    assert_eq!(fixture["cleanup_completed"],true);
-    for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
-        let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Cases").unwrap();
-        let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|c| c["date_system"]==year && ["COS","SIN","TAN"].contains(&c["shape"]["function"].as_str().unwrap())).collect();
-        assert_eq!(cases.len(),27);
-        for c in &cases { let at:CellRef=c["cell"].as_str().unwrap().parse().unwrap();book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(at,yggdryl::Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(c["wire_formula"].as_str().unwrap(),at))).unwrap(); }
-        let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(15,12,0));
-        for c in &cases { let cell=book.sheet("Cases").unwrap().cell(c["cell"].as_str().unwrap().parse().unwrap()).unwrap();
-            if c["saved_cache"]["type"]=="e" {assert_eq!(cell.error().unwrap().as_str(),c["saved_cache"]["value_text"].as_str().unwrap());}
-            else {assert_eq!(cell.value().as_f64(),Some(-777.0));}
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/trig_limit_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Cases").unwrap();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| {
+                c["date_system"] == year
+                    && ["COS", "SIN", "TAN"].contains(&c["shape"]["function"].as_str().unwrap())
+            })
+            .collect();
+        assert_eq!(cases.len(), 27);
+        for c in &cases {
+            let at: CellRef = c["cell"].as_str().unwrap().parse().unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, yggdryl::Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(c["wire_formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (15, 12, 0)
+        );
+        for c in &cases {
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(c["cell"].as_str().unwrap().parse().unwrap())
+                .unwrap();
+            if c["saved_cache"]["type"] == "e" {
+                assert_eq!(
+                    cell.error().unwrap().as_str(),
+                    c["saved_cache"]["value_text"].as_str().unwrap()
+                );
+            } else {
+                assert_eq!(cell.value().as_f64(), Some(-777.0));
+            }
         }
     }
 }
@@ -434,30 +488,48 @@ fn native_atan_and_atan2_replay_158_cases() {
 
 #[test]
 fn native_remaining_trig_bounded_replay_50_cases() {
-    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
     use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
 
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/trig_bounded_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/trig_bounded_native.json")).unwrap();
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     assert_eq!(fixture["native_cache_comparisons_equal"], 100);
     let cases = fixture["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 50);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let epoch: Vec<_> = cases.iter().filter(|case| case["date_system"] == year).collect();
+        let epoch: Vec<_> = cases
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
         assert_eq!(epoch.len(), 25);
         for case in &epoch {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            at,
+                        )),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
-        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (17, 8, 0), "{year}");
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (17, 8, 0),
+            "{year}"
+        );
         for case in &epoch {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
@@ -469,9 +541,21 @@ fn native_remaining_trig_bounded_replay_50_cases() {
             match cache["type"].as_str().unwrap() {
                 "n" => assert_eq!(
                     cell.value().as_f64().unwrap().to_bits(),
-                    cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits(),
-                    "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), cache["value_text"].as_str(), "{}", case["id"]),
+                    cache["value_text"]
+                        .as_str()
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                        .to_bits(),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    cache["value_text"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("unexpected native cache kind {other}"),
             }
         }
@@ -480,61 +564,113 @@ fn native_remaining_trig_bounded_replay_50_cases() {
 
 #[test]
 fn native_asin_negative_endpoint_preserves_cache_until_kernel_is_known() {
-    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
     use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
 
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/asin_endpoint_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/asin_endpoint_native.json")).unwrap();
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     assert_eq!(fixture["native_cache_comparisons_equal"], 4);
     let cases = fixture["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 2);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
-        let case = cases.iter().find(|case| case["date_system"] == year).unwrap();
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let case = cases
+            .iter()
+            .find(|case| case["date_system"] == year)
+            .unwrap();
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
         let at: CellRef = "A1".parse().unwrap();
-        book.sheet_mut("Cases").unwrap().insert_cell(
-            Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(), at)),
-        ).unwrap();
+        book.sheet_mut("Cases")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(-777.0), system)
+                    .unwrap()
+                    .with_formula(Formula::from_file(
+                        case["wire_formula"].as_str().unwrap(),
+                        at,
+                    )),
+            )
+            .unwrap();
         let report = book.calculate_all().unwrap();
-        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (0, 1, 0), "{year}");
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (0, 1, 0),
+            "{year}"
+        );
         let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
         assert_eq!(cell.value().as_f64(), Some(-777.0), "{}", case["id"]);
-        assert_ne!(case["saved_cache"]["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits(),
-            (-777.0_f64).to_bits());
+        assert_ne!(
+            case["saved_cache"]["value_text"]
+                .as_str()
+                .unwrap()
+                .parse::<f64>()
+                .unwrap()
+                .to_bits(),
+            (-777.0_f64).to_bits()
+        );
     }
 }
 
 #[test]
 fn native_logarithm_replays_62_scalar_and_48_base_cases() {
-    super::native_function_fixture(include_str!("../fixtures/logarithm_native.json"),62);
-    super::native_function_fixture(include_str!("../fixtures/logarithm_base_native.json"),48);
+    super::native_function_fixture(include_str!("../fixtures/logarithm_native.json"), 62);
+    super::native_function_fixture(include_str!("../fixtures/logarithm_base_native.json"), 48);
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn financial_annuity_numeric_domains_keep_errors_and_unsettled_underflow_distinct() {
     use yggdryl::excel::ExcelError;
     use yggdryl::internals::excel_formula_number::annuity;
-    assert_eq!(annuity(false,[-1.0,10.0,100.0,0.0,0.0]),Some(Err(ExcelError::Div0)));
-    assert_eq!(annuity(true,[-1.0,10.0,100.0,0.0,0.0]),Some(Ok(-100.0)));
-    assert_eq!(annuity(true,[-2.0,2.5,100.0,0.0,0.0]),Some(Err(ExcelError::Num)));
-    assert_eq!(annuity(false,[100.0,1000.0,100.0,0.0,0.0]),Some(Err(ExcelError::Num)));
-    assert_eq!(annuity(true,[f64::from_bits(1),10.0,1.0,0.0,0.0]),None);
-    assert_eq!(annuity(false,[0.1,0.0,100.0,0.0,0.0]).unwrap().unwrap().to_bits(),0.0_f64.to_bits());
+    assert_eq!(
+        annuity(false, [-1.0, 10.0, 100.0, 0.0, 0.0]),
+        Some(Err(ExcelError::Div0))
+    );
+    assert_eq!(
+        annuity(true, [-1.0, 10.0, 100.0, 0.0, 0.0]),
+        Some(Ok(-100.0))
+    );
+    assert_eq!(
+        annuity(true, [-2.0, 2.5, 100.0, 0.0, 0.0]),
+        Some(Err(ExcelError::Num))
+    );
+    assert_eq!(
+        annuity(false, [100.0, 1000.0, 100.0, 0.0, 0.0]),
+        Some(Err(ExcelError::Num))
+    );
+    assert_eq!(
+        annuity(true, [f64::from_bits(1), 10.0, 1.0, 0.0, 0.0]),
+        None
+    );
+    assert_eq!(
+        annuity(false, [0.1, 0.0, 100.0, 0.0, 0.0])
+            .unwrap()
+            .unwrap()
+            .to_bits(),
+        0.0_f64.to_bits()
+    );
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn payment_boundary_separates_zero_rate_from_unproved_discount_rounding() {
     use yggdryl::excel::ExcelError;
     use yggdryl::internals::excel_formula_number::payment;
-    assert_eq!(payment([0.0,10.0,100.0,50.0,1.0]),Some(Ok(-15.0)));
-    assert_eq!(payment([0.0,-10.0,100.0,50.0,1.0]),Some(Ok(15.0)));
-    assert_eq!(payment([0.0,0.0,0.0,0.0,0.0]),Some(Err(ExcelError::Num)));
-    assert_eq!(payment([-1.0,10.0,100.0,0.0,0.0]),Some(Err(ExcelError::Num)));
-    assert_eq!(payment([0.1,10.0,100.0,0.0,0.0]),None);
+    assert_eq!(payment([0.0, 10.0, 100.0, 50.0, 1.0]), Some(Ok(-15.0)));
+    assert_eq!(payment([0.0, -10.0, 100.0, 50.0, 1.0]), Some(Ok(15.0)));
+    assert_eq!(
+        payment([0.0, 0.0, 0.0, 0.0, 0.0]),
+        Some(Err(ExcelError::Num))
+    );
+    assert_eq!(
+        payment([-1.0, 10.0, 100.0, 0.0, 0.0]),
+        Some(Err(ExcelError::Num))
+    );
+    assert_eq!(payment([0.1, 10.0, 100.0, 0.0, 0.0]), None);
 }

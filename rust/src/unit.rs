@@ -36,19 +36,20 @@ impl Unit {
         Self(SmolStr::new_static(""))
     }
 
-    /// Whether this unit is stated as none.
+    /// Whether this unit is stated as none: rank zero, which any stated
+    /// unit replaces.
     #[must_use]
     pub fn is_none(&self) -> bool {
         self.0.is_empty()
     }
 
-    /// The better of two units: this one, unless it is none.
-    fn merged(self, other: &Self) -> Self {
-        if self.is_none() { other.clone() } else { self }
+    /// [`CodeValue::rank`]: zero for none, one for anything stated.
+    fn ranked(&self) -> u8 {
+        u8::from(!self.is_none())
     }
 }
 
-code_value!(Unit, Unit, UNIT_WIDTH, merge = Unit::merged);
+code_value!(Unit, Unit, UNIT_WIDTH, rank = Unit::ranked, max_rank = 1);
 
 /// The Arrow extension name of the unit a quantity is stated in.
 pub(crate) const UNIT_EXTENSION_NAME: &str = "yggdryl.unit";

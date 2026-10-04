@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nopaymentsettlpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentsettlpartyids",
-          "FIX:tag": "40233"
-        }
-      },
-      {
         "name": "paymentsettlparties",
         "dtype": {
           "type": "null"

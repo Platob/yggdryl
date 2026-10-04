@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nopaymentstubstartdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentstubstartdatebusinesscenters",
-          "FIX:tag": "42705"
-        }
-      },
-      {
         "name": "paymentstubstartdatebusinesscenters",
         "dtype": {
           "type": "null"

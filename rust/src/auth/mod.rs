@@ -23,9 +23,9 @@ pub(crate) mod lease;
 pub(crate) mod report;
 pub(crate) mod secret;
 
-pub(crate) use environment::variable;
 #[cfg(feature = "aws")]
-pub(crate) use environment::{Environment, is_true};
+pub(crate) use environment::Environment;
+pub(crate) use environment::variable;
 #[cfg(feature = "s3")]
 pub(crate) use lease::Bearer;
 #[cfg(feature = "aws")]

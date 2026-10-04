@@ -473,7 +473,12 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(unit.defaultJSValue(), '')
   const figi = DataType.fromString('figi')
   assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
-  assert.throws(() => figi.scalar('BBG000BLNQ17'), /FIGI|check/i)
+  // A check digit that does not close is a typo, a value of the lowest rank
+  // rather than a refusal; the shape is what is refused - the length, a
+  // reserved prefix.
+  assert.equal(figi.scalar('BBG000BLNQ17').asJs(), 'BBG000BLNQ17')
+  assert.throws(() => figi.scalar('BBG000BLNQ160'), /at most 12 bytes/)
+  assert.throws(() => figi.scalar('BSG000BLNQ16'), /FIGI|figi/)
   // A Bloomberg identifier and a RIC are held to thirty-two bytes too, and
   // neither has a neutral member to default to.
   for (const name of ['bbg', 'ric']) {

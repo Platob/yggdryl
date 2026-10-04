@@ -35,7 +35,7 @@ use yggdryl::expression::{
 };
 use yggdryl::{
     Expression as CoreExpression, Field as CoreField, Filter as CoreFilter, Scalar,
-    Selector as CoreSelector,
+    Selector as CoreSelector, SortOptions,
 };
 
 use crate::datatype::{
@@ -48,6 +48,7 @@ use crate::iomedia::{
 };
 use crate::scalar::PyScalar;
 use crate::value_error;
+use crate::warehouse::PyWarehouse;
 
 // ---------------------------------------------------------------------------
 // Reading Python values as the core's
@@ -87,11 +88,29 @@ pub(crate) fn term_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
 
 /// Read one projection: a `Term`, or any scalar [`CoreProjection::from_scalar`]
 /// reads - text, or a `(term, alias)` pair.
-fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
+pub(crate) fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
     if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
         return Ok(CoreProjection::new(term.inner.clone()));
     }
     CoreProjection::from_scalar(&crate::scalar::from_py(value)?).map_err(value_error)
+}
+
+/// Read a list of projections - a `PARTITION:by` declaration, a spec's
+/// fields - each what [`projection_from_value`] reads. One string is refused
+/// rather than read as its characters.
+pub(crate) fn projections_from_iterable(
+    value: &Bound<'_, PyAny>,
+    label: &str,
+) -> PyResult<Vec<CoreProjection>> {
+    if value.is_instance_of::<PyString>() {
+        return Err(pyo3::exceptions::PyTypeError::new_err(format!(
+            "{label} must be an iterable of projections, not one string"
+        )));
+    }
+    value
+        .try_iter()?
+        .map(|entry| projection_from_value(&entry?))
+        .collect()
 }
 
 /// Read a list of operands, each a term or a value.
@@ -195,38 +214,27 @@ fn source_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSource> {
     Ok(CoreSource::Target(target_from_value(value)?))
 }
 
-/// Read one ordering key and its optional direction and null placement.
+/// Read one ordering key: the text of one - a term, then an optional `asc`
+/// or `desc`, then an optional `nulls first` or `nulls last`, read by the
+/// core's own `order by` grammar - a term ordered ascending, or a
+/// `(term, direction)` or `(term, direction, nulls)` tuple whose words the
+/// core reads as the suffix an ordering writes after its key.
 fn ordering_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreOrdering> {
-    let (term, direction, nulls) =
-        if let Ok(parts) = value.extract::<(Bound<'_, PyAny>, String, String)>() {
-            (parts.0, Some(parts.1), Some(parts.2))
-        } else if let Ok(parts) = value.extract::<(Bound<'_, PyAny>, String)>() {
-            (parts.0, Some(parts.1), None)
-        } else {
-            (value.clone(), None, None)
-        };
-    let term = term_from_value(&term)?;
-    let direction = direction.map(|word| word.to_ascii_lowercase());
-    let mut key = match direction.as_deref().unwrap_or("asc") {
-        "asc" | "ascending" => CoreOrdering::asc(term),
-        "desc" | "descending" => CoreOrdering::desc(term),
-        other => {
-            return Err(value_error(format!(
-                "unknown sort direction {other:?}; expected \"asc\" or \"desc\""
-            )));
-        }
+    let (term, suffix) = if let Ok((term, direction, nulls)) =
+        value.extract::<(Bound<'_, PyAny>, String, String)>()
+    {
+        (term, format!("{direction} nulls {nulls}"))
+    } else if let Ok((term, direction)) = value.extract::<(Bound<'_, PyAny>, String)>() {
+        (term, direction)
+    } else if let Ok(text) = value.extract::<&str>() {
+        return text.parse().map_err(value_error);
+    } else {
+        return Ok(CoreOrdering::asc(term_from_value(value)?));
     };
-    let nulls = nulls.map(|word| word.to_ascii_lowercase());
-    match nulls.as_deref().unwrap_or("last") {
-        "last" => {}
-        "first" => key = key.nulls_first(true),
-        other => {
-            return Err(value_error(format!(
-                "unknown null placement {other:?}; expected \"first\" or \"last\""
-            )));
-        }
-    }
-    Ok(key)
+    Ok(CoreOrdering::new(
+        term_from_value(&term)?,
+        suffix.parse::<SortOptions>().map_err(value_error)?,
+    ))
 }
 
 /// One ordering key as the `(term, direction, nulls)` triple Python reads.
@@ -242,32 +250,6 @@ fn ordering_parts(key: &CoreOrdering) -> (PyTerm, &'static str, &'static str) {
     )
 }
 
-/// Read a write verb in any spelling the grammar reads.
-fn verb_from_str(value: &str) -> PyResult<CoreVerb> {
-    let spelling = value
-        .split_whitespace()
-        .map(str::to_ascii_lowercase)
-        .collect::<Vec<_>>()
-        .join(" ");
-    Ok(match spelling.as_str() {
-        "insert" | "insert into" | "append" | "append into" | "append to" => CoreVerb::Insert,
-        "insert overwrite"
-        | "insert overwrite into"
-        | "overwrite"
-        | "overwrite into"
-        | "replace"
-        | "replace into" => CoreVerb::Overwrite,
-        "upsert" | "upsert into" | "merge" | "merge into" => CoreVerb::Upsert,
-        "delete" | "delete from" => CoreVerb::Delete,
-        _ => {
-            return Err(value_error(format!(
-                "unknown write verb {value:?}; expected \"insert into\", \"insert overwrite\", \
-                 \"upsert into\", \"delete from\", or one of their aliases"
-            )));
-        }
-    })
-}
-
 /// Read one path step: a struct child, a serie position, or a map key.
 fn segment_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSegment> {
     if value.is_instance_of::<PyString>() {
@@ -277,19 +259,6 @@ fn segment_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSegment> {
         return Ok(CoreSegment::index(index));
     }
     CoreSegment::key(crate::scalar::from_py(value)?).map_err(value_error)
-}
-
-/// Read one comparison from the grammar's own spelling of it.
-fn comparison_from_str(value: &str) -> PyResult<CoreComparison> {
-    CoreComparison::ALL
-        .into_iter()
-        .find(|comparison| comparison.as_str().eq_ignore_ascii_case(value))
-        .ok_or_else(|| {
-            value_error(format!(
-                "unknown comparison {value:?}; expected one of {}",
-                CoreComparison::ALL.map(CoreComparison::as_str).join(", ")
-            ))
-        })
 }
 
 /// Read one mapping as the core's named-input shape, `Scalar::Struct`.
@@ -652,7 +621,7 @@ impl PyTerm {
     /// `is distinct from`, `is not distinct from` - and `eq` through `ge` are
     /// the six spellings that name one each.
     fn compare(&self, comparison: &str, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let comparison = comparison_from_str(comparison)?;
+        let comparison = comparison.parse::<CoreComparison>().map_err(value_error)?;
         Ok(Self::from_core(
             self.inner
                 .clone()
@@ -2031,7 +2000,7 @@ impl PyPlan {
         target: Option<&Bound<'_, PyAny>>,
         merge_by: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let mut write = CoreWrite::new(verb_from_str(verb)?);
+        let mut write = CoreWrite::new(verb.parse::<CoreVerb>().map_err(value_error)?);
         if let Some(target) = target {
             write = write.into(target_from_value(target)?);
         }
@@ -2064,9 +2033,10 @@ impl PyPlan {
 
     /// This plan with an `order by`, replacing any it carries.
     ///
-    /// Each key is a term or its text, or a `(term, direction)` or
-    /// `(term, direction, nulls)` tuple; `direction` is `"asc"` or `"desc"`
-    /// and `nulls` is `"first"` or `"last"`.
+    /// Each key is a term, the text of an `order by` key (`"price desc
+    /// nulls first"`), or a `(term, direction)` or `(term, direction,
+    /// nulls)` tuple; `direction` is `"asc"` or `"desc"` and `nulls` is
+    /// `"first"` or `"last"`, in any case.
     fn with_ordering(&self, keys: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut ordering = Vec::new();
         for key in keys.try_iter()? {
@@ -2158,6 +2128,20 @@ impl PyPlan {
     /// stream under the schema it wrote.
     fn execute<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let reader = self.inner.execute().map_err(value_error)?;
+        batch_reader_to_pyarrow(py, reader)
+    }
+
+    /// `execute`, its locations resolved against `warehouse` instead of the
+    /// process's own `SystemWarehouse`.
+    fn execute_in<'py>(
+        &self,
+        py: Python<'py>,
+        warehouse: &PyWarehouse,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = self
+            .inner
+            .execute_in(warehouse.core())
+            .map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 

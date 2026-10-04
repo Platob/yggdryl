@@ -345,17 +345,6 @@
         }
       },
       {
-        "name": "nopaymentscheduleratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentscheduleratesources",
-          "FIX:tag": "40868"
-        }
-      },
-      {
         "name": "paymentscheduleratesources",
         "dtype": {
           "type": "null"
@@ -407,17 +396,6 @@
         "metadata": {
           "FIX:field": "paymentschedulefixingdatebusinessdayconvention",
           "FIX:tag": "40853"
-        }
-      },
-      {
-        "name": "nopaymentschedulefixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentschedulefixingdatebusinesscenters",
-          "FIX:tag": "40977"
         }
       },
       {
@@ -494,17 +472,6 @@
         "metadata": {
           "FIX:field": "paymentschedulefixingdateadjusted",
           "FIX:tag": "40858"
-        }
-      },
-      {
-        "name": "nopaymentschedulefixingdays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentschedulefixingdays",
-          "FIX:tag": "41161"
         }
       },
       {
@@ -603,17 +570,6 @@
         "metadata": {
           "FIX:field": "paymentscheduleinterimexchangedatesbusinessdayconvention",
           "FIX:tag": "40862"
-        }
-      },
-      {
-        "name": "nopaymentscheduleinterimexchangedatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopaymentscheduleinterimexchangedatebusinesscenters",
-          "FIX:tag": "40945"
         }
       },
       {

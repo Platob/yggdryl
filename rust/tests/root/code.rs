@@ -802,13 +802,36 @@ mod datatypes {
         );
 
         // A currency and a market stated as none take the other, and
-        // anything stated stands.
+        // anything stated stands: none is rank zero, stated rank one, and
+        // the listing is no rank for either.
+        assert!(Ccy::new("XXX").unwrap().is_none());
+        assert_eq!(Ccy::new("XXX").unwrap().rank(), 0);
+        assert!(!Ccy::new("stETH").unwrap().is_none());
+        assert_eq!(Ccy::new("stETH").unwrap().rank(), 1);
+        assert!(Mic::new("XXXX").unwrap().is_none());
+        assert_eq!(Mic::new("XXXX").unwrap().rank(), 0);
+        assert!(!Mic::new("ZZZZ").unwrap().is_none());
+        assert_eq!(Mic::new("ZZZZ").unwrap().rank(), 1);
         assert_eq!(
             Ccy::new("XXX")
                 .unwrap()
                 .merge_with(&Ccy::new("USD").unwrap())
                 .as_str(),
             "USD"
+        );
+        assert_eq!(
+            Ccy::new("USD")
+                .unwrap()
+                .merge_with(&Ccy::new("XXX").unwrap())
+                .as_str(),
+            "USD"
+        );
+        assert_eq!(
+            Mic::new("XPAR")
+                .unwrap()
+                .merge_with(&Mic::new("XXXX").unwrap())
+                .as_str(),
+            "XPAR"
         );
         assert_eq!(
             Ccy::new("USD")
@@ -969,8 +992,10 @@ mod securities {
             let rendered = serde_json::to_string(dtype).unwrap();
             assert_eq!(serde_json::from_str::<DataType>(&rendered).unwrap(), *dtype);
 
-            // The value door: the check digit gates the space, the case folds,
-            // and the stored value is the code under its own identity.
+            // The value door: the shape gates the space, the case folds,
+            // and the stored value is the code under its own identity. A
+            // check digit that does not close is a value of rank zero, not
+            // a refusal.
             let value = dtype.scalar(Scalar::from(*sample)).unwrap();
             assert!(value.is_code(), "{name}");
             assert_eq!(value.kind(), *name);
@@ -978,18 +1003,26 @@ mod securities {
             assert_eq!(value.dtype().unwrap(), *dtype);
             assert_eq!(dtype.scalar(Scalar::from(*lower)).unwrap(), value, "{name}");
             assert_eq!(dtype.scalar(value.clone()).unwrap(), value);
-            let refused = dtype.scalar(Scalar::from(*typo)).unwrap_err().to_string();
-            assert!(refused.contains("check digit"), "{refused}");
+            let landed = dtype.scalar(Scalar::from(*typo)).unwrap();
+            assert_eq!(landed.as_str(), Some(*typo), "{name}");
+            assert_eq!(landed.dtype().unwrap(), *dtype);
             let refused = dtype.scalar(Scalar::from(*short)).unwrap_err().to_string();
             assert!(refused.contains("characters"), "{refused}");
             // The wire shape is the identity over the text, and lower case on
-            // the wire reads as the identifier it spells.
+            // the wire reads as the identifier it spells; a typo reads as the
+            // value it is.
             let wire = serde_json::to_string(&value).unwrap();
             assert_eq!(wire, format!(r#"{{"type":"{name}","value":"{sample}"}}"#));
             assert_eq!(serde_json::from_str::<Scalar>(&wire).unwrap(), value);
             let folded = format!(r#"{{"type":"{name}","value":"{lower}"}}"#);
             assert_eq!(serde_json::from_str::<Scalar>(&folded).unwrap(), value);
             let broken = format!(r#"{{"type":"{name}","value":"{typo}"}}"#);
+            assert_eq!(
+                serde_json::from_str::<Scalar>(&broken).unwrap(),
+                landed,
+                "{name}"
+            );
+            let broken = format!(r#"{{"type":"{name}","value":"{short}"}}"#);
             assert!(serde_json::from_str::<Scalar>(&broken).is_err(), "{name}");
 
             // Arrow: the text storage under the code's own extension name, and
@@ -1040,20 +1073,35 @@ mod securities {
             .unwrap();
             assert_eq!(cells(&stored), vec![Some(*sample)], "{name}");
 
-            // Strict: a typo and a lower-case spelling are refused, naming the
-            // row, the column and the rule. A column's bytes are what every
-            // reader digests, so the cast lets in the canonical spelling only.
-            for refused in [typo, lower] {
-                let message = Serie::from_arrow_array(
-                    Some(&field),
-                    text(&[sample, refused]),
-                    ArrowCastOptions::new().with_safe(false),
-                )
-                .unwrap_err()
-                .to_string();
-                assert!(message.contains("canonical spelling"), "{name}: {message}");
-                assert!(message.contains("row 1 of column sid"), "{name}: {message}");
-            }
+            // Strict: a lower-case spelling is refused, naming the row, the
+            // column and the rule - a column's bytes are what every reader
+            // digests, so the cast lets in the canonical spelling only - and
+            // a typo is a spelling, which lands as the value it is.
+            let message = Serie::from_arrow_array(
+                Some(&field),
+                text(&[sample, typo, lower]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(message.contains("canonical spelling"), "{name}: {message}");
+            assert!(message.contains("row 2 of column sid"), "{name}: {message}");
+            let landed = Serie::from_arrow_array(
+                Some(&field),
+                text(&[sample, typo]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap();
+            assert_eq!(
+                cells(&landed.clone().require_arrow_array().unwrap()),
+                vec![Some(*sample), Some(*typo)],
+                "{name}"
+            );
+            assert_eq!(
+                landed.scalar(1).unwrap(),
+                dtype.scalar(Scalar::from(*typo)).unwrap(),
+                "{name}: what the cast lets in is what the value door answers"
+            );
 
             // Safe: the refused cell is null and the rest of the column stands.
             let safe = Serie::from_arrow_array(
@@ -1064,7 +1112,11 @@ mod securities {
             .unwrap()
             .require_arrow_array()
             .unwrap();
-            assert_eq!(cells(&safe), vec![Some(*sample), None, None], "{name}");
+            assert_eq!(
+                cells(&safe),
+                vec![Some(*sample), Some(*typo), None],
+                "{name}"
+            );
 
             // A fixed-width slot is still a spelling the cast reads, with the
             // slot's padding trimmed.
@@ -1116,16 +1168,25 @@ mod securities {
         };
         for (name, _, _, sample, lower, typo, _) in &IDENTIFIERS {
             // The strict cast at the column tier holds to the canonical
-            // spelling, exactly as the ISIN cast does: a typo refuses the
-            // whole column, and so does a value the width does not fit.
+            // spelling, exactly as the ISIN cast does: a lower-case cell
+            // refuses the whole column, and so does a value the width does
+            // not fit; a typo is a spelling and lands.
             let strict = format!("cast(sid as {name}) = '{sample}'")
                 .parse::<Term>()
                 .unwrap()
                 .bind(&schema)
                 .unwrap();
             assert_eq!(strict.filter(&batch(vec![sample])).unwrap().num_rows(), 1);
+            assert_eq!(
+                strict
+                    .filter(&batch(vec![sample, typo]))
+                    .unwrap()
+                    .num_rows(),
+                1,
+                "{name}"
+            );
             let message = strict
-                .filter(&batch(vec![sample, typo]))
+                .filter(&batch(vec![sample, lower]))
                 .unwrap_err()
                 .to_string();
             assert!(message.contains("canonical spelling"), "{name}: {message}");
@@ -1140,9 +1201,9 @@ mod securities {
                     .unwrap()
             );
 
-            // The safe cast is what a derivation asks: an identifier the check
-            // digit closes answers, and anything else is null rather than a
-            // refusal, at both tiers.
+            // The safe cast is what a derivation asks: a spelling of the
+            // type answers, closing or not, and anything else is null rather
+            // than a refusal, at both tiers.
             let safe = format!("try_cast(sid as {name}) is not null")
                 .parse::<Term>()
                 .unwrap()
@@ -1151,15 +1212,24 @@ mod securities {
             let kept = safe
                 .filter(&batch(vec![sample, typo, "HIGH_TOUCH", lower]))
                 .unwrap();
-            assert_eq!(cells(kept.column(0)), vec![Some(*sample)], "{name}");
+            assert_eq!(
+                cells(kept.column(0)),
+                vec![Some(*sample), Some(*typo)],
+                "{name}"
+            );
             assert!(
                 safe.matches(&Scalar::from_sequence([Scalar::from(*lower)]))
                     .unwrap(),
                 "{name}"
             );
             assert!(
+                safe.matches(&Scalar::from_sequence([Scalar::from(*typo)]))
+                    .unwrap(),
+                "{name}"
+            );
+            assert!(
                 !safe
-                    .matches(&Scalar::from_sequence([Scalar::from(*typo)]))
+                    .matches(&Scalar::from_sequence([Scalar::from("HIGH_TOUCH")]))
                     .unwrap(),
                 "{name}"
             );

@@ -11,7 +11,7 @@
 | `state` | `get_state`/`set_state`: the lifecycle-sorted [`State`](../types/enum/state.md) member, never absent - `UNKNOWN` where none reached |
 | `is_execution` | provided via `State::is_execution` (`PARTIALLY_FILLED`, `TRADE`, `FILLED`); overridable where lifecycle state and report kind differ - an operation leaf's kind decides |
 | `seqnum` | `get_seqnum`/`set_seqnum`: its place among the events of its instant (same `currunix`) - zero for the first of a run, the events a stream hands over at that instant one after another, one more for each next, the next run starting again at zero, a stream coming back to an instant it left included; outside the content code. The FIX parse places by order; the [FIX lifecycle](../fix/lifecycle.md#a-place-counts-one-instant) places by content, after the expirations it hands over at that instant - a content repeated at an instant takes the place it already took there; market leaves take their message's place; `EventIterator` keeps each source element's own place and places only its expirations; a text line's place is its row number |
-| Clocks | `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `creaunix` when its lifecycle was created, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor - a [text line](../media/index.md#plain-text) states `prevunix` alone - `snapunix` the instant a grid view's content was stated at - the original the view copies, never the tick it is dated at nor a predecessor's - and no digest reads it. `execunix`, when an element last executed, is no event's clock: it is a [market fact](market.md#contract), so a text line states none |
+| Clocks | `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix` (`Option<i64>`) and `prevuuid` (`Option<Uuid>`), each `get_`/`set_`, stated only where known: `creaunix` when its lifecycle was created, `recdunix` the earliest recording (what a merge ranks by), `exprunix` the deadline, `prevunix`/`prevuuid` the predecessor - a [text line](../media/text.md) states `prevunix` alone - `snapunix` the instant a grid view's content was stated at - the original the view copies, never the tick it is dated at nor a predecessor's - and no digest reads it. `execunix`, when an element last executed, is no event's clock: it is a [market fact](market.md#contract), so a text line states none |
 | `digest_event` | provided: continues [`Element::digest`](element.md#contract) with the state and predecessor's identity; no place, no instant fed |
 | `fold_lifecycle` | provided, `(&mut self, &Self) -> bool`: earliest creation, latest expiration, the further state ([`State::merge_with`](../types/enum/state.md#the-further-along-stands)) |
 
@@ -64,7 +64,7 @@ An Apple order placed, then partly filled a second later.
 
     ```rust
     use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-    use yggdryl::{Ccy, Decimal, IdSource, IdType, Identifier, Side, State};
+    use yggdryl::{Ccy, Decimal, IdKey, IdType, Identifier, Side, State};
 
     const T: i64 = 1_700_000_000_000_000_000;
     let event = |unix: i64, state: &str| -> yggdryl::Result<OrderEvent> {
@@ -75,7 +75,7 @@ An Apple order placed, then partly filled a second later.
         event.set_price(Some("189.50".parse()?), true);
         event.set_quantity(Some(Decimal::from_int(100)), true);
         event.set_currency(Ccy::new("USD")?, true);
-        event.insert_identifier(Identifier::new(IdSource::Fix, IdType::OrderId, "O-1001")?)?;
+        event.insert_identifier(Identifier::new(IdKey::base(IdType::OrderId), "O-1001")?)?;
         event.finalize();
         Ok(event)
     };
@@ -121,7 +121,7 @@ An Apple order placed, then partly filled a second later.
             price=Decimal("189.50"),
             quantity=100,
             currency="USD",
-            identifiers=[Identifier("fix", "orderid", "O-1001")],
+            identifiers=[Identifier("orderid", "O-1001")],
         )
 
     placed = event(T, "NEW")
@@ -159,7 +159,7 @@ An Apple order placed, then partly filled a second later.
       price: '189.50',
       quantity: 100,
       currency: 'USD',
-      identifiers: [new Identifier('fix', 'orderid', 'O-1001')],
+      identifiers: [new Identifier('orderid', 'O-1001')],
     })
 
     const placed = event(T, 'NEW')
@@ -300,17 +300,17 @@ The same fill report, recorded by a gateway at +2ms and an OMS at +5ms, each fro
 
 | Key | Rule |
 | --- | --- |
-| Live set, twins | elements still alive (a live state, not past expiration) share the cross identity, and a chain is keyed by that identity and its [`marketdatakind`](../types/enum/marketdatakind.md) - an element joins only a chain of its own kind, by its cross code, a base code or a shared name, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order; an arrival under a live identity - or (if dead) under the type and value of one of a live element's `get_identifiers()`, whatever its source, or under the value one of its own identifiers replaced - a parent identifier's value, joined under its base ([Parentage](identifier.md#parentage)) - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead, a twin taking the chain's metadata and identifiers as a follower does |
-| Sides | an order's, a quote's or an execution's stored cross code states its [side](market.md#sides-and-cross-codes) (`10:1:O-7` to buy, `10:2:O-7` to sell), so a buy and a sell under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with |
-| No side | an element stating `UNKN` joins the one side alive under its base cross code (a live order's, quote's or execution's code without its `{kind}:{side}:` prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
+| Live set, twins | elements still alive (a live state, not past expiration) share the cross identity, and a chain is keyed by that identity and its [`marketdatakind`](../types/enum/marketdatakind.md) - an element joins only a chain of its own kind, by its cross code, a base code or a shared name, so an order and an execution under one cross code are two chains and a fill never restates, follows or ends its order; an arrival under a live identity - or (if dead) under the type and value of one of a live element's `get_identifiers()`, whatever its source, or under the value one of its own identifiers replaced - a parent identifier's value, joined under its base ([Parentage](identifier.md#parentage)) - is yielded as `with_previous` of the live one, live until it isn't, then retiring; one arriving under the identity the live element *arrived* under is yielded [`restating`](#restating) it instead, a twin taking the chain's metadata and identifiers as a follower does; and one arriving under the identity a statement the chain moved past *at the live element's own instant* arrived under is yielded restating that statement - the same identity again - while the chain stays where it moved: the walk keeps those statements until the chain moves to a later instant, the only place a sorted walk reads another statement of them; a chain a step ends keeps that step and the statements it moved past at the step's instant the same way, each restated where it arrives again and the chain staying ended, until the walk reads a later instant |
+| Sides | an order's or an execution's stored cross code states its [side](market.md#sides-and-cross-codes) (`10:1:O-7` to buy, `10:2:O-7` to sell), so a buy and a sell under one identifier are two chains, and a name is alive on each side apart: an arrival joins a live element of its own side it shares a name with. A quote's chain is keyed by no side - its code states `0` - and a name it goes by is alive on the leg its latest statement tags, so a bid and an offer going by one `MDEntryID` are two entries |
+| No side | an element stating `UNKN` joins the one side alive under its base cross code (a live order's or execution's code without its `{kind}:{side}:` prefix), else the one side alive under the first name it shares with a live element - taking that chain's side and code; where both sides of that name are alive, it starts a chain of its own |
 | `UPDATED` | a `NEW` stated over a live element that is new-like - [`State::is_new_like`](../types/enum/state.md): acknowledged or working (rank 20 or 30), or `UPDATED`, `REPLACED`, `RESTATED`, `AMENDED` - is yielded `UPDATED` (`3004`, rank 30), read before following folds the state, so later progress folds over it; a `PENDING_NEW` followed by `NEW` stays `NEW` |
 | Creation | every element leaves stating `creaunix`: one stating none takes its chain's - the earliest the fold kept - or, starting a chain, its own instant; a stated one is never replaced, and no identity moves, since no instant is digested |
-| One cross element | a chain whose first element states no cross code stands under that element's identity, and every element joining it by a name carries that identity as its `crossuuid` |
+| One cross element | a chain whose first element states no cross code stands under that element's identity, and every element of it after the first carries that identity as its `crossuuid` - one joining by a name, an `UPDATED`, a twin, the `EXPIRED` the walk emits and a follower stating a code of its own alike - stated after its last finalize, since a finalize derives an element's own |
 | Order | `sorted=true` trusts the caller and streams; else the walk collects and stably sorts by `is_after`/`is_before`. One before the live element, refused by it, or unchanged by following, is yielded as it came |
 | Executions | an execution joins nothing by a name or a base code: it is a chain of its own kind, followed only under its own cross code; a market event stating no `execunix` is dated from `currunix` pre-placement when `Event::is_execution` holds; a market event carries the latest execution clock through non-executions ([`execunix`](market.md#following-and-merging)), and no event carries `recdunix`; a FIX message's fills are split into execution messages at the [parse](../fix/message.md#market-data) |
 | Deadlines, end | a finite `exprunix` emits one owned `EXPIRED` at that instant, following the live generation, then purges it; the expirations of one deadline take its next places in the order of the identities they retire, and a source element keeps its own place; a replaced/terminal generation's stale deadline emits nothing; ties: deadlines, then source events, then grid views; at EOF the walk drains finite deadlines/views to the greatest deadline reached, else the last source instant - a nonexpiring identity never extends a finite source |
 | Grid | `with_snapshot_ns(i64)` (≤0=none): an epoch-aligned grid - one owned view per living identity per crossed tick, never backdating; `snapshot_ns()` reads it back. A view is the live element as of its tick: dated at it (`currunix` = the tick), its `snapunix` the instant the element it copies was stated at - that element's own `snapunix` where it is itself a view - so its `curruuid` is the identity the tick derives - a row of its own wherever rows are keyed by identity within a time - while its content (`currhashcode`), `seqnum`, `prevuuid` and `crossuuid` are the live element's; it does not advance the chain |
-| `MarketData` | `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` walk; every other variant yields unchanged and never stands live; unsorted, an undated value sorts first |
+| `MarketData` | `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` and `Fix` walk, each following and restating - a twin, a statement logged again - through its own reading; every other variant yields unchanged and never stands live; unsorted, an undated value sorts first |
 | `alive()` | the live elements, in no order |
 | Bindings | Python `graph.EventIterator(items, sorted=True, snapshot_ns=None)`, JavaScript `new graph.EventIterator(items, sorted, snapshotNs)`: each yields `MarketData`, and `alive()` answers it |
 

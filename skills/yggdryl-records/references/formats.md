@@ -15,7 +15,7 @@ answers the same `IOMedia` calls; this table is what differs.
 | CSV, TSV | `text/csv`, `.csv`; `text/tab-separated-values`, `.tsv` | default | streamed RFC 4180 records: the header names the columns, a declared `field` types every cell or a sample of `infer_row_size` records infers the columns (every one nullable, a later cell that does not fit refused); a ragged record or an unterminated quote is refused by row | the header once, then one record per row, every leaf as the text it reads back from and quoted only where it must be; a write onto a stored document completes onto its header, never its sample, and append writes after the stored tail |
 | Iceberg table | a folder with `metadata/` and `data/` | `iceberg` feature (implies `parquet`) | a scan planned from the snapshot's manifests, files decoded side by side | `append`/`overwrite`/`merge` commits of Parquet data files |
 | Partitioned folder | a folder of `column=value/` leaves | the leaves' encodings | every leaf, partition columns restored from the path | rows routed to their leaf; the leaf stores only non-partition columns |
-| JSON, JSON Lines, YAML, TOML, XML | `.json`, `.jsonl`, `.yaml`, `.toml`, `.xml` | default | only through `read_arrow` (one record column) | only through `write_arrow`, overwrite only (one document per row, or one document; written whole, so append is refused) |
+| JSON, JSON Lines, YAML, TOML, XML | `.json`, `.jsonl`, `.yaml`, `.toml`, `.xml` | default | only through `read_serie` (one record column) | only through `overwrite_serie` / `write_serie(.., overwrite)` (one document per row, or one document; written whole, so append is refused; of the options only the declared `field`) |
 
 `application/vnd.apache.orc` and any other type answer `record_options()` with
 a refusal naming the encodings the build implements.
@@ -37,7 +37,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 | Plain text | `TextOptions`: `rowheader`, `autotype` (on), `framing`, `lstrip`/`rstrip`, `linesep`, `start_rownum`, `parse_mtime` (on), `leading_fragment`, `max_record_byte_size`, `rename_columns`, `timezone` | 35,840 rows or 64 MiB per batch | named regex captures become columns |
 | CSV, TSV | `separator`, `quote`, `escape`, `comment`, `header`, `null_values`, `trim`, `infer_row_size`; Rust also `linesep` | `,` (`\t` under a `.tsv` name), `"`, none, none, on, `[""]`, off, 1,024, `\n` | one ASCII byte per role, never a line break, no two roles one byte; Python and JavaScript spell a byte role as a one-character text and clear `quote`/`escape`/`comment` with `None`/`null` |
 | every encoding | `level` | 6 | outer `.gz`/`.zz`/`.zst` level |
-| Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `compact_after_commits`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
+| Iceberg | `IcebergOptions`: `read_parallelism`, `write_parallelism`, `read_parallel_min_files`, `read_parallel_min_file_size`, `target_file_size`, `commit_retries`, `data_mime_type` | explicit -> table property (`read.parallelism`, ...) -> default | per call (`options=`) or `set_options` per table |
 
 ## Pushdown
 
@@ -55,7 +55,8 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 ## Limits and edges
 
 - `row_offset` skips leading result rows first; `max_row_size` then counts result rows, `max_byte_size` their uncompressed Arrow bytes; all three apply last and stop pulling. `0` is a valid read (schema, no batch); a non-zero byte bound yields at least one row. On a write, a limit truncates the input and never pulls past it.
-- `commit_row_size`: unset commits once; `N` publishes every `N` rows then the remainder; `0` is refused. A plain folder publishes each leaf on its own; Iceberg commits a snapshot.
+- `commit_batch_num`: counts whole batches and never cuts one; `N` publishes every `N` batches then the remainder; `0` is refused. Unset is the destination's cadence: a leaf, a plain folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends (`write.target-file-size-bytes` cuts files, never commits). A plain folder publishes each leaf on its own; Iceberg commits a snapshot. What a cadence holds between publications is held under the process spill bound, heaviest batches spilled first.
+- `num_threads`: how many parts a write of several parts runs at once - an Iceberg commit's partition groups, each sorted whole by the table's sort order unless already in it - over the table's `write.parallelism`, else `read.parallelism`, else the host; `0` is refused naming `$.num_threads`.
 - Merge: keys by Arrow row format (null matches null, last arrival wins); holds only the stored side in memory. Iceberg merge keys are the identity partition columns plus `merge_by`; a table with neither is refused; merge on format v3 is refused.
 - Parquet reads copy the bytes they keep into reader-owned memory, so rewriting the file while a reader lives is safe.
 - Iceberg: promotions are `int32 -> int64`, `float32 -> float64`, same-scale decimal widening, and v3's `unknown` to any type; field IDs are preserved and never reused; append and metadata-only commits rebase on conflict, overwrite/merge/compact restore state and report the conflict.
@@ -63,4 +64,4 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 - Excel: the grid is 1,048,576 rows by 16,384 columns and a cell holds at most 32,767 characters; text is escaped as ECMA-376 spells it (`_xHHHH_`), which Excel reads back and openpyxl leaves as written; an inferred required column is one every row states.
 - Plain text: a blank physical line separates records and never is one; bytes are decoded once in the handle's declared charset, otherwise as UTF-8 with Windows-1252 fallback per invalid byte.
 
-Pages: https://platob.github.io/yggdryl/media/ (per format) and https://platob.github.io/yggdryl/holder/#records (the shared surface).
+Pages: https://platob.github.io/yggdryl/media/ (the overview, one page per format beneath it) and https://platob.github.io/yggdryl/holder/#records (the shared surface).

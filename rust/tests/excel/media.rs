@@ -948,6 +948,61 @@ fn an_xlsx_name_binds_the_excel_medium() {
 }
 
 #[test]
+fn a_coded_workbook_name_is_refused_at_every_door() {
+    // A workbook is a ZIP package deflated inside: a coding around it would
+    // name a file no spreadsheet opens, so every door refuses the name - the
+    // write before a byte is written, a read before the package is opened -
+    // and says what to drop.
+    for (name, codec) in [("trades.xlsx.gz", "gzip"), ("trades.xlsx.zst", "zstd")] {
+        let expected = format!(
+            "expected an uncompressed xlsx handle, got {codec} coding; a workbook is a ZIP \
+             package deflated inside, so drop the {codec} coding from its name"
+        );
+        let codec_refusal = |error: Error| match error {
+            Error::Codec {
+                format,
+                position,
+                reason,
+            } => assert_eq!(
+                (format, position, reason.as_str()),
+                ("xlsx", 0, expected.as_str())
+            ),
+            other => panic!("{name}: expected a codec refusal, got {other:?}"),
+        };
+
+        let mut held = named(name).into_declared_media();
+        let options = held.record_options().unwrap();
+        assert!(matches!(options, RecordOptions::Excel(_)), "{name}");
+        codec_refusal(
+            held.overwrite_arrow_batch(batch(&[1], &[Some("AAPL")]), &options)
+                .unwrap_err(),
+        );
+        // Nothing was written.
+        assert_eq!(held.size(), 0, "{name}");
+        codec_refusal(held.read_arrow_field(&options).unwrap_err());
+        codec_refusal(held.read_arrow_reader(&options).err().unwrap());
+        codec_refusal(held.row_size().unwrap_err());
+
+        let mut plain = Buffer::new().with_media_type(MediaType::from_file_name(name));
+        codec_refusal(
+            overwrite_arrow_reader(
+                &mut plain,
+                reader(&[1], &[Some("AAPL")]),
+                &ExcelOptions::new(),
+            )
+            .unwrap_err(),
+        );
+        assert!(plain.read_all_bytes().unwrap().is_empty(), "{name}");
+        codec_refusal(Error::from(
+            read_batch_reader(&plain, None, &ExcelOptions::new())
+                .err()
+                .unwrap(),
+        ));
+        codec_refusal(Workbook::open(named(name)).unwrap_err());
+    }
+}
+
+#[test]
 fn a_local_xlsx_url_is_held_written_and_reopened_as_a_workbook() {
     let mut folder = LocalFolder::temporary().unwrap().path().unwrap();
     folder.push(format!("yggdryl-excel-media-{}", std::process::id()));

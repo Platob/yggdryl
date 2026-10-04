@@ -55,10 +55,14 @@ pub(crate) mod structured;
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
 pub const DEFAULT_ROOT_NAME: &str = "row";
+/// The child name a value wraps into a struct under when none is declared.
+pub const DEFAULT_VALUE_NAME: &str = "value";
 /// How a partition directory spells an absent value.
 pub const NULL_PARTITION: &str = "null";
-pub(crate) use options::{CommitBuffer, Shaping, WriteLimitState};
-pub use options::{DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions};
+pub(crate) use options::{Cadence, CommitBuffer, Shaping, WriteLimitState};
+pub use options::{
+    DEFAULT_COMMIT_BYTE_SIZE, DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions,
+};
 
 use crate::IOBase;
 use crate::arrow::{Error, Result};
@@ -356,7 +360,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -372,7 +376,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -380,7 +384,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -388,7 +392,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -396,7 +400,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -404,7 +408,7 @@ impl crate::IOMedia for Media {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }

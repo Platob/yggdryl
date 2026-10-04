@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nounderlyingcashsettldealers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcashsettldealers",
-          "FIX:tag": "42039"
-        }
-      },
-      {
         "name": "underlyingcashsettldealers",
         "dtype": {
           "type": "null"

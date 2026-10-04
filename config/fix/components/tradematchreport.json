@@ -189,17 +189,6 @@
         }
       },
       {
-        "name": "noinstrmtmatchsides",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrmtmatchsides",
-          "FIX:tag": "1889"
-        }
-      },
-      {
         "name": "instrmtmatchsides",
         "dtype": {
           "type": "null"

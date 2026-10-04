@@ -357,22 +357,33 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
         });
     });
     for (name, expression) in [
-        ("exp", "exp(size)"), ("ln", "ln(size)"),
-        ("log10", "log10(size)"), ("degrees", "degrees(size)"),
+        ("exp", "exp(size)"),
+        ("ln", "ln(size)"),
+        ("log10", "log10(size)"),
+        ("degrees", "degrees(size)"),
         ("radians", "radians(size)"),
-        ("cos", "cos(size)"), ("asin", "asin(size)"),
-        ("sin", "sin(size)"), ("tan", "tan(size)"),
-        ("acos", "acos(0.5)"), ("atan", "atan(size)"),
+        ("cos", "cos(size)"),
+        ("asin", "asin(size)"),
+        ("sin", "sin(size)"),
+        ("tan", "tan(size)"),
+        ("acos", "acos(0.5)"),
+        ("atan", "atan(size)"),
         ("atan2", "atan2(size,1)"),
     ] {
         let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
         group.bench_function(name, |bencher| {
             bencher.iter(|| {
-                for row in &rows { black_box(bound.eval(black_box(row)).unwrap()); }
+                for row in &rows {
+                    black_box(bound.eval(black_box(row)).unwrap());
+                }
             });
         });
     }
-    let power = "pow(size, 2)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let power = "pow(size, 2)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
     group.bench_function("power_int64", |bencher| {
         bencher.iter(|| {
             for row in &rows {
@@ -663,6 +674,72 @@ fn star_projection_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The epoch periods over a timestamp column - the grammar's `years(ts)`
+/// through `minutes(ts, n)`, which an Iceberg partition transform computes
+/// too - against a kernel baseline that floors the counts to the quarter
+/// hour directly: the calendar periods read a civil date per row, the fixed
+/// ones divide, and the gap to the kernel is the price of the grammar.
+fn epoch_function_benchmarks(criterion: &mut Criterion) {
+    use arrow_array::TimestampMicrosecondArray;
+    use arrow_array::types::Int64Type;
+
+    let schema = Field::new(
+        "ticks",
+        StructType::from_fields([Field::new(
+            "ts",
+            DataType::DateTime64 {
+                unit: yggdryl::TimeUnit::Microsecond,
+                timezone: yggdryl::Timezone::NAIVE,
+            },
+            true,
+        )])
+        .map(DataType::from)
+        .unwrap(),
+        false,
+    );
+    // One instant every 97 seconds from 2024-01-01, a column spanning weeks.
+    let start = 1_704_067_200_000_000_i64;
+    let counts: TimestampMicrosecondArray = (0..ROWS)
+        .map(|row| Some(start + i64::try_from(row).unwrap() * 97_000_000))
+        .collect::<TimestampMicrosecondArray>();
+    let batch = RecordBatch::try_new(
+        schema.clone().into_arrow_schema().unwrap(),
+        vec![Arc::new(counts.clone()) as ArrayRef],
+    )
+    .unwrap();
+    let mut group = criterion.benchmark_group("expression_epoch_functions");
+    group.throughput(criterion::Throughput::Elements(ROWS as u64));
+    for (name, text) in [
+        ("years", "years(ts)"),
+        ("quarters", "quarters(ts)"),
+        ("months", "months(ts)"),
+        ("weeks", "weeks(ts)"),
+        ("days", "days(ts)"),
+        ("hours", "hours(ts)"),
+        ("minutes_15", "minutes(ts, 15)"),
+        ("time_bucket_15", "time_bucket('15 minutes', ts)"),
+    ] {
+        let bound = text
+            .parse::<yggdryl::Selector>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                black_box(&bound)
+                    .apply_arrow_batch(black_box(&batch))
+                    .expect("the period must answer")
+            });
+        });
+    }
+    group.bench_function("kernel_minutes_15", |bencher| {
+        bencher.iter(|| {
+            black_box(&counts).unary::<_, Int64Type>(|count| count.div_euclid(900_000_000))
+        });
+    });
+    group.finish();
+}
+
 /// A plan: the statement a caller runs, and the rule a FIX dictionary
 /// states - parsed, printed, hashed, and its condition bound under the
 /// parameters a rule is read with.
@@ -791,6 +868,7 @@ criterion_group!(
     unnest_benchmarks,
     map_key_benchmarks,
     star_projection_benchmarks,
+    epoch_function_benchmarks,
     plan_benchmarks,
     prune_benchmarks,
     casing_benchmarks,
@@ -799,27 +877,39 @@ criterion_group!(
 criterion_main!(expression);
 
 fn casing_benchmarks(criterion: &mut Criterion) {
-    let schema=StructType::from_fields([DataType::utf8().required_field("s")])
-        .map(DataType::from).unwrap().required_field("row");
-    let mut group=criterion.benchmark_group("expression_casing");
-    for (name,expression,input) in [("short_lower","lower(s)","AbC".to_owned()),
-                                   ("short_upper","upper(s)","aBc".to_owned()),
-                                   ("shared_lower","lower(s)","unchanged long lowercase ".repeat(32)),
-                                   ("unicode_context","lower(s)","\u{039f}\u{03a3}".repeat(32))] {
-        let bound=expression.parse::<Term>().unwrap().bind(&schema).unwrap();
-        let row=Scalar::from_sequence([Scalar::from(input.as_str())]);
-        group.bench_function(name,|bencher|bencher.iter(||black_box(bound.eval(black_box(&row)).unwrap())));
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let mut group = criterion.benchmark_group("expression_casing");
+    for (name, expression, input) in [
+        ("short_lower", "lower(s)", "AbC".to_owned()),
+        ("short_upper", "upper(s)", "aBc".to_owned()),
+        (
+            "shared_lower",
+            "lower(s)",
+            "unchanged long lowercase ".repeat(32),
+        ),
+        ("unicode_context", "lower(s)", "\u{039f}\u{03a3}".repeat(32)),
+    ] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        let row = Scalar::from_sequence([Scalar::from(input.as_str())]);
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| black_box(bound.eval(black_box(&row)).unwrap()))
+        });
     }
     group.finish();
 }
-
 
 /// Exact integer functions, bound once and evaluated without row scratch.
 fn integer_math_benchmarks(criterion: &mut Criterion) {
     let schema = StructType::from_fields([
         DataType::Int64.required_field("left"),
         DataType::UInt64.required_field("right"),
-    ]).map(DataType::from).unwrap().required_field("row");
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
     let row = Scalar::from_sequence([Scalar::from(12_i64), Scalar::from(18_u64)]);
     let mut group = criterion.benchmark_group("expression_integer_math");
     for (name, expression) in [

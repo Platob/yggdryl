@@ -8,7 +8,7 @@ import decimal
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, RecordOptions, Selector, TextOptions
+from yggdryl import DataType, Field, RecordOptions, Selector, TextOptions
 from yggdryl.avro import MAX_SCHEMA_DEPTH as AVRO_MAX_SCHEMA_DEPTH
 from yggdryl.enums import LEADING_FRAGMENTS
 from yggdryl.media import (
@@ -81,23 +81,33 @@ def test_a_reader_is_widened_and_narrowed_without_being_drained() -> None:
 
 
 def test_a_partition_column_names_the_term_it_derives_with() -> None:
-    column = Field("year", "int32")
-    assert column.partition.term is None
+    rows = Field(
+        "row",
+        DataType.from_fields(
+            [Field("event", "date32", nullable=False), Field("symbol", "utf8")]
+        ),
+        nullable=False,
+    )
+    assert rows.dtype["event"].transform.term is None
 
-    column.partition.sources = ["event"]
-    column.partition.transform = "year"
-    term = column.partition.term
+    partitioned = rows.with_partition_by(["symbol", "years(event)"])
+    # A derived entry is a marked column computed by its term.
+    derived = partitioned.dtype["event_year"]
+    assert derived.is_partition
+    term = derived.transform.term
     assert term is not None
-    assert str(term) == "year(event)"
+    assert str(term) == "years(event)"
 
-    # The identity is a source with no transform.
-    identity = Field("symbol", "utf8")
-    identity.partition.sources = ["ticker"]
-    assert str(identity.partition.term) == "ticker"
+    # The identity is the column itself, marked, with no term.
+    identity = partitioned.dtype["symbol"]
+    assert identity.is_partition
+    assert identity.transform.term is None
 
-    # The vocabulary belongs to the partition view alone.
+    # The vocabulary belongs to the transform view alone.
     with pytest.raises(TypeError):
         Field("id", "int64").fix.term
+    with pytest.raises(TypeError):
+        Field("id", "int64").partition.term
 
 
 def test_options_shape_a_batch_and_a_reader_the_same_way() -> None:

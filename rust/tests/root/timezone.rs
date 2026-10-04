@@ -32,6 +32,44 @@ mod internal {
         assert_eq!(Timezone::NAIVE.offset_at(0), None);
     }
 
+    #[test]
+    fn a_day_number_reads_back_as_its_civil_date_at_every_width() {
+        use yggdryl::internals::timezone::{
+            civil_from_days, civil_from_days_wide, days_from_civil,
+        };
+        // Within `i32` years both readings are the exact inverse of
+        // `days_from_civil`.
+        for (year, month, day) in [
+            (1970, 1, 1),
+            (1969, 12, 31),
+            (2024, 2, 29),
+            (-4713, 11, 24),
+            (i32::MAX, 12, 31),
+            (i32::MIN, 3, 1),
+        ] {
+            let days = days_from_civil(year, month, day);
+            assert_eq!(civil_from_days(days), (year, month, day), "{year}");
+            assert_eq!(
+                civil_from_days_wide(days),
+                (i64::from(year), month, day),
+                "{year}"
+            );
+        }
+        // An `i64` count of seconds names a day of a year past `i32`: the
+        // wide reading is that year, 292277026596-12-04 the day of
+        // `i64::MAX` seconds, and the narrow one saturates rather than
+        // wrapping into a year that looks real.
+        let last = i64::MAX.div_euclid(86_400);
+        assert_eq!(civil_from_days_wide(last), (292_277_026_596, 12, 4));
+        assert_eq!(civil_from_days(last), (i32::MAX, 12, 4));
+        let first = i64::MIN.div_euclid(86_400);
+        assert_eq!(civil_from_days_wide(first), (-292_277_022_657, 1, 27));
+        assert_eq!(civil_from_days(first), (i32::MIN, 1, 27));
+        let past = days_from_civil(i32::MAX, 12, 31) + 1;
+        assert_eq!(civil_from_days_wide(past), (i64::from(i32::MAX) + 1, 1, 1));
+        assert_eq!(civil_from_days(past), (i32::MAX, 1, 1));
+    }
+
     /// Seconds since the Unix epoch for a UTC civil date and time.
     fn utc(year: i32, month: u32, day: u32, hour: i64, minute: i64) -> i64 {
         yggdryl::internals::timezone::days_from_civil(year, month, day) * 86_400

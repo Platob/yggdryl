@@ -245,10 +245,9 @@ fn pivot_date_items_preserve_native_raw_serial_and_epoch_cache_encoding() {
             );
             // The whole phantom day, including its clock, needs the original
             // worksheet serial, as retained by the sheet's cell extras.
-            let retained = (system == DateSystem::Year1900
-                && styled
-                && (60.0..61.0).contains(&serial))
-                .then_some(serial);
+            let retained =
+                (system == DateSystem::Year1900 && styled && (60.0..61.0).contains(&serial))
+                    .then_some(serial);
             assert_eq!(items.intern(Some(&cell), retained, at).unwrap(), index);
             assert_eq!(expected[index]["kind"], if styled { "d" } else { "n" });
             if styled {
@@ -261,7 +260,6 @@ fn pivot_date_items_preserve_native_raw_serial_and_epoch_cache_encoding() {
         assert_eq!(items.items().len(), 12);
     }
 }
-
 
 #[test]
 fn pivot_compute_refuses_case_aliased_axes_after_physical_binding() {
@@ -286,13 +284,14 @@ fn pivot_compute_refuses_case_aliased_axes_after_physical_binding() {
     }
 }
 
-
 #[test]
 fn pivot_compute_refuses_out_of_grid_source_before_dimensions() {
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
     for (column, label) in ["Region", "Product", "Sales"].into_iter().enumerate() {
-        sheet.set_cell(CellRef::new(0, column as u32), label).unwrap();
+        sheet
+            .set_cell(CellRef::new(0, column as u32), label)
+            .unwrap();
     }
     for last in [CellRef::new(u32::MAX, 2), CellRef::new(1, u32::MAX)] {
         let mut request = spec();
@@ -304,7 +303,6 @@ fn pivot_compute_refuses_out_of_grid_source_before_dimensions() {
         ));
     }
 }
-
 
 #[test]
 fn pivot_compute_refuses_rounded_extreme_integer_items() {
@@ -318,7 +316,11 @@ fn pivot_compute_refuses_rounded_extreme_integer_items() {
             Err(Error::InvalidRecord { path, .. }) if path.as_str() == at.to_string()
         ));
     }
-    for value in [Scalar::from(i64::MIN), Scalar::from(1u64 << 53), Scalar::from(1u64 << 60)] {
+    for value in [
+        Scalar::from(i64::MIN),
+        Scalar::from(1u64 << 53),
+        Scalar::from(1u64 << 60),
+    ] {
         let cell = Cell::from_scalar(at, value, DateSystem::Year1900).unwrap();
         let mut items = PivotItems::new(DateSystem::Year1900);
         assert_eq!(items.intern(Some(&cell), None, at).unwrap(), 0);
@@ -330,34 +332,58 @@ fn pivot_parent_rollups_share_all_eleven_aggregate_modes() {
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
     for (column, header) in ["Region", "Product", "Year", "Quarter", "Sales"]
-        .into_iter().enumerate()
+        .into_iter()
+        .enumerate()
     {
-        sheet.set_cell(CellRef::new(0, column as u32), header).unwrap();
+        sheet
+            .set_cell(CellRef::new(0, column as u32), header)
+            .unwrap();
     }
     for row in 1..=4 {
-        for (column, value) in [(0, "East"), (1, if row <= 2 { "A" } else { "B" }),
-                                (2, "2024"), (3, "Q1")] {
+        for (column, value) in [
+            (0, "East"),
+            (1, if row <= 2 { "A" } else { "B" }),
+            (2, "2024"),
+            (3, "Q1"),
+        ] {
             sheet.set_cell(CellRef::new(row, column), value).unwrap();
         }
         sheet.set_cell(CellRef::new(row, 4), 4.0).unwrap();
     }
-    let axis = |field: &str| AxisField { field: field.into(), order: ItemOrder::Ascending };
+    let axis = |field: &str| AxisField {
+        field: field.into(),
+        order: ItemOrder::Ascending,
+    };
     let mut request = spec();
     request.source.range = "A1:E5".parse().unwrap();
     request.rows = vec![axis("Region"), axis("Product")];
     request.columns = vec![axis("Year"), axis("Quarter")];
     request.subtotals = true;
-    let modes = [Aggregate::Sum, Aggregate::Average, Aggregate::Count,
-        Aggregate::CountNumbers, Aggregate::Min, Aggregate::Max,
-        Aggregate::Product, Aggregate::StdDev, Aggregate::StdDevP,
-        Aggregate::Var, Aggregate::VarP];
-    request.values = modes.into_iter().map(|aggregate| ValueField {
-        field: "Sales".into(), aggregate, caption: None, number_format: None,
-    }).collect();
+    let modes = [
+        Aggregate::Sum,
+        Aggregate::Average,
+        Aggregate::Count,
+        Aggregate::CountNumbers,
+        Aggregate::Min,
+        Aggregate::Max,
+        Aggregate::Product,
+        Aggregate::StdDev,
+        Aggregate::StdDevP,
+        Aggregate::Var,
+        Aggregate::VarP,
+    ];
+    request.values = modes
+        .into_iter()
+        .map(|aggregate| ValueField {
+            field: "Sales".into(),
+            aggregate,
+            caption: None,
+            number_format: None,
+        })
+        .collect();
     let bound = BoundSource::bind(&request, sheet).unwrap();
     let computed = PivotComputed::build(&request, &bound, sheet).unwrap();
-    let expected = [16.0, 4.0, 4.0, 4.0, 4.0, 4.0, 256.0,
-                    0.0, 0.0, 0.0, 0.0];
+    let expected = [16.0, 4.0, 4.0, 4.0, 4.0, 4.0, 256.0, 0.0, 0.0, 0.0, 0.0];
     for (value, &all_rows) in expected.iter().enumerate().skip(1) {
         for (row_depth, column_depth) in [(1, 2), (2, 1), (1, 1)] {
             // Leaf A has two source records; row parent East has all four.
@@ -367,12 +393,21 @@ fn pivot_parent_rollups_share_all_eleven_aggregate_modes() {
                     Aggregate::Product => 16.0,
                     _ => all_rows,
                 }
-            } else { all_rows };
-            assert_eq!(computed.parent_rollups.get(&(row_depth, 0, column_depth, 0, value)),
+            } else {
+                all_rows
+            };
+            assert_eq!(
+                computed
+                    .parent_rollups
+                    .get(&(row_depth, 0, column_depth, 0, value)),
                 Some(&PivotMeasure::Number(number)),
-                "mode {:?}, parent ({row_depth},{column_depth})", modes[value]);
+                "mode {:?}, parent ({row_depth},{column_depth})",
+                modes[value]
+            );
         }
     }
-    assert!(computed.parent_rollups.keys().all(|key| key.4 != 0),
-        "SUM reuses its existing visible-order fold");
+    assert!(
+        computed.parent_rollups.keys().all(|key| key.4 != 0),
+        "SUM reuses its existing visible-order fold"
+    );
 }

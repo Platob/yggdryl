@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nomiscfeesubtypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfeesubtypes",
-          "FIX:tag": "2633"
-        }
-      },
-      {
         "name": "miscfeesubtypes",
         "dtype": {
           "type": "null"

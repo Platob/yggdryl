@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nopartydetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartydetails",
-          "FIX:tag": "1671"
-        }
-      },
-      {
         "name": "partydetails",
         "dtype": {
           "type": "null"
@@ -88,17 +77,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "partydetails"
-        }
-      },
-      {
-        "name": "noentitlements",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noentitlements",
-          "FIX:tag": "1773"
         }
       },
       {

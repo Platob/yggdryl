@@ -451,8 +451,12 @@ enum ParsedTemporal {
 
 impl ParsedTemporal {
     fn read(text: &str) -> Option<Self> {
-        if let Some(date) = date(text) { return Some(Self::Date(date)); }
-        if let Some((millis, format)) = clock(text) { return Some(Self::Clock(millis, format)); }
+        if let Some(date) = date(text) {
+            return Some(Self::Date(date));
+        }
+        if let Some((millis, format)) = clock(text) {
+            return Some(Self::Clock(millis, format));
+        }
         let (day, time) = text.split_once(' ')?;
         let day = date(day)?;
         let (millis, _) = clock(time.trim_start())?;
@@ -466,17 +470,36 @@ impl ParsedTemporal {
                 Some((Scalar::date32(i32::try_from(days).ok()?), "m/d/yyyy"))
             }
             Self::Clock(millis, format) if millis >= 86_400_000 => {
-                let format = if format.contains(":ss") { "[h]:mm:ss" } else { "[h]:mm" };
-                Some((Scalar::duration64(millis, TimeUnit::Millisecond).ok()?, format))
+                let format = if format.contains(":ss") {
+                    "[h]:mm:ss"
+                } else {
+                    "[h]:mm"
+                };
+                Some((
+                    Scalar::duration64(millis, TimeUnit::Millisecond).ok()?,
+                    format,
+                ))
             }
-            Self::Clock(millis, format) => Some((Scalar::time32(
-                i32::try_from(millis).ok()?, TimeUnit::Millisecond, Timezone::NAIVE).ok()?, format)),
+            Self::Clock(millis, format) => Some((
+                Scalar::time32(
+                    i32::try_from(millis).ok()?,
+                    TimeUnit::Millisecond,
+                    Timezone::NAIVE,
+                )
+                .ok()?,
+                format,
+            )),
             Self::DateTime(ParsedDate::Civil(days), millis) => {
                 let instant = days.checked_mul(86_400_000)?.checked_add(millis)?;
                 system.serial_from_millis(instant).ok()?;
-                Some((Scalar::datetime64(instant, TimeUnit::Millisecond, Timezone::NAIVE).ok()?, "m/d/yyyy h:mm"))
+                Some((
+                    Scalar::datetime64(instant, TimeUnit::Millisecond, Timezone::NAIVE).ok()?,
+                    "m/d/yyyy h:mm",
+                ))
             }
-            Self::Date(ParsedDate::Phantom1900) | Self::DateTime(ParsedDate::Phantom1900, _) => None,
+            Self::Date(ParsedDate::Phantom1900) | Self::DateTime(ParsedDate::Phantom1900, _) => {
+                None
+            }
         }
     }
 
@@ -496,17 +519,37 @@ pub(crate) fn temporal(text: &str, system: DateSystem) -> Option<(Scalar, &'stat
 
 /// VALUE's fixed en-US intake. Unsupported current-year and sub-millisecond
 /// spelling keeps its cache; invalid represented syntax is a value error.
-pub(crate) fn value_number(text: &str, system: DateSystem) -> Option<std::result::Result<f64, ExcelError>> {
+pub(crate) fn value_number(
+    text: &str,
+    system: DateSystem,
+) -> Option<std::result::Result<f64, ExcelError>> {
     let text = text.trim_matches(' ');
-    if text.is_empty() || text.chars().any(char::is_control) { return Some(Err(ExcelError::Value)); }
-    if let Some(number) = number(text) { return Some(Ok(number.value)); }
-    if let Some(temporal) = ParsedTemporal::read(text) { return Some(temporal.serial(system)); }
-    if text.contains(':') && text.rsplit_once('.').is_some_and(|(_, tail)| {
-        tail.len() > 3 && tail.bytes().all(|byte| byte.is_ascii_digit())
-    }) { return None; }
+    if text.is_empty() || text.chars().any(char::is_control) {
+        return Some(Err(ExcelError::Value));
+    }
+    if let Some(number) = number(text) {
+        return Some(Ok(number.value));
+    }
+    if let Some(temporal) = ParsedTemporal::read(text) {
+        return Some(temporal.serial(system));
+    }
+    if text.contains(':')
+        && text.rsplit_once('.').is_some_and(|(_, tail)| {
+            tail.len() > 3 && tail.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return None;
+    }
     if text.as_bytes().first().is_some_and(u8::is_ascii_digit)
-        && text.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'/' | b'-'))
-        && text.bytes().filter(|byte| matches!(*byte, b'/' | b'-')).count() == 1 {
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'/' | b'-'))
+        && text
+            .bytes()
+            .filter(|byte| matches!(*byte, b'/' | b'-'))
+            .count()
+            == 1
+    {
         return None;
     }
     Some(Err(ExcelError::Value))
@@ -516,13 +559,18 @@ impl ParsedDate {
     fn serial(self, system: DateSystem) -> std::result::Result<f64, ExcelError> {
         match self {
             Self::Phantom1900 if system == DateSystem::Year1900 => Ok(60.0),
-            Self::Civil(days) => system.serial_from_millis(days * 86_400_000).map_err(|_| ExcelError::Value),
+            Self::Civil(days) => system
+                .serial_from_millis(days * 86_400_000)
+                .map_err(|_| ExcelError::Value),
             Self::Phantom1900 => Err(ExcelError::Value),
         }
     }
 }
 
-enum ParsedDate { Civil(i64), Phantom1900 }
+enum ParsedDate {
+    Civil(i64),
+    Phantom1900,
+}
 
 /// A date as days since 1970-01-01: `m/d/yyyy` or `m-d-yyyy` with a two-
 /// or four-digit year, or `yyyy-mm-dd`.
@@ -564,7 +612,9 @@ fn date(text: &str) -> Option<ParsedDate> {
         u32::try_from(month).ok()?,
         u32::try_from(day).ok()?,
     );
-    if civil == (1900, 2, 29) { return Some(ParsedDate::Phantom1900); }
+    if civil == (1900, 2, 29) {
+        return Some(ParsedDate::Phantom1900);
+    }
     let days = days_from_civil(civil.0, civil.1, civil.2);
     (civil_from_days(days) == civil).then_some(ParsedDate::Civil(days))
 }

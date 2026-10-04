@@ -4,10 +4,11 @@
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
+use yggdryl::IdKey;
 use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::{
-    Ccy, Cfi, DataType, Decimal, Field, IdSource, IdType, Identifier, Identifiers, Mic, Scalar,
-    Side, StructType, TimeUnit, Timezone, Unit,
+    Ccy, Cfi, DataType, Decimal, Field, IdType, Identifier, Identifiers, Mic, Scalar, Side,
+    StructType, TimeUnit, Timezone, Unit,
 };
 
 fn decimal(text: &str) -> Decimal {
@@ -18,8 +19,7 @@ fn decimal(text: &str) -> Decimal {
 /// from `base`, validated by its type.
 fn securityid(kind: &str, code: &str) -> Identifier {
     Identifier::new(
-        IdSource::Base,
-        IdType::from_security_source(kind).unwrap(),
+        IdKey::base(IdType::from_security_source(kind).unwrap()),
         code,
     )
     .unwrap()
@@ -305,10 +305,7 @@ fn market_column_schema_has_one_owner_and_order() {
         .unwrap()
     );
     assert_eq!(MarketColumn::FxRates.display(), "FX Rates");
-    assert_eq!(
-        MarketColumn::SecurityIds.datatype(),
-        Identifiers::dtype("securityid")
-    );
+    assert_eq!(MarketColumn::SecurityIds.datatype(), Identifiers::dtype());
     assert_eq!(MarketColumn::SecurityIds.name(), "securityids");
     assert_eq!(MarketColumn::SecurityIds.display(), "Security IDs");
     assert_eq!(MarketColumn::Ticker.datatype(), DataType::utf8());

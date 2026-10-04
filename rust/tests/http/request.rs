@@ -137,6 +137,118 @@ fn a_body_is_held_whole_and_spelled_in_its_shape() {
 // --- builders and the wire form ----------------------------------------------
 
 #[test]
+fn the_attempt_knobs_are_read_back_and_cost_nothing() {
+    use std::time::Duration;
+
+    let session = Session::new();
+    let plain = session.get("http://127.0.0.1:1/token").unwrap();
+    assert_eq!(plain.idempotent(), None);
+    assert_eq!(plain.max_attempts(), None);
+    assert_eq!(plain.connect_timeout(), None);
+    assert_eq!(plain.deadline(), None);
+    assert!(!plain.is_direct());
+    let plain_debug = format!("{plain:?}");
+    assert!(!plain_debug.contains("<attempt headers>"), "{plain_debug}");
+    assert!(!plain_debug.contains("<retry rule>"), "{plain_debug}");
+
+    let request = session
+        .post("http://127.0.0.1:1/token", "grant_type=refresh_token")
+        .unwrap()
+        .with_idempotent(true)
+        .with_max_attempts(0)
+        .with_connect_timeout(Duration::from_millis(250))
+        .with_deadline(Duration::from_secs(2))
+        .with_direct(true)
+        .with_attempt_headers(|_| Ok(yggdryl::http::Headers::new()))
+        .with_retry_on(|status, _, _| status.code() == 400);
+    assert_eq!(request.idempotent(), Some(true));
+    assert_eq!(request.max_attempts(), Some(1), "zero attempts is one");
+    assert_eq!(request.connect_timeout(), Some(Duration::from_millis(250)));
+    assert_eq!(request.deadline(), Some(Duration::from_secs(2)));
+    assert!(request.is_direct());
+    let debug = format!("{request:?}");
+    assert!(debug.contains("<attempt headers>"), "{debug}");
+    assert!(debug.contains("<retry rule>"), "{debug}");
+
+    // A clone carries every knob, the hooks shared.
+    let clone = request.clone().with_max_attempts(4);
+    assert_eq!(clone.idempotent(), Some(true));
+    assert_eq!(clone.max_attempts(), Some(4));
+    assert_eq!(clone.deadline(), Some(Duration::from_secs(2)));
+    assert!(clone.is_direct());
+    assert!(format!("{clone:?}").contains("<attempt headers>"));
+    assert_eq!(request.with_idempotent(false).idempotent(), Some(false));
+    assert_eq!(session.stats().requests, 0);
+}
+
+#[test]
+fn a_streamed_body_is_never_retried_however_the_request_is_declared() {
+    let server = HttpServer::start();
+    server.echo("/upload");
+    server.fail_status("/upload", 503, Some("0"), 1);
+    let session = Session::with_options(HttpOptions::default().with_max_attempts(3)).unwrap();
+    let request = session
+        .post(&server.url("/upload"), Body::Empty)
+        .unwrap()
+        .with_idempotent(true)
+        .with_attempt_headers(|attempt| {
+            // A body read from the caller's reader cannot be shown: the
+            // attempt says it is streamed, and shows none.
+            let mut headers = yggdryl::http::Headers::new();
+            headers.insert("x-attempt", &attempt.number().to_string())?;
+            headers.insert("x-streamed", &attempt.is_streamed().to_string())?;
+            headers.insert("x-body", &format!("{:?}", attempt.body()))?;
+            Ok(headers)
+        });
+    let mut reader = std::io::Cursor::new(b"payload".to_vec());
+
+    let response = request.send_reader(&mut reader, 7).unwrap();
+
+    assert_eq!(response.status().code(), 503);
+    let recorded = server.requests();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(header(&recorded[0], "x-attempt"), Some("1"));
+    assert_eq!(header(&recorded[0], "x-streamed"), Some("true"));
+    assert_eq!(header(&recorded[0], "x-body"), Some("None"));
+    assert_eq!(session.stats().retries, 0);
+}
+
+#[test]
+fn an_attempt_shows_its_hook_the_body_that_goes_out_and_its_debug_no_header_value() {
+    let server = HttpServer::start();
+    server.echo("/sign");
+    let session = Session::new();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let rendered = std::sync::Arc::clone(&seen);
+    let response = session
+        .post(&server.url("/sign"), "payload")
+        .unwrap()
+        .with_header("Authorization", "Bearer never-rendered")
+        .unwrap()
+        .with_attempt_headers(move |attempt| {
+            *rendered.lock().unwrap() = format!("{attempt:?}");
+            let mut headers = yggdryl::http::Headers::new();
+            // What a signature covers: the bytes that go out.
+            let body = attempt.body().expect("the body in hand");
+            headers.insert("x-body-len", &body.len().to_string())?;
+            headers.insert("x-streamed", &attempt.is_streamed().to_string())?;
+            Ok(headers)
+        })
+        .send()
+        .unwrap();
+    assert_eq!(response.status().code(), 200);
+    let recorded = server.requests();
+    assert_eq!(header(&recorded[0], "x-body-len"), Some("7"));
+    assert_eq!(header(&recorded[0], "x-streamed"), Some("false"));
+    let debug = seen.lock().unwrap().clone();
+    assert!(
+        debug.contains("Attempt") && debug.contains("body_len: Some(7)"),
+        "{debug}"
+    );
+    assert!(!debug.contains("never-rendered"), "{debug}");
+}
+
+#[test]
 fn building_a_request_costs_nothing_and_keeps_what_it_was_given() {
     let session = Session::new();
     let request = session
@@ -208,6 +320,16 @@ fn a_request_message_round_trips_through_bytes() {
     );
     // Parsing, rendering and binding cost no request.
     assert_eq!(absolute.stats().requests, 0);
+
+    // An IPv6 literal keeps its brackets in the host it asks for.
+    for (url, host) in [
+        ("http://[::1]:4566/x", "[::1]:4566"),
+        ("https://[2001:db8::7]/x", "[2001:db8::7]"),
+    ] {
+        let rendered = Request::get(url).unwrap().into_bytes().unwrap();
+        let expected = format!("GET /x HTTP/1.1\r\nhost: {host}\r\n\r\n");
+        assert_eq!(String::from_utf8_lossy(&rendered), expected, "{url}");
+    }
 }
 
 #[test]
@@ -734,7 +856,7 @@ fn a_paginated_document_reads_one_batch_per_page_after_one_look() {
         leaf(&server, &session, "/orders").with_media_type(MediaType::from(MimeType::JSON));
 
     let columns: Vec<Serie> = request
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -775,7 +897,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     let request = leaf(&server, &session, "/rows.json");
 
     let columns: Vec<Serie> = request
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -786,7 +908,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     server.clear_requests();
     let plain = request.clone().with_pagination(Pagination::None);
     let columns: Vec<Serie> = plain
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
@@ -797,7 +919,7 @@ fn a_document_of_one_page_reads_through_its_bytes_with_one_get() {
     server.clear_requests();
     let held = Holder::HttpRequest(request.clone());
     let rows: usize = held
-        .read_arrow(None)
+        .read_serie(None)
         .unwrap()
         .map(|column| column.unwrap().len())
         .sum();

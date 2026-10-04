@@ -85,9 +85,11 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertFalse(item["nullable"])
         self.assertEqual({"FIX:component": "party"}, item["metadata"])
         children = components["party"]["dtype"]["fields"]
-        self.assertEqual(["partyid", "nopartysubids", "partysubids"], [field["name"] for field in children])
-        self.assertEqual({"FIX:field": "nopartysubids", "FIX:tag": "802"}, children[1]["metadata"])
-        self.assertEqual({"FIX:group": "partysubids"}, children[2]["metadata"])
+        # The group is its list alone: its counter frames it as its own
+        # `FIX:counter`, never as a member beside it.
+        self.assertEqual(["partyid", "partysubids"], [field["name"] for field in children])
+        self.assertEqual({"FIX:group": "partysubids"}, children[1]["metadata"])
+        self.assertEqual("802", groups["partysubids"]["metadata"]["FIX:counter"])
         subgroup = groups["partysubids"]
         self.assertEqual("PartySubIDs", subgroup["metadata"]["display"])
         self.assertEqual("ptyssub", subgroup["metadata"]["FIX:component"])
@@ -95,7 +97,7 @@ class FixCatalogGeneration(unittest.TestCase):
         message = catalog["messages"][0]
         self.assertEqual("D", message["metadata"]["FIX:msgtype"])
         self.assertEqual("ORDR", message["metadata"]["FIX:msgcat"])
-        self.assertEqual([False, False], [field["nullable"] for field in message["dtype"]["fields"]])
+        self.assertEqual([False], [field["nullable"] for field in message["dtype"]["fields"]])
 
     def test_one_counter_keeps_every_group_context(self) -> None:
         self.latest["groups"]["RequestedParties"] = {"id": 9001, "tag": 453, "members": [member("field", 448, True)]}

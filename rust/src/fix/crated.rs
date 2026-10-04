@@ -224,11 +224,12 @@ pub const SEQNUM_TAG_NAME: (i32, &str) = (65_014, "seqnum");
 /// report's code and content digest, one split off a trade on its side's
 /// order and the side's first stated identifier, and a batch entry on the
 /// order or entry it names. It is stored after the codes of the category
-/// the message files under and of the side it takes - `10:1:ORD-1`,
-/// `10:2:ORD-1` - so each category and each side of one identifier is a
-/// chain of its own; one of side `UNKN`, and every kind but an order, a
-/// quote or an execution, states side `0`: `21:0:T-1`. A followed message
-/// carries its chain's.
+/// the message files under and of the side an order or an execution takes,
+/// `10:1:ORD-1` and `10:2:ORD-1`, so each category, and each side of one
+/// order or execution identifier, is a chain of its own; one of side
+/// `UNKN`, and every other kind - a quote, whose side is a tag, among them -
+/// states side `0`: `14:0:Q-1`, `21:0:T-1`. A followed message carries its
+/// chain's.
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_003, "crosscode");
 
 /// The tag and name of the Map group carrying what a message stated that
@@ -303,10 +304,12 @@ pub(super) fn state_codeset() -> Option<Arc<str>> {
 
 /// When the message stops being good, where it does.
 ///
-/// `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or
-/// `MaturityDate(541)`, the first stated, as a message is built; the
-/// previous deadline when the next event states none; a newer explicit
-/// deadline replaces it, including when it shortens the lifetime.
+/// `ExpireTime(126)`, else `ValidUntilTime(62)`, else the end of the day
+/// `ExpireDate(432)` names - the last day an order can trade - the first
+/// stated, as a message is built; the previous deadline when the next event
+/// states none; a newer explicit deadline replaces it, including when it
+/// shortens the lifetime. `MaturityDate(541)` is the instrument's, no
+/// message's deadline.
 pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_010, "exprunix");
 
 /// The tag and name carrying the business category of the message type, as
@@ -411,8 +414,12 @@ pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_045, "conversationid");
 
 /// The tag and name carrying the currency pair the message is about,
 /// canonical `CCY1/CCY2`: the `FOREX` entry of the message's security
-/// identifiers, a view of `get_securityids()`, detected off `Symbol(55)`
-/// where the message states no other class; row-stated when written.
+/// identifiers, a view of `get_securityids()` - the pair `get` answered
+/// when the row was written - detected off `Symbol(55)`, from `derived`,
+/// where the message states no other class. Read back from a row with no
+/// `securityids` column, a pair the message's reading answers states
+/// nothing, the pair its symbol names where nothing else names one is that
+/// detection, and any other replaces its type's answer, the base key.
 pub const FOREXCODE_TAG_NAME: (i32, &str) = (65_046, "forexcode");
 
 /// The tag and name carrying the part of the quantity an iceberg keeps from
@@ -439,13 +446,14 @@ pub const PREVPX_TAG_NAME: (i32, &str) = (65_024, "prevpx");
 pub const PREVQTY_TAG_NAME: (i32, &str) = (65_025, "prevqty");
 
 /// The tag and name carrying the spot part of an FX forward price, which
-/// the row derives from `LastSpotRate(194)`, or a sided quote's
-/// `BidSpotRate(188)` or `OfferSpotRate(190)`.
+/// the row derives from `LastSpotRate(194)`; a quote's `BidSpotRate(188)`
+/// and `OfferSpotRate(190)` are its legs', which stay its own fields.
 pub const SPOTRATE_TAG_NAME: (i32, &str) = (65_026, "spotrate");
 
 /// The tag and name carrying the forward points of an FX forward price,
-/// which the row derives from `LastForwardPoints(195)`, or a sided quote's
-/// `BidForwardPoints(189)` or `OfferForwardPoints(191)`.
+/// which the row derives from `LastForwardPoints(195)`; a quote's
+/// `BidForwardPoints(189)` and `OfferForwardPoints(191)` are its legs',
+/// which stay its own fields.
 pub const FORWARDPOINTS_TAG_NAME: (i32, &str) = (65_027, "forwardpoints");
 
 /// The tag and name carrying the quantity bid, which the row derives from
@@ -505,10 +513,10 @@ pub const PARTYIDS_TAG_NAME: (i32, &str) = (65_039, "partyids");
 /// the pairing is stated, so a column and its tag are never written twice.
 #[must_use]
 pub(super) fn element_column_of(tag: i32) -> Option<ElementColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Element(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Element(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph event column one crate tag is, for the nine that are one,
@@ -516,10 +524,10 @@ pub(super) fn element_column_of(tag: i32) -> Option<ElementColumn> {
 /// [`EventColumn::record`] as the element columns are through theirs.
 #[must_use]
 pub(super) fn event_column_of(tag: i32) -> Option<EventColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Event(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph market column one crate tag is, for the ones the crate tags:
@@ -528,10 +536,10 @@ pub(super) fn event_column_of(tag: i32) -> Option<EventColumn> {
 /// [`MarketColumn::record`].
 #[must_use]
 pub(super) fn market_column_of(tag: i32) -> Option<MarketColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Market(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Market(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The graph operation column one crate tag is, for the four that are one,
@@ -539,10 +547,10 @@ pub(super) fn market_column_of(tag: i32) -> Option<MarketColumn> {
 /// [`OperationColumn::record`].
 #[must_use]
 pub(super) fn operation_column_of(tag: i32) -> Option<OperationColumn> {
-    CRATED.iter().find_map(|held| match held.holds {
-        Holds::Operation(column) if held.tag_name.0 == tag => Some(column),
+    match crated(tag)?.holds {
+        Holds::Operation(column) => Some(column),
         _ => None,
-    })
+    }
 }
 
 /// The crate tag a column of this name is stated under, where the crate
@@ -564,9 +572,15 @@ pub(super) fn tag_named(name: &str) -> Option<i32> {
 /// its walk folded forward; a row stating none leaves it to the fields.
 #[must_use]
 pub fn is_derived_tag(tag: i32) -> bool {
-    CRATED
-        .iter()
-        .any(|held| held.derived && held.tag_name.0 == tag)
+    crated(tag).is_some_and(|held| held.derived)
+}
+
+/// The row of [`CRATED`] a crate tag is, by its offset from
+/// [`CRATE_TAG_MIN`]: what every per-row reading of a crate tag dispatches
+/// through, one index rather than a pass over every definition.
+fn crated(tag: i32) -> Option<&'static Crated> {
+    let at = CRATED_AT.get(usize::try_from(tag.checked_sub(CRATE_TAG_MIN)?).ok()?)?;
+    CRATED.get(usize::from(*at))
 }
 
 /// Whether a tag is one of this crate's own.
@@ -647,20 +661,31 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
 ];
 
 /// The crate's own columns every message states: the instants the identity
-/// is settled against, the codes and the identity it settles to.
+/// is settled against, the codes and the identity it settles to - the cross
+/// code among them, the empty text where the message names none - and the
+/// place it holds among the messages of its instant - zero for the first,
+/// so never absent.
 ///
 /// The state a message reached is stated on every row a message writes -
 /// `UNKNOWN` where nothing states one - but the column admits a null,
 /// because a state has no neutral member for an empty cell to read as, and
 /// a column no default can fill is not one a row can be required to state.
-const ALWAYS_STATED: [i32; 6] = [
+const ALWAYS_STATED: [i32; 8] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
+    CROSSCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
+    SEQNUM_TAG_NAME.0,
 ];
+
+/// Whether `tag` is one of the crate's own columns every message states,
+/// which the field and the fixed row both declare required.
+pub(super) fn is_always_stated(tag: i32) -> bool {
+    ALWAYS_STATED.contains(&tag)
+}
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
@@ -737,8 +762,9 @@ impl Crated {
         Self::holding(tag_name, Holds::Event(column))
     }
 
-    /// One graph market column under the crate's own tag, which must say
-    /// what it holds: a market column carries no wording of its own.
+    /// One graph market column under the crate's own tag, saying what FIX
+    /// states of it: the fields its value is read off, which the column's
+    /// own wording cannot name.
     const fn market(
         tag_name: (i32, &'static str),
         column: MarketColumn,
@@ -819,8 +845,8 @@ impl Crated {
         let (dtype, display, description) = match self.holds {
             Holds::Element(column) => (column.datatype(), column.display(), column.description()),
             Holds::Event(column) => (column.datatype(), column.display(), column.description()),
-            Holds::Market(column) => (column.datatype(), column.display(), ""),
-            Holds::Operation(column) => (column.datatype(), column.display(), ""),
+            Holds::Market(column) => (column.datatype(), column.display(), column.description()),
+            Holds::Operation(column) => (column.datatype(), column.display(), column.description()),
             Holds::Own {
                 datatype,
                 display,
@@ -833,7 +859,7 @@ impl Crated {
         // is no group of any message: the event answers it whole.
         let counts_itself =
             !self.derived && matches!(dtype, DataType::Map(_) | DataType::SortedMap(_));
-        let mut field = Field::new(name, dtype, !ALWAYS_STATED.contains(&tag));
+        let mut field = Field::new(name, dtype, !is_always_stated(tag));
         field.as_fix_mut().set_tag(tag)?;
         field.set_display(display)?;
         field.set_description(self.fix_wording.unwrap_or(description))?;
@@ -869,9 +895,10 @@ const CRATED: [Crated; 49] = [
          ExecID, else TradeID=<TradeID>, else its report's code and content \
          digest, one split off a trade its side's order and the side's first \
          stated identifier, a batch entry the order or entry it names - \
-         stored after the codes of its category and its side, 10:1:ORD-1, \
-         side 0 on one of side UNKN and on every kind but an order, a quote \
-         or an execution: 21:0:T-1; its chain's once followed.",
+         stored after the codes of its category and of the side an order or \
+         an execution takes, 10:1:ORD-1, side 0 on one of side UNKN and on \
+         every other kind, a quote among them: 14:0:Q-1, 21:0:T-1; its \
+         chain's once followed.",
     ),
     Crated::element(CURRHASHCODE_TAG_NAME, ElementColumn::CurrHashCode).saying(
         "The XXH3-64 of what the event states and the named FIX content \
@@ -902,14 +929,15 @@ const CRATED: [Crated; 49] = [
     ),
     Crated::event(EXPRUNIX_TAG_NAME, EventColumn::ExprUnix).saying(
         "When the message stops being good: ExpireTime, else \
-         ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
+         ValidUntilTime, else the end of the day ExpireDate names; \
+         MaturityDate is the instrument's, no deadline; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
     Crated::event(SNAPUNIX_TAG_NAME, EventColumn::SnapUnix),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
     Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum).saying(
-        "The message's place among the messages of its instant, null at 0: \
+        "The message's place among the messages of its instant, never null: \
          0 for the first of each run the parse hands over at that instant \
          with no other instant between, one more for each next, a message \
          split off another at a later place than it; once walked, the \
@@ -963,7 +991,7 @@ const CRATED: [Crated; 49] = [
     Crated::derived_market(
         SECURITYIDS_TAG_NAME,
         MarketColumn::SecurityIds,
-        "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word.",
+        "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::own(
         ISINCODE_TAG_NAME,
@@ -1007,12 +1035,12 @@ const CRATED: [Crated; 49] = [
     Crated::derived_market(
         SPOTRATE_TAG_NAME,
         MarketColumn::SpotRate,
-        "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word.",
+        "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::derived_market(
         FORWARDPOINTS_TAG_NAME,
         MarketColumn::ForwardPoints,
-        "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
+        "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
     ),
     Crated::derived_market(
         BIDQTY_TAG_NAME,
@@ -1053,9 +1081,12 @@ const CRATED: [Crated; 49] = [
         METADATA_TAG_NAME,
         || DataType::map_of(DataType::utf8(), DataType::utf8(), true),
         "Metadata",
-        "What a message stated that is no field: a bridge's namespaced keys - \
-         a `TECH.` or an `AMON.` key - and every key no dictionary resolved, \
-         each under the key as it was spelled, folded, in sorted order.",
+        "What a message stated that is no field and no identifier map holds: \
+         a bridge's namespaced keys - a `TECH.` or an `AMON.` key - and every \
+         key no dictionary resolved, each under the key as it was spelled, \
+         folded, in sorted order; a key an identifier map holds with its \
+         value - a bridge's TECH.CLIENTID, its PARENTORDERID - rides \
+         fixentries under 0:key as it arrived instead.",
     ),
     Crated::derived_operation(
         ORDQTY_TAG_NAME,
@@ -1070,12 +1101,12 @@ const CRATED: [Crated; 49] = [
     Crated::derived_operation(
         IDENTIFIERS_TAG_NAME,
         OperationColumn::Identifiers,
-        "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+        "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
     ),
     Crated::derived_operation(
         PARTYIDS_TAG_NAME,
         OperationColumn::PartyIds,
-        "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+        "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
     ),
     Crated::own(
         MSGPLUGINID_TAG_NAME,
@@ -1130,8 +1161,12 @@ const CRATED: [Crated; 49] = [
         "Forex Code",
         "The currency pair the message is about, canonical CCY1/CCY2: the \
          FOREX entry of the message's security identifiers, a view of \
-         get_securityids(); detected off Symbol(55) where the message states \
-         no other class; row-stated when written.",
+         get_securityids() - the pair get answered when the row was written - \
+         detected off Symbol(55), from derived, where the message states no \
+         other class. Read back from a row with no securityids column, a pair \
+         the message's reading answers states nothing, the pair its symbol \
+         names where nothing else names one is that detection, and any other \
+         replaces its type's answer, the base key.",
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,
@@ -1153,6 +1188,27 @@ const CRATED: [Crated; 49] = [
          column, carried beside the row and never one of its own.",
     ),
 ];
+
+/// Each crate tag's row of [`CRATED`], indexed by the tag's offset from
+/// [`CRATE_TAG_MIN`], with [`u8::MAX`] where no definition takes the tag.
+///
+/// Built from [`CRATED`] at compile time, so the table states nothing
+/// [`CRATED`] does not: a tag outside the crate's range, or one two
+/// definitions take, fails the build rather than answering either row.
+const CRATED_AT: [u8; (CRATE_TAG_MAX - CRATE_TAG_MIN) as usize] = {
+    let mut at = [u8::MAX; (CRATE_TAG_MAX - CRATE_TAG_MIN) as usize];
+    assert!(CRATED.len() < u8::MAX as usize, "every row fits a byte");
+    let mut row = 0;
+    while row < CRATED.len() {
+        let tag = CRATED[row].tag_name.0;
+        assert!(is_crate_tag(tag), "a crate definition takes a crate tag");
+        let slot = (tag - CRATE_TAG_MIN) as usize;
+        assert!(at[slot] == u8::MAX, "no two crate definitions take one tag");
+        at[slot] = row as u8;
+        row += 1;
+    }
+    at
+};
 
 /// Builds every field this crate defines, in tag order.
 fn build() -> Result<Vec<Field>> {

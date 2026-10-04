@@ -12,8 +12,6 @@
 
 use std::io::{Read, Write};
 
-use base64::Engine as _;
-
 mod parser;
 
 use crate::text::wire::{RawValue, from_raw};
@@ -820,24 +818,15 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         bytes_scalars!(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
             writer.write_all(b"!!binary ")?;
-            write_quoted(
-                writer,
-                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-            )?;
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?;
         }
         Scalar::Geometry(value) => {
             writer.write_all(b"!!binary ")?;
-            write_quoted(
-                writer,
-                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-            )?;
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?;
         }
         Scalar::Geography(value) => {
             writer.write_all(b"!!binary ")?;
-            write_quoted(
-                writer,
-                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
-            )?;
+            write_quoted(writer, &crate::bytes::into_base64(value.as_bytes()))?;
         }
         Scalar::Date32(value) => {
             if value.unit() == crate::TimeUnit::Day

@@ -169,17 +169,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventdates",
-          "FIX:tag": "2053"
-        }
-      },
-      {
         "name": "underlyingcomplexeventdates",
         "dtype": {
           "type": "null"
@@ -333,17 +322,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventratesources",
-          "FIX:tag": "41732"
-        }
-      },
-      {
         "name": "underlyingcomplexeventratesources",
         "dtype": {
           "type": "null"
@@ -361,17 +339,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "underlyingcomplexeventrelativedate"
-        }
-      },
-      {
-        "name": "nounderlyingcomplexeventperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventperiods",
-          "FIX:tag": "41729"
         }
       },
       {
@@ -440,17 +407,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventcrediteventsources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventcrediteventsources",
-          "FIX:tag": "41748"
-        }
-      },
-      {
         "name": "underlyingcomplexeventcrediteventsources",
         "dtype": {
           "type": "null"
@@ -458,17 +414,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "underlyingcomplexeventcrediteventsources"
-        }
-      },
-      {
-        "name": "nounderlyingcomplexeventcreditevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventcreditevents",
-          "FIX:tag": "41716"
         }
       },
       {

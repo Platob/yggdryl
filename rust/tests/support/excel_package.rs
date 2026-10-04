@@ -1882,9 +1882,13 @@ pub fn reference_resolver_cost_package(rows: u32, names: usize) -> Vec<u8> {
 
 /// Defined expressions and two physical source cells. Unused long definitions
 /// vary the registry independently from the consuming formula-cell corpus.
-pub fn defined_name_calculation_cost_book(rows: u32, unused_names: usize, formula: &str) -> yggdryl::excel::Workbook {
-    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+pub fn defined_name_calculation_cost_book(
+    rows: u32,
+    unused_names: usize,
+    formula: &str,
+) -> yggdryl::excel::Workbook {
     use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
     let mut names = String::from(concat!(
         "<definedNames><definedName name=\"Constant\">7</definedName>",
         "<definedName name=\"FirstAlias\">Constant</definedName>",
@@ -1892,7 +1896,9 @@ pub fn defined_name_calculation_cost_book(rows: u32, unused_names: usize, formul
         "<definedName name=\"NamedColumn\">Data!$A:$A</definedName>",
     ));
     for index in 0..unused_names {
-        names.push_str(&format!("<definedName name=\"UnusedDefinedNameBeyondInlineStorage_{index:04}\">7</definedName>"));
+        names.push_str(&format!(
+            "<definedName name=\"UnusedDefinedNameBeyondInlineStorage_{index:04}\">7</definedName>"
+        ));
     }
     names.push_str("</definedNames></workbook>");
     let document = workbook(&["Data"], false).replace("</workbook>", &names);
@@ -1900,34 +1906,60 @@ pub fn defined_name_calculation_cost_book(rows: u32, unused_names: usize, formul
         ("[Content_Types].xml", content_types(1, false, false)),
         ("_rels/.rels", root_relationships()),
         ("xl/workbook.xml", document),
-        ("xl/_rels/workbook.xml.rels", workbook_relationships(1, false, false)),
-        ("xl/worksheets/sheet1.xml", worksheet("<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"2\"><c r=\"A2\"><v>2</v></c></row>")),
+        (
+            "xl/_rels/workbook.xml.rels",
+            workbook_relationships(1, false, false),
+        ),
+        (
+            "xl/worksheets/sheet1.xml",
+            worksheet(
+                "<row r=\"1\"><c r=\"A1\"><v>1</v></c></row><row r=\"2\"><c r=\"A2\"><v>2</v></c></row>",
+            ),
+        ),
     ]);
     let mut book = Workbook::from_bytes(bytes).unwrap();
     let parsed = Formula::from_file(formula, CellRef::new(0, 1));
     let sheet = book.sheet_mut("Data").unwrap();
     for row in 0..rows {
-        sheet.insert_cell(Cell::from_scalar(CellRef::new(row, 1), Scalar::from(-1.0), DateSystem::Year1900).unwrap().with_formula(parsed.clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(
+                    CellRef::new(row, 1),
+                    Scalar::from(-1.0),
+                    DateSystem::Year1900,
+                )
+                .unwrap()
+                .with_formula(parsed.clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Repeated comparison consumers share six formula arenas and two source
 /// values, keeping fixture construction outside measured recalculation.
-pub fn comparison_calculation_cost_book(rows: u32, left: yggdryl::Scalar, right: yggdryl::Scalar) -> yggdryl::excel::Workbook {
-    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+pub fn comparison_calculation_cost_book(
+    rows: u32,
+    left: yggdryl::Scalar,
+    right: yggdryl::Scalar,
+) -> yggdryl::excel::Workbook {
     use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
     sheet.set_cell(CellRef::new(0, 0), left).unwrap();
     sheet.set_cell(CellRef::new(0, 1), right).unwrap();
-    let formulas = ["=", "<>", "<", ">", "<=", ">="].map(|operator| {
-        Formula::from_file(&format!("$A$1{operator}$B$1"), CellRef::new(0, 2))
-    });
+    let formulas = ["=", "<>", "<", ">", "<=", ">="]
+        .map(|operator| Formula::from_file(&format!("$A$1{operator}$B$1"), CellRef::new(0, 2)));
     for row in 0..rows {
         let at = CellRef::new(row, 2);
-        sheet.insert_cell(Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900).unwrap()
-            .with_formula(formulas[row as usize % formulas.len()].clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(formulas[row as usize % formulas.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -1942,8 +1974,13 @@ pub fn logical_reducer_cost_book(rows: u32, value: yggdryl::Scalar) -> Workbook 
     }
     for (row, function) in ["AND", "OR", "XOR"].into_iter().enumerate() {
         let at = CellRef::new(row as u32, 1);
-        sheet.insert_cell(Cell::from_scalar(at, yggdryl::Scalar::from(-1.0), DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(&format!("{function}(A:A,TRUE)"), at))).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, yggdryl::Scalar::from(-1.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(&format!("{function}(A:A,TRUE)"), at)),
+            )
+            .unwrap();
     }
     book
 }
@@ -1955,8 +1992,17 @@ pub fn logical_scalar_cost_book(rows: u32) -> Workbook {
     let formulas = ["AND(TRUE,2,-2)", "OR(FALSE,0,1)", "XOR(TRUE,FALSE,TRUE,2)"]
         .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
     for row in 0..rows {
-        sheet.insert_cell(Cell::from_scalar(CellRef::new(row, 0), yggdryl::Scalar::from(-1.0), DateSystem::Year1900).unwrap()
-            .with_formula(formulas[row as usize % 3].clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(
+                    CellRef::new(row, 0),
+                    yggdryl::Scalar::from(-1.0),
+                    DateSystem::Year1900,
+                )
+                .unwrap()
+                .with_formula(formulas[row as usize % 3].clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -1970,8 +2016,17 @@ pub fn lazy_scalar_cost_book(rows: u32) -> Workbook {
         sheet.set_cell(CellRef::new(row, 0), true).unwrap();
         sheet.set_cell(CellRef::new(row, 2), 7.0).unwrap();
         sheet.set_cell(CellRef::new(row, 3), 11.0).unwrap();
-        sheet.insert_cell(Cell::from_scalar(CellRef::new(row, 1), yggdryl::Scalar::from(-1.0), DateSystem::Year1900)
-            .unwrap().with_formula(shape.clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(
+                    CellRef::new(row, 1),
+                    yggdryl::Scalar::from(-1.0),
+                    DateSystem::Year1900,
+                )
+                .unwrap()
+                .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -1981,10 +2036,17 @@ pub fn lazy_range_cost_book(rows: u32) -> Workbook {
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
     sheet.set_cell(CellRef::new(0, 2), true).unwrap();
-    for row in 0..rows { sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap(); }
+    for row in 0..rows {
+        sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+    }
     let at = CellRef::new(0, 0);
-    sheet.insert_cell(Cell::from_scalar(at, yggdryl::Scalar::from(-1.0), DateSystem::Year1900).unwrap()
-        .with_formula(Formula::from_file("IF(C1,SUM(B:B),0)", at))).unwrap();
+    sheet
+        .insert_cell(
+            Cell::from_scalar(at, yggdryl::Scalar::from(-1.0), DateSystem::Year1900)
+                .unwrap()
+                .with_formula(Formula::from_file("IF(C1,SUM(B:B),0)", at)),
+        )
+        .unwrap();
     book
 }
 
@@ -1994,8 +2056,17 @@ pub fn lazy_chain_cost_book(rows: u32) -> Workbook {
     let sheet = book.add_sheet("Data").unwrap();
     let shape = Formula::from_file("IF(TRUE,A2,0)", CellRef::new(0, 0));
     for row in 0..rows {
-        sheet.insert_cell(Cell::from_scalar(CellRef::new(row, 0), yggdryl::Scalar::from(-1.0), DateSystem::Year1900)
-            .unwrap().with_formula(shape.clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(
+                    CellRef::new(row, 0),
+                    yggdryl::Scalar::from(-1.0),
+                    DateSystem::Year1900,
+                )
+                .unwrap()
+                .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     sheet.set_cell(CellRef::new(rows, 0), 7.0).unwrap();
     book
@@ -2003,11 +2074,20 @@ pub fn lazy_chain_cost_book(rows: u32) -> Workbook {
 
 /// Replace only formula text in an existing selector corpus, sharing its
 /// parsed relative shape across the same addresses and retaining input layout.
-pub fn selector_formula_cost_book(mut book: Workbook, text: &str, column: u32, rows: u32) -> Workbook {
+pub fn selector_formula_cost_book(
+    mut book: Workbook,
+    text: &str,
+    column: u32,
+    rows: u32,
+) -> Workbook {
     let shape = Formula::from_file(text, CellRef::new(0, column));
     let sheet = book.sheet_mut("Data").unwrap();
     for row in 0..rows {
-        let cell = sheet.cell(CellRef::new(row, column)).unwrap().clone().with_formula(shape.clone());
+        let cell = sheet
+            .cell(CellRef::new(row, column))
+            .unwrap()
+            .clone()
+            .with_formula(shape.clone());
         sheet.insert_cell(cell).unwrap();
     }
     book
@@ -2018,14 +2098,34 @@ pub fn selector_formula_cost_book(mut book: Workbook, text: &str, column: u32, r
 pub fn geometry_cost_book(formulas: u32, source_rows: u32) -> Workbook {
     let mut book = Workbook::new();
     let values = book.add_sheet("Values").unwrap();
-    for row in 0..source_rows { values.set_cell(CellRef::new(row, 0), f64::from(row)).unwrap(); }
+    for row in 0..source_rows {
+        values
+            .set_cell(CellRef::new(row, 0), f64::from(row))
+            .unwrap();
+    }
     let cases = book.add_sheet("Cases").unwrap();
-    let shapes = ["ROW(Values!$A:$A)", "COLUMN(Values!$1:$1)", "ROWS(Values!$A:$A)",
-        "COLUMNS(Values!$1:$1)", "ROWS({1,2;3,4})", "ROWS(_xlfn.SINGLE(Values!$A:$A))", "ROW()"]
-        .map(|text| Formula::from_file(text, CellRef::new(0,0)));
+    let shapes = [
+        "ROW(Values!$A:$A)",
+        "COLUMN(Values!$1:$1)",
+        "ROWS(Values!$A:$A)",
+        "COLUMNS(Values!$1:$1)",
+        "ROWS({1,2;3,4})",
+        "ROWS(_xlfn.SINGLE(Values!$A:$A))",
+        "ROW()",
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
     for row in 0..formulas {
-        cases.insert_cell(Cell::from_scalar(CellRef::new(row,0), yggdryl::Scalar::from(-1.0), DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize % shapes.len()].clone())).unwrap();
+        cases
+            .insert_cell(
+                Cell::from_scalar(
+                    CellRef::new(row, 0),
+                    yggdryl::Scalar::from(-1.0),
+                    DateSystem::Year1900,
+                )
+                .unwrap()
+                .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -2034,22 +2134,42 @@ pub fn geometry_cost_book(formulas: u32, source_rows: u32) -> Workbook {
 /// formula/reference/publication owners. Every shape borrows the same source.
 pub fn text_cost_book(formulas: u32, long: bool) -> Workbook {
     let mut book = Workbook::new();
-    let text = if long { "unchanged".repeat(64) } else { " a  b \n".to_owned() };
-    book.add_sheet("Values").unwrap().set_cell(CellRef::new(0,0), text).unwrap();
+    let text = if long {
+        "unchanged".repeat(64)
+    } else {
+        " a  b \n".to_owned()
+    };
+    book.add_sheet("Values")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), text)
+        .unwrap();
     let source = "Values!$A$1";
     let bound = if long { 99999 } else { 2 };
     let copies = if long { 1 } else { 2 };
     let pattern = if long { "absent" } else { "b" };
-    let shapes = [format!("LEN({source})"), format!("T({source})"), format!("CLEAN({source})"),
-        format!("TRIM({source})"), format!("LEFT({source},{bound})"), format!("RIGHT({source},{bound})"),
-        format!("MID({source},1,{bound})"), format!("EXACT({source},{source})"),
-        format!("REPT({source},{copies})"), format!("SUBSTITUTE({source},\"{pattern}\",\"X\")")]
-        .map(|text| Formula::from_file(&text, CellRef::new(0,0)));
+    let shapes = [
+        format!("LEN({source})"),
+        format!("T({source})"),
+        format!("CLEAN({source})"),
+        format!("TRIM({source})"),
+        format!("LEFT({source},{bound})"),
+        format!("RIGHT({source},{bound})"),
+        format!("MID({source},1,{bound})"),
+        format!("EXACT({source},{source})"),
+        format!("REPT({source},{copies})"),
+        format!("SUBSTITUTE({source},\"{pattern}\",\"X\")"),
+    ]
+    .map(|text| Formula::from_file(&text, CellRef::new(0, 0)));
     let cases = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at = CellRef::new(row,0);
-        cases.insert_cell(Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize % shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        cases
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -2059,14 +2179,26 @@ pub fn text_cost_book(formulas: u32, long: bool) -> Workbook {
 pub fn indexed_reference_cost_book(formulas: u32, source_rows: u32, offset: bool) -> Workbook {
     let mut book = Workbook::new();
     let source = book.add_sheet("Values").unwrap();
-    for row in 0..source_rows { source.set_cell(CellRef::new(row, 0), f64::from(row + 1)).unwrap(); }
-    let text = if offset { "OFFSET(Values!$A:$A,0,0,1,1)" }
-        else { "INDEX(Values!$A:$A,1,1)" };
-    let formula = Formula::from_file(text, CellRef::new(0,0));
+    for row in 0..source_rows {
+        source
+            .set_cell(CellRef::new(row, 0), f64::from(row + 1))
+            .unwrap();
+    }
+    let text = if offset {
+        "OFFSET(Values!$A:$A,0,0,1,1)"
+    } else {
+        "INDEX(Values!$A:$A,1,1)"
+    };
+    let formula = Formula::from_file(text, CellRef::new(0, 0));
     let cases = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        cases.insert_cell(Cell::from_scalar(CellRef::new(row,0), (-1.0).into(), DateSystem::Year1900).unwrap()
-            .with_formula(formula.clone())).unwrap();
+        cases
+            .insert_cell(
+                Cell::from_scalar(CellRef::new(row, 0), (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(formula.clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -2076,245 +2208,506 @@ pub fn indexed_reference_cost_book(formulas: u32, source_rows: u32, offset: bool
 pub fn text_conversion_cost_book(formulas: u32, joins: bool) -> Workbook {
     let mut book = Workbook::new();
     let values = book.add_sheet("Values").unwrap();
-    for (row, value) in [(0,1.0/3.0),(1,1e-18),(2,1e20)] {
-        values.set_cell(CellRef::new(row,0),value).unwrap();
+    for (row, value) in [(0, 1.0 / 3.0), (1, 1e-18), (2, 1e20)] {
+        values.set_cell(CellRef::new(row, 0), value).unwrap();
     }
-    values.set_cell(CellRef::new(0,1),"a").unwrap();
-    values.set_cell(CellRef::new(2,1),"b").unwrap();
+    values.set_cell(CellRef::new(0, 1), "a").unwrap();
+    values.set_cell(CellRef::new(2, 1), "b").unwrap();
     let shapes = if joins {
-        ["_xlfn.CONCAT(Values!$B$1:$B$3)", "CONCATENATE(Values!$B$1,Values!$B$3)",
-            "_xlfn.TEXTJOIN(\"|\",FALSE,Values!$B$1:$B$3)", "_xlfn.TEXTJOIN(\"\",FALSE,Values!$D:$D)",
-            "_xlfn.TEXTJOIN(\"\",FALSE,Values!$B:$B)", "_xlfn.TEXTJOIN(\"|\",TRUE,Values!$B:$B)"]
+        [
+            "_xlfn.CONCAT(Values!$B$1:$B$3)",
+            "CONCATENATE(Values!$B$1,Values!$B$3)",
+            "_xlfn.TEXTJOIN(\"|\",FALSE,Values!$B$1:$B$3)",
+            "_xlfn.TEXTJOIN(\"\",FALSE,Values!$D:$D)",
+            "_xlfn.TEXTJOIN(\"\",FALSE,Values!$B:$B)",
+            "_xlfn.TEXTJOIN(\"|\",TRUE,Values!$B:$B)",
+        ]
     } else {
-        ["LEN(Values!$A$1)", "LEFT(Values!$A$2,99)", "RIGHT(Values!$A$3,99)",
-            "MID(Values!$A$1,1,99)", "EXACT(Values!$A$1,\"0.333333333333333\")", "REPT(Values!$A$1,1)"]
-    }.map(|text| Formula::from_file(text,CellRef::new(0,0)));
+        [
+            "LEN(Values!$A$1)",
+            "LEFT(Values!$A$2,99)",
+            "RIGHT(Values!$A$3,99)",
+            "MID(Values!$A$1,1,99)",
+            "EXACT(Values!$A$1,\"0.333333333333333\")",
+            "REPT(Values!$A$1,1)",
+        ]
+    }
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
     let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at = CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize % shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Position searches and short replacements share one prepared source cell.
 /// Long replacements are exact no-ops and must retain their source handle.
-pub fn text_index_cost_book(formulas:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();
-    let source=if long {"abc".repeat(256)}else{"abcabc".to_owned()};
-    book.add_sheet("Values").unwrap().set_cell(CellRef::new(0,0),source).unwrap();
-    let replacement=if long {"REPLACE(Values!$A$1,2,1,\"b\")"}else{"REPLACE(Values!$A$1,2,2,\"X\")"};
-    let shapes=["FIND(\"b\",Values!$A$1)","FIND(\"\",Values!$A$1,2)",replacement]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn text_index_cost_book(formulas: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = if long {
+        "abc".repeat(256)
+    } else {
+        "abcabc".to_owned()
+    };
+    book.add_sheet("Values")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), source)
+        .unwrap();
+    let replacement = if long {
+        "REPLACE(Values!$A$1,2,1,\"b\")"
+    } else {
+        "REPLACE(Values!$A$1,2,2,\"X\")"
+    };
+    let shapes = [
+        "FIND(\"b\",Values!$A$1)",
+        "FIND(\"\",Values!$A$1,2)",
+        replacement,
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Short casing rewrites and long unchanged handles use the same Str owner.
-pub fn text_casing_cost_book(formulas:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    source.set_cell(CellRef::new(0,0),if long {"abc ".repeat(256)}else{"AbC".to_owned()}).unwrap();
-    source.set_cell(CellRef::new(0,1),if long {"ABC ".repeat(256)}else{"aBc".to_owned()}).unwrap();
-    let shapes=["LOWER(Values!$A$1)","UPPER(Values!$B$1)"]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn text_casing_cost_book(formulas: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    source
+        .set_cell(
+            CellRef::new(0, 0),
+            if long {
+                "abc ".repeat(256)
+            } else {
+                "AbC".to_owned()
+            },
+        )
+        .unwrap();
+    source
+        .set_cell(
+            CellRef::new(0, 1),
+            if long {
+                "ABC ".repeat(256)
+            } else {
+                "aBc".to_owned()
+            },
+        )
+        .unwrap();
+    let shapes = ["LOWER(Values!$A$1)", "UPPER(Values!$B$1)"]
+        .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Runtime SEARCH patterns share one bounded compiled owner across formulas.
-pub fn text_search_cost_book(formulas:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    source.set_cell(CellRef::new(0,0),format!("{}c","a".repeat(if long {256}else{2}))).unwrap();
-    source.set_cell(CellRef::new(0,1),"A*C").unwrap();
-    let shape=Formula::from_file("SEARCH(Values!$B$1,Values!$A$1)",CellRef::new(0,0));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn text_search_cost_book(formulas: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    source
+        .set_cell(
+            CellRef::new(0, 0),
+            format!("{}c", "a".repeat(if long { 256 } else { 2 })),
+        )
+        .unwrap();
+    source.set_cell(CellRef::new(0, 1), "A*C").unwrap();
+    let shape = Formula::from_file("SEARCH(Values!$B$1,Values!$A$1)", CellRef::new(0, 0));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shape.clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// ASCII code conversion and word casing share compact value owners.
-pub fn text_character_cost_book(formulas:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    source.set_cell(CellRef::new(0,0),65.0).unwrap();
-    source.set_cell(CellRef::new(0,1),if long {"Abc ".repeat(256)}else{"aBC".to_owned()}).unwrap();
-    source.set_cell(CellRef::new(0,2),if long {"\u{4e2d}\u{1f600}".repeat(256)}else{"a-b".to_owned()}).unwrap();
-    let shapes=["CHAR(Values!$A$1)","CODE(Values!$B$1)","PROPER(Values!$B$1)","PROPER(Values!$C$1)"]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn text_character_cost_book(formulas: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    source.set_cell(CellRef::new(0, 0), 65.0).unwrap();
+    source
+        .set_cell(
+            CellRef::new(0, 1),
+            if long {
+                "Abc ".repeat(256)
+            } else {
+                "aBC".to_owned()
+            },
+        )
+        .unwrap();
+    source
+        .set_cell(
+            CellRef::new(0, 2),
+            if long {
+                "\u{4e2d}\u{1f600}".repeat(256)
+            } else {
+                "a-b".to_owned()
+            },
+        )
+        .unwrap();
+    let shapes = [
+        "CHAR(Values!$A$1)",
+        "CODE(Values!$B$1)",
+        "PROPER(Values!$B$1)",
+        "PROPER(Values!$C$1)",
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// One repeated conversion/format per book proves the reusable parsed-code
 /// bound without hiding a distinct-code workload behind a warm count.
-pub fn text_value_format_cost_book(formulas:u32,kind:usize)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    let (value,code,formula)=match kind {
-        0 => ("$1,234.50","","VALUE(Values!$A$1)"),
-        1 => ("2024-01-02","","VALUE(Values!$A$1)"),
-        2 => ("12:00:00.125","","VALUE(Values!$A$1)"),
-        3 => ("0.333333333333333","General","TEXT(Values!$A$1,Values!$B$1)"),
-        4 => ("1234.5","#,##0.00","TEXT(Values!$A$1,Values!$B$1)"),
-        5 => ("2.5","[bad]","TEXT(Values!$A$1,Values!$B$1)"),
+pub fn text_value_format_cost_book(formulas: u32, kind: usize) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    let (value, code, formula) = match kind {
+        0 => ("$1,234.50", "", "VALUE(Values!$A$1)"),
+        1 => ("2024-01-02", "", "VALUE(Values!$A$1)"),
+        2 => ("12:00:00.125", "", "VALUE(Values!$A$1)"),
+        3 => (
+            "0.333333333333333",
+            "General",
+            "TEXT(Values!$A$1,Values!$B$1)",
+        ),
+        4 => ("1234.5", "#,##0.00", "TEXT(Values!$A$1,Values!$B$1)"),
+        5 => ("2.5", "[bad]", "TEXT(Values!$A$1,Values!$B$1)"),
         _ => unreachable!("the six named conversion corpora"),
     };
-    source.set_cell(CellRef::new(0,0),value).unwrap();
-    source.set_cell(CellRef::new(0,1),code).unwrap();
-    let shape=Formula::from_file(formula,CellRef::new(0,0));
-    let sheet=book.add_sheet("Cases").unwrap();
+    source.set_cell(CellRef::new(0, 0), value).unwrap();
+    source.set_cell(CellRef::new(0, 1), code).unwrap();
+    let shape = Formula::from_file(formula, CellRef::new(0, 0));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap().with_formula(shape.clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Shared native factors at ordinary and long payment horizons.
-pub fn financial_annuity_cost_book(formulas:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    source.set_cell(CellRef::new(0,0),0.01).unwrap();
-    source.set_cell(CellRef::new(0,1),if long {360.0}else{12.0}).unwrap();
-    let shapes=["PV(Values!$A$1,Values!$B$1,100,50)","FV(Values!$A$1,Values!$B$1,100,50)",
-        "PV(Values!$A$1,Values!$B$1,100,,1)","FV(Values!$A$1,Values!$B$1,100,,1)"]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn financial_annuity_cost_book(formulas: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    source.set_cell(CellRef::new(0, 0), 0.01).unwrap();
+    source
+        .set_cell(CellRef::new(0, 1), if long { 360.0 } else { 12.0 })
+        .unwrap();
+    let shapes = [
+        "PV(Values!$A$1,Values!$B$1,100,50)",
+        "FV(Values!$A$1,Values!$B$1,100,50)",
+        "PV(Values!$A$1,Values!$B$1,100,,1)",
+        "FV(Values!$A$1,Values!$B$1,100,,1)",
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// NPV's scalar-call corpus and a single streamed cash-flow range.
-pub fn financial_npv_cost_book(rows:u32,range:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
+pub fn financial_npv_cost_book(rows: u32, range: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
     if range {
-        for row in 0..rows { source.set_cell(CellRef::new(row,0),f64::from(row%3+1)).unwrap(); }
-    } else { source.set_cell(CellRef::new(0,0),0.1).unwrap(); }
-    let sheet=book.add_sheet("Cases").unwrap();
-    let shape=Formula::from_file(if range {"NPV(0,Values!A:A)"}else{"NPV(Values!$A$1,-100,30,40,50)"},CellRef::new(0,0));
-    for row in 0..if range {1}else{rows} {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-1.0).into(),DateSystem::Year1900).unwrap().with_formula(shape.clone())).unwrap();
+        for row in 0..rows {
+            source
+                .set_cell(CellRef::new(row, 0), f64::from(row % 3 + 1))
+                .unwrap();
+        }
+    } else {
+        source.set_cell(CellRef::new(0, 0), 0.1).unwrap();
+    }
+    let sheet = book.add_sheet("Cases").unwrap();
+    let shape = Formula::from_file(
+        if range {
+            "NPV(0,Values!A:A)"
+        } else {
+            "NPV(Values!$A$1,-100,30,40,50)"
+        },
+        CellRef::new(0, 0),
+    );
+    for row in 0..if range { 1 } else { rows } {
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// PMT's proven zero-rate/error domains and one explicitly held discount case.
-pub fn financial_payment_cost_book(rows:u32)->Workbook {
-    let mut book=Workbook::new();book.add_sheet("Values").unwrap().set_cell(CellRef::new(0,0),10.0).unwrap();
-    let shapes=["PMT(0,Values!$A$1,100,50)","PMT(-1,Values!$A$1,100)",
-        "PMT(0,0,Values!$A$1)","PMT(0.1,Values!$A$1,100)"]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
+pub fn financial_payment_cost_book(rows: u32) -> Workbook {
+    let mut book = Workbook::new();
+    book.add_sheet("Values")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 10.0)
+        .unwrap();
+    let shapes = [
+        "PMT(0,Values!$A$1,100,50)",
+        "PMT(-1,Values!$A$1,100)",
+        "PMT(0,0,Values!$A$1)",
+        "PMT(0.1,Values!$A$1,100)",
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    let sheet = book.add_sheet("Cases").unwrap();
     for row in 0..rows {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap().with_formula(shapes[row as usize%4].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % 4].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Exact moments over scalar inputs or a streamed, centered integral range.
-pub fn variance_exact_cost_book(rows:u32,range:bool)->Workbook {
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    if range {for row in 0..rows {source.set_cell(CellRef::new(row,0),if row%2==0 {-1.0}else{1.0}).unwrap();}}
-    else {source.set_cell(CellRef::new(0,0),2.0).unwrap();}
-    let functions=["VAR","VARP","STDEV","STDEVP","_xlfn.VAR.S","_xlfn.VAR.P","_xlfn.STDEV.S","_xlfn.STDEV.P"];
-    let shapes=functions.map(|function|Formula::from_file(&format!("{function}({})",if range {"Values!A:A"}else{"1,Values!$A$1,3"}),CellRef::new(0,0)));
-    let sheet=book.add_sheet("Cases").unwrap();
-    for row in 0..if range {8}else{rows} {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap().with_formula(shapes[row as usize%8].clone())).unwrap();
+pub fn variance_exact_cost_book(rows: u32, range: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    if range {
+        for row in 0..rows {
+            source
+                .set_cell(CellRef::new(row, 0), if row % 2 == 0 { -1.0 } else { 1.0 })
+                .unwrap();
+        }
+    } else {
+        source.set_cell(CellRef::new(0, 0), 2.0).unwrap();
+    }
+    let functions = [
+        "VAR",
+        "VARP",
+        "STDEV",
+        "STDEVP",
+        "_xlfn.VAR.S",
+        "_xlfn.VAR.P",
+        "_xlfn.STDEV.S",
+        "_xlfn.STDEV.P",
+    ];
+    let shapes = functions.map(|function| {
+        Formula::from_file(
+            &format!(
+                "{function}({})",
+                if range {
+                    "Values!A:A"
+                } else {
+                    "1,Values!$A$1,3"
+                }
+            ),
+            CellRef::new(0, 0),
+        )
+    });
+    let sheet = book.add_sheet("Cases").unwrap();
+    for row in 0..if range { 8 } else { rows } {
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % 8].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// The same authored text as a typed value and as its native string spelling.
-pub fn typed_text_write_cost_book(rows:u32,typed:bool)->Workbook {
+pub fn typed_text_write_cost_book(rows: u32, typed: bool) -> Workbook {
     use yggdryl::Scalar;
-    let value=Scalar::from_sequence([Scalar::from("long <typed & text> ".repeat(16)),Scalar::from(17_i64)]);
-    let value=if typed {value}else{Scalar::from(Cell::from_scalar(CellRef::new(0,0),value,DateSystem::Year1900).unwrap().text().into_owned())};
-    let mut book=Workbook::new();let sheet=book.add_sheet("Data").unwrap();
-    for row in 0..rows {sheet.set_cell(CellRef::new(row,0),value.clone()).unwrap();}
+    let value = Scalar::from_sequence([
+        Scalar::from("long <typed & text> ".repeat(16)),
+        Scalar::from(17_i64),
+    ]);
+    let value = if typed {
+        value
+    } else {
+        Scalar::from(
+            Cell::from_scalar(CellRef::new(0, 0), value, DateSystem::Year1900)
+                .unwrap()
+                .text()
+                .into_owned(),
+        )
+    };
+    let mut book = Workbook::new();
+    let sheet = book.add_sheet("Data").unwrap();
+    for row in 0..rows {
+        sheet.set_cell(CellRef::new(row, 0), value.clone()).unwrap();
+    }
     book
 }
 
 /// Six criteria paths over native text, explicit empty text, absent cells and numbers.
 /// Aggregate values stay one so averages have an exact result at both sizes.
-pub fn criteria_six_cost_book(rows:u32)->Workbook {
-    assert!(rows>=4 && rows%4==0);
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    let text="hit ".repeat(64);
+pub fn criteria_six_cost_book(rows: u32) -> Workbook {
+    assert!(rows >= 4 && rows % 4 == 0);
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    let text = "hit ".repeat(64);
     for row in 0..rows {
-        match row%4 {
-            0 => {source.set_cell(CellRef::new(row,0),text.clone()).unwrap();}
+        match row % 4 {
+            0 => {
+                source.set_cell(CellRef::new(row, 0), text.clone()).unwrap();
+            }
             1 => {}
-            2 => {source.set_cell(CellRef::new(row,0),2.0).unwrap();}
-            _ => {source.set_cell(CellRef::new(row,0),"").unwrap();}
+            2 => {
+                source.set_cell(CellRef::new(row, 0), 2.0).unwrap();
+            }
+            _ => {
+                source.set_cell(CellRef::new(row, 0), "").unwrap();
+            }
         }
-        source.set_cell(CellRef::new(row,1),1.0).unwrap();
-        source.set_cell(CellRef::new(row,2),true).unwrap();
+        source.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+        source.set_cell(CellRef::new(row, 2), true).unwrap();
     }
-    let a=format!("Values!A1:A{rows}");let b=format!("Values!B1:B{rows}");let c=format!("Values!C1:C{rows}");
-    let formulas=[format!("COUNTIF({a},\"hit*\")"),format!("SUMIF({a},\"\",{b})"),
-        format!("AVERAGEIF({a},\">=1\",{b})"),format!("COUNTIFS({a},\"hit*\",{b},\">=1\")"),
-        format!("SUMIFS({b},{a},\"\",{c},TRUE)"),format!("AVERAGEIFS({b},{a},\">=1\",{c},TRUE)")];
-    let sheet=book.add_sheet("Cases").unwrap();
-    for (row,text) in formulas.iter().enumerate() {
-        let at=CellRef::new(row as u32,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(text,at))).unwrap();
+    let a = format!("Values!A1:A{rows}");
+    let b = format!("Values!B1:B{rows}");
+    let c = format!("Values!C1:C{rows}");
+    let formulas = [
+        format!("COUNTIF({a},\"hit*\")"),
+        format!("SUMIF({a},\"\",{b})"),
+        format!("AVERAGEIF({a},\">=1\",{b})"),
+        format!("COUNTIFS({a},\"hit*\",{b},\">=1\")"),
+        format!("SUMIFS({b},{a},\"\",{c},TRUE)"),
+        format!("AVERAGEIFS({b},{a},\">=1\",{c},TRUE)"),
+    ];
+    let sheet = book.add_sheet("Cases").unwrap();
+    for (row, text) in formulas.iter().enumerate() {
+        let at = CellRef::new(row as u32, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(text, at)),
+            )
+            .unwrap();
     }
     book
 }
 
 /// All22 SUBTOTAL variants share one source, with one hidden ordinary row and
 /// one nested SUBTOTAL. Constant included values keep every variance exact.
-pub fn subtotal_cost_book(rows:u32)->Workbook {
-    assert!(rows>=4);
-    let mut book=Workbook::new();let source=book.add_sheet("Values").unwrap();
-    for row in 0..rows-1 {source.set_cell(CellRef::new(row,0),1.0).unwrap();}
-    source.set_rows_hidden(1..2,true).unwrap();
-    let at=CellRef::new(rows-1,0);
-    source.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap()
-        .with_formula(Formula::from_file("SUBTOTAL(9,A1:A2)",at))).unwrap();
-    let sheet=book.add_sheet("Cases").unwrap();
-    for (row,code) in (1..=11).chain(101..=111).enumerate() {
-        let at=CellRef::new(row as u32,0);
-        sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(&format!("SUBTOTAL({code},Values!A1:A{rows})"),at))).unwrap();
+pub fn subtotal_cost_book(rows: u32) -> Workbook {
+    assert!(rows >= 4);
+    let mut book = Workbook::new();
+    let source = book.add_sheet("Values").unwrap();
+    for row in 0..rows - 1 {
+        source.set_cell(CellRef::new(row, 0), 1.0).unwrap();
+    }
+    source.set_rows_hidden(1..2, true).unwrap();
+    let at = CellRef::new(rows - 1, 0);
+    source
+        .insert_cell(
+            Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                .unwrap()
+                .with_formula(Formula::from_file("SUBTOTAL(9,A1:A2)", at)),
+        )
+        .unwrap();
+    let sheet = book.add_sheet("Cases").unwrap();
+    for (row, code) in (1..=11).chain(101..=111).enumerate() {
+        let at = CellRef::new(row as u32, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(
+                        &format!("SUBTOTAL({code},Values!A1:A{rows})"),
+                        at,
+                    )),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Parsed array constants are shared by all formula cells; calculation only
 /// borrows their constants, including an ignored long text handle.
-pub fn literal_array_cost_book(rows:u32,long:bool)->Workbook {
-    let mut book=Workbook::new();let sheet=book.add_sheet("Cases").unwrap();
-    let text=if long {"ignored array text ".repeat(200)}else{"x".into()};
-    let shapes=[format!("SUM({{1,TRUE,\"{text}\";2,FALSE,\"3\"}})"),
-        "AVERAGEA({1,TRUE,\"3\"})".into(),"GCD({6,\"9\"})".into(),
-        "SUM(IF(TRUE,{1,2;3,4},{9,8;7,6}))".into()]
-        .map(|formula|Formula::from_file(&formula,CellRef::new(0,0)));
+pub fn literal_array_cost_book(rows: u32, long: bool) -> Workbook {
+    let mut book = Workbook::new();
+    let sheet = book.add_sheet("Cases").unwrap();
+    let text = if long {
+        "ignored array text ".repeat(200)
+    } else {
+        "x".into()
+    };
+    let shapes = [
+        format!("SUM({{1,TRUE,\"{text}\";2,FALSE,\"3\"}})"),
+        "AVERAGEA({1,TRUE,\"3\"})".into(),
+        "GCD({6,\"9\"})".into(),
+        "SUM(IF(TRUE,{1,2;3,4},{9,8;7,6}))".into(),
+    ]
+    .map(|formula| Formula::from_file(&formula, CellRef::new(0, 0)));
     for row in 0..rows {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
@@ -2325,42 +2718,72 @@ pub fn reference_algebra_cost_book(formulas: u32, source_rows: u32) -> Workbook 
     let mut book = Workbook::new();
     let source = book.add_sheet("Values").unwrap();
     for row in 0..source_rows {
-        source.set_cell(CellRef::new(row, 0), f64::from(row + 1)).unwrap();
+        source
+            .set_cell(CellRef::new(row, 0), f64::from(row + 1))
+            .unwrap();
     }
     let shapes = [
         "SUM((Values!$A:$A,Values!$A$1))",
         "SUM((Values!$A:$A,Values!$A:$A) Values!$A$1)",
         "SUM(Values!$A$1:Values!$A$2)",
-    ].map(|text| Formula::from_file(text, CellRef::new(0, 0)));
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
     let cases = book.add_sheet("Cases").unwrap();
     for row in 0..formulas {
         let at = CellRef::new(row, 0);
-        cases.insert_cell(Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize % shapes.len()].clone())).unwrap();
+        cases
+            .insert_cell(
+                Cell::from_scalar(at, (-1.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Several maps and selected branches share one pre-parsed source point.
-pub fn mapped_array_cost_book(rows:u32)->Workbook {
-    let mut book=Workbook::new();book.add_sheet("Inputs").unwrap().set_cell(CellRef::new(0,0),10.0).unwrap();
-    let sheet=book.add_sheet("Cases").unwrap();
-    let shapes=["SUM(({1,2}+{3;4})*2)","SUM(ROUND(ABS({-1.2,2.8})+Inputs!$A$1,0))",
-        "SUM(IF({TRUE,FALSE},{1,2},{3,4}))","SUM(CHOOSE({1,2},{1,2},{3,4}))"]
-        .map(|text|Formula::from_file(text,CellRef::new(0,0)));
+pub fn mapped_array_cost_book(rows: u32) -> Workbook {
+    let mut book = Workbook::new();
+    book.add_sheet("Inputs")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 10.0)
+        .unwrap();
+    let sheet = book.add_sheet("Cases").unwrap();
+    let shapes = [
+        "SUM(({1,2}+{3;4})*2)",
+        "SUM(ROUND(ABS({-1.2,2.8})+Inputs!$A$1,0))",
+        "SUM(IF({TRUE,FALSE},{1,2},{3,4}))",
+        "SUM(CHOOSE({1,2},{1,2},{3,4}))",
+    ]
+    .map(|text| Formula::from_file(text, CellRef::new(0, 0)));
     for row in 0..rows {
-        let at=CellRef::new(row,0);sheet.insert_cell(Cell::from_scalar(at,(-777.0).into(),DateSystem::Year1900).unwrap()
-            .with_formula(shapes[row as usize%shapes.len()].clone())).unwrap();
+        let at = CellRef::new(row, 0);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, (-777.0).into(), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shapes[row as usize % shapes.len()].clone()),
+            )
+            .unwrap();
     }
     book
 }
 
 /// Input length is O(rows + columns); the streamed result has rows*columns elements.
-pub fn mapped_array_broadcast_book(rows:usize,columns:usize)->Workbook {
-    let horizontal=std::iter::repeat_n("1",columns).collect::<Vec<_>>().join(",");
-    let vertical=std::iter::repeat_n("1",rows).collect::<Vec<_>>().join(";");
-    let mut book=Workbook::new();book.add_sheet("Cases").unwrap();
-    book.set_entry("Cases",CellRef::new(0,0),&format!("=SUM({{{horizontal}}}+{{{vertical}}})")).unwrap();
+pub fn mapped_array_broadcast_book(rows: usize, columns: usize) -> Workbook {
+    let horizontal = std::iter::repeat_n("1", columns)
+        .collect::<Vec<_>>()
+        .join(",");
+    let vertical = std::iter::repeat_n("1", rows).collect::<Vec<_>>().join(";");
+    let mut book = Workbook::new();
+    book.add_sheet("Cases").unwrap();
+    book.set_entry(
+        "Cases",
+        CellRef::new(0, 0),
+        &format!("=SUM({{{horizontal}}}+{{{vertical}}})"),
+    )
+    .unwrap();
     book
 }
 
@@ -2368,14 +2791,19 @@ pub fn mapped_array_broadcast_book(rows:usize,columns:usize)->Workbook {
 /// Repeated Workbook::into_bytes writes fresh ZIP timestamps; undo pins the
 /// complete part graph and each payload rather than the wall clock.
 pub fn exact_parts(bytes: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
-    let archive = std::sync::Arc::new(ZipArchive::new(Holder::buffer(
-        Buffer::from_bytes(bytes.to_vec()),
-    )));
-    archive.entries().unwrap().into_iter().map(|entry| {
-        let name = entry.name().to_owned();
-        let bytes = archive.read_member(&name).unwrap();
-        (name, bytes)
-    }).collect()
+    let archive = std::sync::Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(
+        bytes.to_vec(),
+    ))));
+    archive
+        .entries()
+        .unwrap()
+        .into_iter()
+        .map(|entry| {
+            let name = entry.name().to_owned();
+            let bytes = archive.read_member(&name).unwrap();
+            (name, bytes)
+        })
+        .collect()
 }
 
 /// Fixed distinct long text groups across increasing physical record counts.
@@ -2385,19 +2813,36 @@ pub fn pivot_cost_book(rows: u32) -> (Workbook, yggdryl::excel::PivotSpec) {
     let sheet = book.add_sheet("Data").unwrap();
     sheet.set_cell(CellRef::new(0, 0), "Group").unwrap();
     sheet.set_cell(CellRef::new(0, 1), "Value").unwrap();
-    let labels: Vec<_> = (0..8).map(|n| format!("Repeated long group label beyond inline storage {n}")).collect();
+    let labels: Vec<_> = (0..8)
+        .map(|n| format!("Repeated long group label beyond inline storage {n}"))
+        .collect();
     for row in 1..=rows {
-        sheet.set_cell(CellRef::new(row, 0), labels[(row % 8) as usize].as_str()).unwrap();
+        sheet
+            .set_cell(CellRef::new(row, 0), labels[(row % 8) as usize].as_str())
+            .unwrap();
         sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
     }
     book.add_sheet("Report").unwrap();
     let spec = PivotSpec {
         name: "CostPivot".into(),
-        source: PivotSource { sheet: "Data".into(), range: CellRange::new(CellRef::new(0, 0), CellRef::new(rows, 1)) },
-        rows: vec![AxisField {field:"Group".into(), order:ItemOrder::Ascending}],
-        columns:Vec::new(),
-        values:vec![ValueField {field:"Value".into(), aggregate:Aggregate::Sum, caption:Some("Value Sum".into()), number_format:None}],
-        subtotals:false, row_grand_totals:true, column_grand_totals:true,
+        source: PivotSource {
+            sheet: "Data".into(),
+            range: CellRange::new(CellRef::new(0, 0), CellRef::new(rows, 1)),
+        },
+        rows: vec![AxisField {
+            field: "Group".into(),
+            order: ItemOrder::Ascending,
+        }],
+        columns: Vec::new(),
+        values: vec![ValueField {
+            field: "Value".into(),
+            aggregate: Aggregate::Sum,
+            caption: Some("Value Sum".into()),
+            number_format: None,
+        }],
+        subtotals: false,
+        row_grand_totals: true,
+        column_grand_totals: true,
     };
     (book, spec)
 }
@@ -2407,26 +2852,52 @@ pub fn pivot_parent_cost_book(rows: u32) -> (Workbook, yggdryl::excel::PivotSpec
     use yggdryl::excel::{Aggregate, AxisField, ItemOrder, PivotSource, PivotSpec, ValueField};
     let mut book = Workbook::new();
     let source = book.add_sheet("Data").unwrap();
-    for (column, header) in ["Group", "Product", "Year", "Quarter", "Value"].into_iter().enumerate() {
-        source.set_cell(CellRef::new(0, column as u32), header).unwrap();
+    for (column, header) in ["Group", "Product", "Year", "Quarter", "Value"]
+        .into_iter()
+        .enumerate()
+    {
+        source
+            .set_cell(CellRef::new(0, column as u32), header)
+            .unwrap();
     }
     for row in 1..=rows {
-        source.set_cell(CellRef::new(row, 0), if row & 1 == 0 { "East" } else { "West" }).unwrap();
-        source.set_cell(CellRef::new(row, 1), if row & 2 == 0 { "A" } else { "B" }).unwrap();
+        source
+            .set_cell(
+                CellRef::new(row, 0),
+                if row & 1 == 0 { "East" } else { "West" },
+            )
+            .unwrap();
+        source
+            .set_cell(CellRef::new(row, 1), if row & 2 == 0 { "A" } else { "B" })
+            .unwrap();
         source.set_cell(CellRef::new(row, 2), 2024.0).unwrap();
-        source.set_cell(CellRef::new(row, 3), if row & 4 == 0 { "Q1" } else { "Q2" }).unwrap();
+        source
+            .set_cell(CellRef::new(row, 3), if row & 4 == 0 { "Q1" } else { "Q2" })
+            .unwrap();
         source.set_cell(CellRef::new(row, 4), 1.0).unwrap();
     }
     book.add_sheet("Report").unwrap();
-    let axis = |field: &str| AxisField { field: field.into(), order: ItemOrder::Ascending };
+    let axis = |field: &str| AxisField {
+        field: field.into(),
+        order: ItemOrder::Ascending,
+    };
     let spec = PivotSpec {
         name: "CostParents".into(),
-        source: PivotSource { sheet: "Data".into(), range: CellRange::new(CellRef::new(0, 0), CellRef::new(rows, 4)) },
+        source: PivotSource {
+            sheet: "Data".into(),
+            range: CellRange::new(CellRef::new(0, 0), CellRef::new(rows, 4)),
+        },
         rows: vec![axis("Group"), axis("Product")],
         columns: vec![axis("Year"), axis("Quarter")],
-        values: vec![ValueField { field: "Value".into(), aggregate: Aggregate::Average,
-            caption: Some("Value Average".into()), number_format: None }],
-        subtotals: true, row_grand_totals: true, column_grand_totals: true,
+        values: vec![ValueField {
+            field: "Value".into(),
+            aggregate: Aggregate::Average,
+            caption: Some("Value Average".into()),
+            number_format: None,
+        }],
+        subtotals: true,
+        row_grand_totals: true,
+        column_grand_totals: true,
     };
     (book, spec)
 }

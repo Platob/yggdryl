@@ -29,14 +29,17 @@
 //! | `as_slice()` | the values, lent | `None`: no value is stored |
 //! | `scalar(i)` | one clone | one row built off the buffers |
 //! | `null_count()` | a walk | the validity bitmap's count |
-//! | `push`, `set`, `splice` | the whole run copied once | the buffers written in place |
+//! | `slice()` | the same values, offsets summed | an Arrow slice |
+//! | `push`, `set`, `splice` | the window copied once | the buffers written in place |
 //! | `into_arrow_array()` | `None` | the buffers, shared |
 //!
 //! [`Self::item`]: SerieType::item
 //! [`Serie`]: crate::Serie
 
+use std::cmp::Ordering;
 use std::fmt;
-use std::sync::Arc;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, OnceLock};
 
 use crate::Scalar;
 use crate::datatype::validate_non_negative;
@@ -44,7 +47,7 @@ use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
 use crate::{DataType, DataTypeId, Field, Result, Serie};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// The typed field's payload over the five serie layouts.
 ///
@@ -271,34 +274,151 @@ impl DataType {
 
 /// A schema-free ordered run of values: what a row canonicalizes to.
 ///
-/// One shared slice, built in one allocation and lent as it is. It declares
-/// no field, so it accepts every value and agrees its datatype back out of
-/// its rows; [`Serie`] holds it as its one schema-free leaf, beside the
-/// columns that carry a field.
+/// A window over one shared slice: built in one allocation, sliced in none.
+/// [`Serie::slice`] of a run shares the slice with the offsets summed, so a
+/// slice of a slice is one level over the original allocation, and an empty
+/// slice is the one shared empty run, holding nothing. It declares no field,
+/// so it accepts every value and agrees its datatype back out of its rows;
+/// [`Serie`] holds it as its one schema-free leaf, beside the columns that
+/// carry a field.
 ///
-/// A run is written by copying it once - `Arc<[Scalar]>` cannot grow in
-/// place - so building one a `push` at a time is quadratic;
-/// [`Scalar::from_sequence`] and [`Serie::new`] build one from values in
-/// hand.
-#[repr(transparent)]
-#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
-pub struct Run(Arc<[Scalar]>);
+/// Identity is the window's rows alone: equality, order, hash, `Debug`,
+/// `Display` and serde read [`Self::as_slice`] and never a row around it. A
+/// live window keeps its whole slice alive, as an Arrow slice keeps its
+/// buffers.
+///
+/// A sort or a reverse rewrites the window in place when this run holds its
+/// slice alone. Any other write copies the window once - `Arc<[Scalar]>`
+/// cannot grow in place - and a shared slice is never copied past the
+/// window, the copy letting go of it; building one a `push` at a time is
+/// quadratic, so [`Scalar::from_sequence`] and [`Serie::new`] build one from
+/// values in hand.
+///
+/// ```
+/// use yggdryl::{Run, Scalar, Serie};
+///
+/// let prices = Serie::new(vec![
+///     Scalar::from(125_i64),
+///     Scalar::from(126_i64),
+///     Scalar::from(127_i64),
+///     Scalar::from(128_i64),
+/// ]);
+/// let inner = prices.slice(1, 3)?.slice(1, 2)?;
+/// let (Some(whole), Some(window)) = (prices.as_run(), inner.as_run()) else {
+///     panic!("both are runs");
+/// };
+/// // A slice of a slice is a window over the one slice the run was built in.
+/// assert!(std::ptr::eq(&whole.as_slice()[2], &window.as_slice()[0]));
+/// assert_eq!(window, &Run::new(vec![Scalar::from(127_i64), Scalar::from(128_i64)]));
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+#[derive(Clone)]
+pub struct Run {
+    values: Arc<[Scalar]>,
+    start: usize,
+    len: usize,
+}
 
 impl Run {
-    /// Construct an ordered run.
+    /// Construct an ordered run over the whole of `values`.
     pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
-        Self(values.into())
+        let values = values.into();
+        let len = values.len();
+        Self {
+            values,
+            start: 0,
+            len,
+        }
     }
 
     /// Borrow the ordered values.
     pub fn as_slice(&self) -> &[Scalar] {
-        self.0.as_ref()
+        &self.values[self.start..self.start + self.len]
     }
 
-    /// Consume this value and return its shared children.
-    pub fn into_inner(self) -> Arc<[Scalar]> {
-        self.0
+    /// The window `offset..offset + length` of this one, over the same
+    /// slice; the caller has proven it lies inside. An empty window is the
+    /// shared empty run, so it keeps nothing alive.
+    pub(crate) fn slice(&self, offset: usize, length: usize) -> Self {
+        if length == 0 {
+            return Self::default();
+        }
+        Self {
+            values: Arc::clone(&self.values),
+            start: self.start + offset,
+            len: length,
+        }
+    }
+
+    /// Borrow the values to rewrite them where they stand: in place when
+    /// this run holds its slice alone, else the window alone copied once,
+    /// which lets go of the slice.
+    pub(crate) fn make_mut(&mut self) -> &mut [Scalar] {
+        if Arc::get_mut(&mut self.values).is_none() {
+            *self = Self::new(Arc::<[Scalar]>::from(self.as_slice()));
+        }
+        let window = self.start..self.start + self.len;
+        &mut Arc::make_mut(&mut self.values)[window]
+    }
+}
+
+impl Default for Run {
+    /// The one shared empty run, which every empty sequence answers with.
+    fn default() -> Self {
+        static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
+        Self::new(Arc::clone(EMPTY.get_or_init(|| Arc::from([]))))
+    }
+}
+
+impl fmt::Debug for Run {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("Run")
+            .field(&self.as_slice())
+            .finish()
+    }
+}
+
+impl PartialEq for Run {
+    fn eq(&self, other: &Self) -> bool {
+        (Arc::ptr_eq(&self.values, &other.values)
+            && self.start == other.start
+            && self.len == other.len)
+            || self.as_slice() == other.as_slice()
+    }
+}
+
+impl Eq for Run {}
+
+impl PartialOrd for Run {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Run {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_slice().cmp(other.as_slice())
+    }
+}
+
+impl Hash for Run {
+    /// The bytes `<[Scalar]>::hash` writes, which a column of the same rows
+    /// writes too.
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_slice().hash(state);
+    }
+}
+
+impl Serialize for Run {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        self.as_slice().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Run {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        Vec::<Scalar>::deserialize(deserializer).map(Self::new)
     }
 }
 

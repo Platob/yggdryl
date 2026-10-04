@@ -501,7 +501,12 @@ pub(super) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) ->
         this.set_crosscode(previous.get_crosscode().to_owned());
         changed = true;
     }
-    changed |= this.sync_cross();
+    // An element stating no cross code has none to bring in step: the cross
+    // element of a chain with no code is its first element's identity,
+    // which a walk states and a finalize derives as the element's own.
+    if !this.get_crosscode().is_empty() {
+        changed |= this.sync_cross();
+    }
     changed
 }
 
@@ -515,7 +520,7 @@ pub(crate) fn crosshash(crosscode: &str) -> u64 {
 
 /// Feeds one named fact to a digest: the name, the bytes, each closed by a
 /// byte no name or value holds, so two facts never read as one.
-pub(crate) fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
+fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
     state.write(name.as_bytes());
     state.write(&[0]);
     state.write(bytes);
@@ -728,10 +733,10 @@ impl Drop for Staged<'_> {
     }
 }
 
-/// Feeds what [`Event::digest_event`] feeds, less the cross code: the selected
-/// names the event goes by, its state and its predecessor's identity. A holder can leave out a name that records
-/// capture provenance rather than event content without duplicating the
-/// framing this digest owns.
+/// Feeds what [`Event::digest_event`] feeds, less the cross code: its state
+/// and its predecessor's identity, for a holder - a FIX message - that feeds
+/// its own content behind them without duplicating the framing this digest
+/// owns.
 pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
     feed_timed(state, this);
 }

@@ -405,17 +405,21 @@ enum WriterMode {
 /// Bytes are attempted first. An initial `TypeError` switches the adapter to
 /// an incremental UTF-8 text writer, retaining at most an incomplete code
 /// point between core writes.
-pub(crate) struct PythonWriter<'py> {
-    destination: Bound<'py, PyAny>,
+///
+/// The stream is held unbound and each write takes the interpreter for
+/// itself, so the core may drive the writer with the interpreter released -
+/// which a door draining a source spread over worker threads has to.
+pub(crate) struct PythonWriter {
+    destination: Py<PyAny>,
     mode: WriterMode,
     pending_utf8: Vec<u8>,
     error: Option<PyErr>,
 }
 
-impl<'py> PythonWriter<'py> {
-    pub(crate) fn new(destination: &Bound<'py, PyAny>) -> Self {
+impl PythonWriter {
+    pub(crate) fn new(destination: &Bound<'_, PyAny>) -> Self {
         Self {
-            destination: destination.clone(),
+            destination: destination.clone().unbind(),
             mode: WriterMode::Unknown,
             pending_utf8: Vec::new(),
             error: None,
@@ -455,23 +459,25 @@ impl<'py> PythonWriter<'py> {
     }
 
     fn write_binary(&mut self, input: &[u8]) -> io::Result<usize> {
-        let py = self.destination.py();
-        let value = PyBytes::new(py, input);
-        let result = self.destination.call_method1("write", (value,));
-        match result {
-            Ok(result) => {
-                self.mode = WriterMode::Binary;
-                self.checked_written(&result, input.len(), "byte")
+        Python::attach(|py| {
+            let value = PyBytes::new(py, input);
+            let result = self.destination.bind(py).call_method1("write", (value,));
+            match result {
+                Ok(result) => {
+                    self.mode = WriterMode::Binary;
+                    self.checked_written(&result, input.len(), "byte")
+                }
+                Err(error)
+                    if self.mode == WriterMode::Unknown
+                        && error.is_instance_of::<PyTypeError>(py) =>
+                {
+                    self.mode = WriterMode::Text;
+                    self.write_text_bytes(input)?;
+                    Ok(input.len())
+                }
+                Err(error) => Err(self.fail(error)),
             }
-            Err(error)
-                if self.mode == WriterMode::Unknown && error.is_instance_of::<PyTypeError>(py) =>
-            {
-                self.mode = WriterMode::Text;
-                self.write_text_bytes(input)?;
-                Ok(input.len())
-            }
-            Err(error) => Err(self.fail(error)),
-        }
+        })
     }
 
     fn write_text_bytes(&mut self, input: &[u8]) -> io::Result<()> {
@@ -487,8 +493,7 @@ impl<'py> PythonWriter<'py> {
             let result = {
                 let text = std::str::from_utf8(&self.pending_utf8[..valid_length])
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                let destination = self.destination.clone();
-                write_python_text(&destination, text)
+                Python::attach(|py| write_python_text(self.destination.bind(py), text))
             };
             if let Err(error) = result {
                 return Err(self.fail(error));
@@ -548,7 +553,7 @@ fn write_python_text(destination: &Bound<'_, PyAny>, mut input: &str) -> PyResul
     Ok(())
 }
 
-impl Write for PythonWriter<'_> {
+impl Write for PythonWriter {
     fn write(&mut self, input: &[u8]) -> io::Result<usize> {
         if self.error.is_some() {
             return Err(io::Error::other("Python stream write already failed"));

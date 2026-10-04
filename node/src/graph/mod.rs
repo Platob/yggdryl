@@ -254,9 +254,9 @@ macro_rules! market_getters {
                     .to_owned()
             }
 
-            /// The instrument's security identifiers, each a source, a type
-            /// and a code - `base:isin`, `derived:cusip`, `base:figi` - a
-            /// map keyed `src:type`, in key order.
+            /// The instrument's security identifiers, each a code under a key
+            /// - `isin`, `derived:cusip`, `ullink:isin` - a map keyed
+            /// `src:type`, the type alone for the base source, in key order.
             #[napi(getter, ts_return_type = "Identifiers")]
             pub fn securityids(&self) -> $crate::identifier::JsIdentifiers {
                 $crate::identifier::JsIdentifiers::from_core(
@@ -450,10 +450,10 @@ macro_rules! operation_getters {
                 ::yggdryl::graph::Operation::get_tradable(&self.inner)
             }
 
-            /// The names the operation goes by - `fix:clordid`,
-            /// `fix:orderid` - with the parents a chain gave them
-            /// (`fix:origclordid`, `fix:parentorderid`, `fix:origorderid`);
-            /// a map keyed `src:type`, in key order.
+            /// The names the operation goes by - `clordid`, `orderid` - with
+            /// the parents a chain gave them (`origclordid`,
+            /// `parentorderid`, `origorderid`); a map keyed `src:type`, the
+            /// type alone for the base source, in key order.
             #[napi(getter, ts_return_type = "Identifiers")]
             pub fn identifiers(&self) -> $crate::identifier::JsIdentifiers {
                 $crate::identifier::JsIdentifiers::from_core(
@@ -746,8 +746,10 @@ impl Fact {
             .ok_or_else(|| napi_error(format!("{owner} states no fact {name:?}")))
     }
 
-    /// Whether the column is one of the three identifier maps, which an
-    /// array of `Identifier` objects states as the map they make.
+    /// Whether the column is one of the three identifier maps, which a `Map`
+    /// from each key's text to its value, an `Identifiers`, or an array of
+    /// `Identifier` objects - each the one-entry map of its key - states as
+    /// the map `Identifiers::from_scalar` reads it into.
     const fn is_identifier_map(self) -> bool {
         matches!(
             self,
@@ -756,11 +758,11 @@ impl Fact {
         )
     }
 
-    /// The map `value` states where this is an identifier map - a map of
-    /// identifier rows or a sequence of them, as `Identifiers::from_scalar`
-    /// reads it, refusing a row that is no identifier, a key that is not
-    /// its row's `src:type` and two values under one key - `None` for
-    /// any other column, whose value crosses as it is.
+    /// The map `value` states where this is an identifier map - a map from
+    /// each key's text to its value or a sequence of them, as
+    /// `Identifiers::from_scalar` reads it, refusing a key that reads as no
+    /// key, a value its type refuses and two values under one key - `None`
+    /// for any other column, whose value crosses as it is.
     fn identifier_map_of(self, value: &Scalar) -> Result<Option<Scalar>> {
         if !self.is_identifier_map() {
             return Ok(None);

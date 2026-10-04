@@ -126,19 +126,16 @@ mod xxhash_arrow {
     }
 
     #[test]
-    fn holder_sources_are_ordered_and_preserve_explicit_empty() {
-        // A source states nothing on the field it names: `a` and `b` stay ordinary
+    fn holder_by_is_ordered_and_preserves_explicit_empty() {
+        // A term states nothing on the field it reads: `a` and `b` stay ordinary
         // columns, and only the holder carries metadata.
         let a = DataType::Int64.required_field("a");
         assert!(a.as_digest().is_empty());
         let b = DataType::utf8().required_field("b");
         let mut ordered = holder("ordered", DataType::UInt64);
-        ordered.as_digest_mut().set_sources(["b", "a"]).unwrap();
+        ordered.as_digest_mut().set_by(["b", "a"]).unwrap();
         let mut empty = holder("empty", DataType::UInt64);
-        empty
-            .as_digest_mut()
-            .set_sources(Vec::<&str>::new())
-            .unwrap();
+        empty.as_digest_mut().set_by(Vec::<&str>::new()).unwrap();
         let root = root([a, b, ordered, empty]);
         let rows = Scalar::from_sequence([Scalar::from_sequence([
             Scalar::from(7),
@@ -173,15 +170,71 @@ mod xxhash_arrow {
     }
 
     #[test]
+    fn a_by_term_that_is_not_a_column_is_computed_and_fed_like_one() {
+        // A bare path feeds the column's own buffers; any other term is bound
+        // once against the Struct, evaluated per batch and fed as the value
+        // it computes, in the order the list states.
+        let a = DataType::Int64.required_field("a");
+        let b = DataType::utf8().required_field("b");
+        let mut computed = holder("computed", DataType::UInt64);
+        computed
+            .as_digest_mut()
+            .set_by(["lower(b)", "a + 1", "a"])
+            .unwrap();
+        let computed_root = root([a, b, computed]);
+        let rows = Scalar::from_sequence([
+            Scalar::from_sequence([Scalar::from(7), Scalar::from("AAPL"), Scalar::from(0_u64)]),
+            Scalar::from_sequence([Scalar::from(8), Scalar::from("MSFT"), Scalar::from(0_u64)]),
+        ]);
+        let source = lay_out(&computed_root, &rows);
+        let filled = Xxh3::new()
+            .apply_arrow_batch(&computed_root, source.clone(), false)
+            .unwrap();
+
+        let expected = |symbol: &str, a: i64| {
+            Scalar::from_sequence([
+                Scalar::from(symbol.to_ascii_lowercase()),
+                Scalar::from(a + 1),
+                Scalar::from(a),
+            ])
+            .digest(DigestAlgorithm::Xxh3)
+            .as_u64()
+            .unwrap()
+        };
+        let cells = filled.column(2).as_primitive::<UInt64Type>();
+        assert_eq!(cells.values(), &[expected("AAPL", 7), expected("MSFT", 8)]);
+        // Applying again changes nothing: every cell now holds a written value.
+        assert_eq!(
+            Xxh3::new()
+                .apply_arrow_batch(&computed_root, filled.clone(), false)
+                .unwrap(),
+            filled
+        );
+
+        // A term that does not bind against the Struct is refused when the
+        // plan is built, naming the holder and the property.
+        let mut unbound = holder("digest", DataType::UInt64);
+        unbound.as_digest_mut().set_by(["lower(missing)"]).unwrap();
+        let error = Xxh3::new()
+            .apply_arrow_batch(
+                &root([DataType::Int64.required_field("a"), unbound]),
+                empty_batch(),
+                false,
+            )
+            .unwrap_err();
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
+    }
+
+    #[test]
     fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
-        // The same reach decides the metadata-ownership rules: `DIGEST:sources` on
+        // The same reach decides the metadata-ownership rules: `DIGEST:by` on
         // a field that is not a holder is refused at the top level, so it cannot
         // be accepted one layout down.
         let source = Field::from_parts(
             "value",
             DataType::Int64,
             true,
-            [("DIGEST:sources", "[\"other\"]")],
+            [("DIGEST:by", "[\"other\"]")],
         )
         .unwrap();
         let element = DataType::from(
@@ -227,12 +280,11 @@ mod xxhash_arrow {
         assert_metadata_error(error, "DIGEST:algorithm", "$.value");
 
         let non_holder_paths =
-            Field::from_parts("value", DataType::UInt64, false, [("DIGEST:sources", "[]")])
-                .unwrap();
+            Field::from_parts("value", DataType::UInt64, false, [("DIGEST:by", "[]")]).unwrap();
         let error = Xxh3::new()
             .apply_arrow_batch(&root([non_holder_paths]), empty_batch(), false)
             .unwrap_err();
-        assert_metadata_error(error, "DIGEST:sources", "$.value");
+        assert_metadata_error(error, "DIGEST:by", "$.value");
 
         let non_struct_root = DataType::Int64.required_field("value");
         let error = Xxh3::new()
@@ -245,17 +297,14 @@ mod xxhash_arrow {
     }
 
     #[test]
-    fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descent() {
+    fn digest_by_rejects_peer_outputs_ambiguity_duplicates_and_collection_descent() {
         let peer = holder("peer", DataType::UInt64);
         let mut selecting_peer = holder("digest", DataType::UInt64);
-        selecting_peer
-            .as_digest_mut()
-            .set_sources(["peer"])
-            .unwrap();
+        selecting_peer.as_digest_mut().set_by(["peer"]).unwrap();
         let error = Xxh3::new()
             .apply_arrow_batch(&root([peer, selecting_peer]), empty_batch(), false)
             .unwrap_err();
-        assert_metadata_error(error, "DIGEST:sources", "$.digest");
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
 
         let nested_value = DataType::Int64.required_field("value");
         let nested_holder = holder("digest", DataType::UInt64);
@@ -266,12 +315,12 @@ mod xxhash_arrow {
         let mut duplicate = holder("digest", DataType::UInt64);
         duplicate
             .as_digest_mut()
-            .set_sources(["nested", "nested.digest"])
+            .set_by(["nested", "nested.digest"])
             .unwrap();
         let error = Xxh3::new()
             .apply_arrow_batch(&root([nested.clone(), duplicate]), empty_batch(), false)
             .unwrap_err();
-        assert_metadata_error(error, "DIGEST:sources", "$.digest");
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
 
         let nested = StructType::from_fields([
             holder("left", DataType::UInt64),
@@ -281,28 +330,40 @@ mod xxhash_arrow {
         .unwrap()
         .required_field("nested");
         let mut ambiguous = holder("digest", DataType::UInt64);
-        ambiguous.as_digest_mut().set_sources(["nested"]).unwrap();
+        ambiguous.as_digest_mut().set_by(["nested"]).unwrap();
         let error = Xxh3::new()
             .apply_arrow_batch(&root([nested, ambiguous]), empty_batch(), false)
             .unwrap_err();
-        assert_metadata_error(error, "DIGEST:sources", "$.digest");
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
 
         let items = DataType::from_str("array<struct<value:int64>>")
             .unwrap()
             .required_field("items");
         let mut collection = holder("digest", DataType::UInt64);
-        collection
-            .as_digest_mut()
-            .set_sources(["items.value"])
-            .unwrap();
+        collection.as_digest_mut().set_by(["items.value"]).unwrap();
         let error = Xxh3::new()
             .apply_arrow_batch(&root([items, collection]), empty_batch(), false)
             .unwrap_err();
-        assert_metadata_error(error, "DIGEST:sources", "$.digest");
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
     }
 
     #[test]
-    fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
+    fn digest_by_reads_an_unquoted_dot_as_a_level_and_never_as_part_of_a_name() {
+        // One reading only: `a.b.c` is a -> b -> c, never the column `a.b`.
+        let dotted = StructType::from_fields([DataType::Int64.required_field("c")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("a.b");
+        let mut digest = holder("digest", DataType::UInt64);
+        digest.as_digest_mut().set_by(["a.b.c"]).unwrap();
+        let error = Xxh3::new()
+            .apply_arrow_batch(&root([dotted, digest]), empty_batch(), false)
+            .unwrap_err();
+        assert_metadata_error(error, "DIGEST:by", "$.digest");
+    }
+
+    #[test]
+    fn digest_by_reads_a_quoted_name_as_one_level_and_allows_terminal_collections() {
         let scalar_prefix = DataType::Int64.required_field("a");
         let dotted_prefix = StructType::from_fields([DataType::Int64.required_field("c")])
             .map(DataType::from)
@@ -314,7 +375,7 @@ mod xxhash_arrow {
         let mut digest = holder("digest", DataType::UInt64);
         digest
             .as_digest_mut()
-            .set_sources(["a.b.c", "items"])
+            .set_by(["\"a.b\".c", "items"])
             .unwrap();
         let root = root([scalar_prefix, dotted_prefix, items, digest]);
         let item_value = Scalar::from_sequence([Scalar::from(3), Scalar::from(4)]);
@@ -378,7 +439,7 @@ mod xxhash_arrow {
         let a = DataType::Int64.required_field("a");
         let b = DataType::utf8().required_field("b");
         let mut starred = holder("digest", DataType::UInt64);
-        starred.as_digest_mut().set_sources(["*"]).unwrap();
+        starred.as_digest_mut().set_by(["*"]).unwrap();
         let implied = holder("digest", DataType::UInt64);
 
         let rows = Scalar::from_sequence([Scalar::from_sequence([

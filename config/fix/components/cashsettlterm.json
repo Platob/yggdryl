@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nocashsettldealers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocashsettldealers",
-          "FIX:tag": "40277"
-        }
-      },
-      {
         "name": "cashsettldealers",
         "dtype": {
           "type": "null"

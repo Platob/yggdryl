@@ -424,6 +424,198 @@ fn an_endpoint_stated_on_a_session_is_honoured_by_options_that_consult_no_enviro
 }
 
 #[test]
+fn the_path_an_s3_endpoint_carries_is_the_prefix_every_request_is_sent_under() {
+    // A gateway mounting S3 below a path is reached there, as botocore
+    // reaches it: path style puts the bucket after the prefix...
+    let gateway = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[("AWS_ENDPOINT_URL_S3", "http://localhost:9000/gateway/s3/")],
+            "",
+        ),
+    );
+    assert_eq!(gateway.host_header("trades"), "localhost:9000");
+    assert_eq!(
+        gateway.path("trades", "lake/part.parquet"),
+        "/gateway/s3/trades/lake/part.parquet"
+    );
+    assert_eq!(gateway.path("trades", ""), "/gateway/s3/trades");
+
+    // ... and virtual-hosted style the bucket in the host, the prefix still
+    // ahead of the key.
+    let hosted = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[
+                ("AWS_ENDPOINT_URL_S3", "http://localhost:9000/gateway"),
+                ("AWS_S3_FORCE_PATH_STYLE", "false"),
+            ],
+            "",
+        ),
+    );
+    assert_eq!(hosted.host_header("trades"), "trades.localhost:9000");
+    assert_eq!(
+        hosted.path("trades", "lake/part.parquet"),
+        "/gateway/lake/part.parquet"
+    );
+    assert_eq!(hosted.path("trades", ""), "/gateway/");
+
+    // An endpoint stated on the options keeps its path the same way.
+    let explicit = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_endpoint("http://localhost:9000/minio"),
+    );
+    assert_eq!(
+        explicit.path("trades", "lake/part.parquet"),
+        "/minio/trades/lake/part.parquet"
+    );
+}
+
+// --- where a request arrives -------------------------------------------------
+//
+// Each test below reaches the fake store through one source of the endpoint,
+// and the source a wrong reading would take instead points at a loopback port
+// nothing listens on. The session is in a region no AWS partition publishes
+// a host for, so a client that read no configured endpoint at all would ask
+// for `s3.zz-nowhere-1.amazonaws.com` - a name that resolves to nothing - and
+// fail on this machine rather than send a fixture-signed request to Amazon S3.
+
+/// A region no AWS partition publishes a host for.
+const NOWHERE_REGION: &str = "zz-nowhere-1";
+
+/// A loopback URL nothing listens on: where a decoy source points, so a
+/// client that read the wrong source fails on this machine rather than
+/// reaching anything.
+fn nowhere() -> String {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    drop(listener);
+    format!("http://{address}")
+}
+
+/// Options carrying a session in [`NOWHERE_REGION`] whose whole environment
+/// is `variables` and whose configuration file is `config`, signing with a
+/// pair the fake store accepts and sweeping no prefix of this process.
+fn named_by(variables: &[(&str, &str)], config: &str) -> S3Options {
+    let session = Session::new()
+        .with_variables(variables.iter().copied())
+        .with_config_text(config)
+        .with_credentials_text("")
+        .with_metadata_disabled(true)
+        .with_region(NOWHERE_REGION);
+    S3Options::default()
+        .with_environment_prefixes(std::iter::empty::<String>())
+        .with_credentials(yggdryl::s3::Credentials::new(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI",
+        ))
+        .with_session(session)
+}
+
+/// A fake store holding `trades/lake/part.parquet`.
+fn holding_a_part() -> crate::server::FakeS3 {
+    let store = crate::server::FakeS3::start();
+    store.create_bucket("trades");
+    store.put("trades", "lake/part.parquet", b"PAR1");
+    store
+}
+
+/// The part read under `options`: one request, at `path` on `store`.
+fn read_at(store: &crate::server::FakeS3, options: S3Options, path: &str) {
+    use yggdryl::IOBase;
+
+    store.clear_requests();
+    let part = yggdryl::s3::file_with("s3://trades/lake/part.parquet", options).expect("a handle");
+    assert_eq!(part.read_all_bytes().expect("the object"), b"PAR1");
+    let sent = store.requests();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert_eq!(sent[0].path, path);
+    assert!(
+        sent[0]
+            .headers
+            .iter()
+            .any(|(name, value)| name == "authorization"
+                && value.contains(&format!("/{NOWHERE_REGION}/s3/aws4_request"))),
+        "signed for the session's region: {:?}",
+        sent[0]
+    );
+}
+
+#[test]
+fn a_request_reaches_the_store_aws_endpoint_url_s3_alone_names_and_the_path_it_names() {
+    let store = holding_a_part();
+    let decoy = nowhere();
+
+    // The variable alone: the generic one beside it points nowhere.
+    let named = store.endpoint();
+    read_at(
+        &store,
+        named_by(
+            &[
+                ("AWS_ENDPOINT_URL_S3", named.as_str()),
+                ("AWS_ENDPOINT_URL", decoy.as_str()),
+            ],
+            "",
+        ),
+        "/trades/lake/part.parquet",
+    );
+
+    // Below a gateway's path, which every request is sent under.
+    store.mount_at("/gateway/s3");
+    let mounted = format!("{}/gateway/s3/", store.endpoint());
+    read_at(
+        &store,
+        named_by(
+            &[
+                ("AWS_ENDPOINT_URL_S3", mounted.as_str()),
+                ("AWS_ENDPOINT_URL", decoy.as_str()),
+            ],
+            "",
+        ),
+        "/gateway/s3/trades/lake/part.parquet",
+    );
+}
+
+#[test]
+fn a_request_reaches_the_store_aws_endpoint_url_alone_names() {
+    let store = holding_a_part();
+    let (named, decoy) = (store.endpoint(), nowhere());
+    // The profile's `[services]` entry and its own endpoint, which the
+    // variable outranks, point nowhere.
+    read_at(
+        &store,
+        named_by(
+            &[("AWS_ENDPOINT_URL", named.as_str())],
+            &format!(
+                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
+                 [services local]\ns3 =\n  endpoint_url = {decoy}\n"
+            ),
+        ),
+        "/trades/lake/part.parquet",
+    );
+}
+
+#[test]
+fn a_request_reaches_the_store_the_services_section_s_s3_entry_names() {
+    let store = holding_a_part();
+    let (named, decoy) = (store.endpoint(), nowhere());
+    // The profile's own endpoint, which the entry outranks, and another
+    // service's entry point nowhere.
+    read_at(
+        &store,
+        named_by(
+            &[],
+            &format!(
+                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
+                 [services local]\nsts =\n  endpoint_url = {decoy}\n\
+                 s3 =\n  endpoint_url = {named}\n"
+            ),
+        ),
+        "/trades/lake/part.parquet",
+    );
+}
+
+#[test]
 fn the_profiles_services_section_names_the_s3_endpoint_unless_configured_ones_are_ignored() {
     const CONFIG: &str = "[default]\nregion = ap-southeast-2\nendpoint_url = http://localhost:9100\n\
                           services = lake\n\n[services lake]\ns3 =\n  endpoint_url = http://localhost:9200\n";
@@ -472,6 +664,40 @@ fn the_profiles_services_section_names_the_s3_endpoint_unless_configured_ones_ar
 }
 
 #[test]
+fn a_profile_naming_a_services_section_nobody_wrote_refuses_the_client_rather_than_the_published_host()
+ {
+    const MISSPELT: &str = "[default]\nregion = eu-west-3\nservices = locl\n\n\
+                            [services local]\ns3 =\n  endpoint_url = http://localhost:9200\n";
+    let refused = Client::new(
+        &url("s3://trades/lake/part.parquet"),
+        ambient(&[], MISSPELT),
+    )
+    .err()
+    .expect("a refusal")
+    .to_string();
+    assert!(
+        refused.contains("names services locl, which no [services locl] section defines"),
+        "{refused}"
+    );
+
+    // The lookup that ends before the `[services]` step never reaches it:
+    // the service's own variable, or an endpoint the options state.
+    let variable = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[("AWS_ENDPOINT_URL_S3", "http://localhost:9000")],
+            MISSPELT,
+        ),
+    );
+    assert_eq!(variable.host_header("trades"), "localhost:9000");
+    let explicit = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[], MISSPELT).with_endpoint("http://localhost:9500"),
+    );
+    assert_eq!(explicit.host_header("trades"), "localhost:9500");
+}
+
+#[test]
 fn a_content_range_states_the_total_and_a_redirect_states_the_region() {
     assert_eq!(total_of_content_range(Some("bytes 0-9/1024")), Some(1024));
     assert_eq!(total_of_content_range(Some("bytes */1024")), Some(1024));
@@ -497,17 +723,190 @@ fn the_backoff_doubles_and_stops_doubling() {
 fn an_endpoint_splits_into_scheme_host_and_port() {
     assert_eq!(
         Client::split_endpoint("http://localhost:9000").expect("a split endpoint"),
-        ("http".to_owned(), "localhost".to_owned(), Some(9000))
+        (
+            "http".to_owned(),
+            "localhost".to_owned(),
+            Some(9000),
+            String::new()
+        )
     );
     assert_eq!(
         Client::split_endpoint("s3.example.io").expect("a split endpoint"),
-        ("https".to_owned(), "s3.example.io".to_owned(), None)
+        (
+            "https".to_owned(),
+            "s3.example.io".to_owned(),
+            None,
+            String::new()
+        )
     );
     assert_eq!(
         Client::split_endpoint("https://[::1]:9000").expect("a split endpoint"),
-        ("https".to_owned(), "[::1]".to_owned(), Some(9000))
+        (
+            "https".to_owned(),
+            "[::1]".to_owned(),
+            Some(9000),
+            String::new()
+        )
     );
     Client::split_endpoint("https://host:notaport").expect_err("a refused port");
+}
+
+#[test]
+fn an_endpoint_is_read_once_as_the_url_it_is_and_only_where_the_store_is_is_kept() {
+    for (endpoint, scheme, host, port, path) in [
+        ("localhost:9000", "https", "localhost", Some(9000), ""),
+        (
+            "HTTP://minio.example.io:9000/",
+            "http",
+            "minio.example.io",
+            Some(9000),
+            "",
+        ),
+        ("[::1]:9000", "https", "[::1]", Some(9000), ""),
+        ("http://[::1]", "http", "[::1]", None, ""),
+        // User information and a query say nothing about where the store is,
+        // so neither reaches the `Host` header or the signature.
+        ("https://u:p@host:9000", "https", "host", Some(9000), ""),
+        // A path is answered apart, its trailing `/` dropped: the prefix a
+        // gateway mounts Amazon S3 below...
+        ("https://host/prefix", "https", "host", None, "/prefix"),
+        ("http://host:9000/p/?x=1", "http", "host", Some(9000), "/p"),
+        // ... or the account the emulator spelling an Azure connection string
+        // states names, which the client adds itself.
+        (
+            "http://127.0.0.1:10000/devstoreaccount1",
+            "http",
+            "127.0.0.1",
+            Some(10000),
+            "/devstoreaccount1",
+        ),
+    ] {
+        assert_eq!(
+            Client::split_endpoint(endpoint).expect(endpoint),
+            (scheme.to_owned(), host.to_owned(), port, path.to_owned()),
+            "{endpoint:?}"
+        );
+    }
+}
+
+#[test]
+fn an_endpoint_that_names_no_host_or_a_port_that_is_no_number_is_refused_quoting_it() {
+    for endpoint in [
+        "https://host:notaport",
+        "https://host:99999",
+        "https://host:+80",
+        "https://host:",
+        "https://",
+        "https://a@b@c",
+        "",
+    ] {
+        let refused = Client::split_endpoint(endpoint)
+            .expect_err(endpoint)
+            .to_string();
+        assert!(
+            refused.contains("expected a host and an optional port in the S3 endpoint"),
+            "{endpoint:?}: {refused}"
+        );
+        assert!(refused.contains(&format!("{endpoint:?}")), "{refused}");
+    }
+}
+
+#[test]
+fn the_path_style_variable_reads_the_one_boolean_table_and_text_it_does_not_spell_defers() {
+    let host = |spelling: &str, config: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            ambient(
+                &[
+                    ("AWS_REGION", "eu-west-3"),
+                    ("AWS_S3_FORCE_PATH_STYLE", spelling),
+                ],
+                config,
+            ),
+        )
+        .host_header("trades")
+    };
+    let path = "s3.eu-west-3.amazonaws.com";
+    let virtual_hosted = "trades.s3.eu-west-3.amazonaws.com";
+    for spelling in ["true", "t", "tr", "yes", "y", "on", "1"] {
+        assert_eq!(host(spelling, ""), path, "{spelling:?} forces path style");
+    }
+    for spelling in ["false", "f", "no", "n", "off", "0"] {
+        assert_eq!(
+            host(spelling, ""),
+            virtual_hosted,
+            "{spelling:?} forces virtual hosting"
+        );
+    }
+    // Text no spelling reads states nothing: the profile's addressing style
+    // answers, and without one the host's own default.
+    assert_eq!(
+        host("maybe", "[default]\ns3 =\n  addressing_style = path\n"),
+        path
+    );
+    assert_eq!(host("maybe", ""), virtual_hosted);
+}
+
+#[test]
+fn the_s3_table_s_switches_read_the_one_boolean_table_and_text_it_does_not_spell_is_off() {
+    let host = |table: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            sealed().with_session(profiled(&format!(
+                "[default]\nregion = eu-west-3\ns3 =\n  {table}\n"
+            ))),
+        )
+        .host_header("trades")
+    };
+    assert_eq!(
+        host("use_dualstack_endpoint = y"),
+        "trades.s3.dualstack.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_accelerate_endpoint = on"),
+        "trades.s3-accelerate.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_dualstack_endpoint = maybe"),
+        "trades.s3.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host("use_accelerate_endpoint = no"),
+        "trades.s3.eu-west-3.amazonaws.com"
+    );
+}
+
+#[test]
+fn the_profiles_payload_signing_flag_reads_the_one_boolean_table_and_text_it_does_not_spell_states_nothing()
+ {
+    let signs = |endpoint: &str, spelling: &str| {
+        client(
+            "s3://trades/lake/part.parquet",
+            ambient(
+                &[("AWS_ENDPOINT_URL_S3", endpoint)],
+                &format!(
+                    "[default]\nregion = eu-west-3\ns3 =\n  payload_signing_enabled = {spelling}\n"
+                ),
+            ),
+        )
+        .signs_payload()
+    };
+    // Over plain HTTP the body is signed unless the profile says otherwise.
+    for spelling in ["false", "f", "no", "n", "off", "0"] {
+        assert!(!signs("http://localhost:9000", spelling), "{spelling:?}");
+    }
+    assert!(
+        signs("http://localhost:9000", "maybe"),
+        "text no spelling reads leaves the default, which signs over HTTP"
+    );
+    // Over TLS it is not, unless the profile says so.
+    for spelling in ["true", "t", "tr", "yes", "y", "ye", "on", "1"] {
+        assert!(signs("https://localhost:9000", spelling), "{spelling:?}");
+    }
+    assert!(
+        !signs("https://localhost:9000", "maybe"),
+        "and the default over TLS does not"
+    );
 }
 
 mod accounting {

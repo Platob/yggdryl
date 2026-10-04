@@ -128,28 +128,40 @@ impl JsTextOptions {
         Ok(())
     }
 
-    /// Return the streamed-write commit cadence.
+    /// Return the streamed-write commit cadence, in whole batches.
     #[napi(getter)]
-    pub fn commit_row_size(&self) -> Option<f64> {
+    pub fn commit_batch_num(&self) -> Option<f64> {
         #[allow(clippy::cast_precision_loss)]
-        self.inner.commit_row_size().map(|rows| rows as f64)
+        self.inner.commit_batch_num().map(|batches| batches as f64)
     }
 
-    /// Set or clear the streamed-write commit cadence.
+    /// Set or clear the streamed-write commit cadence, in whole batches.
     #[napi(setter)]
-    pub fn set_commit_row_size(&mut self, value: Option<f64>) -> Result<()> {
-        let rows = match value {
-            Some(rows) => {
-                let rows = crate::exact_u64(rows, "commitRowSize")?;
-                Some(usize::try_from(rows).map_err(|_| {
-                    napi_error(format!(
-                        "commitRowSize {rows} exceeds this platform's row-count range"
-                    ))
-                })?)
-            }
+    pub fn set_commit_batch_num(&mut self, value: Option<f64>) -> Result<()> {
+        let batches = match value {
+            Some(batches) => Some(crate::media::options::batch_count(batches)?),
             None => None,
         };
-        self.inner.set_commit_row_size(rows);
+        self.inner.set_commit_batch_num(batches);
+        Ok(())
+    }
+
+    /// Return the threads a write of several parts runs on at once.
+    #[napi(getter)]
+    pub fn num_threads(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.num_threads().map(|threads| threads as f64)
+    }
+
+    /// Set or clear the threads a write of several parts runs on at once;
+    /// zero is retained for the write preflight to refuse by name.
+    #[napi(setter)]
+    pub fn set_num_threads(&mut self, value: Option<f64>) -> Result<()> {
+        let threads = match value {
+            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            None => None,
+        };
+        self.inner.set_num_threads(threads);
         Ok(())
     }
 
@@ -600,11 +612,19 @@ impl JsTextOptions {
         Ok(options)
     }
 
-    /// Return a copy with a streamed-write commit cadence.
+    /// Return a copy publishing every `commitBatchNum` batches.
     #[napi]
-    pub fn with_commit_row_size(&self, rows: f64) -> Result<Self> {
+    pub fn with_commit_batch_num(&self, batches: f64) -> Result<Self> {
         let mut options = self.clone();
-        options.set_commit_row_size(Some(rows))?;
+        options.set_commit_batch_num(Some(batches))?;
+        Ok(options)
+    }
+
+    /// Return a copy running a write of several parts on `numThreads`.
+    #[napi]
+    pub fn with_num_threads(&self, threads: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_num_threads(Some(threads))?;
         Ok(options)
     }
 

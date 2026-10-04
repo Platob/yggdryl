@@ -174,9 +174,10 @@ mod generic {
 
     use std::sync::Arc;
 
+    use yggdryl::expression::{Ordering, Plan, Projection, Term};
     use yggdryl::{
         DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
-        PythonMetadata, Scheme, StructType,
+        PythonMetadata, Scheme, SortOptions, StructType,
     };
 
     #[test]
@@ -360,7 +361,7 @@ mod generic {
             .unwrap();
         field
             .as_partition_mut()
-            .update([("transform", "year"), ("null", "last")])
+            .update([("by", r#"["Years(ts)"]"#), ("null", "last")])
             .unwrap();
 
         assert_eq!(field.as_identity().scheme(), &Scheme::IDENTITY);
@@ -370,27 +371,29 @@ mod generic {
         assert_eq!(field.as_identity().get("role"), Some("primary"));
         assert_eq!(
             field.as_partition().iter().collect::<Vec<_>>(),
-            [("null", "last"), ("transform", "year")]
+            [("by", r#"["years(ts)"]"#), ("null", "last")]
         );
         assert_eq!(field.get_metadata("IDENTITY:source"), Some("exchange"));
-        assert_eq!(field.get_metadata("PARTITION:transform"), Some("year"));
-        // `IDENTITY:` stays inert text; the two typed `PARTITION:` properties do
-        // not, and a dialect alias resolves to the one name the grammar owns.
+        // `IDENTITY:` stays inert text; the typed `PARTITION:by` does not: each
+        // entry is read by the grammar and stored as it spells it.
         field
             .as_partition_mut()
-            .insert("transform", "dayofmonth")
+            .insert("by", r#"["truncate(name, 4) AS prefix"]"#)
             .unwrap();
-        assert_eq!(field.get_metadata("PARTITION:transform"), Some("day"));
+        assert_eq!(
+            field.get_metadata("PARTITION:by"),
+            Some(r#"["truncate(name, 4) as prefix"]"#)
+        );
         assert!(
             field
                 .as_partition_mut()
-                .insert("transform", "epoch")
+                .insert("by", "[\"year(\"]")
                 .is_err()
         );
         assert!(
             field
                 .as_partition_mut()
-                .insert("sources", r#"["a","a"]"#)
+                .insert("by", r#"["a","a"]"#)
                 .is_err()
         );
 
@@ -409,11 +412,138 @@ mod generic {
 
         let metadata = Metadata::from_entries([
             ("IDENTITY:codec", "uuid"),
-            ("PARTITION:sources", r#" [ "venue" ] "#),
+            ("PARTITION:by", r#" [ "venue" ] "#),
         ])
         .unwrap();
         assert_eq!(metadata.as_identity().get("codec"), Some("uuid"));
-        assert_eq!(metadata.as_partition().get("sources"), Some(r#"["venue"]"#));
+        assert_eq!(metadata.as_partition().get("by"), Some(r#"["venue"]"#));
+    }
+
+    #[test]
+    fn the_sort_view_declares_the_order_a_struct_keeps() {
+        assert_eq!(Scheme::SORT.as_str(), "sort");
+        assert_eq!(Scheme::from_str("Sort").unwrap(), Scheme::SORT);
+        let mut row = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::Float64.nullable_field("price"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        let _: yggdryl::SortField<'_> = row.as_sort();
+        assert_eq!(row.as_sort().scheme(), &Scheme::SORT);
+        assert!(!row.as_sort().declares_order());
+        assert_eq!(row.as_sort().by().unwrap(), None);
+
+        row.as_sort_mut()
+            .set_by_texts(["venue", "price DESC NULLS FIRST"])
+            .unwrap();
+        assert!(row.as_sort().declares_order());
+        assert_eq!(
+            row.get_metadata("SORT:by"),
+            Some(r#"["venue","price desc nulls first"]"#)
+        );
+        let keys = row.as_sort().by().unwrap().unwrap();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0], Ordering::asc(Term::column("venue")));
+        assert_eq!(
+            keys[1],
+            Ordering::new(
+                Term::column("price"),
+                SortOptions::descending().with_nulls_first(true)
+            )
+        );
+        // The typed setter and the text setter store one spelling.
+        let mut again = row.clone();
+        again.as_sort_mut().set_by(keys.clone()).unwrap();
+        assert_eq!(again, row);
+
+        // A plan owns the order: the key leaves the root's metadata for the
+        // `order by` section and comes back from it.
+        let plan = Plan::from_field(&row);
+        assert_eq!(plan.ordering(), keys.as_slice());
+        assert!(plan.root_metadata().is_empty());
+        assert_eq!(
+            plan.to_string(),
+            "create (venue utf8 not null, price float64 null) order by venue, price desc nulls first"
+        );
+        assert_eq!(plan.field().unwrap(), Some(row.clone()));
+        assert_eq!(plan.to_string().parse::<Plan>().unwrap(), plan);
+
+        // The declaration travels into Arrow and back.
+        let restored = Field::from_arrow_field(&row.clone().into_arrow_field().unwrap()).unwrap();
+        assert_eq!(restored.as_sort().by().unwrap(), Some(keys));
+
+        // A key that is not an `order by` key is refused naming the property,
+        // by the typed setter and by the generic write alike.
+        let unchanged = row.clone();
+        let error = row
+            .as_sort_mut()
+            .set_by_texts(["price desc nulls"])
+            .unwrap_err();
+        assert!(error.to_string().contains("SORT:by"), "{error}");
+        assert_eq!(row, unchanged);
+        assert!(Metadata::from_entries([("SORT:by", r#"["venue","venue"]"#)]).is_err());
+        assert!(Metadata::from_entries([("SORT:by", r#"["price >"]"#)]).is_err());
+
+        assert_eq!(
+            row.as_sort_mut().remove_by().as_deref(),
+            Some(r#"["venue","price desc nulls first"]"#)
+        );
+        assert!(!row.as_sort().declares_order());
+    }
+
+    #[test]
+    fn the_partition_view_declares_what_rows_partition_by() {
+        let mut row = DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("venue"),
+                DataType::Int64.required_field("id"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        assert!(!row.as_partition().declares_partition());
+        assert_eq!(row.as_partition().by().unwrap(), None);
+
+        row.as_partition_mut()
+            .set_by_texts(["venue", "Years(ts)", "truncate(name, 4) as prefix"])
+            .unwrap();
+        assert!(row.as_partition().declares_partition());
+        assert_eq!(
+            row.get_metadata("PARTITION:by"),
+            Some(r#"["venue","years(ts)","truncate(name, 4) as prefix"]"#)
+        );
+        let entries = row.as_partition().by().unwrap().unwrap();
+        assert_eq!(entries[0], Projection::column("venue"));
+        assert_eq!(entries[1].term().to_string(), "years(ts)");
+        assert_eq!(entries[2].alias(), Some("prefix"));
+        let mut again = row.clone();
+        again.as_partition_mut().set_by(entries).unwrap();
+        assert_eq!(again, row);
+
+        // An entry is a term with an optional alias: a declared datatype or
+        // column metadata is a column declaration, not a partition entry.
+        let unchanged = row.clone();
+        for entry in [
+            "venue int64",
+            "venue not null",
+            "venue with (comment = 'x')",
+            "year(",
+        ] {
+            let error = row.as_partition_mut().set_by_texts([entry]).unwrap_err();
+            assert!(
+                error.to_string().contains("PARTITION:by"),
+                "{entry}: {error}"
+            );
+            assert_eq!(row, unchanged, "{entry}");
+        }
+        assert_eq!(
+            row.as_partition_mut().remove_by().as_deref(),
+            Some(r#"["venue","years(ts)","truncate(name, 4) as prefix"]"#)
+        );
+        assert!(!row.as_partition().declares_partition());
     }
 
     #[test]
@@ -463,38 +593,42 @@ mod generic {
     }
 
     #[test]
-    fn digest_holder_sources_are_canonical_ordered_and_role_owned() {
+    fn digest_holder_by_is_canonical_ordered_and_role_owned() {
+        // Each entry is read by the grammar and stored as it spells it: a path
+        // as itself, a function name folded, a column as written - it resolves
+        // case-insensitively where it binds - and a name quoted only where it
+        // must be.
         let metadata = Metadata::from_entries([(
-            "DIGEST:sources",
-            r#" [ "id", "line.price", "name,\"quoted\"", "\u6771\u4eac" ] "#,
+            "DIGEST:by",
+            r#" [ "id", "line.price", "LOWER(symbol)", "\"東京\"" ] "#,
         )])
         .unwrap();
         assert_eq!(
-            metadata.get("DIGEST:sources"),
-            Some(r#"["id","line.price","name,\"quoted\"","東京"]"#)
+            metadata.get("DIGEST:by"),
+            Some(r#"["id","line.price","lower(symbol)","\"東京\""]"#)
         );
 
         let mut holder = DataType::UInt64.required_field("row_digest");
         let unchanged = holder.clone();
         let error = holder
             .as_digest_mut()
-            .set_sources(["id", "line.price"])
+            .set_by(["id", "line.price"])
             .unwrap_err();
-        assert!(error.to_string().contains("DIGEST:sources"), "{error}");
-        assert_eq!(holder, unchanged, "a non-holder source write is atomic");
+        assert!(error.to_string().contains("DIGEST:by"), "{error}");
+        assert_eq!(holder, unchanged, "a non-holder write is atomic");
 
         holder.as_digest_mut().set_holder().unwrap();
         holder
             .as_digest_mut()
-            .set_sources(["id", "line.price", "name,\"quoted\"", "東京"])
+            .set_by(["id", "line.price", "LOWER(symbol)", "price*2"])
             .unwrap();
         assert_eq!(
-            holder.as_digest().sources().unwrap(),
+            holder.as_digest().by().unwrap(),
             Some(vec![
                 "id".to_owned(),
                 "line.price".to_owned(),
-                "name,\"quoted\"".to_owned(),
-                "東京".to_owned(),
+                "lower(symbol)".to_owned(),
+                "price * 2".to_owned(),
             ])
         );
 
@@ -502,15 +636,20 @@ mod generic {
             Field::from_arrow_field(&holder.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(restored, holder);
         assert_eq!(
-            restored.as_digest().sources().unwrap(),
-            holder.as_digest().sources().unwrap()
+            restored.as_digest().by().unwrap(),
+            holder.as_digest().by().unwrap()
         );
 
         let unchanged = holder.clone();
-        for paths in [vec!["id", ""], vec!["id", "id"]] {
-            let error = holder.as_digest_mut().set_sources(paths).unwrap_err();
-            assert!(error.to_string().contains("DIGEST:sources"), "{error}");
-            assert_eq!(holder, unchanged, "a rejected source list is atomic");
+        for entries in [
+            vec!["id", ""],
+            vec!["id", "id"],
+            vec!["lower(symbol)", "LOWER(symbol)"],
+            vec!["id", "price >"],
+        ] {
+            let error = holder.as_digest_mut().set_by(entries).unwrap_err();
+            assert!(error.to_string().contains("DIGEST:by"), "{error}");
+            assert_eq!(holder, unchanged, "a rejected list is atomic");
         }
 
         let error = holder.as_digest_mut().remove_role().unwrap_err();
@@ -518,10 +657,10 @@ mod generic {
         assert_eq!(holder, unchanged);
 
         assert_eq!(
-            holder.as_digest_mut().remove_sources().as_deref(),
-            Some(r#"["id","line.price","name,\"quoted\"","東京"]"#)
+            holder.as_digest_mut().remove_by().as_deref(),
+            Some(r#"["id","line.price","lower(symbol)","price * 2"]"#)
         );
-        assert_eq!(holder.as_digest().sources().unwrap(), None);
+        assert_eq!(holder.as_digest().by().unwrap(), None);
         assert_eq!(
             holder.as_digest_mut().remove_role().unwrap().as_deref(),
             Some("holder")
@@ -529,15 +668,12 @@ mod generic {
     }
 
     #[test]
-    fn digest_sources_preserve_explicit_empty_and_reject_every_invalid_shape() {
+    fn digest_by_preserves_explicit_empty_and_rejects_every_invalid_shape() {
         let mut holder = DataType::UInt64.required_field("row_digest");
         holder.as_digest_mut().set_holder().unwrap();
-        holder
-            .as_digest_mut()
-            .set_sources(Vec::<&str>::new())
-            .unwrap();
-        assert_eq!(holder.get_metadata("DIGEST:sources"), Some("[]"));
-        assert_eq!(holder.as_digest().sources().unwrap(), Some(Vec::new()));
+        holder.as_digest_mut().set_by(Vec::<&str>::new()).unwrap();
+        assert_eq!(holder.get_metadata("DIGEST:by"), Some("[]"));
+        assert_eq!(holder.as_digest().by().unwrap(), Some(Vec::new()));
 
         for value in [
             "null",
@@ -546,18 +682,19 @@ mod generic {
             "[1]",
             r#"[""]"#,
             r#"["id","id"]"#,
+            r#"["id +"]"#,
             "[",
         ] {
-            let error = Metadata::from_entries([("DIGEST:sources", value)]).unwrap_err();
-            assert!(error.to_string().contains("DIGEST:sources"), "{error}");
+            let error = Metadata::from_entries([("DIGEST:by", value)]).unwrap_err();
+            assert!(error.to_string().contains("DIGEST:by"), "{error}");
         }
 
         let unchanged = holder.clone();
         let error = holder
             .as_digest_mut()
-            .insert("sources", r#"["id","id"]"#)
+            .insert("by", r#"["id","id"]"#)
             .unwrap_err();
-        assert!(error.to_string().contains("DIGEST:sources"), "{error}");
+        assert!(error.to_string().contains("DIGEST:by"), "{error}");
         assert_eq!(
             holder, unchanged,
             "generic mutation uses the same validator"
@@ -685,13 +822,13 @@ mod generic {
         // Narrowing the input is the holder's business: the fields it reads stay
         // ordinary columns, and the default selection is still every non-holder.
         let mut narrowed = holder.clone();
-        narrowed.as_digest_mut().set_sources(["quantity"]).unwrap();
+        narrowed.as_digest_mut().set_by(["quantity"]).unwrap();
         let explicit = StructType::from_fields([symbol, narrowed.clone(), quantity])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
         assert_eq!(
-            narrowed.as_digest().sources().unwrap(),
+            narrowed.as_digest().by().unwrap(),
             Some(vec!["quantity".to_owned()])
         );
         assert_eq!(
@@ -774,11 +911,13 @@ mod generic {
         assert_eq!(field.as_iceberg().len(), 1);
     }
 
-    #[cfg(feature = "iceberg")]
     #[test]
-    fn a_typed_read_outlives_the_view_it_was_read_through() {
+    fn a_read_outlives_the_view_it_was_read_through() {
         let mut field = DataType::Int64.required_field("price");
-        field.as_iceberg_mut().set_doc("closing price").unwrap();
+        field
+            .as_iceberg_mut()
+            .insert("doc", "closing price")
+            .unwrap();
         field.set_display("Closing price").unwrap();
 
         // Compiling is the assertion. Every one of these reads through a view that
@@ -786,13 +925,11 @@ mod generic {
         // rather than the view's. Deref does not: `field.as_iceberg().name()` is
         // E0716, which is what `as_field` exists to spell instead.
         let name = field.as_iceberg().as_field().name();
-        let doc = field.as_iceberg().doc();
         let property = field.as_iceberg().get("doc");
         let display = field.as_iceberg().display();
 
         assert_eq!(name, "price");
-        assert_eq!(doc, Some("closing price"));
-        assert_eq!(property, doc);
+        assert_eq!(property, Some("closing price"));
         assert_eq!(display, Some("Closing price"));
     }
 
@@ -852,17 +989,17 @@ mod generic {
             let field = DataType::Int64.required_field("price");
             let cached = Arc::new(field.clone().into_arrow_field().unwrap());
             let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
-            field.as_iceberg_mut().set_doc("closing price").unwrap();
+            field.as_iceberg_mut().set_spec_id(7).unwrap();
             let rebuilt = field.clone().into_arrow_field_ref().unwrap();
             assert!(!Arc::ptr_eq(&cached, &rebuilt));
 
             let mut field = Field::from_arrow_field_ref(Arc::clone(&rebuilt)).unwrap();
-            field.as_iceberg_mut().set_doc("closing price").unwrap();
+            field.as_iceberg_mut().set_spec_id(7).unwrap();
             assert!(Arc::ptr_eq(
                 &rebuilt,
                 &field.clone().into_arrow_field_ref().unwrap()
             ));
-            assert_eq!(field.as_iceberg().doc(), Some("closing price"));
+            assert_eq!(field.as_iceberg().spec_id().unwrap(), Some(7));
         }
     }
 
@@ -949,11 +1086,30 @@ mod generic {
         assert!(message.contains("\"year\""), "{message}");
         assert!(message.contains("partition on"), "{message}");
 
-        // Only the canonical booleans are accepted for the reserved marker.
-        assert!(
-            Field::from_parts("year", DataType::Int32, false, [("FIELD:partition", "yes")])
-                .is_err()
-        );
+        // The reserved marker reads the boolean vocabulary and stores the one
+        // canonical spelling, so `StructType::is_partition` compares it as is.
+        for (text, expected) in [("Y", true), ("yes", true), ("No", false), ("0", false)] {
+            let field =
+                Field::from_parts("year", DataType::Int32, false, [("FIELD:partition", text)])
+                    .unwrap();
+            assert_eq!(field.is_partition(), expected, "{text}");
+            assert_eq!(
+                field.get_metadata("FIELD:partition"),
+                Some(if expected { "true" } else { "false" }),
+                "{text}"
+            );
+        }
+        // A text no boolean spells is refused by the key.
+        let error = Field::from_parts(
+            "year",
+            DataType::Int32,
+            false,
+            [("FIELD:partition", "perhaps")],
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("FIELD:partition"), "{error}");
+        assert!(error.contains("\"perhaps\""), "{error}");
         assert!(
             !Field::from_parts(
                 "year",
@@ -1035,22 +1191,19 @@ mod generic {
     }
 
     #[test]
-    fn the_star_source_may_not_travel_beside_a_named_one() {
+    fn the_star_entry_may_not_travel_beside_a_named_one() {
         let mut holder = DataType::UInt64.required_field("row_digest");
         holder.as_digest_mut().set_holder().unwrap();
-        holder.as_digest_mut().set_sources(["*"]).unwrap();
-        assert_eq!(holder.get_metadata("DIGEST:sources"), Some(r#"["*"]"#));
-        assert_eq!(
-            holder.as_digest().sources().unwrap(),
-            Some(vec!["*".to_owned()])
-        );
+        holder.as_digest_mut().set_by(["*"]).unwrap();
+        assert_eq!(holder.get_metadata("DIGEST:by"), Some(r#"["*"]"#));
+        assert_eq!(holder.as_digest().by().unwrap(), Some(vec!["*".to_owned()]));
 
         let unchanged = holder.clone();
-        let error = holder.as_digest_mut().set_sources(["*", "id"]).unwrap_err();
-        assert!(error.to_string().contains("DIGEST:sources"), "{error}");
-        assert_eq!(holder, unchanged, "a rejected source list is atomic");
+        let error = holder.as_digest_mut().set_by(["*", "id"]).unwrap_err();
+        assert!(error.to_string().contains("DIGEST:by"), "{error}");
+        assert_eq!(holder, unchanged, "a rejected list is atomic");
         // The generic mutation path runs the same validator.
-        assert!(Metadata::from_entries([("DIGEST:sources", r#"["id","*"]"#)]).is_err());
+        assert!(Metadata::from_entries([("DIGEST:by", r#"["id","*"]"#)]).is_err());
     }
 
     #[test]

@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nolegcomplexeventcrediteventqualifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcomplexeventcrediteventqualifiers",
-          "FIX:tag": "41374"
-        }
-      },
-      {
         "name": "legcomplexeventcrediteventqualifiers",
         "dtype": {
           "type": "null"

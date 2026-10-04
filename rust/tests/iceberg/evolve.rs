@@ -152,6 +152,51 @@ mod schema_updates {
     use yggdryl::StructType;
 
     #[test]
+    fn a_column_whose_name_holds_a_dot_is_the_quoted_path_and_never_two_levels() {
+        let metadata = metadata();
+
+        // Quoted, the name with a dot is one column, as a parent and as a
+        // renamed column alike.
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.add_column(
+            "",
+            StructType::from_fields([DataType::Int64.nullable_field("x")])
+                .map(DataType::from)
+                .unwrap()
+                .nullable_field("a.b"),
+        );
+        update.add_column("\"a.b\"", DataType::Int64.nullable_field("y"));
+        update.rename_column("\"a.b\"", "ab");
+        let evolved = update.into_field().unwrap();
+        assert_eq!(evolved.get_field_by_path("ab").unwrap().fields().len(), 2);
+        assert!(evolved.get_field_by_path("\"a.b\"").is_none());
+
+        // Unquoted, `a.b` is the column `b` inside a struct `a` this schema
+        // does not have.
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.add_column("", DataType::Int64.nullable_field("a.b"));
+        update.drop_column("a.b");
+        let message = update.into_field().unwrap_err().to_string();
+        assert!(message.contains("\"a\""), "{message}");
+    }
+
+    #[test]
+    fn a_path_that_is_not_a_chain_of_struct_names_is_refused_by_what_it_is() {
+        let metadata = metadata();
+
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.drop_column("quote[0]");
+        let message = update.into_field().unwrap_err().to_string();
+        assert!(message.contains("struct column names"), "{message}");
+        assert!(message.contains("quote[0]"), "{message}");
+
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.drop_column("id as key");
+        let message = update.into_field().unwrap_err().to_string();
+        assert!(message.contains("without `as`"), "{message}");
+    }
+
+    #[test]
     fn an_added_top_level_column_is_numbered_above_the_last_column_id() {
         let metadata = metadata();
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
@@ -240,25 +285,31 @@ mod schema_updates {
     }
 
     #[test]
-    fn update_doc_writes_the_iceberg_doc_property() {
+    fn update_doc_writes_the_column_s_own_description() {
         let metadata = metadata();
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.update_doc("id", "trade identifier");
         update.update_doc("quote.price", "closing price");
         let evolved = update.into_field().unwrap();
-        assert_eq!(
-            evolved.get_field_by_path("id").unwrap().as_iceberg().doc(),
-            Some("trade identifier")
-        );
+        let id = evolved.get_field_by_path("id").unwrap();
+        assert_eq!(id.description(), Some("trade identifier"));
+        assert_eq!(id.get_metadata("ICEBERG:doc"), None);
         assert_eq!(
             evolved
                 .get_field_by_path("quote")
                 .unwrap()
                 .get_field_by_path("price")
                 .unwrap()
-                .get_metadata("ICEBERG:doc"),
+                .description(),
             Some("closing price")
         );
+
+        // An empty doc says nothing: it clears the description.
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.update_doc("id", "trade identifier");
+        update.update_doc("id", "");
+        let cleared = update.into_field().unwrap();
+        assert_eq!(cleared.get_field_by_path("id").unwrap().description(), None);
     }
 
     #[test]
@@ -410,10 +461,7 @@ mod schema_updates {
         update.update_doc("ticker", "renamed first");
         let evolved = update.into_field().unwrap();
         assert_eq!(
-            evolved
-                .get_field_by_path("ticker")
-                .unwrap()
-                .get_metadata("ICEBERG:doc"),
+            evolved.get_field_by_path("ticker").unwrap().description(),
             Some("renamed first")
         );
     }
@@ -682,7 +730,7 @@ mod metadata_updates {
     }
 
     #[test]
-    fn assign_uuid_validates_the_hyphenated_hex_shape() {
+    fn assign_uuid_reads_the_two_spellings_a_uuid_has() {
         let mut metadata = metadata();
         metadata
             .assign_uuid("0b4f7721-755e-5df5-ab6b-8a23c7905a82")
@@ -691,10 +739,31 @@ mod metadata_updates {
             metadata.table_uuid(),
             "0b4f7721-755e-5df5-ab6b-8a23c7905a82"
         );
+        // Thirty-two digits are the other spelling, in either case, and the
+        // table keeps the canonical hyphenated one.
+        metadata
+            .assign_uuid("0B4F7721755E5DF5AB6B8A23C7905A83")
+            .unwrap();
+        assert_eq!(
+            metadata.table_uuid(),
+            "0b4f7721-755e-5df5-ab6b-8a23c7905a83"
+        );
+        metadata
+            .assign_uuid("0b4f7721-755e-5df5-ab6b-8a23c7905a82")
+            .unwrap();
 
         let message = metadata.assign_uuid("not-a-uuid").unwrap_err().to_string();
-        assert!(message.contains("8-4-4-4-12"), "{message}");
+        assert!(message.contains("hyphenated"), "{message}");
         assert!(message.contains("not-a-uuid"), "{message}");
+        // Neither the braced nor the URN spelling is one of the two, and
+        // sixteen characters are text here, never sixteen stored bytes.
+        for text in [
+            "{0b4f7721-755e-5df5-ab6b-8a23c7905a83}",
+            "urn:uuid:0b4f7721-755e-5df5-ab6b-8a23c7905a83",
+            "abcdefghijklmnop",
+        ] {
+            assert!(metadata.assign_uuid(text).is_err(), "{text}");
+        }
         assert_eq!(
             metadata.table_uuid(),
             "0b4f7721-755e-5df5-ab6b-8a23c7905a82",

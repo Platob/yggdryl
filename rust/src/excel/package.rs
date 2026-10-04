@@ -288,8 +288,10 @@ impl Relationships {
                     };
                     if depth == 0 {
                         if root || !opc || name.as_ref() != b"Relationships" {
-                            return Err(codec_error(position,
-                                "expected one OPC Relationships root"));
+                            return Err(codec_error(
+                                position,
+                                "expected one OPC Relationships root",
+                            ));
                         }
                         root = true;
                     } else if depth == 1 && opc && name.as_ref() == b"Relationship" {
@@ -297,7 +299,8 @@ impl Relationships {
                         // local-name lookalikes and qualified attributes carry
                         // no relationship identity.
                         let id = exact_attribute(start, b"Id", position)?.unwrap_or_default();
-                        let type_uri = exact_attribute(start, b"Type", position)?.unwrap_or_default();
+                        let type_uri =
+                            exact_attribute(start, b"Type", position)?.unwrap_or_default();
                         let kind = RelationshipKind::of(&type_uri);
                         let external = exact_attribute(start, b"TargetMode", position)?
                             .is_some_and(|mode| mode.eq_ignore_ascii_case("External"));
@@ -313,12 +316,17 @@ impl Relationships {
                             target,
                         });
                     }
-                    if matches!(event, Event::Start(_)) { depth += 1; }
+                    if matches!(event, Event::Start(_)) {
+                        depth += 1;
+                    }
                 }
                 Event::End(_) => depth = depth.saturating_sub(1),
                 Event::Eof => {
                     if !root || depth != 0 {
-                        return Err(codec_error(position, "expected a complete OPC Relationships document"));
+                        return Err(codec_error(
+                            position,
+                            "expected a complete OPC Relationships document",
+                        ));
                     }
                     break;
                 }

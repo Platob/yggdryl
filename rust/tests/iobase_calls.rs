@@ -129,11 +129,15 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// same message logged at another hop, so it restates that one rather
     /// than joining the chain behind it. This codec reads through a bare
     /// registry, which types almost nothing, so most of the capture's rows
-    /// state the same little and collapse onto each other. It is 21 where it
-    /// was 16 since the parse splits each fill off its report (A12): the five
-    /// executions are each a delivery of their own, `FILLED` ending each
-    /// chain, so a later fill under one `ExecID` starts afresh.
-    const WALKED: usize = 21;
+    /// state the same little and collapse onto each other. It was 21 where
+    /// it was 16 since the parse splits each fill off its report (A12): the
+    /// five executions are each a delivery of their own, `FILLED` ending
+    /// each chain, so a later fill under one `ExecID` starts afresh. It is
+    /// 55 since the walk reads its input as already cleaned: the rows whose
+    /// type the bare registry does not define, which the walk used to
+    /// refuse on its own, are walked as the parse handed them over, and
+    /// only the rows that collapse onto a live identity fold.
+    const WALKED: usize = 55;
     // Private intake probes the source location once; avoiding public atomic
     // copy staging removes its two additional bound-location probes.
     /// What one bounded stream over the capture costs, before a message is
@@ -666,13 +670,39 @@ mod records {
         .expect("a batch")
     }
 
+    /// `rows` quotes of a venue and a price, the venue running through
+    /// three in key order, changing at a third and at two thirds of the rows.
+    fn quotes(rows: usize) -> RecordBatch {
+        let schema = Arc::new(Schema::new(vec![
+            ArrowField::new("venue", ArrowDataType::Utf8, false),
+            ArrowField::new("price", ArrowDataType::Int64, false),
+        ]));
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(
+                    (0..rows)
+                        .map(|index| ["XNAS", "XNYS", "XPAR"][index * 3 / rows])
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from((0..rows as i64).collect::<Vec<_>>())),
+            ],
+        )
+        .expect("a batch")
+    }
+
     /// A handle holding `rows` rows written in the encoding `url` names.
     fn written(url: &str, rows: usize) -> Counted<Buffer> {
+        written_batch(url, batch(rows))
+    }
+
+    /// A handle holding `batch` written in the encoding `url` names.
+    fn written_batch(url: &str, batch: RecordBatch) -> Counted<Buffer> {
         let media_type = Url::from_str(url).expect("a location").media_type();
         let mut sink = Buffer::new();
         sink.set_media_type(media_type.clone());
         let options = sink.record_options().expect("record options");
-        sink.overwrite_arrow_batch(batch(rows), &options)
+        sink.overwrite_arrow_batch(batch, &options)
             .expect("a write");
         let mut source = Buffer::from_bytes(sink.read_all_bytes().expect("the bytes"));
         source.set_media_type(media_type);
@@ -740,7 +770,7 @@ mod records {
             let options = source.record_options().unwrap();
             assert!(calls.snapshot().is_empty(), "owned options require no IO");
             let read = |options| {
-                let reader = source.read_arrow(options).unwrap();
+                let reader = source.read_serie(options).unwrap();
                 assert_eq!(reader.field().field_len(), 1);
                 assert_eq!(reader.field().fields()[0].name(), "symbol");
                 reader.map(|column| column.unwrap().len()).sum::<usize>()
@@ -766,7 +796,7 @@ mod records {
                 let reader = SerieReader::from_serie(records.clone()).unwrap();
                 calls.reset();
                 target
-                    .write_arrow(reader, IOMode::Overwrite, options)
+                    .write_serie(reader.into(), IOMode::Overwrite, options)
                     .unwrap();
                 let tally = calls.snapshot();
                 assert_eq!(
@@ -778,7 +808,7 @@ mod records {
                 bytes.push(target.read_all_bytes().unwrap());
                 // Plain options prove the selected shape was actually stored.
                 let plain = RecordOptions::Ipc(IpcOptions::new());
-                let stored = target.read_arrow(Some(&plain)).unwrap();
+                let stored = target.read_serie(Some(&plain)).unwrap();
                 assert_eq!(stored.field().field_len(), 1);
                 assert_eq!(stored.field().fields()[0].name(), "symbol");
                 assert_eq!(
@@ -803,6 +833,41 @@ mod records {
             // it is one read per message rather than one transfer of the file.
             "pread=8 size=1 media_type=2 is_container=2",
         );
+    }
+
+    /// A stream's windows pull the stream they are cut from and ask the
+    /// handle for nothing of their own: a read windowed by its venue, sorted,
+    /// each window read before the next is taken, costs the calls the read
+    /// drained alone costs.
+    #[test]
+    fn windowing_a_read_adds_no_call() {
+        let handle = written_batch("file:///lake/quotes.arrow", quotes(64));
+        let calls = Arc::clone(handle.calls());
+        let read = "pstream_bytes=1 url=1 media_type=3 is_container=2 parent=1";
+        costs("ipc: a read drained", &calls, read, || {
+            let rows: usize = handle
+                .read_serie(None)
+                .expect("a reader")
+                .map(|batch| batch.expect("a batch").len())
+                .sum();
+            assert_eq!(rows, 64);
+        });
+        costs("ipc: a read windowed by venue", &calls, read, || {
+            let mut windows = 0;
+            let mut rows = 0;
+            for window in handle
+                .read_serie(None)
+                .expect("a reader")
+                .window_by("venue", true)
+                .expect("windows")
+            {
+                windows += 1;
+                for piece in window.expect("a window") {
+                    rows += piece.expect("a piece").len();
+                }
+            }
+            assert_eq!((windows, rows), (3, 64));
+        });
     }
 
     /// A Parquet file past a megabyte is read footer first: one read of its
@@ -2212,9 +2277,9 @@ mod provider {
     use yggdryl::holder::Holder;
     use yggdryl::media::RecordOptions;
     use yggdryl::xmla::{
-        Catalog, Discover, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
+        Discover, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
     };
-    use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, StructType};
+    use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, StructType};
 
     use crate::counting_filesystem::{CountingFileSystem, counted_folder};
 
@@ -2253,7 +2318,7 @@ mod provider {
         )
         .expect("the table is written");
         let service =
-            Service::new(ServiceOptions::new()).with_catalog(Catalog::new("market", root));
+            Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound("market", root));
         (filesystem, service)
     }
 
@@ -2295,20 +2360,22 @@ mod provider {
         let columns = discover(&filesystem, &service, RequestType::DbschemaColumns, 2);
         // Nothing is read for what the provider states about itself, and a
         // catalog row - or the cube row that restates it - costs nothing over
-        // this store. The tables are the one
-        // listing of the root plus three `file_info` per table - the `fs`
-        // backend answers a listed child's kind and modification time by
-        // asking the store again - and the columns add one open of the leaf,
-        // the schema read, and one more `file_info`, its size; never a read
-        // of a row.
+        // this store. The tables are the one listing of the root plus two
+        // `file_info` per table - the `fs` backend answers a listed child's
+        // kind and modification time by asking the store again, each once,
+        // since the folder catalog hands the leaf on as the listing gave it -
+        // and the columns add one open of the leaf's stream and the schema
+        // read; never a read of a row. Moving the provider onto the folder
+        // catalog took one `file_info` off a table row and two off a column
+        // read: the old catalog asked a leaf's kind three times.
         assert_eq!(
             [properties, catalogs, cubes, tables, columns],
             [
                 "none",
                 "none",
                 "none",
-                "file_info=3 list=1",
-                "file_info=4 list=1 open_input_file=1",
+                "file_info=2 list=1",
+                "file_info=2 list=1 open_input_stream=1",
             ],
             "properties, catalogs, cubes, tables, columns"
         );
@@ -2823,6 +2890,277 @@ fn excel_named_totals_resize_reads_once_and_publishes_once() {
     }
 }
 
+mod isin_registry {
+    use std::sync::Arc;
+
+    use yggdryl::holder::Buffer;
+    use yggdryl::holder::counted::Counted;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOBase, IOMedia, IOMode, IdType, Isin, IsinEntry, IsinRegistry, MimeType};
+
+    use super::costs;
+
+    /// A registry is read from a holder in exactly the calls one record read
+    /// of it makes: the encoding, then the stream, and nothing of its own.
+    #[test]
+    fn an_isin_registry_reads_a_holder_in_the_calls_of_one_record_read() {
+        let mut registry = IsinRegistry::new();
+        registry
+            .merge(
+                IsinEntry::new(Isin::new("CH0012214059").unwrap())
+                    .try_with_code(IdType::Ric, "HOLN.S")
+                    .unwrap(),
+            )
+            .unwrap();
+        let mut sink = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+        let options = sink
+            .record_options()
+            .unwrap()
+            .with_field(IsinEntry::field());
+        sink.write_arrow_reader(
+            registry.into_arrow_reader().unwrap(),
+            IOMode::Overwrite,
+            &options,
+        )
+        .unwrap();
+        let mut source = Buffer::from_bytes(sink.read_all_bytes().unwrap());
+        source.set_media_type(MimeType::ARROW_STREAM.into());
+        let handle = Counted::new(source);
+        let calls = Arc::clone(handle.calls());
+        calls.reset();
+        let options = handle.record_options().unwrap();
+        for batch in handle.read_arrow_reader(&options).unwrap() {
+            batch.unwrap();
+        }
+        let one_read = calls.snapshot().to_string();
+        costs("an isin registry read", &calls, &one_read, || {
+            let mut registry = IsinRegistry::new();
+            assert_eq!(registry.extend_from_handle(&handle).unwrap(), 1);
+            assert_eq!(registry.len(), 1);
+        });
+    }
+}
+
+/// What the warehouse costs the store: describing and resolving registered
+/// objects nothing, a folder namespace's children one listing plus one
+/// listing of `metadata/` per folder entry, a path one listing per level it
+/// descends, and a read through `Holder::Table` exactly what the same read
+/// on the table's own handle costs.
+mod warehouse {
+    use yggdryl::holder::Holder;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::{
+        Catalog, FolderCatalog, IOBase, IOMedia, MediaTable, MimeType, NamespaceValue, Table,
+        TableValue, Url, Warehouse,
+    };
+
+    use crate::counting_filesystem::{CountingFileSystem, counted_folder};
+
+    /// A counted store laid out as a catalog: a root leaf, a namespace of a
+    /// leaf and a folder table, and an empty namespace.
+    fn store() -> (std::sync::Arc<CountingFileSystem>, yggdryl::fs::FsFolder) {
+        let (filesystem, folder) = counted_folder("market");
+        for leaf in ["trades.csv", "eu/fills.csv", "eu/lake/part-0.csv"] {
+            folder
+                .child_by_path(leaf)
+                .expect("a child")
+                .write_all_bytes(b"symbol,price\nAAPL,187.5\n")
+                .expect("written");
+        }
+        folder
+            .child_by_path("empty/.keep")
+            .expect("a child")
+            .write_all_bytes(b"")
+            .expect("written");
+        (filesystem, folder)
+    }
+
+    #[test]
+    fn describing_registering_and_resolving_registered_objects_touch_nothing() {
+        let (filesystem, folder) = store();
+        let mut warehouse = Warehouse::new();
+        let registered = filesystem.costs(|| {
+            warehouse
+                .register(FolderCatalog::bound("market", Holder::FsFolder(folder)))
+                .expect("registered");
+            warehouse
+                .register(Table::from(
+                    MediaTable::new(
+                        "lake.eu.trades",
+                        Url::from_str("file:///lake/eu/trades.csv").expect("a URL"),
+                    )
+                    .expect("a table"),
+                ))
+                .expect("registered");
+        });
+        let resolved = filesystem.costs(|| {
+            warehouse.get("market").expect("the catalog");
+            warehouse.table("lake.eu.trades").expect("the table");
+            warehouse.namespace("lake.eu").expect("the namespace");
+            assert!(
+                warehouse
+                    .properties_for(&Url::from_str("file:///lake/eu/trades.csv").expect("a URL"))
+                    .is_empty()
+            );
+        });
+        assert_eq!([registered, resolved], ["none", "none"]);
+    }
+
+    #[test]
+    fn a_folder_namespaces_children_cost_one_listing_and_one_per_folder_entry() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound("market", Holder::FsFolder(folder)));
+        let root = filesystem.costs(|| {
+            // Two folders and a leaf: the root listing, then for each folder
+            // entry its kind and the listing of its `metadata/`, the one
+            // question that tells a table format from a plain folder.
+            assert_eq!(catalog.children().count(), 3);
+        });
+        let eu = catalog.namespace("eu").expect("the namespace");
+        let under = filesystem.costs(|| {
+            assert_eq!(eu.children().count(), 2);
+        });
+        let first = filesystem.costs(|| {
+            // Taking the first child lists once and classifies one entry.
+            assert!(catalog.children().next().is_some());
+        });
+        // The lists are the contract; the `file_info` is the `fs` backend's
+        // own answer to a listed leaf's role, asked once per leaf.
+        assert_eq!(
+            [root, under, first],
+            ["file_info=1 list=3", "file_info=1 list=2", "list=2"],
+            "root, under a namespace, first child"
+        );
+    }
+
+    #[test]
+    fn a_path_costs_one_listing_per_level_it_descends() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound("market", Holder::FsFolder(folder)));
+        let one = filesystem.costs(|| {
+            catalog.table("trades").expect("the root table");
+        });
+        let two = filesystem.costs(|| {
+            catalog.table("eu.fills").expect("the table under eu");
+        });
+        let absent = filesystem.costs(|| {
+            assert!(catalog.table("eu.nowhere").expect_err("absent").is_absent());
+        });
+        // One listing per level, one listing of `metadata/` per folder level
+        // passed through, and the matched leaf's role asked once.
+        assert_eq!(
+            [one, two, absent],
+            ["file_info=1 list=1", "file_info=1 list=3", "list=3"],
+            "one level, two levels, two levels to an absence"
+        );
+    }
+
+    #[test]
+    fn a_read_through_a_table_handle_costs_what_the_tables_own_handle_costs() {
+        let (filesystem, folder) = store();
+        let catalog = Catalog::from(FolderCatalog::bound(
+            "market",
+            Holder::FsFolder(folder.clone()),
+        ));
+        let options = RecordOptions::for_mime_type(&MimeType::CSV).expect("CSV options");
+        let leaf = || folder.child_by_path("eu/fills.csv").expect("the leaf");
+        // The leaf as a listing hands it out, which is what the table holds:
+        // a listed leaf already carries what the listing said of it.
+        let listed = || {
+            folder
+                .child_by_path("eu")
+                .expect("eu")
+                .ls(false, false)
+                .map(|entry| entry.expect("an entry"))
+                .find(|entry| entry.url().and_then(Url::file_name) == Some("fills.csv"))
+                .expect("the listed leaf")
+        };
+
+        // The listing hands the table the leaf it found, composed as its name
+        // declares; the table holds that handle and a read through it is a
+        // read on it.
+        let held = Holder::from(catalog.table("eu.fills").expect("the table"));
+        let direct = listed().into_declared_media();
+        let through_handle = filesystem.costs(|| {
+            assert_eq!(held.read_arrow_reader(&options).expect("a read").count(), 1);
+        });
+        let on_the_leaf = filesystem.costs(|| {
+            assert_eq!(
+                direct.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        assert_eq!(
+            [through_handle.as_str(), on_the_leaf.as_str()],
+            [
+                "file_info=1 open_input_stream=1",
+                "file_info=1 open_input_stream=1"
+            ],
+            "through the table's handle, on the listed leaf it holds"
+        );
+        let field_through = filesystem.costs(|| {
+            catalog
+                .table("eu.fills")
+                .expect("the table")
+                .field()
+                .expect("the schema");
+        });
+        let field_direct = filesystem.costs(|| {
+            // What the path costs - the root listing, the `metadata/` listing
+            // that tells `eu` from a table format, the listing of `eu`, and
+            // the matched leaf's role asked once - then the schema.
+            folder.ls(false, false).count();
+            folder
+                .child_by_path("eu/metadata")
+                .expect("metadata")
+                .ls(false, false)
+                .count();
+            let leaf = listed();
+            assert!(!leaf.is_container());
+            leaf.into_declared_media()
+                .read_arrow_field(&options)
+                .expect("the schema");
+        });
+        assert_eq!(
+            [field_through.as_str(), field_direct.as_str()],
+            [
+                "file_info=2 list=3 open_input_stream=1",
+                "file_info=2 list=3 open_input_stream=1"
+            ],
+            "the schema through a resolved path, on the leaf"
+        );
+
+        // A clone starts unresolved: its first verb rebuilds the handle from
+        // the leaf's binding as a location, and costs what that located
+        // handle costs - one role resolution the leaf in hand had paid.
+        let rebuilt = Holder::from(catalog.table("eu.fills").expect("the table").clone());
+        let bound = leaf().bound_location().expect("bound").clone();
+        let through_clone = filesystem.costs(|| {
+            assert_eq!(
+                rebuilt.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        let on_the_location = filesystem.costs(|| {
+            // Composing the located leaf as its name declares is part of what
+            // the clone's first verb does, so it is measured beside the read.
+            let located = yggdryl::fs::located(bound).into_declared_media();
+            assert_eq!(
+                located.read_arrow_reader(&options).expect("a read").count(),
+                1
+            );
+        });
+        assert_eq!(
+            [through_clone.as_str(), on_the_location.as_str()],
+            [
+                "file_info=3 open_input_stream=1",
+                "file_info=3 open_input_stream=1"
+            ],
+            "through a clone's rebuilt handle, on the located leaf"
+        );
+    }
+}
+
 #[test]
 fn excel_partial_carried_cut_uses_only_the_loaded_frames() {
     use yggdryl::excel::{Paste, Workbook};
@@ -2893,13 +3231,20 @@ fn excel_reference_resolver_uses_loaded_names_and_sparse_sheets_only() {
 #[test]
 fn excel_calculation_defined_names_use_only_loaded_package_facts() {
     for rows in [64, 4096] {
-        let mut book = excel_package::defined_name_calculation_cost_book(rows, 4096, "SUM(NamedColumn)+SecondAlias");
+        let mut book = excel_package::defined_name_calculation_cost_book(
+            rows,
+            4096,
+            "SUM(NamedColumn)+SecondAlias",
+        );
         book.parse_all().unwrap();
         let before = book.handle_reads();
         let first = book.calculate_all().unwrap();
         assert_eq!((first.evaluated, first.uncomputed), (u64::from(rows), 0));
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        book.sheet_mut("Data").unwrap().set_cell(yggdryl::excel::CellRef::new(0, 0), 3.0).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(yggdryl::excel::CellRef::new(0, 0), 3.0)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
         assert_eq!(book.handle_reads() - before, 0, "{rows} formula consumers");
     }
@@ -2913,10 +3258,17 @@ fn excel_basic_aggregates_use_only_loaded_package_facts() {
     for rows in [64_u32, 4096] {
         let mut data = String::new();
         for row in 1..=rows {
-            data.push_str(&format!("<row r=\"{row}\"><c r=\"A{row}\" t=\"s\"><v>0</v></c>"));
+            data.push_str(&format!(
+                "<row r=\"{row}\"><c r=\"A{row}\" t=\"s\"><v>0</v></c>"
+            ));
             if row <= 9 {
-                let function = ["COUNT", "COUNTA", "MIN", "MAX", "AVERAGE", "AVERAGEA", "MINA", "MAXA", "PRODUCT"][(row - 1) as usize];
-                data.push_str(&format!("<c r=\"B{row}\"><f>{function}(A1:A{rows},2)</f><v>-1</v></c>"));
+                let function = [
+                    "COUNT", "COUNTA", "MIN", "MAX", "AVERAGE", "AVERAGEA", "MINA", "MAXA",
+                    "PRODUCT",
+                ][(row - 1) as usize];
+                data.push_str(&format!(
+                    "<c r=\"B{row}\"><f>{function}(A1:A{rows},2)</f><v>-1</v></c>"
+                ));
             }
             data.push_str("</row>");
         }
@@ -2925,18 +3277,43 @@ fn excel_basic_aggregates_use_only_loaded_package_facts() {
         book.parse_all().unwrap();
         let before = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, 9);
-        for (row, expected) in [(0, 1.0), (1, f64::from(rows + 1)), (2, 2.0), (3, 2.0),
-                                (4, 2.0), (5, 2.0 / f64::from(rows + 1)),
-                                (6, 0.0), (7, 2.0), (8, 2.0)] {
-            assert_eq!(book.sheet("Sheet1").unwrap().scalar(CellRef::new(row, 1)), yggdryl::Scalar::from(expected));
+        for (row, expected) in [
+            (0, 1.0),
+            (1, f64::from(rows + 1)),
+            (2, 2.0),
+            (3, 2.0),
+            (4, 2.0),
+            (5, 2.0 / f64::from(rows + 1)),
+            (6, 0.0),
+            (7, 2.0),
+            (8, 2.0),
+        ] {
+            assert_eq!(
+                book.sheet("Sheet1").unwrap().scalar(CellRef::new(row, 1)),
+                yggdryl::Scalar::from(expected)
+            );
         }
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        book.sheet_mut("Sheet1").unwrap().set_cell(CellRef::new(0, 0), 3.0).unwrap();
+        book.sheet_mut("Sheet1")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), 3.0)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 9);
-        for (row, expected) in [(0, 2.0), (1, f64::from(rows + 1)), (2, 2.0), (3, 3.0),
-                                (4, 2.5), (5, 5.0 / f64::from(rows + 1)),
-                                (6, 0.0), (7, 3.0), (8, 6.0)] {
-            assert_eq!(book.sheet("Sheet1").unwrap().scalar(CellRef::new(row, 1)), yggdryl::Scalar::from(expected));
+        for (row, expected) in [
+            (0, 2.0),
+            (1, f64::from(rows + 1)),
+            (2, 2.0),
+            (3, 3.0),
+            (4, 2.5),
+            (5, 5.0 / f64::from(rows + 1)),
+            (6, 0.0),
+            (7, 3.0),
+            (8, 6.0),
+        ] {
+            assert_eq!(
+                book.sheet("Sheet1").unwrap().scalar(CellRef::new(row, 1)),
+                yggdryl::Scalar::from(expected)
+            );
         }
         assert_eq!(book.handle_reads() - before, 0, "{rows} source rows");
     }
@@ -2946,15 +3323,26 @@ fn excel_basic_aggregates_use_only_loaded_package_facts() {
 #[test]
 fn excel_ordered_comparisons_use_only_loaded_cell_values() {
     for rows in [64, 4096] {
-        let book = excel_package::comparison_calculation_cost_book(rows, yggdryl::Scalar::from(1.0), yggdryl::Scalar::from(2.0));
+        let book = excel_package::comparison_calculation_cost_book(
+            rows,
+            yggdryl::Scalar::from(1.0),
+            yggdryl::Scalar::from(2.0),
+        );
         let mut book = yggdryl::excel::Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
         book.parse_all().unwrap();
         let before = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        book.sheet_mut("Data").unwrap().set_cell(yggdryl::excel::CellRef::new(0, 0), 3.0).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(yggdryl::excel::CellRef::new(0, 0), 3.0)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
-        assert_eq!(book.handle_reads() - before, 0, "{rows} comparison consumers");
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "{rows} comparison consumers"
+        );
     }
 }
 
@@ -2969,11 +3357,30 @@ fn excel_logical_reducers_use_only_loaded_sparse_cells() {
         let before = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, 3);
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 0), false).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), false)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 3);
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0, 1)).as_bool(), Some(false));
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(2, 1)).as_bool(), Some(false));
-        assert_eq!(book.handle_reads() - before, 0, "{rows} sparse source cells");
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .scalar(CellRef::new(0, 1))
+                .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .scalar(CellRef::new(2, 1))
+                .as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "{rows} sparse source cells"
+        );
     }
 }
 
@@ -2987,14 +3394,33 @@ fn excel_lazy_selectors_and_branch_changes_use_only_loaded_cells() {
         book.parse_all().unwrap();
         let before = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, 1);
-        book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 2), false).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(CellRef::new(0, 2), false)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 1);
-        book.sheet_mut("Data").unwrap().set_cell(CellRef::new(rows - 1, 1), 9.0).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(CellRef::new(rows - 1, 1), 9.0)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 2), true).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .set_cell(CellRef::new(0, 2), true)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 1);
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0, 0)).as_f64(), Some(f64::from(rows) + 8.0));
-        assert_eq!(book.handle_reads() - before, 0, "{rows} selected sparse cells");
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .scalar(CellRef::new(0, 0))
+                .as_f64(),
+            Some(f64::from(rows) + 8.0)
+        );
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "{rows} selected sparse cells"
+        );
     }
 }
 
@@ -3003,25 +3429,53 @@ fn excel_lazy_selectors_and_branch_changes_use_only_loaded_cells() {
 fn excel_multi_selectors_reuse_loaded_cells_for_all_keys_and_selected_ranges() {
     use yggdryl::excel::{CellRef, Workbook};
     for rows in [64, 4096] {
-        for formula in ["IFS(C1,SUM(B:B),D1,0,TRUE,-1)", "SWITCH(C1,TRUE,SUM(B:B),D1,0,-1)"] {
+        for formula in [
+            "IFS(C1,SUM(B:B),D1,0,TRUE,-1)",
+            "SWITCH(C1,TRUE,SUM(B:B),D1,0,-1)",
+        ] {
             let mut original = excel_package::selector_formula_cost_book(
-                excel_package::lazy_range_cost_book(rows), formula, 0, 1,
+                excel_package::lazy_range_cost_book(rows),
+                formula,
+                0,
+                1,
             );
-            original.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 3), false).unwrap();
+            original
+                .sheet_mut("Data")
+                .unwrap()
+                .set_cell(CellRef::new(0, 3), false)
+                .unwrap();
             let mut book = Workbook::from_bytes(original.into_bytes().unwrap()).unwrap();
             book.parse_all().unwrap();
             let before = book.handle_reads();
             assert_eq!(book.calculate_all().unwrap().evaluated, 1);
             // The later condition/key remains a dependency despite the first match.
-            book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 3), true).unwrap();
+            book.sheet_mut("Data")
+                .unwrap()
+                .set_cell(CellRef::new(0, 3), true)
+                .unwrap();
             assert_eq!(book.recalculate().unwrap().evaluated, 1);
-            book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 2), false).unwrap();
+            book.sheet_mut("Data")
+                .unwrap()
+                .set_cell(CellRef::new(0, 2), false)
+                .unwrap();
             assert_eq!(book.recalculate().unwrap().evaluated, 1);
-            book.sheet_mut("Data").unwrap().set_cell(CellRef::new(rows - 1, 1), 9.0).unwrap();
+            book.sheet_mut("Data")
+                .unwrap()
+                .set_cell(CellRef::new(rows - 1, 1), 9.0)
+                .unwrap();
             assert_eq!(book.recalculate().unwrap().evaluated, 0);
-            book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 2), true).unwrap();
+            book.sheet_mut("Data")
+                .unwrap()
+                .set_cell(CellRef::new(0, 2), true)
+                .unwrap();
             assert_eq!(book.recalculate().unwrap().evaluated, 1);
-            assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0, 0)).as_f64(), Some(f64::from(rows) + 8.0));
+            assert_eq!(
+                book.sheet("Data")
+                    .unwrap()
+                    .scalar(CellRef::new(0, 0))
+                    .as_f64(),
+                Some(f64::from(rows) + 8.0)
+            );
             assert_eq!(book.handle_reads() - before, 0, "{formula}/{rows}");
         }
     }
@@ -3031,51 +3485,86 @@ fn excel_multi_selectors_reuse_loaded_cells_for_all_keys_and_selected_ranges() {
 #[test]
 fn excel_geometry_functions_use_loaded_metadata_without_source_value_dependencies() {
     use yggdryl::excel::{CellRef, Workbook};
-    for rows in [64,4096] {
+    for rows in [64, 4096] {
         let source = excel_package::geometry_cost_book(rows, rows);
         let mut book = Workbook::from_bytes(source.into_bytes().unwrap()).unwrap();
         book.parse_all().unwrap();
         let reads = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
         assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(rows-1,0), 999.0).unwrap();
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(rows - 1, 0), 999.0)
+            .unwrap();
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
-        assert_eq!(book.handle_reads()-reads, 0, "{rows} full-axis geometry formulas");
+        assert_eq!(
+            book.handle_reads() - reads,
+            0,
+            "{rows} full-axis geometry formulas"
+        );
     }
 }
 
 #[cfg(feature = "internals")]
 #[test]
 fn excel_text_functions_read_loaded_source_cells_without_more_package_io() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book = Workbook::from_bytes(excel_package::text_cost_book(rows,true).into_bytes().unwrap()).unwrap();
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::text_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
         book.parse_all().unwrap();
         let reads = book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),"edited").unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), "edited")
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
 #[cfg(feature = "internals")]
 #[test]
 fn excel_indexed_references_read_only_loaded_selected_values() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for offset in [false,true] {
-        for rows in [64,4096] {
-            let mut book = Workbook::from_bytes(excel_package::indexed_reference_cost_book(rows,rows,offset).into_bytes().unwrap()).unwrap();
+    use yggdryl::excel::{CellRef, Workbook};
+    for offset in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = Workbook::from_bytes(
+                excel_package::indexed_reference_cost_book(rows, rows, offset)
+                    .into_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
             book.parse_all().unwrap();
             let reads = book.handle_reads();
-            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-            book.sheet_mut("Values").unwrap().set_cell(CellRef::new(rows-1,0),999.0).unwrap();
-            assert_eq!(book.recalculate().unwrap().evaluated,if offset {u64::from(rows)} else {0});
-            book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),777.0).unwrap();
-            assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-            assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(rows-1,0)).as_f64(),Some(777.0));
-            assert_eq!(book.handle_reads()-reads,0,"{rows} offset={offset}");
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            book.sheet_mut("Values")
+                .unwrap()
+                .set_cell(CellRef::new(rows - 1, 0), 999.0)
+                .unwrap();
+            assert_eq!(
+                book.recalculate().unwrap().evaluated,
+                if offset { u64::from(rows) } else { 0 }
+            );
+            book.sheet_mut("Values")
+                .unwrap()
+                .set_cell(CellRef::new(0, 0), 777.0)
+                .unwrap();
+            assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(CellRef::new(rows - 1, 0))
+                    .as_f64(),
+                Some(777.0)
+            );
+            assert_eq!(book.handle_reads() - reads, 0, "{rows} offset={offset}");
         }
     }
 }
@@ -3083,98 +3572,156 @@ fn excel_indexed_references_read_only_loaded_selected_values() {
 #[cfg(feature = "internals")]
 #[test]
 fn excel_text_conversion_and_compact_joins_do_not_reopen_loaded_parts() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for joins in [false,true] {
-        for rows in [64,4096] {
-            let mut book = Workbook::from_bytes(excel_package::text_conversion_cost_book(rows,joins).into_bytes().unwrap()).unwrap();
+    use yggdryl::excel::{CellRef, Workbook};
+    for joins in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = Workbook::from_bytes(
+                excel_package::text_conversion_cost_book(rows, joins)
+                    .into_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
             book.parse_all().unwrap();
             let reads = book.handle_reads();
-            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-            if joins { book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,1),"c").unwrap(); }
-            else { book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),0.125).unwrap(); }
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            if joins {
+                book.sheet_mut("Values")
+                    .unwrap()
+                    .set_cell(CellRef::new(0, 1), "c")
+                    .unwrap();
+            } else {
+                book.sheet_mut("Values")
+                    .unwrap()
+                    .set_cell(CellRef::new(0, 0), 0.125)
+                    .unwrap();
+            }
             assert!(book.recalculate().unwrap().evaluated > 0);
-            assert_eq!(book.handle_reads()-reads,0,"{rows} joins={joins}");
+            assert_eq!(book.handle_reads() - reads, 0, "{rows} joins={joins}");
         }
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_text_find_replace_reads_loaded_strings_without_package_io() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::text_index_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),"bca").unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::text_index_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), "bca")
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_text_casing_reads_loaded_strings_without_package_io() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::text_casing_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),"bca").unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows/2));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::text_casing_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), "bca")
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows / 2));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_text_search_reads_loaded_patterns_without_package_io() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::text_search_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,1),"Z*C").unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::text_search_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 1), "Z*C")
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_text_character_reads_loaded_strings_without_package_io() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::text_character_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),66.0).unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows/4));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::text_character_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), 66.0)
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows / 4));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_text_value_format_uses_only_loaded_source_values() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for kind in [0,4] {
-        for rows in [64,4096] {
-            let mut book=Workbook::from_bytes(excel_package::text_value_format_cost_book(rows,kind).into_bytes().unwrap()).unwrap();
-            book.parse_all().unwrap();let reads=book.handle_reads();
-            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-            book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),"42.5").unwrap();
-            assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-            assert_eq!(book.handle_reads()-reads,0,"kind={kind} rows={rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for kind in [0, 4] {
+        for rows in [64, 4096] {
+            let mut book = Workbook::from_bytes(
+                excel_package::text_value_format_cost_book(rows, kind)
+                    .into_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
+            book.parse_all().unwrap();
+            let reads = book.handle_reads();
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            book.sheet_mut("Values")
+                .unwrap()
+                .set_cell(CellRef::new(0, 0), "42.5")
+                .unwrap();
+            assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+            assert_eq!(book.handle_reads() - reads, 0, "kind={kind} rows={rows}");
         }
     }
 }
-
 
 #[cfg(feature = "internals")]
 #[test]
@@ -3186,82 +3733,149 @@ fn excel_lookup_exact_prefix_uses_no_additional_package_reads() {
         authored.add_sheet("Data").unwrap();
         authored.add_sheet("Cases").unwrap();
         for row in 0..rows {
-            authored.set_entry("Data", CellRef::new(row, 0), &(row + 1).to_string()).unwrap();
+            authored
+                .set_entry("Data", CellRef::new(row, 0), &(row + 1).to_string())
+                .unwrap();
         }
-        authored.set_entry("Cases", CellRef::new(0, 1),
-            &format!("=MATCH(1,Data!A1:A{rows},0)")).unwrap();
+        authored
+            .set_entry(
+                "Cases",
+                CellRef::new(0, 1),
+                &format!("=MATCH(1,Data!A1:A{rows},0)"),
+            )
+            .unwrap();
         let mut book = Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
         book.parse_all().unwrap();
         let before = book.handle_reads();
         assert_eq!(book.calculate_all().unwrap().evaluated, 1);
-        assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(0, 1)).as_f64(), Some(1.0));
-        assert_eq!(book.handle_reads() - before, 0,
-            "lookup over {rows} already loaded source cells");
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .scalar(CellRef::new(0, 1))
+                .as_f64(),
+            Some(1.0)
+        );
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "lookup over {rows} already loaded source cells"
+        );
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_financial_annuities_read_only_loaded_source_values() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::financial_annuity_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),0.005).unwrap();
-        assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::financial_annuity_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), 0.005)
+            .unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_financial_npv_reuses_loaded_ordered_cash_flows() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for range in [false,true] {
-        for rows in [64,4096] {
-            let mut book=Workbook::from_bytes(excel_package::financial_npv_cost_book(rows,range).into_bytes().unwrap()).unwrap();
-            book.parse_all().unwrap();let reads=book.handle_reads();let count=if range {1}else{u64::from(rows)};
-            assert_eq!(book.calculate_all().unwrap().evaluated,count);
-            book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),if range {4.0}else{0.05}).unwrap();
-            assert_eq!(book.recalculate().unwrap().evaluated,count);
-            assert_eq!(book.handle_reads()-reads,0,"rows={rows} range={range}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for range in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = Workbook::from_bytes(
+                excel_package::financial_npv_cost_book(rows, range)
+                    .into_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
+            book.parse_all().unwrap();
+            let reads = book.handle_reads();
+            let count = if range { 1 } else { u64::from(rows) };
+            assert_eq!(book.calculate_all().unwrap().evaluated, count);
+            book.sheet_mut("Values")
+                .unwrap()
+                .set_cell(CellRef::new(0, 0), if range { 4.0 } else { 0.05 })
+                .unwrap();
+            assert_eq!(book.recalculate().unwrap().evaluated, count);
+            assert_eq!(book.handle_reads() - reads, 0, "rows={rows} range={range}");
         }
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_financial_payment_reuses_loaded_inputs_and_retains_unknown_caches() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::financial_payment_cost_book(rows).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows/4*3));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),20.0).unwrap();
-        let report=book.recalculate().unwrap();assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows/4*3),u64::from(rows/4)));
-        assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(3,0)).as_f64(),Some(-777.0));
-        assert_eq!(book.handle_reads()-reads,0,"{rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::financial_payment_cost_book(rows)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        assert_eq!(
+            book.calculate_all().unwrap().evaluated,
+            u64::from(rows / 4 * 3)
+        );
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), 20.0)
+            .unwrap();
+        let report = book.recalculate().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed),
+            (u64::from(rows / 4 * 3), u64::from(rows / 4))
+        );
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .scalar(CellRef::new(3, 0))
+                .as_f64(),
+            Some(-777.0)
+        );
+        assert_eq!(book.handle_reads() - reads, 0, "{rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_variance_exact_reads_only_loaded_range_members() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for range in [false,true] {
-        for rows in [64,4096] {
-            let mut book=Workbook::from_bytes(excel_package::variance_exact_cost_book(rows,range).into_bytes().unwrap()).unwrap();
-            book.parse_all().unwrap();let reads=book.handle_reads();let count=if range {8}else{u64::from(rows)};
-            assert_eq!(book.calculate_all().unwrap().evaluated,count);
-            book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),if range {1.0}else{5.0}).unwrap();
-            let report=book.recalculate().unwrap();assert_eq!((report.evaluated,report.uncomputed),(count,0));
-            assert_eq!(book.handle_reads()-reads,0,"rows={rows} range={range}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for range in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = Workbook::from_bytes(
+                excel_package::variance_exact_cost_book(rows, range)
+                    .into_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
+            book.parse_all().unwrap();
+            let reads = book.handle_reads();
+            let count = if range { 8 } else { u64::from(rows) };
+            assert_eq!(book.calculate_all().unwrap().evaluated, count);
+            book.sheet_mut("Values")
+                .unwrap()
+                .set_cell(CellRef::new(0, 0), if range { 1.0 } else { 5.0 })
+                .unwrap();
+            let report = book.recalculate().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed), (count, 0));
+            assert_eq!(book.handle_reads() - reads, 0, "rows={rows} range={range}");
         }
     }
 }
-
 
 #[cfg(feature = "internals")]
 #[test]
@@ -3271,16 +3885,23 @@ fn excel_metadata_apply_keeps_unrelated_formula_sheet_cold() {
     let mut authored = Workbook::new();
     authored.add_sheet("Data").unwrap();
     authored.add_sheet("Other").unwrap();
-    authored.set_entry("Other", "A1".parse().unwrap(), "=2+3").unwrap();
+    authored
+        .set_entry("Other", "A1".parse().unwrap(), "=2+3")
+        .unwrap();
     let mut book = Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
     let before = book.handle_reads();
-    book.apply(Edit::SheetState { name: "Data".into(), state: SheetState::Hidden })
-        .unwrap();
-    assert_eq!(book.handle_reads() - before, 0,
-        "a tab-state edit must not open a cold formula worksheet");
+    book.apply(Edit::SheetState {
+        name: "Data".into(),
+        state: SheetState::Hidden,
+    })
+    .unwrap();
+    assert_eq!(
+        book.handle_reads() - before,
+        0,
+        "a tab-state edit must not open a cold formula worksheet"
+    );
     assert_eq!(book.sheet_state("Data"), Some(SheetState::Hidden));
 }
-
 
 #[cfg(feature = "internals")]
 #[test]
@@ -3288,9 +3909,15 @@ fn excel_appearance_only_apply_does_not_open_unrelated_formula_sheets() {
     use yggdryl::excel::{CellRange, CellRef, Color, Edit, StylePatch, Workbook};
 
     let mut authored = Workbook::new();
-    authored.add_sheet("Data").unwrap().set_cell(CellRef::new(0, 0), 7.0).unwrap();
+    authored
+        .add_sheet("Data")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 7.0)
+        .unwrap();
     authored.add_sheet("Other").unwrap();
-    authored.set_entry("Other", CellRef::new(0, 0), "=2+3").unwrap();
+    authored
+        .set_entry("Other", CellRef::new(0, 0), "=2+3")
+        .unwrap();
     let bytes = authored.into_bytes().unwrap();
     let mut direct = Workbook::from_bytes(bytes.clone()).unwrap();
     let mut via_apply = Workbook::from_bytes(bytes).unwrap();
@@ -3304,122 +3931,215 @@ fn excel_appearance_only_apply_does_not_open_unrelated_formula_sheets() {
     direct.set_style("Data", &[range], &patch).unwrap();
     let direct_reads = direct.handle_reads() - before;
     let before = via_apply.handle_reads();
-    via_apply.apply(Edit::SetStyle {
-        sheet: "Data".into(), ranges: vec![range], patch,
-    }).unwrap();
-    assert_eq!(via_apply.handle_reads() - before, direct_reads,
-        "an appearance edit must read only the selected sheet and style parts");
+    via_apply
+        .apply(Edit::SetStyle {
+            sheet: "Data".into(),
+            ranges: vec![range],
+            patch,
+        })
+        .unwrap();
+    assert_eq!(
+        via_apply.handle_reads() - before,
+        direct_reads,
+        "an appearance edit must read only the selected sheet and style parts"
+    );
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_criteria_six_reuses_loaded_sources_after_value_changes() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::criteria_six_cost_book(rows).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        let first=book.calculate_all().unwrap();assert_eq!((first.evaluated,first.uncomputed),(6,0));
-        book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0,0),"hit changed").unwrap();
-        let changed=book.recalculate().unwrap();assert_eq!((changed.evaluated,changed.uncomputed),(6,0));
-        assert_eq!(book.handle_reads()-reads,0,"rows={rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::criteria_six_cost_book(rows)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (6, 0));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_cell(CellRef::new(0, 0), "hit changed")
+            .unwrap();
+        let changed = book.recalculate().unwrap();
+        assert_eq!((changed.evaluated, changed.uncomputed), (6, 0));
+        assert_eq!(book.handle_reads() - reads, 0, "rows={rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_subtotal_all_variants_reuse_loaded_sources_after_hidden_changes() {
-    use yggdryl::excel::{CellRef,Workbook};
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::subtotal_cost_book(rows).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let reads=book.handle_reads();
-        let first=book.calculate_all().unwrap();assert_eq!((first.evaluated,first.uncomputed),(23,0));
-        book.sheet_mut("Values").unwrap().set_rows_hidden(1..2,false).unwrap();
-        let changed=book.recalculate().unwrap();assert_eq!((changed.uncomputed,changed.circular_count),(0,0));
-        assert!(changed.evaluated>=11,"hidden-sensitive SUBTOTAL paths must be dirtied");
-        assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(19,0)).as_f64(),Some(f64::from(rows-1)));
-        assert_eq!(book.handle_reads()-reads,0,"rows={rows}");
+    use yggdryl::excel::{CellRef, Workbook};
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::subtotal_cost_book(rows)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let reads = book.handle_reads();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (23, 0));
+        book.sheet_mut("Values")
+            .unwrap()
+            .set_rows_hidden(1..2, false)
+            .unwrap();
+        let changed = book.recalculate().unwrap();
+        assert_eq!((changed.uncomputed, changed.circular_count), (0, 0));
+        assert!(
+            changed.evaluated >= 11,
+            "hidden-sensitive SUBTOTAL paths must be dirtied"
+        );
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .scalar(CellRef::new(19, 0))
+                .as_f64(),
+            Some(f64::from(rows - 1))
+        );
+        assert_eq!(book.handle_reads() - reads, 0, "rows={rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_metadata_apply_and_inverse_do_not_read_cold_styles_or_cells() {
-    use yggdryl::excel::{CellRef,Edit,SheetState,Workbook};
-    let mut authored=Workbook::new();authored.add_sheet("Data").unwrap();authored.add_sheet("Other").unwrap();
-    authored.set_entry("Other",CellRef::new(0,0),"=RAND()").unwrap();
-    let mut book=Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
-    let reads=book.handle_reads();
-    let applied=book.apply(Edit::SheetState {name:"Data".into(),state:SheetState::Hidden}).unwrap();
-    assert_eq!((applied.calc.evaluated,applied.styles),(0,false));
-    let undone=book.apply(applied.inverse.unwrap()).unwrap();
-    assert_eq!((undone.calc.evaluated,undone.styles),(0,false));
+    use yggdryl::excel::{CellRef, Edit, SheetState, Workbook};
+    let mut authored = Workbook::new();
+    authored.add_sheet("Data").unwrap();
+    authored.add_sheet("Other").unwrap();
+    authored
+        .set_entry("Other", CellRef::new(0, 0), "=RAND()")
+        .unwrap();
+    let mut book = Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
+    let reads = book.handle_reads();
+    let applied = book
+        .apply(Edit::SheetState {
+            name: "Data".into(),
+            state: SheetState::Hidden,
+        })
+        .unwrap();
+    assert_eq!((applied.calc.evaluated, applied.styles), (0, false));
+    let undone = book.apply(applied.inverse.unwrap()).unwrap();
+    assert_eq!((undone.calc.evaluated, undone.styles), (0, false));
     book.apply(undone.inverse.unwrap()).unwrap();
-    assert_eq!(book.handle_reads()-reads,0,"workbook metadata needs no worksheet/style payload");
+    assert_eq!(
+        book.handle_reads() - reads,
+        0,
+        "workbook metadata needs no worksheet/style payload"
+    );
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_appearance_inverse_keeps_unrelated_formula_sheets_cold() {
-    use yggdryl::excel::{CellRange,CellRef,Edit,StylePatch,Workbook};
-    let mut authored=Workbook::new();authored.add_sheet("Data").unwrap().set_cell(CellRef::new(0,0),7.0).unwrap();
-    authored.add_sheet("Other").unwrap();authored.set_entry("Other",CellRef::new(0,0),"=RAND()").unwrap();
-    let mut book=Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
-    let at=CellRef::new(0,0);
-    let applied=book.apply(Edit::SetStyle {sheet:"Data".into(),ranges:vec![CellRange::new(at,at)],patch:StylePatch {bold:Some(true),..StylePatch::default()}}).unwrap();
-    let reads=book.handle_reads();
-    let undone=book.apply(applied.inverse.unwrap()).unwrap();
-    assert_eq!(undone.calc.evaluated,0);
-    let redone=book.apply(undone.inverse.unwrap()).unwrap();
-    assert_eq!(redone.calc.evaluated,0);
-    assert_eq!(book.handle_reads()-reads,0,"undo/redo own the already-loaded cell/style facts");
+    use yggdryl::excel::{CellRange, CellRef, Edit, StylePatch, Workbook};
+    let mut authored = Workbook::new();
+    authored
+        .add_sheet("Data")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 7.0)
+        .unwrap();
+    authored.add_sheet("Other").unwrap();
+    authored
+        .set_entry("Other", CellRef::new(0, 0), "=RAND()")
+        .unwrap();
+    let mut book = Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
+    let at = CellRef::new(0, 0);
+    let applied = book
+        .apply(Edit::SetStyle {
+            sheet: "Data".into(),
+            ranges: vec![CellRange::new(at, at)],
+            patch: StylePatch {
+                bold: Some(true),
+                ..StylePatch::default()
+            },
+        })
+        .unwrap();
+    let reads = book.handle_reads();
+    let undone = book.apply(applied.inverse.unwrap()).unwrap();
+    assert_eq!(undone.calc.evaluated, 0);
+    let redone = book.apply(undone.inverse.unwrap()).unwrap();
+    assert_eq!(redone.calc.evaluated, 0);
+    assert_eq!(
+        book.handle_reads() - reads,
+        0,
+        "undo/redo own the already-loaded cell/style facts"
+    );
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_literal_arrays_reuse_the_parsed_package_without_source_reads() {
     use yggdryl::excel::Workbook;
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::literal_array_cost_book(rows,true).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let before=book.handle_reads();
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::literal_array_cost_book(rows, true)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let before = book.handle_reads();
         for _ in 0..2 {
-            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
         }
-        assert_eq!(book.recalculate().unwrap().evaluated,0);
-        assert_eq!(book.handle_reads()-before,0,"rows={rows}");
+        assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        assert_eq!(book.handle_reads() - before, 0, "rows={rows}");
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_mapped_arrays_read_no_source_parts_after_parse() {
     use yggdryl::excel::Workbook;
-    for rows in [64,4096] {
-        let mut book=Workbook::from_bytes(excel_package::mapped_array_cost_book(rows).into_bytes().unwrap()).unwrap();
-        book.parse_all().unwrap();let before=book.handle_reads();
+    for rows in [64, 4096] {
+        let mut book = Workbook::from_bytes(
+            excel_package::mapped_array_cost_book(rows)
+                .into_bytes()
+                .unwrap(),
+        )
+        .unwrap();
+        book.parse_all().unwrap();
+        let before = book.handle_reads();
         for _ in 0..2 {
-            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
         }
-        assert_eq!(book.handle_reads()-before,0,"mapped formula cells={rows}");
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "mapped formula cells={rows}"
+        );
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_pivot_warm_refresh_does_not_read_source_parts() {
     use yggdryl::excel::{CellRef, Workbook};
     for rows in [64, 4096] {
         let (book, spec) = excel_package::pivot_cost_book(rows);
         let mut book = Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
-        book.add_pivot(spec, "Report", CellRef::new(2,0)).unwrap();
+        book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
         book.refresh_pivot("Report", "CostPivot").unwrap();
         let before = book.handle_reads();
         book.refresh_pivot("Report", "CostPivot").unwrap();
-        assert_eq!(book.handle_reads()-before,0,"warm pivot source rows={rows}");
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "warm pivot source rows={rows}"
+        );
     }
 }
 
-
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn excel_pivot_number_format_refresh_does_not_read_or_append_styles() {
     use yggdryl::excel::{CellRef, Workbook};
@@ -3427,12 +4147,99 @@ fn excel_pivot_number_format_refresh_does_not_read_or_append_styles() {
         let (book, mut spec) = excel_package::pivot_cost_book(rows);
         spec.values[0].number_format = Some("#,##0.0000".into());
         let mut book = Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
-        book.add_pivot(spec, "Report", CellRef::new(2,0)).unwrap();
+        book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
         book.refresh_pivot("Report", "CostPivot").unwrap();
         let before = book.handle_reads();
         let styles = book.style_sheet().unwrap().len();
         book.refresh_pivot("Report", "CostPivot").unwrap();
-        assert_eq!(book.handle_reads()-before, 0, "formatted pivot rows={rows}");
+        assert_eq!(
+            book.handle_reads() - before,
+            0,
+            "formatted pivot rows={rows}"
+        );
         assert_eq!(book.style_sheet().unwrap().len(), styles);
     }
+}
+
+#[test]
+fn a_log_handler_publishes_with_one_append_and_holds_back_nothing_it_owes() {
+    use yggdryl::IOMode;
+    use yggdryl::logging::{FileHandler, Handler, Level, Record};
+
+    let handle = source(b"", "file:///logs/feed.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle);
+    costs("building a handler", &calls, "none", || {});
+    costs("the first record", &calls, "append_bytes=1 open=1", || {
+        handler.handle(&Record::new("feed", Level::INFO, &"opened"));
+    });
+    costs("each later record", &calls, "append_bytes=1", || {
+        handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+    });
+    costs("a flush holding nothing", &calls, "none", || {
+        handler.flush().expect("a flush");
+    });
+    costs("a close", &calls, "close=1", || {
+        handler.close().expect("a close");
+    });
+
+    let handle = source(b"", "file:///logs/batched.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle).with_capacity(64);
+    // Each line its message alone, `tick\n`: five bytes against the capacity.
+    handler.set_formatter(yggdryl::logging::Formatter::default());
+    costs("records held under the capacity", &calls, "none", || {
+        for _ in 0..5 {
+            handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+        }
+    });
+    costs(
+        "the record reaching the capacity",
+        &calls,
+        "append_bytes=1 open=1",
+        || {
+            for _ in 0..12 {
+                handler.handle(&Record::new("feed", Level::INFO, &"tick"));
+            }
+        },
+    );
+    costs(
+        "a record at the flush level",
+        &calls,
+        "append_bytes=1",
+        || {
+            handler.handle(&Record::new("feed", Level::ERROR, &"rejected"));
+        },
+    );
+    costs(
+        "a close holding records",
+        &calls,
+        "append_bytes=1 close=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"held"));
+            handler.close().expect("a close");
+        },
+    );
+
+    let handle = source(b"yesterday\n", "file:///logs/replaced.log");
+    let calls = Arc::clone(handle.calls());
+    let handler = FileHandler::new(handle)
+        .with_mode(IOMode::Overwrite)
+        .expect("an overwrite");
+    costs(
+        "an overwrite's first publish",
+        &calls,
+        "write_all_bytes=1 open=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"today"));
+        },
+    );
+    costs(
+        "an overwrite's later publish",
+        &calls,
+        "append_bytes=1",
+        || {
+            handler.handle(&Record::new("feed", Level::INFO, &"later"));
+        },
+    );
 }

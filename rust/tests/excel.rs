@@ -40,10 +40,10 @@ mod names;
 mod options;
 #[path = "excel/package.rs"]
 mod package;
-#[path = "excel/pivot.rs"]
-mod pivot;
 #[path = "excel/parser.rs"]
 mod parser;
+#[path = "excel/pivot.rs"]
+mod pivot;
 #[path = "excel/reader.rs"]
 mod reader;
 #[path = "excel/records.rs"]

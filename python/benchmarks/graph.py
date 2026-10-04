@@ -3,9 +3,11 @@
 Every case here is one crossing over the typed market leaves and
 ``MarketData``: building an order event from named facts, reading a fact back
 typed, dating and undating an element, a book folding a stream of operations,
-a book's limits and imbalance, the lazy book and event walks, the lifted
+a book's limits, one side's live entries and imbalance, the lazy book and
+event walks - a book walk drained whole and under a filter - the lifted
 Arrow doors, the named views, and a FIX capture through the sorted market
-doors. Run after installing the release wheel with::
+doors, the identifier maps crossing as a ``dict`` and the instrument
+registry's reads. Run after installing the release wheel with::
 
     python benchmarks/graph.py --iterations 2000
 """
@@ -20,7 +22,7 @@ import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Identifier, Side, graph
+from yggdryl import DataType, Identifier, Identifiers, IsinRegistry, Side, graph
 from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
@@ -36,7 +38,7 @@ def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
         "price": decimal.Decimal("100.25"),
         "currency": "USD",
         "quantity": 10,
-        "securityids": [Identifier("base", "isin", "US0378331005")],
+        "securityids": [Identifier("isin", "US0378331005")],
         "fxrates": {"EUR": decimal.Decimal("1.1")},
     }
     base.update(facts)
@@ -47,8 +49,10 @@ ORDER_EVENT = _order_event()
 ORDER = ORDER_EVENT.into_element()
 DATA = graph.MarketData(ORDER_EVENT)
 
-# One order per price tick, all on the bid side of one symbol at one instant -
-# the atomic group a book folds when it replays a session's orders.
+# One order per price tick, all on the bid side of one instrument at one
+# instant - the atomic group a book folds when it replays a session's orders.
+# The orders state the instrument's ISIN, which keys their book.
+BOOK_KEY = "US0378331005"
 FOLD_OPERATIONS = [
     _order_event(
         crosscode=f"G-{index}",
@@ -56,8 +60,21 @@ FOLD_OPERATIONS = [
     )
     for index in range(FOLD_OPERATION_COUNT)
 ]
-FOLD_BOOK = graph.BookEvent(CLOCK, "ACME").with_operations(FOLD_OPERATIONS)
+FOLD_BOOK = graph.BookEvent.keyed(CLOCK, BOOK_KEY).with_operations(FOLD_OPERATIONS)
 FOLD_ROWS = graph.MarketData.arrow_reader(FOLD_OPERATIONS).read_all()
+
+# One order a nanosecond, bids and asks in turn - a walk emitting one book an
+# order - which a filter keeping the bids halves.
+WALK_OPERATIONS = [
+    _order_event(
+        CLOCK + index,
+        crosscode=f"W-{index}",
+        side="BUYS" if index % 2 == 0 else "SELL",
+        price=decimal.Decimal(100 - index if index % 2 == 0 else 200 + index),
+    )
+    for index in range(FOLD_OPERATION_COUNT)
+]
+WALK_FILTER = "side = 'BUYS'"
 
 # One order a millisecond, one price tick each, as the codec parses them:
 # the capture the sorted market doors expand and order.
@@ -121,11 +138,19 @@ def _market_data_into_leaf() -> object:
 
 
 def _book_fold() -> graph.BookEvent:
-    return graph.BookEvent(CLOCK, "ACME").with_operations(FOLD_OPERATIONS)
+    return graph.BookEvent.keyed(CLOCK, BOOK_KEY).with_operations(FOLD_OPERATIONS)
 
 
 def _book_iterator_drain() -> int:
     return sum(1 for _ in graph.BookIterator(FOLD_OPERATIONS))
+
+
+def _book_iterator_walk_drain() -> int:
+    return sum(len(book.deltas) for book in graph.BookIterator(WALK_OPERATIONS))
+
+
+def _book_iterator_walk_drain_filtered() -> int:
+    return sum(len(book.deltas) for book in graph.BookIterator(WALK_OPERATIONS, filter=WALK_FILTER))
 
 
 def _event_iterator_drain() -> int:
@@ -154,6 +179,10 @@ def _book_limits() -> int:
     return len(FOLD_BOOK.limits(Side.BUYS))
 
 
+def _book_alive_on() -> int:
+    return len(FOLD_BOOK.alive_on(Side.BUYS))
+
+
 def _book_depth() -> object:
     return FOLD_BOOK.depth(Side.BUYS, 10)
 
@@ -162,8 +191,41 @@ def _book_imbalance() -> object:
     return FOLD_BOOK.imbalance(10)
 
 
+IDENTIFIERS = Identifiers.from_dict(
+    {f"oms:k{index}": f"V-{index}" for index in range(8)} | {"isin": "US0378331005", "ullink:isin": "US0378331005"}
+)
+IDENTIFIERS_DICT = IDENTIFIERS.into_dict()
+REGISTRY = IsinRegistry()
+REGISTRY.merge(
+    {
+        "isin": "CH0012214059",
+        "ric": "HOLN.S",
+        "bloomberg": "HOLN SW Equity",
+        "cficode": "ESVUFR",
+        "ticker": "HOLN",
+        "miccode": "XSWX",
+    }
+)
+
+
+def _identifiers_from_dict() -> object:
+    return Identifiers.from_dict(IDENTIFIERS_DICT)
+
+
+def _identifiers_into_dict() -> object:
+    return IDENTIFIERS.into_dict()
+
+
+def _registry_get() -> object:
+    return REGISTRY.get("CH0012214059")
+
+
+def _registry_get_by_ticker() -> object:
+    return REGISTRY.get_by_ticker("HOLN", "XSWX")
+
+
 def _view_plan() -> object:
-    return graph.MarketData.plan("orders", ["securityids['base:isin'].value as isin"])
+    return graph.MarketData.plan("orders", ["securityids['isin'] as isin"])
 
 
 def _view_apply() -> int:
@@ -209,14 +271,21 @@ def main() -> None:
         count = FOLD_OPERATION_COUNT
         _measure(f"book fold/{count}", _book_fold, folds)
         _measure(f"book iterator drain/{count}", _book_iterator_drain, folds)
+        _measure(f"book iterator walk drain/{count}", _book_iterator_walk_drain, folds)
+        _measure(f"book iterator walk drain filtered/{count}", _book_iterator_walk_drain_filtered, folds)
         _measure(f"event iterator drain/{count}", _event_iterator_drain, folds)
         _measure(f"operations arrow_reader/{count}", _operations_arrow_reader, folds)
         _measure(f"operations from_arrow_reader/{count}", _operations_from_arrow_reader, folds)
         _measure("book arrow_reader", _book_arrow_reader, folds)
         _measure("book from_arrow_reader", _book_from_arrow_reader, folds)
         _measure(f"book limits/{count}", _book_limits, folds)
+        _measure(f"book alive_on/{count}", _book_alive_on, folds)
         _measure("book depth/10", _book_depth, args.iterations)
         _measure("book imbalance/10", _book_imbalance, args.iterations)
+        _measure(f"identifiers from_dict/{len(IDENTIFIERS)}", _identifiers_from_dict, args.iterations)
+        _measure(f"identifiers into_dict/{len(IDENTIFIERS)}", _identifiers_into_dict, args.iterations)
+        _measure("isin registry get", _registry_get, args.iterations)
+        _measure("isin registry get_by_ticker", _registry_get_by_ticker, args.iterations)
         _measure("view plan orders+lift", _view_plan, args.iterations)
         _measure(f"view apply orders/{count}", _view_apply, folds)
         _measure(f"fix market_data/{count}", _market_data, folds)

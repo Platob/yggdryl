@@ -135,17 +135,6 @@
         }
       },
       {
-        "name": "noaffectedorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noaffectedorders",
-          "FIX:tag": "534"
-        }
-      },
-      {
         "name": "affectedorders",
         "dtype": {
           "type": "null"
@@ -153,17 +142,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "affectedorders"
-        }
-      },
-      {
-        "name": "nonotaffectedorders",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonotaffectedorders",
-          "FIX:tag": "1370"
         }
       },
       {
@@ -177,17 +155,6 @@
         }
       },
       {
-        "name": "noaffectedmarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noaffectedmarketsegments",
-          "FIX:tag": "1791"
-        }
-      },
-      {
         "name": "affectedmarketsegments",
         "dtype": {
           "type": "null"
@@ -195,17 +162,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "affectedmarketsegments"
-        }
-      },
-      {
-        "name": "nonotaffectedmarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonotaffectedmarketsegments",
-          "FIX:tag": "1793"
         }
       },
       {
@@ -241,17 +197,6 @@
         }
       },
       {
-        "name": "notargetmarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetmarketsegments",
-          "FIX:tag": "1789"
-        }
-      },
-      {
         "name": "targetmarketsegments",
         "dtype": {
           "type": "null"
@@ -284,17 +229,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -302,17 +236,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notargetpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notargetpartyids",
-          "FIX:tag": "1461"
         }
       },
       {

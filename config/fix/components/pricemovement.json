@@ -4,17 +4,6 @@
     "type": "struct",
     "fields": [
       {
-        "name": "nopricemovementvalues",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopricemovementvalues",
-          "FIX:tag": "1920"
-        }
-      },
-      {
         "name": "pricemovementvalues",
         "dtype": {
           "type": "null"
@@ -22,17 +11,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "pricemovementvalues"
-        }
-      },
-      {
-        "name": "noclearingaccounttypes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noclearingaccounttypes",
-          "FIX:tag": "1918"
         }
       },
       {

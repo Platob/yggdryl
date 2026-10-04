@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nodividendaccrualpaymentdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodividendaccrualpaymentdatebusinesscenters",
-          "FIX:tag": "42236"
-        }
-      },
-      {
         "name": "dividendaccrualpaymentdatebusinesscenters",
         "dtype": {
           "type": "null"

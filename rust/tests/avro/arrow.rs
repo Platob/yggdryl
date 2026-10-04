@@ -50,6 +50,34 @@ mod internal {
     use yggdryl::internals::avro_arrow::schema_json_from_field;
 
     #[test]
+    fn a_root_union_reads_as_the_value_of_a_required_row() {
+        use yggdryl::avro::Schema;
+        use yggdryl::internals::avro_arrow::field_from_schema;
+
+        // A root that is not a record is the `value` child of a required
+        // `row`, and a union of null and a record is that record, nullable:
+        // the root is not wrapped as a struct answers itself, because a
+        // nullable root is what the record surface refuses.
+        let record = r#"{"type":"record","name":"r","fields":[{"name":"id","type":"long"}]}"#;
+        for (json, nullable) in [
+            (format!(r#"["null",{record}]"#), true),
+            (format!("[{record}]"), false),
+        ] {
+            let schema =
+                Schema::from_json(&yggdryl::from_json_scalar(json.as_bytes()).unwrap()).unwrap();
+            let root = field_from_schema(&schema, "row").unwrap();
+            assert_eq!(root.name(), "row");
+            assert!(!root.is_nullable());
+            assert_eq!(root.field_len(), 1, "{json}");
+            let value = root.get_field_at(0).unwrap();
+            assert_eq!(value.name(), "value");
+            assert_eq!(value.is_nullable(), nullable, "{json}");
+            assert!(value.is_struct(), "{json}");
+            assert_eq!(value.get_field_at(0).unwrap().name(), "id");
+        }
+    }
+
+    #[test]
     fn an_ascii_column_is_an_avro_string() {
         let root = StructType::from_fields([
             DataType::fixed_ascii(4).unwrap().required_field("ccy"),

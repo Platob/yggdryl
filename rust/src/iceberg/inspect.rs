@@ -4,7 +4,7 @@
 //! what each commit did, which files the current snapshot holds - and the most
 //! useful shape for that record is the one every other read in the project
 //! already produces: a [`BatchReader`]. These builders take the metadata a
-//! [`super::Table`] holds and render it as columns, so "show me the history"
+//! [`super::IcebergTable`] holds and render it as columns, so "show me the history"
 //! is one read call and not a walk over structs.
 //!
 //! The columns follow the names PyIceberg's inspection tables use, so a reader

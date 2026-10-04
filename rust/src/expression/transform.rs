@@ -1,25 +1,30 @@
 //! The `TRANSFORM:` protocol: how a column is computed from the rows around
 //! it.
 //!
-//! A struct [`Field`] says what columns exist. A child carrying
-//! `TRANSFORM:expression` also says how it is *derived*: the property holds
-//! the canonical text of one [`Term`] over the other columns of the same
-//! struct, and applying the field computes it. That is the same declaration a
-//! [`Selector`](super::Selector) projection makes - `year(event) as year` -
-//! so [`Selector::into_field`](super::Selector::into_field) writes one and
+//! A struct [`Field`](crate::Field) says what columns exist. A child
+//! carrying `TRANSFORM:expression` also says how it is *derived*: the
+//! property holds the canonical text of one [`Term`] over the other columns
+//! of the same struct, and [`TransformField::apply_arrow_batch`] computes it -
+//! applying the field itself, or reading and writing under it, only casts.
+//! The one writer that computes is the table that owns the declaration: an
+//! Iceberg table derives the columns its stored schema declares for every
+//! row written to it, as it computes every other partition value - and for
+//! every row, whatever it carries under the column's name, so what the
+//! table stores is what its schema says and a reader may rely on it.
+//! That is the same declaration a [`Selector`](super::Selector) projection
+//! makes - `year(event) as year` - so
+//! [`Selector::into_field`](super::Selector::into_field) writes one and
 //! [`Selector::from_field`](super::Selector::from_field) reads it back, which
 //! is what lets a field carry a plan.
 //!
-//! # One derivation, two declarations
+//! # One derivation, one declaration
 //!
-//! A partition column has declared its derivation since before this protocol
-//! existed, as the pair `PARTITION:sources` and `PARTITION:transform` - the
-//! shape an Iceberg partition spec takes, one function over one source
-//! column. That pair stays what an Iceberg spec is read from, and it is *read
-//! here*: [`TransformField::term`] answers the explicit expression where one
-//! is declared and the partition pair otherwise, so a column derives one way
-//! whichever protocol declared it, and the derivation runs in exactly one
-//! place - [`TransformField::apply_arrow_batch`].
+//! A column computed from the rows around it is a `TRANSFORM:` column,
+//! whatever asked for it: a `select` projection, or a derived entry of a
+//! struct's [`PARTITION:by`](crate::PartitionField) declaration, which
+//! [`Field::with_partition_by`](crate::Field::with_partition_by) materializes
+//! as exactly such a column. The derivation runs in exactly one place -
+//! [`TransformField::apply_arrow_batch`].
 //!
 //! # Applying
 //!
@@ -35,7 +40,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::Function;
 use super::term::Term;
 use crate::protocol::{TransformField, TransformFieldMut};
-use crate::{Error, Field, Result};
+use crate::{Error, Result};
 
 /// The property naming the term a column is computed with.
 const EXPRESSION: &str = "expression";
@@ -43,8 +48,8 @@ const EXPRESSION: &str = "expression";
 /// The property naming the function a column is computed with, qualified.
 const FUNCTION: &str = "function";
 
-/// The property listing the columns a function reads, in argument order.
-const SOURCES: &str = "sources";
+/// The property listing the terms a function reads, in argument order.
+const BY: &str = "by";
 
 /// The full key of the term a column is computed with.
 pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "TRANSFORM:expression";
@@ -52,28 +57,27 @@ pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "TRANSFORM:expression";
 /// The full key of the function a column is computed with.
 pub(crate) const TRANSFORM_FUNCTION_KEY: &str = "TRANSFORM:function";
 
-/// The full key of the columns a function reads.
-pub(crate) const TRANSFORM_SOURCES_KEY: &str = "TRANSFORM:sources";
+/// The full key of the argument terms a function reads.
+pub(crate) const TRANSFORM_BY_KEY: &str = "TRANSFORM:by";
 
 /// The three properties one derivation may be spelled with.
 pub(crate) const TRANSFORM_KEYS: [&str; 3] = [
     TRANSFORM_EXPRESSION_KEY,
     TRANSFORM_FUNCTION_KEY,
-    TRANSFORM_SOURCES_KEY,
+    TRANSFORM_BY_KEY,
 ];
 
 impl<'field> TransformField<'field> {
     /// The term this column is computed with, if it declares one.
     ///
-    /// An explicit `TRANSFORM:expression` answers first. Without one, a
-    /// partition column's own declaration - its `PARTITION:transform` over its
-    /// `PARTITION:sources` - is the term, so a column derived either way reads
-    /// the same here. `None` is an ordinary column.
+    /// An explicit `TRANSFORM:expression` answers first; without one, the
+    /// `TRANSFORM:function` called over its `TRANSFORM:by` terms is the
+    /// term. `None` is an ordinary column.
     ///
     /// # Errors
     ///
     /// Returns an error naming the property when a stored declaration does
-    /// not parse, or a partition declaration is incomplete.
+    /// not parse, or a function is declared with no `TRANSFORM:by` beside it.
     pub fn term(&self) -> Result<Option<Term>> {
         if let Some(stored) = self.get(EXPRESSION) {
             return stored
@@ -84,25 +88,20 @@ impl<'field> TransformField<'field> {
                     reason: format_smolstr!("{error}"),
                 });
         }
-        if let Some(function) = self.function()? {
-            let Some(sources) = self.sources()? else {
-                return Err(Error::InvalidMetadataValue {
-                    key: SmolStr::new_static(TRANSFORM_SOURCES_KEY),
-                    reason: format_smolstr!(
-                        "expected the columns {} reads beside {}, got none",
-                        function.as_str(),
-                        TRANSFORM_FUNCTION_KEY
-                    ),
-                });
-            };
-            let arguments = sources.iter().map(|source| {
-                let mut segments = source.split('.');
-                let root = segments.next().unwrap_or_default();
-                segments.fold(Term::column(root), Term::child)
+        let Some(function) = self.function()? else {
+            return Ok(None);
+        };
+        let Some(arguments) = self.by()? else {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(TRANSFORM_BY_KEY),
+                reason: format_smolstr!(
+                    "expected the terms {} reads beside {}, got none",
+                    function.as_str(),
+                    TRANSFORM_FUNCTION_KEY
+                ),
             });
-            return Ok(Some(Term::call(function, arguments)));
-        }
-        self.as_field().as_partition().term()
+        };
+        Ok(Some(Term::call(function, arguments)))
     }
 
     /// The function this column is computed with, when it declares one by
@@ -119,17 +118,21 @@ impl<'field> TransformField<'field> {
             .transpose()
     }
 
-    /// The columns the declared function reads, in argument order: dotted
-    /// paths, as [`Field::get_field_by_path`](crate::Field::get_field_by_path)
-    /// spells them.
+    /// The terms the declared function reads, in argument order: bare
+    /// columns for a call a `select` stored, any term otherwise.
     ///
     /// # Errors
     ///
     /// Returns an error naming the property when the stored text is not a
-    /// JSON array of paths.
-    pub fn sources(&self) -> Result<Option<Vec<String>>> {
-        self.get(SOURCES)
-            .map(|stored| crate::metadata::parse_source_list(TRANSFORM_SOURCES_KEY, stored))
+    /// JSON array of terms.
+    pub fn by(&self) -> Result<Option<Vec<Term>>> {
+        self.get(BY)
+            .map(|stored| {
+                crate::metadata::parse_by_list(TRANSFORM_BY_KEY, stored)?
+                    .iter()
+                    .map(|entry| crate::metadata::parse_by_term(TRANSFORM_BY_KEY, entry))
+                    .collect()
+            })
             .transpose()
     }
 
@@ -140,25 +143,7 @@ impl<'field> TransformField<'field> {
     /// read.
     #[must_use]
     pub fn is_derived(&self) -> bool {
-        self.contains_key(EXPRESSION)
-            || self.contains_key(FUNCTION)
-            || self.contains_key(SOURCES)
-            || self.as_field().as_partition().is_derived()
-    }
-
-    /// Return whether this root declares a derived column anywhere.
-    ///
-    /// The answer walks the declared structs, which is exactly the reach
-    /// [`Self::apply_arrow_batch`] has, and reads no rows.
-    #[must_use]
-    pub fn declares_derivation(&self) -> bool {
-        fn any_derivation(fields: &[Field]) -> bool {
-            fields.iter().any(|field| {
-                field.as_transform().is_derived()
-                    || (field.is_struct() && any_derivation(field.fields()))
-            })
-        }
-        any_derivation(self.as_field().fields())
+        self.contains_key(EXPRESSION) || self.contains_key(FUNCTION) || self.contains_key(BY)
     }
 }
 
@@ -166,11 +151,11 @@ impl TransformFieldMut<'_> {
     /// Record the term this column is computed with.
     ///
     /// A call over plain columns - `year(event)`, `py.double(size)` - is
-    /// stored as the function and its sources, the shape a
-    /// [signature](super::FunctionSignature) reads and a partition spec
-    /// shares; any other term is stored as its canonical text. Either
-    /// spelling reads back through [`TransformField::term`], and the one not
-    /// written is removed, so a column declares its derivation once.
+    /// stored as the function and the columns it reads as its `TRANSFORM:by`,
+    /// the shape a [signature](super::FunctionSignature) reads; any other
+    /// term is stored as its canonical text. Either spelling reads back
+    /// through [`TransformField::term`], and the one not written is removed,
+    /// so a column declares its derivation once.
     ///
     /// # Errors
     ///
@@ -190,25 +175,32 @@ impl TransformFieldMut<'_> {
         }
         self.insert(EXPRESSION, term.to_string())?;
         self.remove(FUNCTION);
-        self.remove(SOURCES);
+        self.remove(BY);
         Ok(())
     }
 
-    /// Record the function this column is computed with and the columns it
-    /// reads, in argument order.
+    /// Record the function this column is computed with and the terms it
+    /// reads, in argument order, each an expression text stored canonically.
     ///
     /// # Errors
     ///
-    /// Returns an error when a source path is empty or repeated, or a property
-    /// write is refused.
-    pub fn set_function<I, P>(&mut self, function: &Function, sources: I) -> Result<()>
+    /// Returns an error when a term is empty, repeated or does not parse, or
+    /// a property write is refused, leaving the field unchanged.
+    pub fn set_function<I, P>(&mut self, function: &Function, by: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
-        let rendered = crate::metadata::render_source_list(TRANSFORM_SOURCES_KEY, sources)?;
+        let terms = by
+            .into_iter()
+            .map(|entry| {
+                crate::metadata::parse_by_term(TRANSFORM_BY_KEY, entry.as_ref())
+                    .map(|term| term.to_string())
+            })
+            .collect::<Result<Vec<String>>>()?;
+        let rendered = crate::metadata::render_by_list(TRANSFORM_BY_KEY, terms)?;
         self.insert(FUNCTION, function.as_str())?;
-        self.insert(SOURCES, rendered)?;
+        self.insert(BY, rendered)?;
         self.remove(EXPRESSION);
         Ok(())
     }
@@ -218,7 +210,7 @@ impl TransformFieldMut<'_> {
         let term = self.as_field().as_transform().term().ok().flatten();
         self.remove(EXPRESSION);
         self.remove(FUNCTION);
-        self.remove(SOURCES);
+        self.remove(BY);
         term.map(|term| term.to_string())
     }
 }
@@ -258,16 +250,16 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
-pub(crate) use arrow::TransformPlan;
+pub(crate) use arrow::Derivation;
 
 mod arrow {
     use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
-    use arrow_array::{Array, RecordBatch, StructArray};
-    use arrow_schema::{Field as ArrowField, Schema};
+    use arrow_array::{Array, RecordBatch, RecordBatchReader, StructArray};
+    use arrow_schema::{ArrowError, Field as ArrowField, Schema, SchemaRef};
 
     use super::Term;
-    use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
+    use crate::arrow::{BatchReader, field_from_arrow_schema, rebuilt_batch};
     use crate::cast::{ArrowCastOptions, PlanCache};
     use crate::expression::Bound;
     use crate::expression::arrow::ColumnCast;
@@ -328,39 +320,184 @@ mod arrow {
         pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
             let root = self.as_field();
             root.require_struct()?;
-            TransformPlan::new(root).apply(batch)
-        }
-    }
-
-    /// The derivations one struct root declares, held for every batch they
-    /// fill.
-    ///
-    /// What a batch does not change is settled once and kept: each declared
-    /// term is parsed the first time a batch asks for it, bound once per
-    /// schema a level's batches carry - again only when that schema changes -
-    /// and cast into its column through one held plan. A stream applying a
-    /// root holds one; a single batch builds one and drops it.
-    pub(crate) struct TransformPlan {
-        root: Field,
-        level: Level,
-    }
-
-    impl TransformPlan {
-        /// The plan for one struct root; nothing is parsed or bound yet.
-        pub(crate) fn new(root: &Field) -> Self {
-            Self {
-                root: root.clone(),
-                level: Level::new(root),
-            }
+            Ok(filled_struct(root, &Level::new(root, false), batch)?
+                .unwrap_or_else(|| batch.clone()))
         }
 
-        /// Add the derived columns the root declares to one batch.
+        /// Add the derived columns this schema declares to every batch of a
+        /// stream.
+        ///
+        /// [`Self::apply_arrow_batch`] under one plan: the declarations are
+        /// parsed once for the stream and bound once per batch layout, never
+        /// once per batch, and the reader states the filled columns in its
+        /// schema before a batch is pulled. A schema deriving nothing, at
+        /// any level, hands the reader back as it is.
+        ///
+        /// ```
+        /// use std::sync::Arc;
+        ///
+        /// use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
+        /// use yggdryl::DataType;
+        /// use yggdryl::StructType;
+        ///
+        /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+        /// let mut year = DataType::Int32.nullable_field("year");
+        /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
+        /// let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
+        ///     .required_field("row");
+        ///
+        /// let batch = RecordBatch::try_from_iter([(
+        ///     "event",
+        ///     Arc::new(Date32Array::from(vec![19_723, 20_089])) as ArrayRef,
+        /// )])?;
+        /// let reader = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        ///
+        /// let mut filled = root.as_transform().apply_arrow_reader(reader)?;
+        ///
+        /// assert_eq!(filled.schema().field(1).name(), "year");
+        /// let batch = filled.next().expect("one batch")?;
+        /// assert_eq!(
+        ///     batch.column(1).as_ref(),
+        ///     &Int32Array::from(vec![2024, 2025]) as &dyn arrow_array::Array,
+        /// );
+        /// # Ok(())
+        /// # }
+        /// ```
         ///
         /// # Errors
         ///
-        /// [`TransformField::apply_arrow_batch`] carries the rule.
-        pub(crate) fn apply(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-            Ok(filled_struct(&self.root, &self.level, batch)?.unwrap_or_else(|| batch.clone()))
+        /// Returns an error when this view is not on a struct root, or a
+        /// declaration does not parse or bind against the reader's columns;
+        /// a computed value that does not fit the type its column declares
+        /// fails the batch it is in.
+        pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            match Derivation::of(self.as_field())? {
+                Some(derivation) => derivation.apply_arrow_reader(reader),
+                None => Ok(reader),
+            }
+        }
+    }
+
+    /// What one struct root derives, planned for every batch it meets.
+    ///
+    /// The stream form of [`TransformField::apply_arrow_batch`]: the declared
+    /// root and its levels are held once, each term parsed on its first use
+    /// and bound once per batch layout, so a batch of a layout already seen
+    /// moves only rows.
+    pub(crate) struct Derivation {
+        declared: Field,
+        plan: Level,
+    }
+
+    impl Derivation {
+        /// The derivations `root` declares, `None` when it declares none at
+        /// any level - a schema computing nothing costs its writer nothing.
+        /// A column the rows carry written is left as it came.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when `root` is not a struct.
+        pub(crate) fn of(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, false)
+        }
+
+        /// The derivations `root` declares, computed for every row whatever
+        /// it carries under a derived column's name: what the owner of a
+        /// declaration - a table - writes, so that what it stores is what
+        /// its schema says.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when `root` is not a struct.
+        pub(crate) fn owning(root: &Field) -> Result<Option<Self>> {
+            Self::planned(root, true)
+        }
+
+        fn planned(root: &Field, owning: bool) -> Result<Option<Self>> {
+            root.require_struct()?;
+            if !derives(root) {
+                return Ok(None);
+            }
+            Ok(Some(Self {
+                declared: root.clone(),
+                plan: Level::new(root, owning),
+            }))
+        }
+
+        /// The schema a batch of `source` has once filled, which is what an
+        /// empty batch of it fills to.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a declaration does not parse or bind against
+        /// the columns `source` carries.
+        pub(crate) fn schema(&self, source: &SchemaRef) -> Result<SchemaRef> {
+            let empty = RecordBatch::new_empty(Arc::clone(source));
+            Ok(filled_struct(&self.declared, &self.plan, &empty)?
+                .map_or_else(|| Arc::clone(source), |filled| filled.schema()))
+        }
+
+        /// One batch with every derived column it lacks, or holds unwritten,
+        /// computed.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error when a declaration does not bind against the
+        /// batch, or a computed value does not fit its declared column.
+        pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+            Ok(filled_struct(&self.declared, &self.plan, &batch)?.unwrap_or(batch))
+        }
+
+        /// Every batch of `reader` through [`Self::apply`], the filled
+        /// columns stated in the schema before a batch is pulled.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::schema`]'s.
+        pub(crate) fn apply_arrow_reader(self, reader: BatchReader) -> Result<BatchReader> {
+            let schema = self.schema(&reader.schema())?;
+            Ok(Box::new(Filled {
+                inner: reader,
+                derivation: self,
+                schema,
+            }))
+        }
+    }
+
+    /// Whether a declared struct derives a column, at any level.
+    fn derives(declared: &Field) -> bool {
+        declared
+            .fields()
+            .iter()
+            .any(|child| child.as_transform().is_derived() || (child.is_struct() && derives(child)))
+    }
+
+    /// One reader's batches, each filled by one derivation.
+    struct Filled {
+        inner: BatchReader,
+        derivation: Derivation,
+        schema: SchemaRef,
+    }
+
+    impl Iterator for Filled {
+        type Item = std::result::Result<RecordBatch, ArrowError>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let batch = match self.inner.next()? {
+                Ok(batch) => batch,
+                Err(error) => return Some(Err(error)),
+            };
+            Some(
+                self.derivation
+                    .apply(batch)
+                    .map_err(|error| ArrowError::ExternalError(Box::new(error))),
+            )
+        }
+    }
+
+    impl RecordBatchReader for Filled {
+        fn schema(&self) -> SchemaRef {
+            Arc::clone(&self.schema)
         }
     }
 
@@ -370,6 +507,9 @@ mod arrow {
         /// The columns this level's batches carry, as the root its terms bind
         /// against.
         stored: Mutex<PlanCache<Arc<Stored>>>,
+        /// Whether a derived column is computed even where the rows carry it
+        /// written: the owner of the declaration states its own value.
+        owning: bool,
     }
 
     /// One declared child: the level it declares when it is a struct, the
@@ -387,18 +527,19 @@ mod arrow {
     }
 
     impl Level {
-        fn new(declared: &Field) -> Self {
+        fn new(declared: &Field, owning: bool) -> Self {
             Self {
                 children: declared
                     .fields()
                     .iter()
                     .map(|child| Child {
-                        nested: child.is_struct().then(|| Self::new(child)),
+                        nested: child.is_struct().then(|| Self::new(child, owning)),
                         term: OnceLock::new(),
                         cast: ColumnCast::default(),
                     })
                     .collect(),
                 stored: Mutex::new(PlanCache::new()),
+                owning,
             }
         }
 
@@ -524,6 +665,7 @@ mod arrow {
             };
             let held = batch.schema().index_of(child.name()).ok();
             if let Some(index) = held
+                && !plan.owning
                 && !is_unwritten(child, &columns[index], rows)?
             {
                 continue;

@@ -356,7 +356,8 @@ class TestCsvOptions:
         options = RecordOptions("trades.csv")
         for shape in (";;", "", "\u20ac"):
             with pytest.raises(
-                ValueError, match="expected a one-character str or one byte for separator"
+                ValueError,
+                match=r"\$\.separator: expected one character standing for one byte",
             ):
                 options.separator = shape
         with pytest.raises(ValueError, match="expected a one-character str or one byte for quote"):
@@ -1348,7 +1349,7 @@ class TestCStreamIntake:
         with pytest.raises(ValueError, match="non-monotonic offset"):
             Serie.from_arrow_reader(source)
         with pytest.raises(ValueError, match="non-monotonic offset"):
-            IOBase(tmp_path / "payload.arrows").write_arrow(source)
+            IOBase(tmp_path / "payload.arrows").write_serie(source)
 
     def test_a_native_reader_writes_as_the_stream_it_is(self, tmp_path: pathlib.Path) -> None:
         mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
@@ -1360,6 +1361,48 @@ class TestCStreamIntake:
         written = handle.read_arrow_reader().read_all()
         assert written.schema.field("lookup").type.keys_sorted
         assert written.equals(source)
+
+
+def test_num_threads_is_a_thread_count_every_options_value_carries() -> None:
+    options = RecordOptions("trades.parquet", num_threads=4)
+    assert options.num_threads == 4
+    assert RecordOptions("trades.parquet").num_threads is None
+    # The count is inside the options' identity, and crosses a pickle.
+    assert options != RecordOptions("trades.parquet")
+    assert pickle.loads(pickle.dumps(options)) == options
+    assert pickle.loads(pickle.dumps(options)).num_threads == 4
+    options.num_threads = None
+    assert options == RecordOptions("trades.parquet")
+    with pytest.raises(TypeError, match="num_threads must be an integer or None, not bool"):
+        options.num_threads = True  # type: ignore[assignment]
+    with pytest.raises(TypeError, match="num_threads must be an integer or None, not bool"):
+        RecordOptions("trades.parquet", num_threads=False)
+    # Zero is kept, so a write refuses it by name rather than an assignment.
+    options.num_threads = 0
+    assert options.num_threads == 0
+    text = TextOptions(num_threads=2)
+    assert text.num_threads == 2
+    assert pickle.loads(pickle.dumps(text)).num_threads == 2
+    text.num_threads = None
+    assert text == TextOptions()
+    hash(text)
+    with pytest.raises(TypeError, match="hashed"):
+        text.num_threads = 1
+
+
+def test_a_zero_thread_count_is_refused_by_name_at_every_record_write(
+    tmp_path: pathlib.Path,
+) -> None:
+    table = pa.table({"id": [1, 2]})
+    handle = IOBase(tmp_path / "trades.parquet")
+    with pytest.raises(ValueError, match=r"\$\.num_threads.*non-zero thread count, got 0"):
+        handle.overwrite_arrow_table(table, num_threads=0)
+    with pytest.raises(ValueError, match=r"\$\.num_threads"):
+        handle.write_records([{"id": 1}], "overwrite", num_threads=0)
+    with pytest.raises(ValueError, match=r"\$\.num_threads"):
+        handle.overwrite_serie(table, options=RecordOptions("trades.parquet", num_threads=0))
+    handle.overwrite_arrow_table(table, num_threads=1)
+    assert handle.read_arrow_reader(num_threads=3).read_all().equals(table)
 
 
 def test_an_options_value_is_built_with_its_properties_by_name() -> None:

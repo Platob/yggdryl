@@ -103,17 +103,6 @@
         }
       },
       {
-        "name": "noallocregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocregulatorytradeids",
-          "FIX:tag": "1908"
-        }
-      },
-      {
         "name": "allocregulatorytradeids",
         "dtype": {
           "type": "null"
@@ -132,17 +121,6 @@
         "metadata": {
           "FIX:field": "individualallocrejcode",
           "FIX:tag": "776"
-        }
-      },
-      {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
         }
       },
       {

@@ -235,17 +235,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -253,17 +242,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "nopartydetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartydetails",
-          "FIX:tag": "1671"
         }
       },
       {
@@ -321,17 +299,6 @@
         }
       },
       {
-        "name": "nolimitamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolimitamts",
-          "FIX:tag": "1630"
-        }
-      },
-      {
         "name": "limitamts",
         "dtype": {
           "type": "null"
@@ -364,17 +331,6 @@
         }
       },
       {
-        "name": "noclearinginstructions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noclearinginstructions",
-          "FIX:tag": "576"
-        }
-      },
-      {
         "name": "clearinginstructions",
         "dtype": {
           "type": "null"
@@ -393,17 +349,6 @@
         "metadata": {
           "FIX:field": "clearingfeeindicator",
           "FIX:tag": "635"
-        }
-      },
-      {
-        "name": "nosideregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosideregulatorytradeids",
-          "FIX:tag": "1971"
         }
       },
       {
@@ -578,17 +523,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "commissiondata"
-        }
-      },
-      {
-        "name": "nocommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocommissions",
-          "FIX:tag": "2639"
         }
       },
       {
@@ -811,17 +745,6 @@
         }
       },
       {
-        "name": "nocontamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocontamts",
-          "FIX:tag": "518"
-        }
-      },
-      {
         "name": "contamts",
         "dtype": {
           "type": "null"
@@ -832,17 +755,6 @@
         }
       },
       {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
-        }
-      },
-      {
         "name": "stipulations",
         "dtype": {
           "type": "null"
@@ -850,17 +762,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "stipulations"
-        }
-      },
-      {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
         }
       },
       {
@@ -1028,17 +929,6 @@
         }
       },
       {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
-        }
-      },
-      {
         "name": "trdallocgrp",
         "dtype": {
           "type": "null"
@@ -1049,17 +939,6 @@
         }
       },
       {
-        "name": "nosidetrdregts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosidetrdregts",
-          "FIX:tag": "1016"
-        }
-      },
-      {
         "name": "sidetrdregts",
         "dtype": {
           "type": "null"
@@ -1067,17 +946,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "sidetrdregts"
-        }
-      },
-      {
-        "name": "nosettldetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettldetails",
-          "FIX:tag": "1158"
         }
       },
       {
@@ -1200,17 +1068,6 @@
         }
       },
       {
-        "name": "nopositions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopositions",
-          "FIX:tag": "702"
-        }
-      },
-      {
         "name": "tradepositionqty",
         "dtype": {
           "type": "null"
@@ -1221,17 +1078,6 @@
         }
       },
       {
-        "name": "norelatedtrades",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedtrades",
-          "FIX:tag": "1855"
-        }
-      },
-      {
         "name": "relatedtrades",
         "dtype": {
           "type": "null"
@@ -1239,17 +1085,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedtrades"
-        }
-      },
-      {
-        "name": "norelatedpositions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpositions",
-          "FIX:tag": "1861"
         }
       },
       {
@@ -1326,17 +1161,6 @@
         "metadata": {
           "FIX:field": "compressiongroupid",
           "FIX:tag": "2361"
-        }
-      },
-      {
-        "name": "nosidecollateralamounts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosidecollateralamounts",
-          "FIX:tag": "2691"
         }
       },
       {

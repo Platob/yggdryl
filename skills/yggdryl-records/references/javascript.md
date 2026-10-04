@@ -1,6 +1,6 @@
 # yggdryl-records in JavaScript
 
-`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, rowOffset, commitRowSize, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
+`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, rowOffset, commitBatchNum, numThreads, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
 
 ## Which encoding will this handle use?
 
@@ -195,23 +195,32 @@ assert.throws(() => handle.mergeArrowTable(rows([1n], ['X'])), /merge_by/)
 
 ## Choose the write mode at run time
 
-`writeArrowReader|Table|Batch` and `writeRecords` take the mode as a string. `read_arrow`/`write_arrow` (the `SerieReader` doors, and the record door of JSON, YAML, TOML and XML handles) are Rust and Python only.
+`writeArrowReader|Table|Batch` and `writeRecords` take the mode as a string, and so does `writeSerie(value, mode?)`, whose `overwriteSerie`/`appendSerie`/`mergeSerie` name it: `value` is a `Serie`, a `ChunkedSerie`, a `SerieReader` (consumed) or anything `BatchReader.from` accepts, and with `readSerie()` - a `SerieReader` - they are also the record door of JSON, JSON Lines, YAML, TOML and XML handles. Absent options are the handle's own.
 
 ```javascript
 const assert = require('node:assert/strict')
 const arrow = require('apache-arrow')
-const { IOBase, MimeType } = require('yggdryl')
+const { ChunkedSerie, IOBase, MimeType, Serie, SerieReader } = require('yggdryl')
 
 const handle = IOBase.fromBytes()
 handle.mediaType = MimeType.ARROW_STREAM
 const table = new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) })
 for (const mode of ['overwrite', 'append']) handle.writeArrowTable(table, mode)
 assert.equal(handle.rowSize(), 4)
+
+// The Serie doors take a held column, held chunks, a stream or any batch source.
+const rows = Serie.fromArrowBatch(table)
+handle.writeSerie(rows, 'append')
+handle.appendSerie(ChunkedSerie.fromArrowBatch(table))
+assert.equal(handle.rowSize(), 8)
+const read = handle.readSerie()
+assert.ok(read instanceof SerieReader)
+assert.equal([...read].reduce((total, records) => total + records.length, 0), 8)
 ```
 
 ## Bound memory on large writes
 
-`commitRowSize: N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batchRowSize` bounds the batches a Parquet read yields.
+`commitBatchNum: N` publishes every N whole batches, then the remainder (a committed prefix survives a later failure); a cadence never cuts a batch, and records are cut into batches by `batchRowSize`. Unset is the destination's own cadence - a file, a folder and an Iceberg table commit once, the table holding every partition's rows under the process spill bound until the source ends; `0` is refused before any input is pulled. `numThreads: n` is how many partition groups an Iceberg commit writes at once, `0` refused naming `$.num_threads`. `batchRowSize` bounds the batches a Parquet read yields.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -226,14 +235,16 @@ const table = new arrow.Table({
   id: arrow.vectorFromArray(Array.from({ length: 10 }, (_, index) => BigInt(index)), new arrow.Int64()),
 })
 const handle = new IOBase(path.join(root, 'trades.parquet'))
-handle.overwriteArrowTable(table, { commitRowSize: 4 })
+// Three batches at two batches a commit: rows 0-7 publish, then rows 8-9.
+const batches = new arrow.Table([0, 4, 8].flatMap((start) => table.slice(start, start + 4).batches))
+handle.overwriteArrowTable(batches, { commitBatchNum: 2 })
 assert.equal(handle.rowSize(), 10)
 
 const sizes = [...handle.readArrowReader({ batchRowSize: 4 })].map((batch) => batch.numRows)
 assert.equal(sizes.reduce((a, b) => a + b, 0), 10)
 assert.ok(Math.max(...sizes) <= 4)
 
-assert.throws(() => handle.overwriteArrowTable(table, { commitRowSize: 0 }), /commit_row_size/)
+assert.throws(() => handle.overwriteArrowTable(table, { commitBatchNum: 0 }), /commit_batch_num/)
 
 fs.rmSync(root, { recursive: true, force: true })
 ```
@@ -466,7 +477,25 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ## Derive a partition column from another column
 
-Not bound in JavaScript: the `PARTITION:` view's `apply_arrow_batch` is Rust and Python only. Declare and fill the derived column there, or write it as an ordinary column.
+`PARTITION:by` declares it - a bare column an identity partition, a term a derived one (`years(event)`, `truncate(name, 4) as prefix`) - and `withPartitionBy` marks the identity columns and adds each derived entry as a marked column carrying its term as `TRANSFORM:` metadata. The field views have no `applyArrowBatch`: the root's `Selector` computes the derived column.
+
+```javascript
+const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
+const { DataType, Field, Selector } = require('yggdryl')
+
+const root = new Field('row', DataType.fromFields([new Field('event', 'date32', false)]), false)
+  .withPartitionBy(['year(event) as year'])
+assert.deepEqual(root.partitionFieldNames(), ['year'])
+assert.deepEqual(root.partitionBy(), ['year(event) as year'])
+
+const batch = new arrow.Table({
+  event: arrow.vectorFromArray([new Date('2024-01-01'), new Date('2025-01-01')], new arrow.DateDay()),
+}).batches[0]
+const filled = Selector.fromField(root).applyArrowBatch(batch)
+assert.deepEqual(filled.schema.fields.map((field) => field.name), ['event', 'year'])
+assert.deepEqual([...filled.getChild('year')], [2024, 2025])
+```
 
 ## Iceberg: create, append, upsert, scan
 
@@ -493,7 +522,7 @@ const rows = (ids, venues, prices) =>
     px: arrow.vectorFromArray(prices, new arrow.Float64()),
   })
 
-const table = iceberg.Table.create(root, schema, ['venue'])
+const table = iceberg.IcebergTable.create(root, schema, ['venue'])
 assert.equal(table.currentSnapshot, null)
 table.append(rows([1n, 2n, 3n], ['XNAS', 'XNYS', 'XNAS'], [1, 2, 3]))
 const first = table.currentSnapshot.snapshotId
@@ -524,7 +553,7 @@ const arrow = require('apache-arrow')
 const { Field, fields, iceberg } = require('yggdryl')
 
 const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-')), 'trades')
-const table = iceberg.Table.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
+const table = iceberg.IcebergTable.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
 table.append(new arrow.Table({ id: arrow.vectorFromArray([1], new arrow.Int32()) }))
 
 const schemaId = table.updateSchema().addColumn('', Field.from('note: utf8')).updateType('id', 'int64').commit()
@@ -581,4 +610,4 @@ fs.rmSync(root, { recursive: true, force: true })
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.
 - A CSV byte role (`separator`, `quote`, `escape`, `comment`) is a one-character string, `null` clearing an optional one; the role itself (ASCII, no line break, no byte another role holds) is judged by the core, and a CSV property on another encoding's options reads `null` and throws when set.
 - A plan's `offset` given through `withPlan` is the options' `rowOffset`; a merge with one is refused.
-- No `readArrow`/`writeArrow` and no `scanPolars`: structured-text rows go through the codecs in `yggdryl-documents`.
+- No `scanPolars`. Structured-text rows go through `readSerie`/`overwriteSerie` - a document takes `overwrite` alone - or the codecs in `yggdryl-documents`.

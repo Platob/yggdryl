@@ -80,17 +80,6 @@
         }
       },
       {
-        "name": "noroutingids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noroutingids",
-          "FIX:tag": "215"
-        }
-      },
-      {
         "name": "routingids",
         "dtype": {
           "type": "null"
@@ -98,17 +87,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "routingids"
-        }
-      },
-      {
-        "name": "norelatedsym",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedsym",
-          "FIX:tag": "146"
         }
       },
       {
@@ -122,17 +100,6 @@
         }
       },
       {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
-        }
-      },
-      {
         "name": "undinstrmtgrp",
         "dtype": {
           "type": "null"
@@ -140,17 +107,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "undinstrmtgrp"
-        }
-      },
-      {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
         }
       },
       {
@@ -186,17 +142,6 @@
         }
       },
       {
-        "name": "nolinesoftext",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "nolinesoftext",
-          "FIX:tag": "33"
-        }
-      },
-      {
         "name": "linesoftextgrp",
         "dtype": {
           "type": "null"
@@ -226,17 +171,6 @@
         "metadata": {
           "FIX:field": "rawdata",
           "FIX:tag": "96"
-        }
-      },
-      {
-        "name": "noattachments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noattachments",
-          "FIX:tag": "2104"
         }
       },
       {

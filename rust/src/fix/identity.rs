@@ -7,8 +7,8 @@ use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::{
-    Bbg, DataType, Error, Field, Figi, Forex, IdType, Isin, Mic, Result, Scalar, TimeUnit,
-    Timezone, Value,
+    Bbg, DataType, Error, Field, Figi, Forex, IdType, Identifiers, Isin, Mic, Result, Scalar,
+    TimeUnit, Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
@@ -174,21 +174,15 @@ impl FixHeader {
             35 => self.msgtype = text().unwrap_or_default(),
             49 => self.sendercompid = text(),
             56 => self.targetcompid = text(),
-            34 => self.msgseqnum = value.as_u64(),
+            34 => self.msgseqnum = integer_of(value),
             52 => {
                 if let Some(unix) = value.temporal_count_at(TimeUnit::Nanosecond) {
                     self.sendingtime = unix;
                     self.stated_sendingtime = true;
                 }
             }
-            43 => {
-                self.possdupflag = value.as_bool().or_else(|| match value.as_str() {
-                    Some("Y" | "y") => Some(true),
-                    Some("N" | "n") => Some(false),
-                    _ => None,
-                });
-            }
-            93 => self.signaturelength = value.as_i64().and_then(|held| i32::try_from(held).ok()),
+            43 => self.possdupflag = crate::boolean::bool_of(value),
+            93 => self.signaturelength = integer_of(value),
             89 => self.signature = value.as_bytes().map(<[u8]>::to_vec),
             10 => self.checksum = text(),
             tag if tag == MSGDIRECTION_TAG_NAME.0 => self.msgdirection = text(),
@@ -206,6 +200,18 @@ impl FixHeader {
     #[must_use]
     pub const fn stated_sendingtime(&self) -> bool {
         self.stated_sendingtime
+    }
+}
+
+/// The integer a cell states, however the dictionary typed its tag: the
+/// integer a column holds, else the digits a registry that left the tag text
+/// carries, read by the one integer reader at the width asked - a magnitude
+/// the width cannot hold is nothing, never wrapped. Only a string leaf is a
+/// spelling: a code or an enum member is an identity, whatever it prints.
+pub(super) fn integer_of<T: TryFrom<i128> + TryFrom<u128>>(value: &Scalar) -> Option<T> {
+    match value.as_string() {
+        Some(text) => crate::integer::integer_from_text_as(text.as_str()),
+        None => value.as_i128().and_then(|held| T::try_from(held).ok()),
     }
 }
 
@@ -378,12 +384,12 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// instrument keys a rule folds into `securityids` included - is the
 /// [envelope's](super::digest), and an identifier map's sources are the
 /// registry's. A group listed here, by its counter, is read whole.
-pub(super) const MARKET_TAGS: [i32; 46] = [
+pub(super) const MARKET_TAGS: [i32; 45] = [
     54,              // Side: side
-    132,             // BidPx: bidpx, and a bid quote's price
-    133,             // OfferPx: askpx, and an ask quote's price
-    134,             // BidSize: bidqty, and a bid quote's quantity
-    135,             // OfferSize: askqty, and an ask quote's quantity
+    132,             // BidPx: bidpx, and the price of a quote tagging the bid
+    133,             // OfferPx: askpx, and the price of a quote tagging the ask
+    134,             // BidSize: bidqty, and the quantity of a quote tagging the bid
+    135,             // OfferSize: askqty, and the quantity of a quote tagging the ask
     15,              // Currency: currency
     120,             // SettlCurrency: currency, where 15 states none
     996,             // UnitOfMeasure: unit
@@ -413,7 +419,6 @@ pub(super) const MARKET_TAGS: [i32; 46] = [
     126,             // ExpireTime: exprunix
     62,              // ValidUntilTime: exprunix
     432,             // ExpireDate: exprunix
-    541,             // MaturityDate: exprunix
     2749,            // ExecutionTimestamp: execunix
     60,              // TransactTime: execunix, and currunix within the delay
     768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
@@ -1005,39 +1010,40 @@ pub(super) fn record(
     record_event(event, tag, value)
 }
 
+/// Records one identifier map - `securityids`, `identifiers`, `partyids` -
+/// on the event, strictly: a row's map is its word, so one holding a key
+/// that reads as no key, a value its type refuses, or two values under two
+/// spellings of one key is refused on `column` rather than passed over as
+/// the graph's lenient recorders pass it, and a map read so is closed by
+/// the base rule ([`Identifiers::from_scalar`]). Whether the tag is one of
+/// the three.
+pub(super) fn record_identifiers(
+    event: &mut OperationEventFacts,
+    tag: i32,
+    column: &str,
+    value: &Scalar,
+) -> Result<bool> {
+    use crate::graph::Operation;
+
+    let root = crate::path::Path::root();
+    let column = root.field(column);
+    let on_column = |error: Error| column.reroot(error);
+    let ids = || Identifiers::from_scalar(value).map_err(on_column);
+    match tag {
+        tag if tag == super::SECURITYIDS_TAG_NAME.0 => event.set_securityids(ids()?, true),
+        tag if tag == super::IDENTIFIERS_TAG_NAME.0 => event.set_identifiers(ids()?, true),
+        tag if tag == super::PARTYIDS_TAG_NAME.0 => event.set_partyids(ids()?, true),
+        _ => return Ok(false),
+    }
+    .map_err(on_column)?;
+    Ok(true)
+}
+
 /// Records what one event column states on the event, through the column
 /// it is: a value the fact's type refuses is silence and a null clears the
 /// fact. Whether the tag is one the event holds.
 pub(super) fn record_event(event: &mut OperationEventFacts, tag: i32, value: &Scalar) -> bool {
     match tag {
-        tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Isin,
-            Isin::from_scalar(value)
-                .map(Isin::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Bloomberg,
-            Bbg::from_scalar(value)
-                .map(Bbg::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::FIGICODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Figi,
-            Figi::from_scalar(value)
-                .map(Figi::as_str)
-                .or_else(|| value.as_str()),
-        ),
-        tag if tag == super::FOREXCODE_TAG_NAME.0 => record_securityid(
-            event,
-            &IdType::Forex,
-            Forex::from_scalar(value)
-                .map(Forex::as_str)
-                .or_else(|| value.as_str()),
-        ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             Mic::from_scalar(value)
                 .cloned()
@@ -1109,10 +1115,21 @@ pub(super) fn event_fact(event: &OperationEventFacts, tag: i32) -> Option<Scalar
     }
 }
 
-/// Records one crated identifier column onto the security identifiers: a
-/// stated code replaces the entries of its type, a null removes them.
-fn record_securityid(event: &mut OperationEventFacts, kind: &IdType, code: Option<&str>) {
-    event.restate_securityid(kind, code);
+/// The code one crated view of the security identifiers states -
+/// `isincode`, `bloombergcode`, `figicode` or `forexcode`, viewing `kind` -
+/// the code its column types, else its text, trimmed; none for a null or
+/// an empty text.
+pub(super) fn view_code<'value>(kind: &IdType, value: &'value Scalar) -> Option<&'value str> {
+    match kind {
+        IdType::Isin => Isin::from_scalar(value).map(Isin::as_str),
+        IdType::Bloomberg => Bbg::from_scalar(value).map(Bbg::as_str),
+        IdType::Figi => Figi::from_scalar(value).map(Figi::as_str),
+        IdType::Forex => Forex::from_scalar(value).map(Forex::as_str),
+        _ => None,
+    }
+    .or_else(|| value.as_str())
+    .map(str::trim)
+    .filter(|code| !code.is_empty())
 }
 
 /// The exact clock the two FIX clocks a row types are held under.

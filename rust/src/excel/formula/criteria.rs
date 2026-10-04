@@ -41,8 +41,13 @@ pub(crate) struct Matcher<'a> {
 }
 
 impl Matcher<'_> {
-    pub(crate) fn find_iter(&mut self, text: impl Iterator<Item = char>, from: usize) -> Option<(usize,usize)> {
-        self.state.find(self.wildcard, text.map(u32::from), from, false)
+    pub(crate) fn find_iter(
+        &mut self,
+        text: impl Iterator<Item = char>,
+        from: usize,
+    ) -> Option<(usize, usize)> {
+        self.state
+            .find(self.wildcard, text.map(u32::from), from, false)
     }
 
     pub(crate) fn is_match(&mut self, text: &str) -> bool {
@@ -72,8 +77,13 @@ impl MatchState {
         let mut found: Option<(usize, usize)> = None;
         let mut at = from;
         loop {
-            if found.is_none() && (!wildcard.entire || at == 0)
-                && (!scalar_starts || chars.peek().is_none_or(|unit| !(0xdc00..=0xdfff).contains(unit))) {
+            if found.is_none()
+                && (!wildcard.entire || at == 0)
+                && (!scalar_starts
+                    || chars
+                        .peek()
+                        .is_none_or(|unit| !(0xdc00..=0xdfff).contains(unit)))
+            {
                 self.reach[0] = Some(self.reach[0].map_or(at, |held| held.min(at)));
             }
             wildcard.close(&mut self.reach);
@@ -119,7 +129,6 @@ impl MatchState {
         }
         found
     }
-
 }
 
 /// One cached SEARCH pattern and reusable transitions. Distinct cell patterns
@@ -133,30 +142,52 @@ pub(crate) struct Search {
 
 impl Default for Search {
     fn default() -> Self {
-        Self { pattern: None, wildcard: Wildcard::new("", false, false), state: MatchState::default() }
+        Self {
+            pattern: None,
+            wildcard: Wildcard::new("", false, false),
+            state: MatchState::default(),
+        }
     }
 }
 
 impl Search {
-    pub(crate) fn find(&mut self, pattern: &crate::Str, text: &str, from: usize, scalar_starts: bool) -> Option<(usize,usize)> {
+    pub(crate) fn find(
+        &mut self,
+        pattern: &crate::Str,
+        text: &str,
+        from: usize,
+        scalar_starts: bool,
+    ) -> Option<(usize, usize)> {
         if self.pattern.as_ref() != Some(pattern) {
             self.wildcard.compile(pattern.as_str(), true, false);
             self.pattern = Some(pattern.clone());
         }
-        self.state.find(&self.wildcard, text.encode_utf16().skip(from).map(u32::from), from, scalar_starts)
+        self.state.find(
+            &self.wildcard,
+            text.encode_utf16().skip(from).map(u32::from),
+            from,
+            scalar_starts,
+        )
     }
 }
 
 impl Wildcard {
     /// Borrow this pattern with transition buffers reusable across rows.
     pub(crate) fn matcher(&self) -> Matcher<'_> {
-        Matcher { wildcard: self, state: MatchState::default() }
+        Matcher {
+            wildcard: self,
+            state: MatchState::default(),
+        }
     }
 
     /// The pattern `pattern` spells, telling case apart when `match_case`,
     /// matching only the whole of a text when `entire`.
     pub(crate) fn new(pattern: &str, match_case: bool, entire: bool) -> Self {
-        let mut result = Self { pieces: Vec::with_capacity(pattern.len()), match_case, entire };
+        let mut result = Self {
+            pieces: Vec::with_capacity(pattern.len()),
+            match_case,
+            entire,
+        };
         result.compile(pattern, false, false);
         result
     }
@@ -178,15 +209,29 @@ impl Wildcard {
                     Some(_) => '~',
                     None => break,
                 },
-                '~' => match chars.next() { Some(next) => next, None if utf16 => break, None => '~' },
-                '*' => { self.pieces.push(Piece::Any); continue; }
-                '?' => { self.pieces.push(Piece::One); continue; }
+                '~' => match chars.next() {
+                    Some(next) => next,
+                    None if utf16 => break,
+                    None => '~',
+                },
+                '*' => {
+                    self.pieces.push(Piece::Any);
+                    continue;
+                }
+                '?' => {
+                    self.pieces.push(Piece::One);
+                    continue;
+                }
                 other => other,
             };
             if utf16 {
                 let mut buffer = [0; 2];
-                for unit in literal.encode_utf16(&mut buffer) { self.pieces.push(Piece::Char(u32::from(*unit))); }
-            } else { self.pieces.push(Piece::Char(u32::from(literal))); }
+                for unit in literal.encode_utf16(&mut buffer) {
+                    self.pieces.push(Piece::Char(u32::from(*unit)));
+                }
+            } else {
+                self.pieces.push(Piece::Char(u32::from(literal)));
+            }
         }
     }
 
@@ -203,10 +248,12 @@ impl Wildcard {
     }
 
     fn same(&self, first: u32, second: u32) -> bool {
-        first == second || (!self.match_case && match (char::from_u32(first), char::from_u32(second)) {
-            (Some(first),Some(second)) => first.to_lowercase().eq(second.to_lowercase()),
-            _ => false,
-        })
+        first == second
+            || (!self.match_case
+                && match (char::from_u32(first), char::from_u32(second)) {
+                    (Some(first), Some(second)) => first.to_lowercase().eq(second.to_lowercase()),
+                    _ => false,
+                })
     }
 
     /// Each state `reach` holds - a count of the pieces matched, with the
@@ -227,7 +274,9 @@ impl Wildcard {
     /// longest from that start: its start and its end, in characters.
     #[cfg(feature = "internals")]
     pub(crate) fn find(&self, text: &[char], from: usize) -> Option<(usize, usize)> {
-        if from > text.len() { return None; }
+        if from > text.len() {
+            return None;
+        }
         self.matcher().find_iter(text[from..].iter().copied(), from)
     }
 
@@ -322,15 +371,21 @@ impl Criterion {
     /// until its locale collation has a native contract.
     pub(crate) fn new(value: Operand) -> Option<Self> {
         match value {
-            Operand::Blank => Some(Self { relation: Comparison::Eq, value: CriterionValue::Blank }),
+            Operand::Blank => Some(Self {
+                relation: Comparison::Eq,
+                value: CriterionValue::Blank,
+            }),
             Operand::Number(value) if value.is_finite() => Some(Self {
-                relation: Comparison::Eq, value: CriterionValue::Number(value),
+                relation: Comparison::Eq,
+                value: CriterionValue::Number(value),
             }),
             Operand::Boolean(value) => Some(Self {
-                relation: Comparison::Eq, value: CriterionValue::Boolean(value),
+                relation: Comparison::Eq,
+                value: CriterionValue::Boolean(value),
             }),
             Operand::Error(value) => Some(Self {
-                relation: Comparison::Eq, value: CriterionValue::Error(value),
+                relation: Comparison::Eq,
+                value: CriterionValue::Error(value),
             }),
             Operand::Text(value) => {
                 let text = value.as_str();
@@ -351,10 +406,14 @@ impl Criterion {
                 };
                 let error = ExcelError::from_text(rest);
                 let value = if rest.is_empty() {
-                    if !matches!(relation, Comparison::Eq | Comparison::NotEq) { return None; }
+                    if !matches!(relation, Comparison::Eq | Comparison::NotEq) {
+                        return None;
+                    }
                     CriterionValue::Blank
                 } else if error != ExcelError::Unrecognized {
-                    if !matches!(relation, Comparison::Eq | Comparison::NotEq) { return None; }
+                    if !matches!(relation, Comparison::Eq | Comparison::NotEq) {
+                        return None;
+                    }
                     CriterionValue::Error(error)
                 } else if let Some(number) = entry::number(rest) {
                     CriterionValue::Number(number.value)
@@ -390,30 +449,38 @@ impl CriterionMatcher<'_> {
         let relation = criterion.relation;
         match &criterion.value {
             V::Blank => Some(match relation {
-                Comparison::Eq => matches!(candidate, Operand::Blank)
-                    || matches!(candidate, Operand::Text(text) if text.as_str().is_empty()),
+                Comparison::Eq => {
+                    matches!(candidate, Operand::Blank)
+                        || matches!(candidate, Operand::Text(text) if text.as_str().is_empty())
+                }
                 Comparison::NotEq => !matches!(candidate, Operand::Blank),
                 _ => return None,
             }),
             V::Number(number) => match relation {
                 Comparison::Eq => match candidate {
-                    Operand::Number(value) => number::compare(*value, *number).ok()
+                    Operand::Number(value) => number::compare(*value, *number)
+                        .ok()
                         .map(|order| relation.answers(order)),
-                    Operand::Text(text) => entry::number(text.as_str()).map_or(Some(false), |parsed| {
-                        number::compare(parsed.value, *number).ok()
-                            .map(|order| relation.answers(order))
-                    }),
+                    Operand::Text(text) => {
+                        entry::number(text.as_str()).map_or(Some(false), |parsed| {
+                            number::compare(parsed.value, *number)
+                                .ok()
+                                .map(|order| relation.answers(order))
+                        })
+                    }
                     Operand::Reference(_) => None,
                     _ => Some(false),
                 },
                 Comparison::NotEq => match candidate {
-                    Operand::Number(value) => number::compare(*value, *number).ok()
+                    Operand::Number(value) => number::compare(*value, *number)
+                        .ok()
                         .map(|order| relation.answers(order)),
                     Operand::Reference(_) => None,
                     _ => Some(true),
                 },
                 _ => match candidate {
-                    Operand::Number(value) => number::compare(*value, *number).ok()
+                    Operand::Number(value) => number::compare(*value, *number)
+                        .ok()
                         .map(|order| relation.answers(order)),
                     Operand::Reference(_) => None,
                     _ => Some(false),
@@ -423,17 +490,27 @@ impl CriterionMatcher<'_> {
                 Operand::Boolean(actual) if actual == value)),
             V::Error(value) if matches!(relation, Comparison::Eq | Comparison::NotEq) => {
                 let equal = matches!(candidate, Operand::Error(actual) if actual == value);
-                Some(if relation == Comparison::Eq { equal } else { !equal })
+                Some(if relation == Comparison::Eq {
+                    equal
+                } else {
+                    !equal
+                })
             }
             V::Text(_) if matches!(relation, Comparison::Eq | Comparison::NotEq) => {
                 let equal = match candidate {
-                    Operand::Text(text) if text.as_str().is_ascii() =>
-                        self.wildcard.as_mut().expect("text has compiled matcher")
-                            .is_match(text.as_str()),
+                    Operand::Text(text) if text.as_str().is_ascii() => self
+                        .wildcard
+                        .as_mut()
+                        .expect("text has compiled matcher")
+                        .is_match(text.as_str()),
                     Operand::Text(_) | Operand::Reference(_) => return None,
                     _ => false,
                 };
-                Some(if relation == Comparison::Eq { equal } else { !equal })
+                Some(if relation == Comparison::Eq {
+                    equal
+                } else {
+                    !equal
+                })
             }
             _ => None,
         }
@@ -449,10 +526,14 @@ pub mod internals {
 
     use super::Wildcard;
 
-
     /// Match through SEARCH's UTF-16 unit owner; returned offsets are units.
     #[must_use]
-    pub fn search_utf16(pattern: &str, text: &str, from: usize, scalar_starts: bool) -> Option<(usize,usize)> {
+    pub fn search_utf16(
+        pattern: &str,
+        text: &str,
+        from: usize,
+        scalar_starts: bool,
+    ) -> Option<(usize, usize)> {
         super::Search::default().find(&crate::Str::new(pattern), text, from, scalar_starts)
     }
 

@@ -24,10 +24,12 @@
 //! [`OperationEvent`] are the one undated and one dated operation type - an
 //! order, a quote or an execution by the sealed [`OperationKind`] they are
 //! generic over - and [`MarketData`] is the one value over every leaf, read
-//! generically past the boundary that resolved it. [`BookEvent`] holds its
-//! alive [`OrderEvent`]/[`QuoteEvent`] entries, the deltas applied since the
-//! book before it and the executions at its instant, and answers each side
-//! as its price levels, best first. The one walk,
+//! generically past the boundary that resolved it. [`BookEvent`] holds the
+//! deltas applied since the book before it, in the order applied - never
+//! an execution - and, complete, its alive [`OrderEvent`]/[`QuoteEvent`]
+//! entries, answering each side as its price levels, best first; a
+//! [`BookIterator`] emits a book complete only at a snapshot tick and its
+//! deltas alone between, which [`Element::with_previous`] rebuilds. The one walk,
 //! [`EventIterator`], reads operations in their order and states each as
 //! the one after the live element it follows. [`ElementColumn`] is the six
 //! columns every generated schema of an element opens with,
@@ -203,8 +205,8 @@ macro_rules! delegate_market {
             fn insert_securityid(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Market::insert_securityid(&mut self.$($field).+, id)
             }
-            fn remove_securityid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Market::remove_securityid(&mut self.$($field).+, src, kind)
+            fn remove_securityid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Market::remove_securityid(&mut self.$($field).+, key)
             }
             fn derive_securityid(&mut self, kind: &$crate::IdType, code: &str) -> bool {
                 $crate::graph::Market::derive_securityid(&mut self.$($field).+, kind, code)
@@ -379,8 +381,8 @@ macro_rules! delegate_operation {
             fn insert_identifier(&mut self, id: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Operation::insert_identifier(&mut self.$($field).+, id)
             }
-            fn remove_identifier(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, src, kind)
+            fn remove_identifier(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_identifier(&mut self.$($field).+, key)
             }
             fn get_partyids(&self) -> &$crate::Identifiers {
                 $crate::graph::Operation::get_partyids(&self.$($field).+)
@@ -391,8 +393,8 @@ macro_rules! delegate_operation {
             fn insert_partyid(&mut self, partyid: $crate::Identifier) -> $crate::Result<bool> {
                 $crate::graph::Operation::insert_partyid(&mut self.$($field).+, partyid)
             }
-            fn remove_partyid(&mut self, src: &$crate::IdSource, kind: &$crate::IdType) -> $crate::Result<bool> {
-                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, src, kind)
+            fn remove_partyid(&mut self, key: &$crate::IdKey) -> $crate::Result<bool> {
+                $crate::graph::Operation::remove_partyid(&mut self.$($field).+, key)
             }
             fn is_followed_identifier(&self, id: &$crate::Identifier) -> bool {
                 $crate::graph::Operation::is_followed_identifier(&self.$($field).+, id)

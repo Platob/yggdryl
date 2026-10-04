@@ -11,7 +11,7 @@ use super::SoleMessage;
 use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdSource, IdType, Scalar, StructType,
+    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, IdKey, IdSource, IdType, Scalar, StructType,
     fix_schema,
 };
 
@@ -1090,9 +1090,9 @@ fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_
     // walk, so settled again from its content - and once framed by the next
     // session, whose row keeps the content code the parse recorded. A table
     // storing a null list as an empty one reads every absent group back as
-    // `[]` beside a null count - each party's `NoPartySubIDs(802)`, and at
-    // the root every group a message states none of; a list holding nothing
-    // beside no stated count is the group absent, so the walk over the rows
+    // `[]` - each party's `partysubids`, and at the root every group a
+    // message states none of; a list read back empty where the row held null
+    // is the group absent, so the walk over the rows
     // read back yields, message for message, the identity and the content
     // code the walk over the rows written yields.
     let codec = codec();
@@ -1143,10 +1143,10 @@ fn a_session_event_merged_from_rows_reading_an_absent_group_back_empty_writes_no
     // Two observations of one session event, each stating a party with no
     // `NoPartySubIDs(802)`, differing in what the merge fills, so their
     // content is merged. A table storing a null list as an empty one reads
-    // the absent subgroup, and every absent group at the root, back as `[]`
-    // beside a null count, and the merge writes no count for a group holding
-    // no occurrence that no observation counted: the merge over the rows
-    // read back is the merge over the rows written.
+    // the absent subgroup, and every absent group at the root, back as `[]`,
+    // and the merge writes no count for a group holding no occurrence that no
+    // observation stated: the merge over the rows read back is the merge over
+    // the rows written.
     let codec = codec().with_capture_names(["msgsessionid", "msgctxid", "msgseqnum"]);
     let captured = |body: &[u8], recdunix: i64| {
         let line = TextLine::from_bytes(
@@ -1578,7 +1578,11 @@ fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
     assert_eq!(merged.len(), 1);
     let message = &merged[0];
     assert_eq!(
-        message.get_by_tag(453).as_ref().and_then(Scalar::as_i128),
+        message
+            .by_name("parties")
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
         Some(2)
     );
     let parties = message
@@ -1669,7 +1673,7 @@ fn lifecycle_inherits_the_client_order_and_the_parents_from_the_exact_predecesso
         assert_eq!(
             current
                 .get_identifiers()
-                .get_from(&IdSource::Fix, &parent.parse::<IdType>().unwrap()),
+                .get_from(&IdKey::base(parent.parse::<IdType>().unwrap())),
             Some("ORDER-A"),
             "{parent}"
         );
@@ -1860,7 +1864,7 @@ fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes
 }
 
 #[test]
-fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous() {
+fn lifecycle_learns_figi_by_isin_and_the_latest_statement_updates_it() {
     let codec = codec();
     let line = |seq: i32, body: &str| {
         format!(
@@ -1879,18 +1883,69 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         Some("BBG000BLNQ16")
     );
 
-    let ambiguous: Vec<_> = codec
+    // Two statements of the instrument disagreeing: the later one in event
+    // order updates what the walk learned, whichever arrived first.
+    let updated: Vec<_> = codec
         .lifecycle([
             codec.parse_fix_line(line(3, "").as_bytes()),
-            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
             codec.parse_fix_line(line(2, "figicode=BCG000000005").as_bytes()),
+            codec.parse_fix_line(line(1, "figicode=BBG000BLNQ16").as_bytes()),
         ])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
-    assert!(
-        ambiguous[2].get_securityids().get(&IdType::Figi).is_none(),
-        "a conflicting association stays unknown"
+    assert_eq!(
+        updated[2].get_securityids().get(&IdType::Figi),
+        Some("BCG000000005"),
+        "the latest statement updates the association"
     );
+}
+
+#[test]
+fn a_shared_isin_registry_carries_what_one_walk_learned_into_the_next() {
+    use std::sync::Mutex;
+    use yggdryl::IsinRegistry;
+
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=US0378331005|{body}|10=0|"
+        )
+    };
+    let walk = |codec: &FixCodec, seq: i32, body: &str| {
+        let walked: Vec<_> = codec
+            .lifecycle([codec.parse_fix_line(line(seq, body).as_bytes())])
+            .collect::<yggdryl::Result<_>>()
+            .unwrap();
+        walked[0]
+            .get_securityids()
+            .get(&IdType::Figi)
+            .map(ToOwned::to_owned)
+    };
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let shared = codec().with_isin_registry(Arc::clone(&instruments));
+    assert_eq!(
+        walk(&shared, 1, "figicode=BBG000BLNQ16").as_deref(),
+        Some("BBG000BLNQ16")
+    );
+    assert_eq!(
+        walk(&shared, 2, "").as_deref(),
+        Some("BBG000BLNQ16"),
+        "the second walk starts from what the first learned"
+    );
+    assert_eq!(
+        instruments
+            .lock()
+            .unwrap()
+            .get("US0378331005")
+            .and_then(|entry| entry.get(&IdType::Figi)),
+        Some("BBG000BLNQ16")
+    );
+    // Without one, each walk learns into its own, starting empty.
+    let own = codec();
+    assert_eq!(
+        walk(&own, 1, "figicode=BBG000BLNQ16").as_deref(),
+        Some("BBG000BLNQ16")
+    );
+    assert_eq!(walk(&own, 2, ""), None);
 }
 
 #[test]
@@ -1919,9 +1974,10 @@ fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(
-        walked[0]
-            .get_securityids()
-            .get_from(&"oms".parse::<IdSource>().unwrap(), &IdType::InstrumentId),
+        walked[0].get_securityids().get_from(&IdKey::new(
+            "oms".parse::<IdSource>().unwrap(),
+            IdType::InstrumentId
+        )),
         Some("dbi;CH0012214059_XSWX_CHF"),
         "the message stating it keeps it"
     );
@@ -2914,7 +2970,10 @@ fn the_line_read_and_the_batch_read_agree_on_separatorless_group_inference() {
     for batch in [&row_batch, &column_batch] {
         let partyids = yggdryl::Identifiers::from_scalar(&first_value(batch, "partyids"))
             .expect("the partyids column");
-        assert_eq!(partyids.to_string(), "[proprietary:executingfirm=BUYSIDE]");
+        assert_eq!(
+            partyids.to_string(),
+            "[executingfirm=BUYSIDE, proprietary:executingfirm=BUYSIDE]"
+        );
         let entries = first_value(batch, yggdryl::fix::FIXENTRIES_COLUMN);
         let group = entries
             .mapping_iter()
@@ -3072,4 +3131,181 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
         0,
         "a plugin names no dialect: a message is not a dictionary member"
     );
+}
+
+/// The bundled bridge capture as the text rows a read answers: its own row
+/// header, each line numbered, the clock read in UTC.
+fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) {
+    let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
+        .with_media_type(
+            yggdryl::Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+    let mut options = yggdryl::text::TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(yggdryl::Timezone::UTC);
+    options.start_rownum = Some(1);
+    (source, options.into())
+}
+
+/// Every record a serie face answered, as the batch it is.
+fn serie_batches(reader: yggdryl::SerieReader) -> Vec<RecordBatch> {
+    reader
+        .map(|record| {
+            record
+                .expect("a record")
+                .into_arrow_batch()
+                .expect("a record column is a table")
+        })
+        .collect()
+}
+
+/// What identifies a message and everything it states.
+fn stated(messages: impl Iterator<Item = yggdryl::Result<FixMsg>>) -> Vec<(yggdryl::Uuid, u128)> {
+    messages
+        .map(|message| {
+            let message = message.expect("a message");
+            (message.get_curruuid(), message.digest())
+        })
+        .collect()
+}
+
+#[test]
+fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
+    use yggdryl::IOMedia;
+    let codec = codec();
+    let (source, options) = bridge_capture();
+    let text = || source.read_arrow_reader(&options).expect("a text reader");
+    let read = || source.read_serie(Some(&options)).expect("a text serie");
+
+    // Text rows in, FIX rows out: the root the Arrow door writes, declaring
+    // no order, and its batches row for row.
+    let parsed = batches(codec.parse_text_arrow_reader(text()).unwrap());
+    assert!(row_count(&parsed) > 0, "the capture parses");
+    let faced = codec.parse_text_serie(read()).unwrap();
+    let root = yggdryl::Field::from_arrow_schema("fix", &parsed[0].schema()).unwrap();
+    assert_eq!(faced.field(), &root);
+    assert!(!faced.field().as_sort().declares_order());
+    assert_eq!(serie_batches(faced), parsed);
+    let fix_rows = || yggdryl::arrow::batch_reader(parsed[0].schema(), parsed.clone());
+
+    // FIX rows in, walked FIX rows out - fed by the face before it, which
+    // crosses as the door's own reader.
+    let walked = batches(codec.lifecycle_arrow_reader(fix_rows()).unwrap());
+    let faced = codec
+        .lifecycle_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(faced.field(), &root);
+    assert_eq!(serie_batches(faced), walked);
+
+    // FIX rows in, market data rows out.
+    let market = batches(codec.market_data_arrow_reader(fix_rows()).unwrap());
+    assert!(row_count(&market) > 0, "the capture holds market data");
+    let faced = codec
+        .market_data_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(faced.field(), &yggdryl::graph::MarketData::field().unwrap());
+    assert!(!faced.field().as_sort().declares_order());
+    assert_eq!(serie_batches(faced), market);
+
+    // FIX rows in, messages out: what a table read back feeds the walk.
+    let messages = stated(codec.messages(fix_rows()));
+    assert_eq!(messages.len(), row_count(&parsed));
+    let faced = codec
+        .messages_serie(codec.parse_text_serie(read()).unwrap())
+        .unwrap();
+    assert_eq!(stated(faced), messages);
+
+    // Messages in, FIX rows out, under the root the caller names.
+    let written = batches(
+        codec
+            .arrow_reader(root.clone(), codec.messages(fix_rows()))
+            .unwrap(),
+    );
+    let faced = codec
+        .serie_reader(root.clone(), codec.messages(fix_rows()))
+        .unwrap();
+    assert_eq!(faced.field(), &root);
+    assert_eq!(serie_batches(faced), written);
+
+    // Messages in, market data and books out.
+    let market = batches(
+        codec
+            .market_arrow_reader(codec.messages(fix_rows()))
+            .unwrap(),
+    );
+    let faced = codec.market_serie(codec.messages(fix_rows())).unwrap();
+    assert_eq!(serie_batches(faced), market);
+    let books = batches(
+        codec
+            .book_arrow_reader(codec.messages(fix_rows()), 900_000, None)
+            .unwrap(),
+    );
+    let faced = codec
+        .book_serie(codec.messages(fix_rows()), 900_000, None)
+        .unwrap();
+    assert_eq!(serie_batches(faced), books);
+}
+
+#[test]
+fn the_serie_faces_answer_alike_on_several_threads() {
+    use yggdryl::IOMedia;
+    let one = codec();
+    let four = codec().with_threads(4);
+    let (source, options) = bridge_capture();
+    let read = || source.read_serie(Some(&options)).expect("a text serie");
+    let walk = |codec: &FixCodec| {
+        serie_batches(
+            codec
+                .lifecycle_serie(codec.parse_text_serie(read()).unwrap())
+                .unwrap(),
+        )
+    };
+    assert_eq!(walk(&four), walk(&one));
+}
+
+#[test]
+fn a_walk_states_no_order_its_source_declared() {
+    // The walk answers in its own order and may date a message again, so a
+    // `SORT:by` on the rows it read is not a fact of the rows it writes.
+    let codec = codec();
+    let parsed = batches(codec.parse_text_arrow_reader(source()).unwrap());
+    let mut root = yggdryl::Field::from_arrow_schema("fix", &parsed[0].schema()).unwrap();
+    root.as_sort_mut().set_by_texts(["currunix"]).unwrap();
+    let schema = root.clone().into_arrow_schema().unwrap();
+    let declared: Vec<RecordBatch> = parsed
+        .iter()
+        .map(|batch| batch.clone().with_schema(schema.clone()).unwrap())
+        .collect();
+
+    let walked = codec
+        .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(
+            schema.clone(),
+            declared.clone(),
+        ))
+        .unwrap();
+    assert!(!walked.schema().metadata().contains_key("SORT:by"));
+    assert!(row_count(&batches(walked)) > 0);
+
+    let rows = yggdryl::SerieReader::from_arrow_reader(
+        None,
+        yggdryl::arrow::batch_reader(schema, declared),
+        yggdryl::ArrowCastOptions::new(),
+    )
+    .unwrap();
+    assert!(rows.field().as_sort().declares_order());
+    let faced = codec.lifecycle_serie(rows).unwrap();
+    assert!(!faced.field().as_sort().declares_order());
+    assert!(!serie_batches(faced).is_empty());
+}
+
+#[test]
+fn a_serie_face_refuses_a_run_before_a_row_is_read() {
+    let run = yggdryl::Serie::from(yggdryl::Run::new(vec![Scalar::from(1_i64)]));
+    assert!(codec().parse_text_serie(run.clone()).is_err());
+    assert!(codec().lifecycle_serie(run.clone()).is_err());
+    assert!(codec().market_data_serie(run.clone()).is_err());
+    assert!(codec().messages_serie(run).is_err());
 }

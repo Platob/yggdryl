@@ -489,13 +489,14 @@ class TestCustomFilesystems:
         assert handle.url.hostname is None
 
         # A filesystem answering in this process is on this machine, and so
-        # is every location listed or globbed beneath it: never a made-up host.
+        # is every location listed or globbed beneath it: `localhost`, the one
+        # name the crate writes for this machine, never the system's own name.
         handler = MemoryHandler()
         handler.files["lake/year=2024/part-0.parquet"] = b"PAR1"
         folder = IOBase.from_fs(pafs.PyFileSystem(handler), "lake")
-        assert str(folder.url) == f"fs://{HOSTNAME}/lake"
+        assert str(folder.url) == "fs://localhost/lake"
         for child in [*folder.iterdir(), *folder.glob("**/*.parquet")]:
-            assert child.url.hostname == HOSTNAME, child.url
+            assert child.url.hostname == "localhost", child.url
         assert HOSTNAME and HOSTNAME == HOSTNAME.lower()
 
     def test_a_custom_filesystem_lists_its_own_prefixes(self) -> None:
@@ -577,7 +578,7 @@ class TestCustomFilesystems:
 
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
-        stored = iceberg.Table.create(warehouse, table().schema)
+        stored = iceberg.IcebergTable.create(warehouse, table().schema)
         stored.append(table())
 
         # The root is the folder the table actually lives in, not the local
@@ -659,7 +660,7 @@ class TestTables:
         handler = MemoryHandler()
         warehouse = IOBase.from_fs(pafs.PyFileSystem(handler), "warehouse/trades")
 
-        table_handle = iceberg.Table.create(warehouse, table().schema)
+        table_handle = iceberg.IcebergTable.create(warehouse, table().schema)
         table_handle.append(table())
 
         rows = table_handle.scan().read_all()

@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::io::{BufReader, Read};
 use std::rc::Rc;
 
-use base64::Engine as _;
 use saphyr_parser::{BufferedInput, Event, Parser, ScalarStyle, Tag as SaphyrTag};
 
 use crate::text::wire::RawValue;
@@ -507,7 +506,9 @@ fn parse_scalar(
         match tag.suffix.as_str() {
             "str" | "timestamp" => RawValue::String(value),
             "null" => RawValue::Null,
-            "bool" => parse_bool(&value)
+            // The tag declares the type, so the boolean reader reads the
+            // text; an untagged plain scalar is the format's own set.
+            "bool" => crate::boolean::bool_from_text(&value)
                 .map(RawValue::Bool)
                 .ok_or_else(|| codec_error(position, "invalid YAML boolean"))?,
             "int" => parse_integer(&value, position)
@@ -519,9 +520,9 @@ fn parse_scalar(
                     .ok_or_else(|| codec_error(position, "invalid YAML float"))?,
             ),
             "binary" => RawValue::Bytes(
-                base64::engine::general_purpose::STANDARD
-                    .decode(compact_binary(&value).as_ref())
-                    .map_err(|_| codec_error(position, "invalid YAML binary scalar"))?,
+                crate::Bytes::from_base64(&value)
+                    .ok_or_else(|| codec_error(position, "invalid YAML binary scalar"))?
+                    .into_vec(),
             ),
             _ => return Err(codec_error(position, "unsupported YAML core scalar tag")),
         }
@@ -691,19 +692,6 @@ fn parse_float(value: &str, position: usize) -> Option<Result<f64>> {
             "YAML float is outside the finite f64 range",
         ))
     })
-}
-
-fn compact_binary(value: &str) -> Cow<'_, [u8]> {
-    if value.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        Cow::Owned(
-            value
-                .bytes()
-                .filter(|byte| !byte.is_ascii_whitespace())
-                .collect(),
-        )
-    } else {
-        Cow::Borrowed(value.as_bytes())
-    }
 }
 
 fn valid_digit_sequence(value: &str, radix: u32) -> bool {

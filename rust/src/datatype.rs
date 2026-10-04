@@ -1667,7 +1667,7 @@ mod arrow {
         ///
         /// Returns an error unless this is a bounded Struct datatype.
         pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef> {
-            Field::new("row", self, false).into_arrow_schema()
+            Field::new(crate::media::DEFAULT_ROOT_NAME, self, false).into_arrow_schema()
         }
 
         /// Reports whether an imported datatype can reuse its enclosing Arrow

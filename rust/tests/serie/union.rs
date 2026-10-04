@@ -481,3 +481,18 @@ fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
         );
     }
 }
+
+#[test]
+fn a_freshly_built_union_column_is_resident_whole_and_not_spilled() {
+    for column in quotes() {
+        let leaf = column.as_union().expect("a union column");
+        assert_eq!(
+            SerieValue::resident_size(leaf),
+            SerieValue::memory_size(leaf)
+        );
+        assert!(!SerieValue::is_spilled(leaf));
+        assert!(column.memory_size() > 0);
+        assert_eq!(column.resident_size(), column.memory_size());
+        assert!(!column.is_spilled());
+    }
+}

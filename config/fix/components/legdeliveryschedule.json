@@ -147,17 +147,6 @@
         }
       },
       {
-        "name": "nolegdeliveryschedulesettldays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegdeliveryschedulesettldays",
-          "FIX:tag": "41422"
-        }
-      },
-      {
         "name": "legdeliveryschedulesettldays",
         "dtype": {
           "type": "null"

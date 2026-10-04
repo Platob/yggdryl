@@ -866,7 +866,7 @@ mod internal {
 
     use yggdryl::aws::{AssumedRole, CredentialSource, Credentials};
     use yggdryl::internals::aws_sts::{
-        cache_key, parse, parse_error, read_cache, session_name_at, write_cache,
+        cache_key, parse, parse_error, read_cache, session_name_at, split_endpoint, write_cache,
     };
 
     use super::{MFA, NAMED_ROLE_CACHE_KEY, ROLE, ROLE_CACHE_KEY, file_cli_session};
@@ -1343,5 +1343,79 @@ mod internal {
             None,
             "a directory where the file would be is no session"
         );
+    }
+
+    #[test]
+    fn an_endpoint_is_read_once_as_the_url_it_is_for_signing_and_dialing() {
+        for (endpoint, scheme, host, path) in [
+            (
+                "https://sts.eu-west-1.amazonaws.com",
+                "https",
+                "sts.eu-west-1.amazonaws.com",
+                "/",
+            ),
+            (
+                "sts.eu-west-1.amazonaws.com",
+                "https",
+                "sts.eu-west-1.amazonaws.com",
+                "/",
+            ),
+            (
+                "sts.example.test:4566",
+                "https",
+                "sts.example.test:4566",
+                "/",
+            ),
+            ("http://127.0.0.1:4566", "http", "127.0.0.1:4566", "/"),
+            ("HTTP://127.0.0.1:4566/", "http", "127.0.0.1:4566", "/"),
+            ("http://[::1]:4566", "http", "[::1]:4566", "/"),
+            // User information and a query are no part of where STS answers.
+            (
+                "https://user:secret@sts.example.test",
+                "https",
+                "sts.example.test",
+                "/",
+            ),
+            // A path is: a gateway mounting STS below one is reached there,
+            // as botocore reaches it, its trailing `/` dropped.
+            (
+                "https://sts.example.test:4566/prefix?x=1",
+                "https",
+                "sts.example.test:4566",
+                "/prefix",
+            ),
+            (
+                "http://127.0.0.1:4566/gateway/sts/",
+                "http",
+                "127.0.0.1:4566",
+                "/gateway/sts",
+            ),
+        ] {
+            assert_eq!(
+                split_endpoint(endpoint).expect(endpoint),
+                (scheme.to_owned(), host.to_owned(), path.to_owned()),
+                "{endpoint:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_endpoint_that_names_no_host_over_http_or_https_is_refused_quoting_it() {
+        for endpoint in [
+            "ftp://sts.example.test",
+            "javascript://sts.example.test",
+            "https://",
+            "https://host:notaport",
+            "https://host:99999",
+            "https://a@b@c",
+            "",
+        ] {
+            let refused = split_endpoint(endpoint).expect_err(endpoint).to_string();
+            assert!(
+                refused.contains("expected an STS endpoint naming a host"),
+                "{endpoint:?}: {refused}"
+            );
+            assert!(refused.contains(endpoint), "{endpoint:?}: {refused}");
+        }
     }
 }

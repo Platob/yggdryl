@@ -722,13 +722,28 @@ fn a_refused_entry_changes_nothing() {
 
 #[test]
 fn value_serial_projection_preserves_phantom_day_without_changing_entry_scalars() {
-    assert!(matches!(read("1900-02-29"),Entry::Text(_)));
-    assert_eq!(read("2024-01-02"),value(Scalar::date32(19_724),Some("m/d/yyyy")));
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    for (row,(formula,expected)) in [("VALUE(\"1900-02-29\")",60.0),
-        ("VALUE(\"1900-02-29 12:00\")",60.5),("VALUE(\"$1,234.50\")",1234.5),
-        ("VALUE(\"12:00\")",0.5)].into_iter().enumerate() {
-        let at=CellRef::new(row as u32,0);book.set_entry("Data",at,&format!("={formula}")).unwrap();
-        book.calculate_all().unwrap();assert_eq!(book.sheet("Data").unwrap().scalar(at).as_f64(),Some(expected));
+    assert!(matches!(read("1900-02-29"), Entry::Text(_)));
+    assert_eq!(
+        read("2024-01-02"),
+        value(Scalar::date32(19_724), Some("m/d/yyyy"))
+    );
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (row, (formula, expected)) in [
+        ("VALUE(\"1900-02-29\")", 60.0),
+        ("VALUE(\"1900-02-29 12:00\")", 60.5),
+        ("VALUE(\"$1,234.50\")", 1234.5),
+        ("VALUE(\"12:00\")", 0.5),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let at = CellRef::new(row as u32, 0);
+        book.set_entry("Data", at, &format!("={formula}")).unwrap();
+        book.calculate_all().unwrap();
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at).as_f64(),
+            Some(expected)
+        );
     }
 }

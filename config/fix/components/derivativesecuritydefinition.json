@@ -14,17 +14,6 @@
         }
       },
       {
-        "name": "noderivativeinstrattrib",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noderivativeinstrattrib",
-          "FIX:tag": "1311"
-        }
-      },
-      {
         "name": "derivativeinstrumentattribute",
         "dtype": {
           "type": "null"
@@ -35,17 +24,6 @@
         }
       },
       {
-        "name": "nomarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketsegments",
-          "FIX:tag": "1310"
-        }
-      },
-      {
         "name": "marketsegmentgrp",
         "dtype": {
           "type": "null"
@@ -53,17 +31,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "marketsegmentgrp"
-        }
-      },
-      {
-        "name": "nosecurityclassifications",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityclassifications",
-          "FIX:tag": "1582"
         }
       },
       {

@@ -9,6 +9,11 @@ use std::time::Duration;
 use smol_str::format_smolstr;
 
 use super::{Authorization, Headers, HttpVersion, Pagination};
+use crate::boolean::{BOOLEAN_SPELLINGS, bool_from_text};
+use crate::duration::{DURATION_SPELLINGS, duration_from_text};
+use crate::integer::{
+    BYTE_COUNT_SPELLINGS, INTEGER_SPELLINGS, byte_count_from_text, integer_from_text_as,
+};
 use crate::{Codec, DEFAULT_STREAM_BATCH_SIZE, Error, FieldPath, Result, Url};
 
 /// How a session reaches a server and reads what it answers.
@@ -55,6 +60,9 @@ pub struct HttpOptions {
     ca_bundle: Option<PathBuf>,
     accept_encodings: Vec<Codec>,
     read_environment: bool,
+    /// Whether a request naming no credential takes its host's `.netrc`
+    /// entry; `None` follows `read_environment`.
+    netrc: Option<bool>,
     max_body_size: u64,
     stream_batch_size: usize,
     concurrency: usize,
@@ -106,6 +114,7 @@ impl HttpOptions {
             ca_bundle: None,
             accept_encodings: Self::DEFAULT_ACCEPT_ENCODINGS.to_vec(),
             read_environment: true,
+            netrc: None,
             max_body_size: Self::DEFAULT_MAX_BODY_SIZE,
             stream_batch_size: DEFAULT_STREAM_BATCH_SIZE,
             concurrency: default_concurrency(),
@@ -136,9 +145,9 @@ impl HttpOptions {
     ///
     /// | property | reads |
     /// | --- | --- |
-    /// | `timeout`, `connect_timeout`, `max_pause` | seconds, decimal allowed, with an optional `s` or `ms` suffix |
+    /// | `timeout`, `connect_timeout`, `max_pause` | seconds, a fraction allowed, with an optional `s`, `ms`, `us`, `ns` or `d` unit |
     /// | `max_attempts`, `max_redirects`, `concurrency`, `page_limit`, `stream_batch_size` | a whole number; `page_limit` `0` clears the limit |
-    /// | `follow_redirects`, `read_environment`, `cookies` | `true`/`false`, `1`/`0`, `yes`/`no` |
+    /// | `follow_redirects`, `read_environment`, `netrc`, `cookies` | `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off` or `1`/`0`, in any case |
     /// | `max_body_size` | a byte count with an optional `KiB`, `MiB`, `GiB` (or `KB`, `MB`, `GB`) suffix |
     /// | `accept_encoding` | comma-separated coding names this crate decodes |
     /// | `user_agent`, `proxy`, `ca_bundle` | text as given |
@@ -177,7 +186,7 @@ impl HttpOptions {
     /// The names of the properties [`Self::with_properties`] reads, as this
     /// crate spells them - the aliases it also reads, and `header.<name>`,
     /// aside. What a binding suggests a mistyped keyword against.
-    pub const PROPERTY_NAMES: [&'static str; 22] = [
+    pub const PROPERTY_NAMES: [&'static str; 23] = [
         "timeout",
         "connect_timeout",
         "max_pause",
@@ -188,6 +197,7 @@ impl HttpOptions {
         "page_limit",
         "follow_redirects",
         "read_environment",
+        "netrc",
         "cookies",
         "max_body_size",
         "accept_encoding",
@@ -257,6 +267,7 @@ impl HttpOptions {
                 }
                 "follow_redirects" => self.with_follow_redirects(flag(name, value)?),
                 "read_environment" => self.with_read_environment(flag(name, value)?),
+                "netrc" => self.with_netrc(flag(name, value)?),
                 "cookies" => self.with_cookies(flag(name, value)?),
                 "max_body_size" => self.with_max_body_size(size(name, value)?),
                 "accept_encoding" | "accept_encodings" => {
@@ -415,10 +426,34 @@ impl HttpOptions {
     }
 
     /// Whether the proxy and CA bundle variables of the environment are read
-    /// where the options name none.
+    /// where the options name none - and the `.netrc` file, unless
+    /// [`Self::with_netrc`] says otherwise.
     #[must_use]
     pub const fn with_read_environment(mut self, read_environment: bool) -> Self {
         self.read_environment = read_environment;
+        self
+    }
+
+    /// Whether a request naming no credential takes the `.netrc` entry of
+    /// its host - the file `NETRC` names, else `.netrc` then `_netrc` in the
+    /// home directory - as curl and Python's `requests` do.
+    ///
+    /// Left unset it follows [`Self::read_environment`], so a session that
+    /// reads no environment reads no `.netrc` either; `false` keeps the file
+    /// out of a session that reads the proxy and the CA bundle variables, as
+    /// one whose every request states the credential it means does.
+    ///
+    /// ```
+    /// use yggdryl::http::HttpOptions;
+    ///
+    /// assert!(HttpOptions::default().netrc());
+    /// assert!(!HttpOptions::default().with_read_environment(false).netrc());
+    /// assert!(!HttpOptions::default().with_netrc(false).netrc());
+    /// assert!(HttpOptions::default().with_read_environment(false).with_netrc(true).netrc());
+    /// ```
+    #[must_use]
+    pub const fn with_netrc(mut self, netrc: bool) -> Self {
+        self.netrc = Some(netrc);
         self
     }
 
@@ -581,6 +616,16 @@ impl HttpOptions {
         self.read_environment
     }
 
+    /// Whether a request naming no credential takes its host's `.netrc`
+    /// entry: what [`Self::with_netrc`] said, else [`Self::read_environment`].
+    #[must_use]
+    pub const fn netrc(&self) -> bool {
+        match self.netrc {
+            Some(netrc) => netrc,
+            None => self.read_environment,
+        }
+    }
+
     /// The most a whole-body read holds.
     #[must_use]
     pub const fn max_body_size(&self) -> u64 {
@@ -654,71 +699,25 @@ fn default_concurrency() -> usize {
         .min(HttpOptions::MAX_DEFAULT_CONCURRENCY)
 }
 
-/// A duration in seconds, decimal allowed, with an optional `s` or `ms`
-/// suffix.
+/// An elapsed length, read as seconds by the one reader every timeout reads.
 fn seconds(name: &str, value: &str) -> Result<Duration> {
-    let lowered = value.to_ascii_lowercase();
-    let (digits, scale) = if let Some(digits) = lowered.strip_suffix("ms") {
-        (digits, 0.001)
-    } else if let Some(digits) = lowered.strip_suffix('s') {
-        (digits, 1.0)
-    } else {
-        (lowered.as_str(), 1.0)
-    };
-    let count: f64 = digits
-        .trim()
-        .parse()
-        .map_err(|_| refusal(name, value, "seconds, with an optional `s` or `ms` suffix"))?;
-    if !count.is_finite() || count < 0.0 {
-        return Err(refusal(name, value, "a duration of at least zero"));
-    }
-    Ok(Duration::from_secs_f64(count * scale))
+    duration_from_text(value).ok_or_else(|| refusal(name, value, DURATION_SPELLINGS))
 }
 
 /// A whole number.
 fn count(name: &str, value: &str) -> Result<u32> {
-    value
-        .parse()
-        .map_err(|_| refusal(name, value, "a whole number"))
+    integer_from_text_as(value).ok_or_else(|| refusal(name, value, INTEGER_SPELLINGS))
 }
 
-/// A boolean: `true`/`false`, `1`/`0`, `yes`/`no`, in any case.
+/// A boolean, read through the one table every flag in the crate reads.
 fn flag(name: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "1" | "yes" => Ok(true),
-        "false" | "0" | "no" => Ok(false),
-        _ => Err(refusal(name, value, "true/false, 1/0 or yes/no")),
-    }
+    bool_from_text(value).ok_or_else(|| refusal(name, value, BOOLEAN_SPELLINGS))
 }
 
-/// A byte count with an optional binary or decimal unit suffix, both read
-/// as powers of 1024 the way every configuration file means them.
+/// A byte count with an optional unit suffix, read as powers of 1024 the way
+/// every configuration file means them.
 fn size(name: &str, value: &str) -> Result<u64> {
-    const UNITS: [(&str, u64); 10] = [
-        ("gib", 1 << 30),
-        ("mib", 1 << 20),
-        ("kib", 1 << 10),
-        ("gb", 1 << 30),
-        ("mb", 1 << 20),
-        ("kb", 1 << 10),
-        ("g", 1 << 30),
-        ("m", 1 << 20),
-        ("k", 1 << 10),
-        ("b", 1),
-    ];
-    let lowered = value.to_ascii_lowercase();
-    let (digits, scale) = UNITS
-        .iter()
-        .find_map(|(suffix, scale)| lowered.strip_suffix(suffix).map(|digits| (digits, *scale)))
-        .unwrap_or((lowered.as_str(), 1));
-    let count: u64 = digits.trim().parse().map_err(|_| {
-        refusal(
-            name,
-            value,
-            "a byte count, with an optional KiB/MiB/GiB suffix",
-        )
-    })?;
-    Ok(count.saturating_mul(scale))
+    byte_count_from_text(value).ok_or_else(|| refusal(name, value, BYTE_COUNT_SPELLINGS))
 }
 
 /// Refuse the value of a property this door knows.

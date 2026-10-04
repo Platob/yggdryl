@@ -16,14 +16,14 @@
 //! store that answers ever reads its own options, so nothing is ambiguous by
 //! the time it matters.
 
-use std::time::Duration;
-
 use super::aws::options::{AwsOptions, Checksum};
 use super::azure::options::{AzureOptions, BlobType};
 use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
 use super::options::S3Options;
-use crate::aws::{AssumedRole, CredentialSource, Credentials, Sso};
+use crate::aws::Credentials;
+use crate::aws::properties::{EndpointName, Identity, count, flag, refusal, seconds};
+use crate::integer::{BYTE_COUNT_SPELLINGS, byte_count_from_text};
 use crate::{Error, Result};
 
 impl S3Options {
@@ -193,13 +193,38 @@ impl S3Options {
     /// does not displace the environment's own keys the way one a property
     /// names does.
     ///
+    /// Nor is any endpoint swept, under any prefix: where a store is, the
+    /// environment says through that store's own reader alone, in its place
+    /// below the URL - the session's `AWS_ENDPOINT_URL_S3`,
+    /// `AWS_ENDPOINT_URL` and profile for Amazon S3, `STORAGE_EMULATOR_HOST`
+    /// for Google, `AZURE_STORAGE_BLOB_ENDPOINT` for Azure - and where STS
+    /// and the instance metadata service are, through the session's
+    /// `AWS_ENDPOINT_URL_STS` and `AWS_EC2_METADATA_SERVICE_ENDPOINT`. A
+    /// swept one would be a stated endpoint, over the URL, over
+    /// `AWS_ENDPOINT_URL_<SERVICE>` and the profile, and past
+    /// `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`: `AWS_ENDPOINT`,
+    /// `AWS_S3_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT`,
+    /// `YGGDRYL_ROLE_STS_ENDPOINT` and `YGGDRYL_METADATA_SERVICE_ENDPOINT`
+    /// are no knob, and `AZURE_STORAGE_BLOB_ENDPOINT` never addresses an
+    /// `s3://` location. Stated as a property, each is the endpoint it names.
+    ///
     /// Answers nothing when [`Self::with_environment`] is off.
     #[must_use]
     pub fn environment_properties(&self) -> Vec<(String, String)> {
         if !self.reads_environment() {
             return Vec::new();
         }
-        let mut found: Vec<(String, String)> = std::env::vars()
+        self.swept(std::env::vars())
+    }
+
+    /// The knobs `variables` name under this one's prefixes: the sweep
+    /// [`Self::environment_properties`] runs, over any environment.
+    fn swept(
+        &self,
+        variables: impl IntoIterator<Item = (String, String)>,
+    ) -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = variables
+            .into_iter()
             .filter_map(|(name, value)| {
                 if crate::aws::environment::is_native(&name) {
                     return None;
@@ -209,6 +234,9 @@ impl S3Options {
                     .iter()
                     .filter_map(|prefix| strip_prefix_ignoring_case(&name, prefix))
                     .max_by_key(|rest| name.len() - rest.len())?;
+                if EndpointName::of(&canonical(named)).is_some() {
+                    return None;
+                }
                 (!value.trim().is_empty()).then(|| (named.to_owned(), value))
             })
             .collect();
@@ -328,19 +356,12 @@ impl S3Options {
         let mut options = self;
         match key {
             // --- where the store is -----------------------------------------
-            "endpoint"
-            | "endpoint_url"
-            | "endpoint_override"
-            | "blob_endpoint"
-            | "storage_blob_endpoint"
-            | "storage_endpoint"
-            | "service_host"
-            | "host" => {
+            key if EndpointName::of(key) == Some(EndpointName::Store) => {
                 parts.endpoint = Some(value.to_owned());
             }
             // The service-specific spelling wins over the generic one, which
             // is what `AWS_ENDPOINT_URL_S3` beside `AWS_ENDPOINT_URL` means.
-            "endpoint_url_s3" | "s3_endpoint_url" => {
+            key if EndpointName::of(key) == Some(EndpointName::S3) => {
                 parts.service_endpoint = Some(value.to_owned());
             }
             "scheme" => parts.scheme = Some(value.to_owned()),
@@ -427,47 +448,6 @@ impl S3Options {
                 parts.sse_key = Some(value.to_owned());
             }
 
-            // --- who this process is to AWS ---------------------------------
-            "profile" | "profile_name" => parts.profile = Some(value.to_owned()),
-            "mfa_serial" | "role_mfa_serial" => parts.mfa_serial = Some(value.to_owned()),
-            "source_profile" | "role_source_profile" => {
-                parts.source_profile = Some(value.to_owned());
-            }
-            "credential_source" | "role_credential_source" => {
-                parts.credential_source = Some(value.parse::<CredentialSource>()?);
-            }
-            "web_identity_token_file" | "role_web_identity_token_file" => {
-                parts.web_identity_token_file = Some(value.to_owned());
-            }
-            "credential_process" => parts.credential_process = Some(value.to_owned()),
-            "config_file" => parts.config_file = Some(value.to_owned()),
-            "shared_credentials_file" => parts.credentials_file = Some(value.to_owned()),
-            "ca_bundle" => parts.ca_bundle = Some(value.to_owned()),
-            "use_fips_endpoint" | "fips_endpoint" => parts.use_fips = Some(flag(name, value)?),
-            "use_dualstack_endpoint" | "dualstack_endpoint" => {
-                parts.use_dualstack = Some(flag(name, value)?);
-            }
-            "sts_regional_endpoints" => parts.sts_regional = Some(regional(name, value)?),
-            "ec2_metadata_disabled" | "metadata_disabled" => {
-                parts.metadata_disabled = Some(flag(name, value)?);
-            }
-            "ec2_metadata_service_endpoint"
-            | "metadata_service_endpoint"
-            | "ec2_metadata_endpoint" => {
-                parts.metadata_endpoint = Some(value.to_owned());
-            }
-            "metadata_service_timeout" | "ec2_metadata_service_timeout" => {
-                parts.metadata_timeout = Some(seconds(name, value)?);
-            }
-            "metadata_service_num_attempts" | "ec2_metadata_service_num_attempts" => {
-                parts.metadata_attempts = Some(count(name, value)?);
-            }
-            "sso_start_url" => parts.sso_start_url = Some(value.to_owned()),
-            "sso_region" => parts.sso_region = Some(value.to_owned()),
-            "sso_account_id" => parts.sso_account_id = Some(value.to_owned()),
-            "sso_role_name" => parts.sso_role_name = Some(value.to_owned()),
-            "sso_session" | "sso_session_name" => parts.sso_session = Some(value.to_owned()),
-
             // --- Amazon S3's own --------------------------------------------
             "payload_signing" | "sign_payload" | "payload_signing_enabled" => {
                 parts.aws = parts.aws.clone().with_payload_signing(flag(name, value)?);
@@ -481,14 +461,6 @@ impl S3Options {
             "checksum" | "checksum_algorithm" => {
                 parts.aws = parts.aws.clone().with_checksum(value.parse::<Checksum>()?);
             }
-            "role_arn" => parts.role_arn = Some(value.to_owned()),
-            "session_name" | "role_session_name" => parts.role_session = Some(value.to_owned()),
-            "external_id" | "role_external_id" => parts.external_id = Some(value.to_owned()),
-            "role_duration" | "role_session_duration" | "assume_role_duration_seconds" => {
-                parts.role_duration = Some(seconds(name, value)?);
-            }
-            "sts_endpoint" | "role_sts_endpoint" => parts.sts_endpoint = Some(value.to_owned()),
-            "sts_region" | "role_region" => parts.sts_region = Some(value.to_owned()),
 
             // --- Google Cloud Storage's own ---------------------------------
             "project" | "project_id" | "cloud_project" => {
@@ -592,6 +564,10 @@ impl S3Options {
             // Named, understood, and not something this client can do. A
             // silent omission here would be found out at the store.
             "signer" | "signer_uri" | "signer_endpoint" => return Err(unsupported(name)),
+            // Who this process is to AWS - a profile, a role, a sign-in, the
+            // shared files, the endpoint switches, the metadata service - is
+            // the session's to read: one reader for every consumer.
+            _ if parts.identity.read(key, name, value)? => {}
             // Everything else belongs to something that is not a store.
             _ => return Ok((options, false)),
         }
@@ -610,33 +586,8 @@ struct Parts {
     access_key: Option<String>,
     secret_key: Option<String>,
     session_token: Option<String>,
-    role_arn: Option<String>,
-    role_session: Option<String>,
-    external_id: Option<String>,
-    role_duration: Option<Duration>,
-    sts_endpoint: Option<String>,
-    sts_region: Option<String>,
-    profile: Option<String>,
-    mfa_serial: Option<String>,
-    source_profile: Option<String>,
-    credential_source: Option<CredentialSource>,
-    web_identity_token_file: Option<String>,
-    credential_process: Option<String>,
-    config_file: Option<String>,
-    credentials_file: Option<String>,
-    ca_bundle: Option<String>,
-    use_fips: Option<bool>,
-    use_dualstack: Option<bool>,
-    sts_regional: Option<bool>,
-    metadata_disabled: Option<bool>,
-    metadata_endpoint: Option<String>,
-    metadata_timeout: Option<Duration>,
-    metadata_attempts: Option<u32>,
-    sso_start_url: Option<String>,
-    sso_region: Option<String>,
-    sso_account_id: Option<String>,
-    sso_role_name: Option<String>,
-    sso_session: Option<String>,
+    /// Who this process is to AWS, beyond the pair and the region above.
+    identity: Identity,
     sse_type: Option<String>,
     sse_key: Option<String>,
     sse_md5: Option<String>,
@@ -679,7 +630,7 @@ impl Parts {
             }
             options = options.with_credentials(credentials);
         }
-        let session = self.session(options.session())?;
+        let session = self.identity.apply(options.session())?;
         options = options.with_session(session);
         // An Entra ID application is three values or none of them, so it is
         // assembled here rather than one property at a time.
@@ -705,114 +656,6 @@ impl Parts {
             .with_aws(self.aws)
             .with_google(self.google)
             .with_azure(azure))
-    }
-
-    /// `session` with what was collected about AWS's own identity set on it.
-    fn session(&self, session: &crate::aws::Session) -> Result<crate::aws::Session> {
-        let mut session = session.clone();
-        if let Some(profile) = &self.profile {
-            session = session.with_profile(profile);
-        }
-        if let Some(command) = &self.credential_process {
-            session = session.with_credential_process(command);
-        }
-        if let Some(path) = &self.config_file {
-            session = session.with_config_file(path);
-        }
-        if let Some(path) = &self.credentials_file {
-            session = session.with_credentials_file(path);
-        }
-        if let Some(path) = &self.ca_bundle {
-            session = session.with_ca_bundle(path);
-        }
-        if let Some(fips) = self.use_fips {
-            session = session.with_use_fips_endpoint(fips);
-        }
-        if let Some(dualstack) = self.use_dualstack {
-            session = session.with_use_dualstack_endpoint(dualstack);
-        }
-        if let Some(regional) = self.sts_regional {
-            session = session.with_sts_regional_endpoints(regional);
-        }
-        if let Some(disabled) = self.metadata_disabled {
-            session = session.with_metadata_disabled(disabled);
-        }
-        if let Some(endpoint) = &self.metadata_endpoint {
-            session = session.with_metadata_endpoint(endpoint);
-        }
-        if let Some(timeout) = self.metadata_timeout {
-            session = session.with_metadata_timeout(timeout);
-        }
-        if let Some(attempts) = self.metadata_attempts {
-            session = session.with_metadata_attempts(attempts);
-        }
-        // An STS endpoint stated without a role still says where STS is.
-        if let (Some(endpoint), None) = (&self.sts_endpoint, &self.role_arn) {
-            session = session.with_service_endpoint_url("sts", endpoint);
-        }
-        if let Some(role_arn) = &self.role_arn {
-            let mut role = AssumedRole::new(role_arn);
-            if let Some(name) = &self.role_session {
-                role = role.with_session_name(name);
-            }
-            if let Some(external_id) = &self.external_id {
-                role = role.with_external_id(external_id);
-            }
-            if let Some(duration) = self.role_duration {
-                role = role.with_duration(duration);
-            }
-            if let Some(region) = &self.sts_region {
-                role = role.with_region(region);
-            }
-            if let Some(endpoint) = &self.sts_endpoint {
-                role = role.with_endpoint(endpoint);
-            }
-            if let Some(serial) = &self.mfa_serial {
-                role = role.with_mfa_serial(serial);
-            }
-            if let Some(source) = &self.source_profile {
-                role = role.with_source_profile(source);
-            }
-            if let Some(source) = self.credential_source {
-                role = role.with_credential_source(source);
-            }
-            if let Some(path) = &self.web_identity_token_file {
-                role = role.with_web_identity_token_file(path);
-            }
-            session = session.with_assumed_role(role);
-        }
-        // A sign-in is four values or none of them, so it is assembled here
-        // rather than one property at a time.
-        let named = [
-            ("sso_start_url", &self.sso_start_url),
-            ("sso_region", &self.sso_region),
-            ("sso_account_id", &self.sso_account_id),
-            ("sso_role_name", &self.sso_role_name),
-        ];
-        if self.sso_session.is_some() || named.iter().any(|(_, value)| value.is_some()) {
-            let missing: Vec<&str> = named
-                .iter()
-                .filter(|(_, value)| value.is_none())
-                .map(|(key, _)| *key)
-                .collect();
-            if !missing.is_empty() {
-                return Err(refusal(&format!(
-                    "an IAM Identity Center sign-in needs {}",
-                    missing.join(", ")
-                )));
-            }
-            let mut sso = Sso::new(
-                self.sso_start_url.as_deref().unwrap_or_default(),
-                self.sso_region.as_deref().unwrap_or_default(),
-                self.sso_account_id.as_deref().unwrap_or_default(),
-                self.sso_role_name.as_deref().unwrap_or_default(),
-            );
-            if let Some(name) = &self.sso_session {
-                sso = sso.with_session_name(name);
-            }
-            session = session.with_sso(sso);
-        }
-        Ok(session)
     }
 }
 
@@ -857,26 +700,6 @@ fn canonical(name: &str) -> String {
     }
 }
 
-/// A boolean, in any of the spellings a configuration file uses.
-fn flag(name: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "true" | "t" | "yes" | "y" | "on" | "1" => Ok(true),
-        "false" | "f" | "no" | "n" | "off" | "0" => Ok(false),
-        _ => Err(refusal(&format!(
-            "expected a boolean for {name}, got {value}"
-        ))),
-    }
-}
-
-/// Whether STS is reached in the region: `regional`, `legacy`, or a boolean.
-fn regional(name: &str, value: &str) -> Result<bool> {
-    match value.to_ascii_lowercase().as_str() {
-        "regional" => Ok(true),
-        "legacy" => Ok(false),
-        _ => flag(name, value),
-    }
-}
-
 /// Whether a request accepts requester-pays charges.
 ///
 /// The AWS tools spell it `requester`, and everyone else spells it a boolean.
@@ -887,52 +710,13 @@ fn requester(name: &str, value: &str) -> Result<bool> {
     flag(name, value)
 }
 
-/// A duration in seconds, which is how every vocabulary spells one.
-fn seconds(name: &str, value: &str) -> Result<Duration> {
-    let seconds: f64 = value
-        .parse()
-        .map_err(|_| refusal(&format!("expected seconds for {name}, got {value}")))?;
-    if !seconds.is_finite() || seconds < 0.0 {
-        return Err(refusal(&format!(
-            "expected a duration of at least zero seconds for {name}, got {value}"
-        )));
-    }
-    Ok(Duration::from_secs_f64(seconds))
-}
-
-/// A count.
-fn count(name: &str, value: &str) -> Result<u32> {
-    value
-        .parse()
-        .map_err(|_| refusal(&format!("expected a whole number for {name}, got {value}")))
-}
-
 /// A byte count, which may carry a `KiB`, `MiB`, or `GiB` suffix.
 fn size(name: &str, value: &str) -> Result<u64> {
-    let lowered = value.to_ascii_lowercase();
-    let (digits, scale) = ["gib", "mib", "kib", "gb", "mb", "kb", "g", "m", "k", "b"]
-        .iter()
-        .find_map(|suffix| {
-            lowered
-                .strip_suffix(suffix)
-                .map(|digits| (digits, unit(suffix)))
-        })
-        .unwrap_or((lowered.as_str(), 1));
-    let count: u64 = digits
-        .trim()
-        .parse()
-        .map_err(|_| refusal(&format!("expected a byte count for {name}, got {value}")))?;
-    Ok(count.saturating_mul(scale))
-}
-
-/// The multiplier a size suffix names.
-const fn unit(suffix: &str) -> u64 {
-    match suffix.as_bytes() {
-        [b'g', ..] => 1024 * 1024 * 1024,
-        [b'm', ..] => 1024 * 1024,
-        [b'k', ..] => 1024,
-        _ => 1,
-    }
+    byte_count_from_text(value).ok_or_else(|| {
+        refusal(&format!(
+            "expected {BYTE_COUNT_SPELLINGS} for {name}, got {value}"
+        ))
+    })
 }
 
 /// Refuse a property this client understands and cannot honor.
@@ -943,10 +727,18 @@ fn unsupported(name: &str) -> Error {
     ))
 }
 
-/// Refuse a property value.
-fn refusal(message: &str) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        message.to_owned(),
-    ))
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/s3/properties.rs` pins and a caller cannot reach.
+
+    /// The knobs `variables` name under the prefixes of `options`: the sweep
+    /// `S3Options::environment_properties` runs over the process, over any
+    /// environment a test hands over.
+    pub fn swept(
+        options: &super::S3Options,
+        variables: Vec<(String, String)>,
+    ) -> Vec<(String, String)> {
+        options.swept(variables)
+    }
 }

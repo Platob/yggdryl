@@ -11,7 +11,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use smol_str::format_smolstr;
 
-use crate::temporal as iso;
 use crate::temporal::scalars::nanoseconds_per;
 use crate::{Error, Result, Scalar, TemporalKind, TimeUnit};
 
@@ -167,20 +166,15 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
 
 /// Read timestamp or date text as a count of `unit`.
 ///
-/// The crate's own ISO reader answers the count at the resolution the digits
-/// spell - seconds for `..:01Z`, nanoseconds for seven fractional digits -
-/// and that count is restated like every other intake: exactly into a finer
-/// unit, floored into a coarser one. A spelling carries an offset or it does
-/// not, so exactly one of the two readings can succeed; a bare date is the
-/// naive one - that day at midnight, the reader's own answer for a date - and
-/// needs no third. When neither reads, the timestamp reading's refusal is the
-/// one reported.
+/// The crate's one reader of datetime text,
+/// [`DateTime64::from_text`](crate::DateTime64::from_text), answers the count
+/// at the resolution the digits spell - seconds for `..:01Z`, nanoseconds for
+/// seven fractional digits - with a reading that names no zone, a bare date
+/// included, taken as UTC; that count is restated like every other intake:
+/// exactly into a finer unit, floored into a coarser one.
 fn unix_from_text(text: &str, unit: TimeUnit) -> Result<i64> {
-    let (count, source) = match iso::parse_timestamp(text) {
-        Ok((count, source, _)) => (count, source),
-        Err(zoned) => iso::parse_datetime(text).map_err(|_| zoned)?,
-    };
-    restate_unix(count, source, unit)
+    let read = crate::DateTime64::from_text(text, crate::Timezone::UTC)?;
+    restate_unix(read.count(), read.unit(), unit)
 }
 
 fn not_an_instant(kind: &str) -> Error {

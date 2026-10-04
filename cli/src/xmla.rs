@@ -18,15 +18,15 @@ use std::time::Duration;
 
 use clap::{Args, Subcommand};
 use yggdryl::http::{ForwardedHeader, Server, ServerOptions};
-use yggdryl::xmla::{Catalog, Service, ServiceOptions};
-use yggdryl::{Result, Url};
+use yggdryl::xmla::{Service, ServiceOptions};
+use yggdryl::{Catalog, ObjectValue, Properties, Result, Url};
 
-use crate::{location, style};
+use crate::{location, style, timeout};
 
 /// What the provider was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  yggdryl xmla serve market=/data/market reference=/data/reference\n  yggdryl xmla serve /data/market --bind 0.0.0.0:8080 --path /xmla\n  yggdryl xmla serve market=s3://bucket/market --writable\n  yggdryl xmla serve market=C:\\data\\market --trace C:\\data\\trace\n  yggdryl xmla serve market=/data/market --public-url https://data.example.com/olap --trusted-proxy 10.0.0.0/8 --path-prefix /olap\n  yggdryl xmla serve market=/data/market --trusted-proxy 127.0.0.1 --forwarded-header X-Forwarded-For --forwarded-header X-Forwarded-Proto --forwarded-header X-Forwarded-Prefix\n\nA catalog is `name=location`, or a location alone, named after its last segment. A location is a folder path, or a URL a holder resolves.\nEvery record file the folder holds is a table; a folder inside it is a schema whose files are its tables; a folder laid out as an Iceberg table is a table wherever it sits (the `iceberg` feature reads it).\nThe first line printed is the endpoint on the socket, so a script that started the process knows where to connect; behind a proxy, a note names the public endpoint.\n--trace writes each exchange as it went over the wire, a request file and a response file per exchange, so what a client asked can be read and replayed."
+    after_help = "Examples:\n  yggdryl xmla serve market=/data/market reference=/data/reference\n  yggdryl xmla serve /data/market --bind 0.0.0.0:8080 --path /xmla\n  yggdryl xmla serve market=s3://bucket/market --writable\n  yggdryl xmla serve market=C:\\data\\market --trace C:\\data\\trace\n  yggdryl xmla serve market=/data/market --public-url https://data.example.com/olap --trusted-proxy 10.0.0.0/8 --path-prefix /olap\n  yggdryl xmla serve market=/data/market --trusted-proxy 127.0.0.1 --forwarded-header X-Forwarded-For --forwarded-header X-Forwarded-Proto --forwarded-header X-Forwarded-Prefix\n\nA catalog is `name=location`, or a location alone, named after its last segment. A location is a folder path, or a URL a holder resolves, read as a folder catalog.\nEvery record file the folder holds is a table; a folder inside it is a schema whose files are its tables; a folder laid out as an Iceberg table is a table wherever it sits (the `iceberg` feature reads it).\nThe first line printed is the endpoint on the socket, so a script that started the process knows where to connect; behind a proxy, a note names the public endpoint.\n--trace writes each exchange as it went over the wire, a request file and a response file per exchange, so what a client asked can be read and replayed."
 )]
 pub enum Command {
     /// Serve catalogs over HTTP, one request per POST, until stopped.
@@ -91,16 +91,17 @@ pub struct Serve {
     #[arg(long, value_name = "PREFIX")]
     path_prefix: Option<String>,
 
-    /// Seconds a connection may stay quiet, or one request head may take to
-    /// arrive whole, before it is closed, from 1 to 86400 (one day); keep it
-    /// above the proxy's own keep-alive timeout.
+    /// How long a connection may stay quiet, or one request head may take to
+    /// arrive whole, before it is closed: seconds, with a fraction and an
+    /// optional unit (`30`, `2.5`, `1500ms`), above zero and at most 86400
+    /// (one day); keep it above the proxy's own keep-alive timeout.
     #[arg(
         long,
-        default_value_t = 30,
+        default_value = "30",
         value_name = "SECONDS",
-        value_parser = clap::value_parser!(u64).range(1..=ServerOptions::MAX_TIMEOUT.as_secs())
+        value_parser = timeout::read_timeout
     )]
-    read_timeout: u64,
+    read_timeout: Duration,
 }
 
 /// Run one `xmla` verb.
@@ -125,7 +126,7 @@ impl Serve {
             .collect::<Result<Vec<_>>>()?;
         let mut options = ServerOptions::default()
             .with_max_body_size(self.max_body)
-            .with_read_timeout(Duration::from_secs(self.read_timeout))
+            .with_read_timeout(self.read_timeout)
             .with_trusted_proxies(&self.trusted_proxies)?;
         if !self.forwarded_headers.is_empty() {
             options = options.with_forwarded_headers(self.forwarded_headers.iter().copied());
@@ -177,8 +178,10 @@ impl Serve {
 }
 
 /// `name=location`, or a location alone named after its last segment
-/// ([`location::split`]), as a catalog over the folder the location names.
+/// ([`location::split`]), as the catalog [`Catalog::from_url`] builds over
+/// the location: a folder path or URL is a folder catalog.
 fn catalog(spelled: &str) -> Result<Catalog> {
-    let (name, holder) = location::named_folder(spelled)?;
-    Ok(Catalog::new(name, holder))
+    let (name, location) = location::split(spelled);
+    let url = Url::from_location(location)?;
+    Catalog::from_url(&url, &Properties::new().with_property("name", name))
 }

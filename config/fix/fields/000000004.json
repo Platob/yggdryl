@@ -783,6 +783,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "detailedcficode"
+      ],
       "FIX:tag": "461",
       "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
       "display": "CFICode"

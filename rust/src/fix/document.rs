@@ -47,6 +47,9 @@ pub(super) enum Refusal {
     /// A word key held something that is not a word: empty, or holding a
     /// quote, a backslash or a control character.
     NotAWord(&'static str),
+    /// A word key held a word that is not what the key holds: the key, and
+    /// what it expected.
+    Unexpected(&'static str, &'static str),
     /// A number key held something that is not a JSON number of decimal
     /// digits.
     NotANumber(&'static str),
@@ -70,11 +73,12 @@ pub(super) type Scan<T> = std::result::Result<T, Refusal>;
 impl Refusal {
     /// Spells this refusal against the document and byte it stopped on.
     ///
-    /// A refusal naming a key reads that key back out of the document rather
-    /// than carrying it through the scan, which is what keeps the reason
-    /// `Copy` and the read allocation-free until an error is actually built.
+    /// A refusal naming a key or a value reads it back out of the document
+    /// rather than carrying it through the scan, which is what keeps the
+    /// reason `Copy` and the read allocation-free until an error is
+    /// actually built.
     pub(super) fn into_error(self, target: &'static str, document: &str, position: usize) -> Error {
-        let key = || {
+        let quoted = || {
             document
                 .get(position..)
                 .and_then(|rest| rest.strip_prefix('"'))
@@ -87,13 +91,16 @@ impl Refusal {
             Self::NotAWord(what) => format_smolstr!(
                 "expected {what:?} to hold a word: non-empty, without a quote, a backslash or a control character"
             ),
+            Self::Unexpected(what, expected) => {
+                format_smolstr!("expected {what:?} to be {expected}, got {:?}", quoted())
+            }
             Self::NotANumber(what) => format_smolstr!("expected {what:?} to hold a decimal number"),
             Self::TooWide(what) => format_smolstr!("expected {what:?} to fit in 32 bits"),
             Self::KeyOrder => format_smolstr!(
                 "expected keys in their declared order, got {:?} out of order",
-                key()
+                quoted()
             ),
-            Self::UnknownKey => format_smolstr!("unknown key {:?}", key()),
+            Self::UnknownKey => format_smolstr!("unknown key {:?}", quoted()),
             Self::MissingKey(what) => format_smolstr!("expected every entry to state {what:?}"),
             Self::Short(what, least) => {
                 format_smolstr!("expected {what:?} to hold at least {least} elements")

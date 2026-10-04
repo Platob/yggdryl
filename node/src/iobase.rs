@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either6, Either7, Env, Object, Reference, Result,
+    BigInt, Buffer, ClassInstance, Either, Either3, Either6, Env, Object, Reference, Result,
     Uint8Array,
 };
 use napi_derive::napi;
@@ -20,6 +20,7 @@ use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::chunked_serie::JsChunkedSerie;
 use crate::field::JsField;
 use crate::holder::fs::{
     ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
@@ -27,12 +28,15 @@ use crate::holder::fs::{
     JsRandomAccessReader as HandlerRandomAccessReader, exact_bigint_i64, exact_bigint_u64,
 };
 use crate::iomedia::JsBatchReader;
+use crate::ioresult::JsIOResult;
 use crate::media::options::JsRecordOptions;
+use crate::serie::{JsSerie, JsSerieReader, serie_source};
 use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
 use crate::text::options::JsTextOptions;
 use crate::uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry, partition_entries};
+use crate::warehouse::{ObjectInput, object_from_input};
 use crate::{exact_u64, napi_error};
 
 /// Resolve the digest algorithm a handle read names, defaulting to XXH3-64.
@@ -66,7 +70,7 @@ fn exact_length(value: f64) -> Result<usize> {
 }
 
 /// Saturate a native count at JavaScript's exact-integer boundary.
-fn safe_js_count(value: u64) -> i64 {
+pub(crate) fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
 }
 
@@ -86,30 +90,40 @@ pub(crate) type LocationInput<'a> = Either6<
     String,
 >;
 
-/// What the constructor takes first: a location, or the file system one of
-/// its locations sits on.
-pub(crate) type LocationOrFileSystemInput<'a> = Either7<
-    ClassInstance<'a, JsIOBase>,
-    ClassInstance<'a, JsUrl>,
-    ClassInstance<'a, JsUri>,
-    ClassInstance<'a, JsUrn>,
-    ClassInstance<'a, JsArn>,
-    String,
-    FileSystemInput<'a>,
->;
+/// What a handle is built from: a location, or a warehouse object - a
+/// catalog, a namespace or a table - held as the handle it is.
+///
+/// The object classes sit after the locations, so a location is read before
+/// anything is asked of an object, and the pair is nested rather than widened
+/// into one enum so every door that takes a location alone keeps its shape.
+pub(crate) type HandleInput<'a> = Either<LocationInput<'a>, ObjectInput<'a>>;
+
+/// What the constructor takes first: a handle input, or the file system one
+/// of its locations sits on.
+///
+/// The file system handler is a plain object, which matches any object at
+/// all, so it is the last thing tried.
+pub(crate) type LocationOrFileSystemInput<'a> = Either<HandleInput<'a>, FileSystemInput<'a>>;
 
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
 
-/// Hold the resource `url` names, on the store its scheme selects.
+/// Hold the resource `location` names, on the store its scheme selects.
 ///
 /// The core's one dispatcher decides: an `http` or `https` URL is the request
 /// that reads and writes the resource, an object-store URL the native store,
-/// a `file:` URL whose fragment names an archive member that member, anything
-/// else local - and a scheme no backend speaks is refused by that scheme.
-/// Construction touches nothing on any of them.
-fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
-    Holder::from_url(url, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
+/// a `file:` URL whose fragment names an archive member that member, an
+/// `s3tables:` URL the catalog, the namespace or the table it names in its
+/// table bucket, anything else local - and a scheme no backend speaks is
+/// refused by that scheme. An identifier crosses as it was named and the
+/// core locates it, so an ARN that states more than its location - a
+/// table's, in a table bucket - is read whole. Construction touches nothing
+/// but a table bucket's table, sent here under no properties: a table's ARN
+/// one `GetTable`, a location one `GetTableMetadataLocation` after the one
+/// `ListTableBuckets` per page that finds the bucket, since nothing states
+/// its ARN or account.
+fn local_holder(location: impl AsRef<yggdryl::Uri>) -> Result<Holder> {
+    Holder::from_url(location, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
 }
 
 /// Hold `url` as a container, on the store its scheme selects.
@@ -176,27 +190,41 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     Some(Holder::FsFolder(folder))
 }
 
+/// Reduce one location argument to the handle it is, or the identifier it
+/// names - as it was named, never lowered to the location it locates: a door
+/// that reads more off an identifier than where it is - a table's ARN, in a
+/// table bucket - locates it itself.
+///
+/// Text is read as the core reads any identifier: a Windows drive, a UNC
+/// share and a scheme-less path are a `file:` identifier, and text naming a
+/// resource rather than a place is that name, so there is nothing to sniff
+/// here.
+fn identifier_target(
+    value: LocationInput<'_>,
+) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Uri>> {
+    Ok(match value {
+        Either6::A(handle) => Either::A(handle),
+        Either6::B(url) => Either::B(url.inner.clone().into_uri()),
+        Either6::C(uri) => Either::B(uri.inner.clone()),
+        Either6::D(urn) => Either::B(urn.inner.clone().into_uri()),
+        Either6::E(arn) => Either::B(arn.inner.clone().into_uri()),
+        Either6::F(value) => Either::B(yggdryl::Uri::from_str(&value).map_err(napi_error)?),
+    })
+}
+
 /// Reduce one location argument to the handle it is, or the URL it names.
 ///
 /// Every identifier answers through the core's `locator`, which is the one
-/// door a name and a location share, and text answers through
-/// `Url::from_location`, which is that same resolution for what a caller
-/// typed. This is where both happen, so each role below - leaf, container,
-/// constructor - decides only what to do with the location, never how to read
-/// one.
-fn location_target(
+/// door a name and a location share - and what `Url::from_location` is for
+/// text a caller typed. This is where it happens, so each role below - a
+/// container, an object's site, a registry's store - decides only what to do
+/// with the location, never how to read one.
+pub(crate) fn location_target(
     value: LocationInput<'_>,
 ) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Url>> {
-    Ok(match value {
-        Either6::A(handle) => Either::A(handle),
-        Either6::B(url) => Either::B(url.inner.clone()),
-        Either6::C(uri) => Either::B(uri.inner.locator().map_err(napi_error)?),
-        Either6::D(urn) => Either::B(urn.inner.locator().map_err(napi_error)?),
-        Either6::E(arn) => Either::B(arn.inner.locator().map_err(napi_error)?),
-        // The core already reads a Windows drive, a UNC share, and a
-        // scheme-less path as a `file:` URL, and resolves text that names a
-        // resource rather than a place, so there is nothing to sniff here.
-        Either6::F(value) => Either::B(yggdryl::Url::from_location(&value).map_err(napi_error)?),
+    Ok(match identifier_target(value)? {
+        Either::A(handle) => Either::A(handle),
+        Either::B(identifier) => Either::B(identifier.locator().map_err(napi_error)?),
     })
 }
 
@@ -204,11 +232,33 @@ fn location_target(
 ///
 /// What [`folder_from_input`] is for a container, this is for a leaf: a
 /// `.cfb` is a file, and a location held as a container reads as its leaves
-/// end to end, which is no one document.
+/// end to end, which is no one document. The identifier crosses as named,
+/// and the core's one dispatcher locates it.
 pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    match location_target(value)? {
+    match identifier_target(value)? {
         Either::A(handle) => handle.rebuilt().map(|held| held.inner),
-        Either::B(url) => local_holder(&url),
+        Either::B(identifier) => local_holder(&identifier),
+    }
+}
+
+/// Build a handle for what `value` names: a location in its role, or a
+/// warehouse object as the handle it is - a catalog or a namespace the
+/// container of its children, a table the handle its implementation holds.
+pub(crate) fn handle_from_input(value: HandleInput<'_>) -> Result<Holder> {
+    match value {
+        Either::A(location) => located_from_input(location),
+        Either::B(object) => Ok(object_from_input(object).into_holder()),
+    }
+}
+
+/// Where an object's storage is, as one location argument names it: a handle
+/// in hand binds - a second handle on its location, the file system it stands
+/// on kept, as [`JsIOBase::from_js`] builds one - and anything else names the
+/// identifier the object opens on first use.
+pub(crate) fn site_from_input(value: LocationInput<'_>) -> Result<Either<Holder, yggdryl::Uri>> {
+    match location_target(value)? {
+        Either::A(handle) => handle.rebuilt().map(|held| Either::A(held.inner)),
+        Either::B(url) => Ok(Either::B(yggdryl::Uri::from(url))),
     }
 }
 
@@ -221,20 +271,35 @@ pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
 /// a foreign Arrow file system becomes a container on that same file system,
 /// so a table reached this way never learns which backend it stands on.
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    let url = match location_target(value)? {
-        Either::A(handle) => {
-            if let Some(holder) = fs_folder_holder(&handle.inner) {
-                return Ok(holder);
-            }
-            handle
-                .inner
-                .url()
-                .cloned()
-                .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?
-        }
-        Either::B(url) => url,
-    };
-    folder_holder_for(&url)
+    match location_target(value)? {
+        Either::A(handle) => folder_of_handle(&handle),
+        Either::B(url) => folder_holder_for(&url),
+    }
+}
+
+/// The container a handle in hand addresses: the same file system for a
+/// foreign one, the store its location's scheme selects otherwise.
+fn folder_of_handle(handle: &JsIOBase) -> Result<Holder> {
+    if let Some(holder) = fs_folder_holder(&handle.inner) {
+        return Ok(holder);
+    }
+    let url = handle
+        .inner
+        .url()
+        .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?;
+    folder_holder_for(url)
+}
+
+/// What a table door's `root` names: a handle in hand, taken as the
+/// container it addresses, or the identifier of the table's location as it
+/// was named, which the core opens by itself.
+pub(crate) fn table_root_from_input(
+    value: LocationInput<'_>,
+) -> Result<Either<Holder, yggdryl::Uri>> {
+    Ok(match identifier_target(value)? {
+        Either::A(handle) => Either::A(folder_of_handle(&handle)?),
+        Either::B(identifier) => Either::B(identifier),
+    })
 }
 
 /// A stateful sequential filesystem input stream.
@@ -575,7 +640,8 @@ impl JsIOBase {
     /// `Arn` - naming a location, or another handle. A name is resolved the
     /// way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
     /// opens the path that name spells. Per the laziness contract, nothing is
-    /// opened, created, or read here.
+    /// opened, created, or read here - but a table an Amazon S3 Tables table
+    /// bucket keeps, which its service describes at construction.
     ///
     /// An Arrow file system handler as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
@@ -588,13 +654,8 @@ impl JsIOBase {
         path: Option<String>,
     ) -> Result<Self> {
         let value = match value {
-            Either7::A(handle) => Either6::A(handle),
-            Either7::B(url) => Either6::B(url),
-            Either7::C(uri) => Either6::C(uri),
-            Either7::D(urn) => Either6::D(urn),
-            Either7::E(arn) => Either6::E(arn),
-            Either7::F(value) => Either6::F(value),
-            Either7::G(filesystem) => {
+            Either::A(value) => value,
+            Either::B(filesystem) => {
                 let path = path.ok_or_else(|| {
                     napi_error(
                         "expected a path on the file system as the second argument, got none",
@@ -608,14 +669,16 @@ impl JsIOBase {
                 "expected an Arrow file system handler to resolve {path:?} against, got a location"
             )));
         }
-        located_from_input(value).map(Self::from_core)
+        handle_from_input(value).map(Self::from_core)
     }
 
     /// Infer a handle from a native handle, any identifier naming a location,
-    /// or location text.
+    /// location text, or a warehouse object - a catalog, a namespace or a
+    /// table - held as the handle it is, so `kind()` answers `catalog`,
+    /// `namespace` or `table` and `ls()` a container's children.
     #[napi(factory, js_name = "from")]
-    pub fn from_js(value: LocationInput<'_>) -> Result<Self> {
-        located_from_input(value).map(Self::from_core)
+    pub fn from_js(value: HandleInput<'_>) -> Result<Self> {
+        handle_from_input(value).map(Self::from_core)
     }
 
     /// Describe a resource on any Arrow file system a caller supplies.
@@ -1694,12 +1757,12 @@ impl JsIOBase {
     pub fn read_arrow_reader(&self, options: Option<&JsRecordOptions>) -> Result<JsBatchReader> {
         // A structured text document - JSON, JSON Lines, YAML, TOML, XML - has
         // no record options of its own: its rows are the record column the
-        // core's `read_arrow` parses it into, which an HTTP resource answers
+        // core's `read_serie` parses it into, which an HTTP resource answers
         // one page at a time.
         if options.is_none()
             && yggdryl::text::Format::from_media_type(self.inner.media_type()).is_ok()
         {
-            let records = self.inner.read_arrow(None).map_err(napi_error)?;
+            let records = self.inner.read_serie(None).map_err(napi_error)?;
             let root_name = records.field().name().to_owned();
             return Ok(JsBatchReader::from_core(
                 records.into_arrow_reader(),
@@ -1709,6 +1772,61 @@ impl JsIOBase {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         let reader = self.inner.read_arrow_reader(&options).map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, options.name()))
+    }
+
+    /// Read this resource's rows as a `SerieReader`, one record serie per
+    /// batch.
+    ///
+    /// Absent options are the handle's own: the encoding its media type
+    /// names, a container's the table beneath it, and a structured text
+    /// document - JSON, JSON Lines, YAML, TOML, XML - the one record column
+    /// its rows parse into, of which a declared field is the only option it
+    /// reads.
+    #[napi]
+    pub fn read_serie(&self, options: Option<&JsRecordOptions>) -> Result<JsSerieReader> {
+        let reader = self
+            .inner
+            .read_serie(options.map(|options| &options.inner))
+            .map_err(napi_error)?;
+        JsSerieReader::from_core(reader)
+    }
+
+    /// Write rows in any shape the crate holds them - a `Serie`, a
+    /// `ChunkedSerie`, a `SerieReader`, which is consumed - under one mode.
+    ///
+    /// The loader widens every other columnar value into a `SerieReader`
+    /// and names the intent; absent options are the handle's own, resolved
+    /// by the core, and options declaring no field take the rows' own root,
+    /// as every other record write does. A structured text document takes
+    /// overwrite alone, and of the options the declared field alone. Answers
+    /// the rows the write read, wrote and skipped.
+    #[napi(js_name = "_writeSerieNative", skip_typescript)]
+    pub fn write_serie_native(
+        &mut self,
+        value: Either3<
+            ClassInstance<'_, JsSerie>,
+            ClassInstance<'_, JsChunkedSerie>,
+            ClassInstance<'_, JsSerieReader>,
+        >,
+        mode: String,
+        options: Option<&JsRecordOptions>,
+    ) -> Result<JsIOResult> {
+        let mode = IOMode::from_str(&mode).map_err(napi_error)?;
+        let value = serie_source(value)?;
+        let options = match options {
+            Some(options) => {
+                let mut options = options.inner.clone();
+                if options.field().is_none() {
+                    options.set_field(value.root().map_err(napi_error)?);
+                }
+                Some(options)
+            }
+            None => None,
+        };
+        self.inner
+            .write_serie(value, mode, options.as_ref())
+            .map(JsIOResult::from_core)
+            .map_err(napi_error)
     }
 
     /// Decode this resource into typed text lines.
@@ -1745,19 +1863,21 @@ impl JsIOBase {
     ///
     /// This is the native-reader publication hook. The incoming stream is cast
     /// to `options.field` once in the core, and a match key is refused because
-    /// overwrite never infers merge intent.
+    /// overwrite never infers merge intent. Answers the rows the write read,
+    /// wrote and skipped.
     #[napi]
     pub fn overwrite_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Overwrite)
             .map_err(napi_error)?;
         self.inner
             .overwrite_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1765,18 +1885,20 @@ impl JsIOBase {
     ///
     /// Both sides stream: what is stored is chained ahead of what arrives, and
     /// incoming batches are cast to the target shape as they are pulled.
+    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn append_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Append)
             .map_err(napi_error)?;
         self.inner
             .append_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1785,18 +1907,20 @@ impl JsIOBase {
     /// A non-empty match key is required. The core keeps the incoming reader
     /// streaming, applies `options.field` once, and publishes through the
     /// implementor's overwrite hook without casting the shaped rows twice.
+    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn merge_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Merge)
             .map_err(napi_error)?;
         self.inner
             .merge_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1811,12 +1935,13 @@ impl JsIOBase {
         batches: &mut JsBatchReader,
         mode: String,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options.require_write_mode(mode).map_err(napi_error)?;
         self.inner
             .write_arrow_reader(batches.take()?, mode, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1846,10 +1971,18 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
-    /// Publish the final partial cadence and close the private session.
+    /// Publish the final partial cadence and close the private session,
+    /// answering the rows every pushed chunk carried and the rows written.
     #[napi(js_name = "_finishArrowWriteSessionNative", skip_typescript)]
-    pub fn finish_arrow_write_session(&mut self, session: &mut JsArrowWriteSession) -> Result<()> {
-        session.inner.finish(&mut self.inner).map_err(napi_error)
+    pub fn finish_arrow_write_session(
+        &mut self,
+        session: &mut JsArrowWriteSession,
+    ) -> Result<JsIOResult> {
+        session
+            .inner
+            .finish(&mut self.inner)
+            .map(JsIOResult::from_core)
+            .map_err(napi_error)
     }
 
     /// Discard the private session's unpublished partial cadence.

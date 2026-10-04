@@ -13,7 +13,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
-| Rust only | the enum itself |
+| Rust only | the enum itself; [`is_struct` and `into_struct_type`](#as-a-struct) |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
 | Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([String](text/string.md#serialized-shape), [Bytes](text/bytes.md#serialized-shape)) |
 
@@ -180,12 +180,12 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
-| `isin` | - | `isin` | ISO 6166, twelve bytes closed by a check digit |
-| `cusip` | - | `cusip` | CUSIP, nine bytes closed by a check digit |
-| `sedol` | - | `sedol` | SEDOL, seven bytes closed by a check digit |
+| `isin` | - | `isin` | ISO 6166, twelve bytes of its shape, ranked by its check digit and prefix |
+| `cusip` | - | `cusip` | CUSIP, nine bytes of its shape, ranked by its check digit |
+| `sedol` | - | `sedol` | SEDOL, seven bytes of its shape, ranked by its check digit |
 | `bbg` | - | `bbg` | a Bloomberg identifier, at most 32 bytes |
 | `ric` | - | `ric` | a Refinitiv Identification Code, one token of at most 32 bytes |
-| `figi` | - | `figi` | ANSI X9.145, twelve bytes closed by a check digit |
+| `figi` | - | `figi` | ANSI X9.145, twelve bytes of its shape, ranked by its check digit |
 | `forex` | - | `forex` | an ISO 4217 currency pair, `CCY/CCY`, seven bytes |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
@@ -293,6 +293,54 @@ The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifie
     ```
 
 Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
+
+## As a struct
+
+`is_struct` reports the Struct shape alone: a serie of records, a map and a union are not one. `into_struct_type` answers the datatype a record is under - a struct as it is, a clone sharing its children with nothing checked, and any other datatype as the one-child `struct<value: self>`, the child named `media::DEFAULT_VALUE_NAME` (`value`) and nullable so that a null value wraps too. The wrap adds one level, so it is refused naming `$` where the result would nest past the recursion limit of 64 (`DataType::PARSE_RECURSION_LIMIT`) or take a schema walk past its 1,000,000-node budget - which a subtree shared through one `Arc` per level reaches long before the depth limit. A [field](field.md#as-a-struct) and a [value](scalar.md#as-a-struct) wrap the same way.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::media::DEFAULT_VALUE_NAME;
+    use yggdryl::{DataType, StructType};
+
+    // A leaf is the nullable `value` child of a one-child struct.
+    let wrapped = DataType::Int64.into_struct_type()?;
+    assert!(wrapped.is_struct());
+    assert_eq!(
+        wrapped,
+        DataType::from(StructType::from_fields([DataType::Int64.nullable_field(DEFAULT_VALUE_NAME)])?),
+    );
+    assert_eq!(DEFAULT_VALUE_NAME, "value");
+
+    // A struct is answered as it is.
+    assert_eq!(wrapped.into_struct_type()?, wrapped);
+
+    // The shape alone: a serie of records is no struct.
+    assert!(!DataType::Int64.is_struct());
+    assert!(!DataType::serie(wrapped.clone().required_field("item")).is_struct());
+
+    // The wrap adds a level, so a datatype one short of the limit is refused at `$`.
+    let mut deep = DataType::Int64;
+    for _ in 0..62 {
+        deep = DataType::from(StructType::from_fields([deep.required_field("x")])?);
+    }
+    let deepest = DataType::serie(deep.required_field("item"));
+    let refusal = deepest.into_struct_type().unwrap_err().to_string();
+    assert!(refusal.contains("$: schema nesting exceeds the hard limit of 64"), "{refusal}");
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches DataType::is_struct or DataType::into_struct_type.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches DataType::is_struct or DataType::into_struct_type.
+    ```
 
 ## Arrow projection
 
@@ -562,7 +610,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
 | call | form |
 | --- | --- |
-| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/index.md#json), `indent=` in Python |
+| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/json.md#write), `indent=` in Python |
 | `into_json_bytes`, `toJSONBytes` | the same JSON, encoded |
 | `from_json` | bytes, text, or a parsed object |
 
@@ -711,7 +759,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
-[Iceberg](../media/index.md#iceberg) is a closed primitive vocabulary, not an engine.
+[Iceberg](../media/iceberg.md) is a closed primitive vocabulary, not an engine.
 
 ## Building the enum directly
 
@@ -740,7 +788,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
 - `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a `fixed_size_serie` default over that byte limit fails the same way.
-- nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
+- nesting past 64 -> error, in parsing, default construction, and compatibility walks alike; `into_struct_type` counts the level its wrap adds.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
 - `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
@@ -748,7 +796,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `TZTimeOnly` -> the same instant under the date it does not state: the epoch day supplies one, so `07:39+05:30` is `1970-01-01T02:09:00Z` and `00:30+05:30` is the evening of 1969-12-31. The date is not data and a reading is not confined to one day, so a day filter is the wrong tool on the column; two readings still subtract.
 - A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
-- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed. The converse holds too: a wire spelling is read by this crate's [shared ISO reader](../media/index.md#json), not a second parser of FIX's own, so `20240102-10:15:30,000` reads the instant its dotted twin reads where it was null before - FIX gains no spelling, the reader simply has one more. A bare `20240102` goes the same way now that a date is a reading of a datetime: a `LocalMktDate` is that day's midnight straight from the wire text, and the FIX layer states only what FIX leaves out, which for a `UTCDateOnly` column is the `Z` its name already says.
+- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed. The converse holds too: a wire spelling is read by this crate's [shared ISO reader](../media/json.md), not a second parser of FIX's own, so `20240102-10:15:30,000` reads the instant its dotted twin reads where it was null before - FIX gains no spelling, the reader simply has one more. A bare `20240102` goes the same way now that a date is a reading of a datetime: a `LocalMktDate` is that day's midnight straight from the wire text, and the FIX layer states only what FIX leaves out, which for a `UTCDateOnly` column is the `Z` its name already says.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - A pyarrow dictionary whose *values* are an extension type -> its storage: Arrow carries no
   metadata on a dictionary's values, so the identity is lost there; the core writes the extension
@@ -770,10 +818,11 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings vocabulary::logical vocabulary::rows
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- budget compatibility datatype::arrow datatype_id datatype_kind::names default::datatypes default::scalars parser::aliases parser::grammar serde::datatypes string::listings structure::struct_pair vocabulary::logical vocabulary::rows
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'
+    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/struct/(is_struct|into_struct_type)'
     ```
 
 === "Python"

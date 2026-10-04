@@ -16,7 +16,7 @@ use super::credentials::Credentials;
 use super::sigv4::{self, Signer};
 use crate::auth::{instant, iso8601, write_private};
 use crate::xml::scanner::{parse_document, parse_root};
-use crate::{Error, Result};
+use crate::{Error, Result, Url};
 
 /// The STS API version every request names.
 const VERSION: &str = "2011-06-15";
@@ -28,8 +28,6 @@ const MAX_DURATION: Duration = Duration::from_secs(12 * 3600);
 /// What a generated session name starts with; the AWS tools spell theirs
 /// `botocore-session-{seconds}`, and a name this crate generated says so.
 const SESSION_NAME_PREFIX: &str = "yggdryl-session";
-/// The largest STS answer read into memory; one credential set is a kilobyte.
-const MAX_ANSWER: u64 = 256 * 1024;
 /// A cached session lapsing within this is not worth reading back.
 const CACHE_WINDOW: Duration = Duration::from_secs(15 * 60);
 /// The bound on one exchange.
@@ -37,7 +35,6 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 /// Attempts at one exchange before its failure is the answer: a throttle or
 /// a server-side failure is tried again, after a short pause.
 const ATTEMPTS: u32 = 3;
-const RETRY_PAUSE: Duration = Duration::from_millis(200);
 
 /// Where the keys that sign a role exchange come from, when a profile names
 /// a source rather than another profile.
@@ -332,7 +329,7 @@ fn json_string(text: &str) -> String {
 // would only rename them.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn assume(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     base: &Credentials,
     role: &AssumedRole,
     session_name: &str,
@@ -358,7 +355,7 @@ pub(crate) fn assume(
         query.push(("SerialNumber".to_owned(), serial.clone()));
         query.push(("TokenCode".to_owned(), code.to_owned()));
     }
-    let (scheme, host) = split_endpoint(endpoint)?;
+    let (scheme, host, path) = split_endpoint(endpoint)?;
     let signer = Signer::for_service(
         "sts",
         base.access_key_id(),
@@ -370,15 +367,15 @@ pub(crate) fn assume(
     let signed = signer.sign(
         "GET",
         &host,
-        "/",
+        &path,
         &query,
         &[],
         sigv4::EMPTY_PAYLOAD_SHA256,
         now,
     );
     exchange(
-        agent,
-        &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
+        http,
+        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
         &signed,
         "AssumeRole",
         endpoint,
@@ -394,7 +391,7 @@ pub(crate) fn assume(
 ///
 /// As [`assume`].
 pub(crate) fn assume_with_web_identity(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     role: &AssumedRole,
     token: &str,
     session_name: &str,
@@ -412,10 +409,10 @@ pub(crate) fn assume_with_web_identity(
             role.duration().as_secs().to_string(),
         ),
     ];
-    let (scheme, host) = split_endpoint(endpoint)?;
+    let (scheme, host, path) = split_endpoint(endpoint)?;
     exchange(
-        agent,
-        &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
+        http,
+        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
         &[],
         "AssumeRoleWithWebIdentity",
         endpoint,
@@ -425,8 +422,12 @@ pub(crate) fn assume_with_web_identity(
 }
 
 /// Send one exchange and read the credential set it answers.
+///
+/// A throttle STS states in its body - a `400` naming `Throttling` - or an
+/// identity provider it could not reach is tried again under the HTTP
+/// client's rules, beside the statuses it retries of its own accord.
 fn exchange(
-    agent: &ureq::Agent,
+    http: &crate::http::Session,
     url: &str,
     headers: &[(String, String)],
     action: &'static str,
@@ -434,36 +435,28 @@ fn exchange(
     role_arn: &str,
     now: SystemTime,
 ) -> Result<Credentials> {
-    let mut attempt = 0;
-    let (status, body) = loop {
-        attempt += 1;
-        let mut request = agent
-            .get(url)
-            .config()
-            .timeout_global(Some(TIMEOUT))
-            .build()
-            .header("Accept", "application/xml");
-        for (name, value) in headers {
-            request = request.header(name, value);
-        }
-        let answered = request.call().and_then(|mut answer| {
-            let status = answer.status().as_u16();
-            answer
-                .body_mut()
-                .with_config()
-                .limit(MAX_ANSWER)
-                .read_to_vec()
-                .map(|body| (status, body))
+    let mut request = http
+        .get(url)?
+        .with_header("accept", "application/xml")?
+        .with_timeout(TIMEOUT)
+        .with_max_attempts(ATTEMPTS)
+        .with_retry_on(|_, _, body| {
+            parse_error(body).is_some_and(|(code, _)| {
+                matches!(
+                    code.as_str(),
+                    "Throttling"
+                        | "ThrottlingException"
+                        | "RequestLimitExceeded"
+                        | "IDPCommunicationError"
+                )
+            })
         });
-        match answered {
-            Ok((status, _)) if (status >= 500 || status == 429) && attempt < ATTEMPTS => {
-                std::thread::sleep(RETRY_PAUSE);
-            }
-            Ok(answered) => break answered,
-            Err(_) if attempt < ATTEMPTS => std::thread::sleep(RETRY_PAUSE),
-            Err(error) => return Err(transport_failure(endpoint, &error)),
-        }
-    };
+    for (name, value) in headers {
+        request = request.with_header(name, value)?;
+    }
+    let answer =
+        super::Answer::of(&request).map_err(|error| transport_failure(endpoint, &error))?;
+    let (status, body) = (answer.status, answer.body);
     if status >= 300 {
         let (code, message) =
             parse_error(&body).unwrap_or_else(|| (format!("{action}Failed"), String::new()));
@@ -502,23 +495,17 @@ fn parse(body: &[u8], action: &str, now: SystemTime) -> Option<Credentials> {
     if let Some(account) = result
         .child("AssumedRoleUser")
         .and_then(|user| user.child_text("Arn"))
-        .and_then(account_of_arn)
+        .and_then(|arn| crate::Arn::from_str(arn).ok())
+        .and_then(|arn| arn.account().map(str::to_owned))
     {
         credentials = credentials.with_account_id(account);
     }
     Some(credentials)
 }
 
-/// The account field of an ARN, `arn:partition:service:region:account:...`.
-fn account_of_arn(arn: &str) -> Option<String> {
-    arn.split(':')
-        .nth(4)
-        .filter(|account| !account.is_empty())
-        .map(str::to_owned)
-}
-
-/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`.
-fn parse_error(body: &[u8]) -> Option<(String, String)> {
+/// Read `<ErrorResponse><Error><Code>..</Code><Message>..</Message>`, or
+/// the bare `<Error>` S3 answers with.
+pub(crate) fn parse_error(body: &[u8]) -> Option<(String, String)> {
     let root = parse_document(body).ok()?;
     let error = match root.name() {
         "ErrorResponse" => root.child("Error")?,
@@ -531,17 +518,44 @@ fn parse_error(body: &[u8]) -> Option<(String, String)> {
     ))
 }
 
-/// The scheme and the host, with its port, of an endpoint URL.
-fn split_endpoint(endpoint: &str) -> Result<(String, String)> {
-    let (scheme, rest) = endpoint.split_once("://").unwrap_or(("https", endpoint));
-    let host = rest.split('/').next().unwrap_or(rest);
-    if host.is_empty() {
-        return Err(Error::Io(std::io::Error::new(
+/// The scheme, the host with its port, and the path of an endpoint URL.
+///
+/// The endpoint is read once, as the URL it is, so what is signed and what
+/// is dialed are one reading: a bare host or `host:port` is reached over
+/// `https`, `http` and `https` are the only schemes an STS endpoint has, and
+/// user information and a query are no part of where it is. Its path - a
+/// gateway mounting STS below one - is where every exchange is sent and what
+/// it signs, as botocore sends it: `/` where the endpoint has none, a
+/// trailing `/` dropped as the session drops it.
+fn split_endpoint(endpoint: &str) -> Result<(String, String, String)> {
+    let refuse = |reason: &str| {
+        Error::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("expected an STS endpoint naming a host, got {endpoint}"),
-        )));
+            format!("expected an STS endpoint naming a host, got {endpoint}: {reason}"),
+        ))
+    };
+    let named = if endpoint.contains("://") {
+        endpoint.to_owned()
+    } else {
+        format!("https://{endpoint}")
+    };
+    let url = Url::from_str(&named).map_err(|error| refuse(&error.to_string()))?;
+    if !url.scheme().is_http() {
+        return Err(refuse(&format!("{} is not http or https", url.scheme())));
     }
-    Ok((scheme.to_owned(), host.to_owned()))
+    let host = url.authority().host_port();
+    if host.is_empty() {
+        return Err(refuse("no host"));
+    }
+    let path = match url.path().as_str().trim_end_matches('/') {
+        "" => "/",
+        path => path,
+    };
+    Ok((
+        url.scheme().as_str().to_owned(),
+        host.to_owned(),
+        path.to_owned(),
+    ))
 }
 
 /// Report a failure to reach STS at all.
@@ -638,5 +652,16 @@ pub mod internals {
     /// The session name one exchange at `now` uses.
     pub fn session_name_at(role: &AssumedRole, now: SystemTime) -> String {
         role.session_name_at(now)
+    }
+
+    /// The scheme, the host with its port, and the path an endpoint is
+    /// signed and dialed as.
+    ///
+    /// # Errors
+    ///
+    /// A refusal naming the endpoint when it is no URL naming a host over
+    /// `http` or `https`.
+    pub fn split_endpoint(endpoint: &str) -> crate::Result<(String, String, String)> {
+        super::split_endpoint(endpoint)
     }
 }

@@ -13,14 +13,16 @@ use smol_str::{SmolStr, format_smolstr};
 use super::build::stated;
 use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
+use super::memo::{PartySlot, PartyWord};
 use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{Element, Event, FxRates, Market, Metadata, Operation};
+use crate::isin_registry::IsinTable;
 use crate::xxhash;
 use crate::{
-    Ccy, Cfi, Decimal, Forex, IdSource, IdType, Identifier, Identifiers, MarketDataKind, Mic, Side,
-    State, StructType, TimeInForce, Unit, Uuid,
+    Ccy, Cfi, Country, Decimal, Forex, IdKey, IdSource, IdType, Identifier, Identifiers,
+    MarketDataKind, Mic, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
@@ -29,19 +31,38 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ser
 /// restated as.
 const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 
-/// The row stated this normalized market code, rather than a raw FIX pair
-/// from which the stated identifiers could replace it.
-const ROW_STATED_ISIN: u64 = 1 << 2;
-const ROW_STATED_BLOOMBERG: u64 = 1 << 5;
-const ROW_STATED_FIGI: u64 = 1 << 7;
 /// The row or a caller stated when the message executed, so a settle of the
 /// clock alone leaves it.
 const ROW_STATED_EXECUTION: u64 = 1 << 8;
 const ROW_STATED_RECORDING: u64 = 1 << 9;
-/// The row stated the currency pair, so detection off `Symbol(55)` leaves
-/// it: set by a row's `forexcode` cell, a `record` of it and a stated
-/// `FOREX` identifier, never by detection.
-const ROW_STATED_FOREX: u64 = 1 << 11;
+
+/// The crated views of the security identifiers - `isincode`,
+/// `bloombergcode`, `figicode`, `forexcode` - each column's tag beside the
+/// type it views, in the order a row's are resolved
+/// ([`FixMsg::resolve_views`]).
+const SECURITY_VIEWS: [((i32, &str), IdType); 4] = [
+    (super::ISINCODE_TAG_NAME, IdType::Isin),
+    (super::BLOOMBERGCODE_TAG_NAME, IdType::Bloomberg),
+    (super::FIGICODE_TAG_NAME, IdType::Figi),
+    (super::FOREXCODE_TAG_NAME, IdType::Forex),
+];
+
+/// Where the crated view under `tag` stands in [`SECURITY_VIEWS`], where
+/// `tag` is one.
+fn viewed_at(tag: i32) -> Option<usize> {
+    SECURITY_VIEWS
+        .iter()
+        .position(|((held, _), _)| *held == tag)
+}
+
+/// The views of the security identifiers a row stated, as it stated them,
+/// one per [`SECURITY_VIEWS`] entry: resolved once the message they were
+/// read into is whole ([`FixMsg::resolve_views`]).
+pub(super) type Viewed = [Option<Scalar>; SECURITY_VIEWS.len()];
+
+/// `CountryOfIssue(470)`, the one field a message states its instrument's
+/// country of issue in.
+const COUNTRYOFISSUE_TAG: i32 = 470;
 
 /// The market facts a message states off its FIX fields, one bit each: what
 /// a message fills as it is built, what a write reaches ([`facts_of_tag`])
@@ -91,9 +112,9 @@ mod fact {
     pub(super) const CLEARED: u32 =
         ALL & !(SECURITYIDS | STATE | KIND | EXPIRY | EXECUTION | IDENTIFIERS | PARTYIDS);
     /// What the message's status reaches: the state, the category read
-    /// against it, the execution it dates, and what the category decides -
-    /// the type and a sided quote's FX parts.
-    pub(super) const STATUS: u32 = STATE | KIND | EXECUTION | MDTYPE | LASTPX | ORDERED;
+    /// against it, the execution it dates, and what they decide - the type
+    /// and what the order's quantities imply of one another.
+    pub(super) const STATUS: u32 = STATE | KIND | EXECUTION | MDTYPE | ORDERED;
     /// What a field no tag maps reaches: the facts a bridge's own spelling
     /// can state - an identifier source, a detailed classification, a quote
     /// side's currency, an event timestamp - and what the instrument key an
@@ -114,16 +135,16 @@ fn facts_of_tag(registry: &FixRegistry, tag: i32) -> u32 {
         1138 | 111 => fact::DISPLAYQTY | fact::HIDDENQTY,
         84 => fact::ORDERED,
         996 => fact::UNIT,
-        54 => fact::SIDE | fact::BIDASK | fact::PRICE | fact::QUANTITY | fact::LASTPX,
+        54 => fact::SIDE | fact::BIDASK | fact::PRICE | fact::QUANTITY,
         59 => fact::TIF,
         55 => fact::TICKER,
         326 | 340 | 965 => fact::TRADABLE,
-        126 | 62 | 432 | 541 => fact::EXPIRY,
+        126 | 62 | 432 => fact::EXPIRY,
         140 => fact::PREVPX,
         BIDPX_TAG | OFFERPX_TAG | BIDSIZE_TAG | OFFERSIZE_TAG => {
             fact::BIDASK | fact::PRICE | fact::QUANTITY
         }
-        31 | 194 | 195 | 188 | 189 | 190 | 191 => fact::LASTPX | fact::FILLS,
+        31 | 194 | 195 => fact::LASTPX | fact::FILLS,
         32 | 6 | 14 | 151 => fact::ORDERED,
         15 | 120 => fact::CURRENCY | fact::BIDASK,
         30 | 100 | 207 => fact::MIC,
@@ -188,11 +209,10 @@ fn fact_of_crate_tag(tag: i32) -> u32 {
     }
 }
 
-/// One field's text, trimmed; `None` where it is null or empty.
+/// One field's text, trimmed, an integer as its digits ([`scalar_text`]);
+/// `None` where it is null, empty or of another shape.
 fn stated_text(value: Option<Scalar>) -> Option<SmolStr> {
-    value
-        .and_then(|held| held.as_str().map(str::trim).map(SmolStr::new))
-        .filter(|held| !held.is_empty())
+    value.as_ref().and_then(scalar_text)
 }
 
 /// FIX's own `StrikePrice(202)`: what [`FixMsg::strikeprice`] reads.
@@ -272,9 +292,11 @@ fn child_by_tag(
 
 /// The code sets a party is typed and sourced by: `PartyRole(452)`'s,
 /// `PartyIDSource(447)`'s and `AcctIDSource(660)`'s, each where the
-/// dictionary states one.
+/// dictionary states one, beside the memo that remembers what each text
+/// read as in them.
 #[derive(Clone, Copy)]
 pub(super) struct PartyCodes<'registry> {
+    memo: &'registry super::memo::Memo,
     roles: Option<super::FixCodeSet<'registry>>,
     sources: Option<super::FixCodeSet<'registry>>,
     accounts: Option<super::FixCodeSet<'registry>>,
@@ -289,6 +311,7 @@ impl<'registry> PartyCodes<'registry> {
                 .and_then(|field| registry.codeset_of(field))
         };
         Self {
+            memo: registry.memo(),
             roles: of(PARTY_ROLE),
             sources: of(PARTY_ID_SOURCE),
             accounts: of(ACCOUNT_SOURCE),
@@ -305,25 +328,66 @@ impl<'registry> PartyCodes<'registry> {
         role: Option<&str>,
         source: Option<&str>,
     ) -> Option<Identifier> {
-        let kind = match code_word(self.roles, role, "partyrole") {
-            Some(word) => word.parse().ok()?,
+        let kind = match role {
+            Some(role) => self.role(role)?,
             None => IdType::Party,
         };
-        let src = match code_word(self.sources, source, "partyidsource") {
-            Some(word) => word.parse().ok()?,
-            None => IdSource::Base,
-        };
-        Identifier::new(src, kind, value).ok()
+        let src = self.source(PartySlot::PartySource, self.sources, source)?;
+        Identifier::new(IdKey::new(src, kind), value).ok()
     }
 
     /// The party `Account(1)` states: an [`IdType::Account`] sourced by its
     /// `AcctIDSource(660)`'s name, read through [`code_word`], where stated.
     fn account(&self, value: &str, source: Option<&str>) -> Option<Identifier> {
-        let src = match code_word(self.accounts, source, "acctidsource") {
-            Some(word) => word.parse().ok()?,
-            None => IdSource::Base,
+        let src = self.source(PartySlot::AccountSource, self.accounts, source)?;
+        Identifier::new(IdKey::new(src, IdType::Account), value).ok()
+    }
+
+    /// The type a party's role `text` reads as through [`code_word`],
+    /// [`IdType::Party`] where it reads as no word; `None` where the word
+    /// is no type. Read once per distinct text and remembered.
+    fn role(&self, text: &str) -> Option<IdType> {
+        let text = text.trim();
+        let document = self.roles.map(super::FixCodeSet::document);
+        let read = || {
+            PartyWord::Role(
+                match code_word(self.roles, Some(text), PartySlot::Role.prefix()) {
+                    Some(word) => word.parse().ok(),
+                    None => Some(IdType::Party),
+                },
+            )
         };
-        Identifier::new(src, IdType::Account, value).ok()
+        match self.memo.party_word(PartySlot::Role, document, text, read) {
+            PartyWord::Role(kind) => kind,
+            PartyWord::Source(_) => None,
+        }
+    }
+
+    /// The source a party's or an account's source `text` reads as in
+    /// `slot` through [`code_word`] over `codes`, [`IdSource::Base`] where
+    /// none is stated or it reads as no word; `None` where the word is no
+    /// source. Read once per distinct text and remembered.
+    fn source(
+        &self,
+        slot: PartySlot,
+        codes: Option<super::FixCodeSet<'registry>>,
+        text: Option<&str>,
+    ) -> Option<IdSource> {
+        let Some(text) = text else {
+            return Some(IdSource::Base);
+        };
+        let text = text.trim();
+        let read = || {
+            PartyWord::Source(match code_word(codes, Some(text), slot.prefix()) {
+                Some(word) => word.parse().ok(),
+                None => Some(IdSource::Base),
+            })
+        };
+        let document = codes.map(super::FixCodeSet::document);
+        match self.memo.party_word(slot, document, text, read) {
+            PartyWord::Source(src) => src,
+            PartyWord::Role(_) => None,
+        }
     }
 }
 
@@ -361,7 +425,9 @@ where
     }
     // Measured before it is spelled: a spelling no word is costs nothing.
     crate::identifier::folded_len(code)
-        .is_some_and(|len| len > 0 && prefix.len() + len <= crate::identifier::IDENTIFIER_KEY_WIDTH)
+        .is_some_and(|len| {
+            len > 0 && prefix.len() + len <= crate::identifier::IDENTIFIER_WORD_WIDTH
+        })
         .then(|| Cow::Owned(format!("{prefix}{code}")))
 }
 
@@ -470,8 +536,11 @@ fn regulatory_kind(kind: Option<&str>) -> crate::Result<IdType> {
 }
 
 /// States `value` as an identifier of `kind` from `src` in `ids`: the first
-/// value one is stated with fills it, and a later different one - or one no
-/// identifier holds - states nothing and is kept as an anomaly of `field`.
+/// value one is stated with fills it, a later one that outranks it replaces
+/// it ([`Identifiers::insert`]) - recorded as an anomaly of `field` naming
+/// what it replaced - and a later different one of no higher rank, or one
+/// no identifier holds, states nothing and is kept as an anomaly of
+/// `field`.
 fn admit_identifier(
     ids: &mut Identifiers,
     src: IdSource,
@@ -483,7 +552,7 @@ fn admit_identifier(
     if crate::code::is_null_like(value) {
         return;
     }
-    let id = match kind.and_then(|kind| Identifier::new(src, kind, value)) {
+    let id = match kind.and_then(|kind| Identifier::new(IdKey::new(src, kind), value)) {
         Ok(id) => id,
         Err(error) => {
             dropped.push(super::FixAnomaly::new(
@@ -493,15 +562,27 @@ fn admit_identifier(
             return;
         }
     };
-    match ids.get_from(id.src(), id.kind()) {
-        Some(held) if held != id.value() => dropped.push(super::FixAnomaly::new(
-            field,
-            format!(
-                "states {id} where {}:{}={held} is already stated",
-                id.src(),
-                id.kind()
-            ),
-        )),
+    admit_stated(ids, field, id, dropped);
+}
+
+/// Lands `id` in `ids` as [`admit_identifier`] states: filling, replacing
+/// what ranks below it, and dropping what a held value of no lower rank
+/// refuses - each move past a plain fill recorded on `field`.
+fn admit_stated(
+    ids: &mut Identifiers,
+    field: &str,
+    id: Identifier,
+    anomalies: &mut Vec<super::FixAnomaly>,
+) {
+    match ids.get_from(id.key()) {
+        Some(held) if held != id.value() => {
+            let held = SmolStr::new(held);
+            if ids.insert(id.clone()) {
+                anomalies.push(replaced_identifier(field, &id, &held));
+            } else {
+                anomalies.push(dropped_identifier(field, &id, &held));
+            }
+        }
         Some(_) => {}
         None => {
             ids.insert(id);
@@ -531,18 +612,10 @@ const OFFERSIZE_TAG: i32 = 135;
 
 /// The row-owned facts whose non-null value must survive the fields.
 fn row_stated_bit(tag: i32) -> Option<u64> {
-    if tag == super::ISINCODE_TAG_NAME.0 {
-        Some(ROW_STATED_ISIN)
-    } else if tag == super::BLOOMBERGCODE_TAG_NAME.0 {
-        Some(ROW_STATED_BLOOMBERG)
-    } else if tag == super::FIGICODE_TAG_NAME.0 {
-        Some(ROW_STATED_FIGI)
-    } else if tag == super::EXECUNIX_TAG_NAME.0 {
+    if tag == super::EXECUNIX_TAG_NAME.0 {
         Some(ROW_STATED_EXECUTION)
     } else if tag == super::RECDUNIX_TAG_NAME.0 {
         Some(ROW_STATED_RECORDING)
-    } else if tag == super::FOREXCODE_TAG_NAME.0 {
-        Some(ROW_STATED_FOREX)
     } else {
         None
     }
@@ -625,8 +698,9 @@ fn msgcat_of(value: &Scalar) -> Option<MarketDataKind> {
 /// linked registry, never through a private copy of its rules. An unknown
 /// tag is retained rather than dropped: it is looked for under its rendered
 /// decimal name, which is where a transcriber keeps a tag no dictionary
-/// explains. A repeating-group counter remains an int32 value reached by its
-/// tag; the separate collection is reached by name, such as `Parties`.
+/// explains. A repeating group is its list alone, reached by name, such as
+/// `Parties`: its length is its count, so its NumInGroup tag - `453` - is no
+/// child of its own and reaches nothing.
 ///
 /// The message's identity is settled from what it states: the code is the
 /// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
@@ -760,20 +834,26 @@ pub struct FixMsg {
     /// national code an ISIN carries, what a lifecycle's registry learned. The
     /// derived overlay - never on the wire, never in the arrival record - kept
     /// across settles and filling only a type the stated set leaves absent,
-    /// each under the [`DERIVED`] source.
-    derived: Identifiers,
+    /// each a type and its code held under [`IdSource::Derived`]. A type and a
+    /// code rather than a map, so re-applying it never re-applies the base
+    /// key a derivation fills.
+    derived: SmallVec<[(IdType, SmolStr); 2]>,
     /// Which cells [FX detection](super::forex) wrote, one bit per cell:
     /// a later detection may rewrite or take back those and no other. A
     /// row read back, and a write of the cell, make it the row's word.
     detected_fx: u8,
     /// What the message states that its reading could not take as it
-    /// stands: the parse's refusals first - a value that would not type, a
-    /// counter disagreeing with its group - then what a settle dropped,
+    /// stands: the parse's refusals first - a value that would not type, an
+    /// alias stating another value than the field it lost to - then what a
+    /// settle dropped,
     /// rebuilt by every settle behind the parse's and folded as a union when
     /// messages merge. Never a column, never a digest input.
     anomalies: Vec<super::FixAnomaly>,
     /// How many of `anomalies` the parse recorded, which every settle keeps.
     arrival_anomalies: usize,
+    /// How many of `anomalies`, last, the identifier maps' latest rebuild
+    /// dropped: the next rebuild replaces them.
+    idmap_anomalies: usize,
 }
 
 /// Whether `held` is the four parts of a session event joined by `:`,
@@ -1027,15 +1107,6 @@ fn instant_of(value: &Scalar) -> Option<i64> {
     held.temporal_count_at(crate::TimeUnit::Nanosecond)
 }
 
-/// One code of a set as the number it is, however the dictionary typed the
-/// tag: the integer a code set answers with, else the digits a dictionary
-/// that left the tag as text carries.
-fn code_of(value: &Scalar) -> Option<i64> {
-    value
-        .as_i64()
-        .or_else(|| value.as_str()?.trim().parse().ok())
-}
-
 /// The position of the child carrying one tag among `fields`, by the
 /// dictionary's own reading of each child. A group occurrence is positional,
 /// the names living on the field and never in the value, so this is found once
@@ -1092,15 +1163,17 @@ impl FixMsg {
     /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        Self::assemble(
+        let (mut message, viewed) = Self::assemble(
             registry,
             field,
             value,
             None,
             None,
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
-            true,
-        )
+        )?;
+        message.resolve_views(viewed, true);
+        message.settle();
+        Ok(message)
     }
 
     /// Builds the message the one builder finished, checking nothing twice.
@@ -1115,33 +1188,35 @@ impl FixMsg {
     /// states for the whole run. The identity is not settled here: the
     /// [enriching pass](super::enrich) that takes every built message
     /// restates and fills it first, and settles it once at its end, so
-    /// nothing is digested that a later write of the same pass rewrites.
+    /// nothing is digested that a later write of the same pass rewrites -
+    /// and the views of the security identifiers the line stated are handed
+    /// back beside the message, for that pass to resolve once it has filled
+    /// what the line implies.
     pub(super) fn from_built(
         registry: Arc<FixRegistry>,
         built: super::build::Built,
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
-    ) -> Result<Self> {
+    ) -> Result<(Self, Viewed)> {
         let super::build::Built {
             field,
             value,
             anomalies,
             ..
         } = built;
-        let mut message = Self::assemble(
+        let (mut message, viewed) = Self::assemble(
             registry,
             field,
             value,
             fallback_sending_time,
             source,
             official_time_delay_ns,
-            false,
         )?;
         // What arrived leads what the fields' reading recorded.
         message.arrival_anomalies = anomalies.len();
         message.anomalies.splice(0..0, anomalies);
-        Ok(message)
+        Ok((message, viewed))
     }
 
     /// Builds a message from the content reconstructed out of a semantic row.
@@ -1155,15 +1230,15 @@ impl FixMsg {
         retains_identity: bool,
     ) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        let mut message = Self::assemble(
+        let (mut message, viewed) = Self::assemble(
             registry,
             field,
             value,
             None,
             None,
             super::FixCodec::DEFAULT_OFFICIAL_TIME_DELAY_NS,
-            false,
         )?;
+        message.resolve_views(viewed, true);
         message.sync_session_event_identifier();
         if retains_identity {
             message.rebuild_idmaps();
@@ -1176,9 +1251,11 @@ impl FixMsg {
     }
 
     /// One message from a root and its canonical row: the typed facts are
-    /// lifted out of the children that state them, the rest is the row,
-    /// the clocks are settled and, where `settle` says so, the identity
-    /// derived. `source` is the identity of the line the row was parsed out
+    /// lifted out of the children that state them, the rest is the row and
+    /// the clocks are settled - the identity is the caller's to derive -
+    /// beside the views of the security identifiers the row stated, which
+    /// the caller resolves once the message is whole
+    /// ([`Self::resolve_views`]). `source` is the identity of the line the row was parsed out
     /// of, stated as the message's one source before it is settled; a row
     /// stating a `srcuuids` column of its own states those instead.
     /// `official_time_delay_ns` is how far from the sending clock an
@@ -1190,8 +1267,7 @@ impl FixMsg {
         fallback_sending_time: Option<&Scalar>,
         source: Option<Uuid>,
         official_time_delay_ns: i64,
-        settle: bool,
-    ) -> Result<Self> {
+    ) -> Result<(Self, Viewed)> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
         let held = value.as_sequence().ok_or_else(|| {
             identity::refused(field.name(), "a canonical Struct row", value.kind())
@@ -1216,6 +1292,9 @@ impl FixMsg {
         // to the sender's clock.
         let mut carries_recording = false;
         let mut row_stated = 0_u64;
+        // The views of the security identifiers, kept as the row stated
+        // them and resolved once the whole message is read.
+        let mut viewed = Viewed::default();
         let mut stated = 0_u32;
         let mut msgcat = None;
         let mut settled_last = [None; SETTLED_LAST.len()];
@@ -1239,7 +1318,9 @@ impl FixMsg {
                         msgcat = msgcat_of(value);
                     } else if let Some(at) = SETTLED_LAST.iter().position(|last| *last == tag) {
                         settled_last[at] = Some(value);
-                    } else {
+                    } else if let Some(at) = viewed_at(tag) {
+                        viewed[at] = Some(value.clone());
+                    } else if !identity::record_identifiers(&mut event, tag, child.name(), value)? {
                         identity::record(
                             &mut event,
                             &mut header,
@@ -1360,10 +1441,11 @@ impl FixMsg {
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
             carried: Vec::new(),
-            derived: Identifiers::new(),
+            derived: SmallVec::new(),
             detected_fx: 0,
             anomalies: Vec::new(),
             arrival_anomalies: 0,
+            idmap_anomalies: 0,
         };
         // The instant the message happened: what it states, else when the
         // transaction it reports happened, else when it was sent - the one
@@ -1388,10 +1470,7 @@ impl FixMsg {
         // What the message implies about its market, read off the FIX
         // fields it stated; what the row stated stands as its word.
         message.state_market(fact::ALL);
-        if settle {
-            message.settle();
-        }
-        Ok(message)
+        Ok((message, viewed))
     }
 
     /// The instant this message happened: the best official clock standing
@@ -1464,7 +1543,7 @@ impl FixMsg {
             .flat_map(|(occurrences, stamp, kind)| {
                 occurrences.iter().filter_map(move |occurrence| {
                     let held = occurrence.as_sequence()?;
-                    let rank = trdregtimestamp_rank(code_of(held.get(kind)?)?)?;
+                    let rank = trdregtimestamp_rank(identity::integer_of(held.get(kind)?)?)?;
                     Some((rank, instant_of(held.get(stamp)?)?))
                 })
             })
@@ -1568,6 +1647,10 @@ impl FixMsg {
             self.stale |= fact::SECURITYIDS;
             return true;
         }
+        if let Some(at) = viewed_at(tag) {
+            self.record_view(&SECURITY_VIEWS[at].1, value);
+            return true;
+        }
         if tag == super::MARKETDATAKIND_TAG_NAME.0 {
             // A null, or a value naming no category, hands it back to the
             // fields, which the next settle reads it off again.
@@ -1660,7 +1743,8 @@ impl FixMsg {
 
     /// What the message states that its reading could not take as it
     /// stands, in arrival order: the parse's refusals - a value that would
-    /// not type, a counter disagreeing with its group - then what the last
+    /// not type, an alias stating another value than the field it lost to -
+    /// then what the last
     /// settle dropped. Read off the message beside the row: never a column,
     /// never part of the code it digests to. Two statements of one message
     /// merge them as a union, the reference's first.
@@ -1703,6 +1787,19 @@ impl FixMsg {
     /// `sync_session_event_identifier` states their joined values as the
     /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
+        self.settle_facts();
+        self.stamp_identity();
+    }
+
+    /// [`Self::settle`] less the identity: every fact a write reached stated
+    /// again, the cross codes in step, and the code and the identity left as
+    /// they were. No fact here reads the code or the identity - the cross
+    /// element of a message in no chain is the identity, and the stamp
+    /// states it again - which is what lets a fold of several statements
+    /// settle its facts at every step and [stamp](Self::stamp_identity) once
+    /// after the last: the identity is a function of the facts, so stamping
+    /// once states what stamping at every step would have left.
+    pub(super) fn settle_facts(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
@@ -1723,6 +1820,12 @@ impl FixMsg {
         self.event.fill_market();
         self.fill_parents();
         self.event.sync_cross();
+    }
+
+    /// The code the message digests to and the identity the instant, the
+    /// place, the cross hash and that code derive, stamped over what the
+    /// message states: the second half of [`Self::settle`].
+    pub(super) fn stamp_identity(&mut self) {
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
     }
@@ -1778,12 +1881,13 @@ impl FixMsg {
     /// Whether two observations state one complete session event: one
     /// delivery, read as the same category of market data. The messages a
     /// parse splits one delivery into - an order's report beside its
-    /// execution, a trade beside its sided executions, an unsided quote
-    /// beside its sided quotes - share the delivery and are never another
-    /// observation of one another: their categories differ, and where they
-    /// do not their chains do, which is what keeps them apart before the
-    /// walk (the lifecycle's own key adds the side and an execution's cross
-    /// code) and inside it (each walks a chain of its own).
+    /// execution, a trade beside its sided executions, a batch beside its
+    /// entries - share the delivery and are never another observation of
+    /// one another: their categories differ, and where they do not their
+    /// chains do, which is what keeps them apart before the walk (the
+    /// lifecycle's own key adds the side a sided kind is keyed by and an
+    /// execution's cross code) and inside it (each walks a chain of its
+    /// own).
     pub(super) fn is_same_session_event(&self, other: &Self) -> bool {
         self.msgcat() == other.msgcat()
             && self
@@ -1827,23 +1931,38 @@ impl FixMsg {
     /// a caller that already chose it, as a run of observations sorted
     /// latest recording first does, where re-deciding at every pair would
     /// let a later one lead against the earliest recording a fold keeps.
-    pub(super) fn fold_session_event(mut self, other: &Self) -> Result<Self> {
+    pub(super) fn fold_session_event(self, other: &Self) -> Result<Self> {
+        let mut folded = self.fold_session_event_unstamped(other)?;
+        folded.stamp_identity();
+        Ok(folded)
+    }
+
+    /// [`Self::fold_session_event`] with its facts settled and its identity
+    /// left unstamped: for a fold of several observations, which
+    /// [stamps](Self::stamp_identity) once after the last.
+    pub(super) fn fold_session_event_unstamped(mut self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
-        self.fold_session_event_facts(other);
+        self.fold_session_event_facts_unstamped(other);
         Ok(self)
     }
 
-    /// [`Self::fold_session_event`] for an observation whose content an
-    /// earlier fold already merged: the content merge fills only what the
-    /// reference leaves missing, so a second merge of the same content moves
-    /// nothing, and what is left to fold is the event, the anomalies and the
-    /// provenance - in place, and infallibly.
-    pub(super) fn fold_session_event_facts(&mut self, other: &Self) {
+    /// [`Self::fold_session_event_unstamped`] for an observation whose
+    /// content an earlier fold already merged: the content merge fills only
+    /// what the reference leaves missing, so a second merge of the same
+    /// content moves nothing, and what is left to fold is the event, the
+    /// anomalies and the provenance - in place, and infallibly. Answers
+    /// whether the facts moved, which is whether the identity is due a
+    /// [stamp](Self::stamp_identity).
+    pub(super) fn fold_session_event_facts_unstamped(&mut self, other: &Self) -> bool {
         debug_assert!(self.is_same_session_event(other));
-        crate::graph::market::merge_operation_event_into_reference(self, other);
+        let moved = crate::graph::market::merge_operation_event(self, other, false);
+        if moved {
+            self.settle_facts();
+        }
         self.fold_anomalies(other);
         self.fold_provenance(other);
+        moved
     }
 
     /// Keeps the provenance the earlier observation of this session event
@@ -1867,7 +1986,9 @@ impl FixMsg {
             } else {
                 (mine, theirs)
             };
-            let kept = earlier.or(later).map(SmolStr::new);
+            // What is kept is this one's own or the other's: only the
+            // other's is stated again.
+            let takes_theirs = earlier.or(later) != mine;
             if let (Some(earlier), Some(later)) = (earlier, later)
                 && earlier != later
             {
@@ -1880,7 +2001,9 @@ impl FixMsg {
                     self.arrival_anomalies += 1;
                 }
             }
-            self.capture.set_provenance(tag, kept.as_deref());
+            if takes_theirs {
+                self.capture.set_provenance(tag, theirs);
+            }
         }
     }
 
@@ -1893,10 +2016,17 @@ impl FixMsg {
             .map(|held| matches!(held.as_str(), Some("F" | "1" | "2")))
     }
 
-    /// Whether this is an execution report of no fill: a type filed under
-    /// `EXEC` that reports no execution, its order's or its quote's report.
-    pub(super) fn reports_no_fill(&self) -> bool {
-        filed_msgcat(&self.registry, self.header.msgtype()) == MarketDataKind::Execution
+    /// Whether this message acknowledges an execution rather than reports
+    /// its order: a type filed under `EXEC` other than the
+    /// `ExecutionReport` (`8`) - an `ExecutionAcknowledgement` (`BN`), a
+    /// `DontKnowTrade` (`Q`) - that reports no execution. Filed as its
+    /// order's or quote's report, a lifecycle walks it there, but what it
+    /// states is the execution's standing - `ExecAckStatus(1036)` `2` reads
+    /// `DONT_KNOW` - never the order's, so no market leaf is read off it.
+    pub(super) fn acknowledges_execution(&self) -> bool {
+        let msgtype = self.header.msgtype();
+        msgtype != "8"
+            && filed_msgcat(&self.registry, msgtype) == MarketDataKind::Execution
             && !self.reports_execution()
     }
 
@@ -2014,9 +2144,9 @@ impl FixMsg {
         let over = |fact: u32| stated & fact == 0;
         self.clear_market(facts & fact::CLEARED & !stated);
         if reached(fact::SECURITYIDS) {
-            // The identifiers the fields state already rank a crated view the
-            // row stated after the wire's, so they replace what the row
-            // recorded - unless the row stated the whole set.
+            // The identifiers the fields state replace what the last reading
+            // left - unless the row, a view it stated or a caller stated the
+            // set, which they then only fill.
             self.state_securityids(over(fact::SECURITYIDS));
         }
         if reached(fact::STATE) {
@@ -2053,9 +2183,15 @@ impl FixMsg {
             self.event.set_marketdatatype(mdtype, over(fact::MDTYPE));
         }
         if reached(fact::EXPIRY) {
-            let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
+            let instant = |tag| {
                 self.stated_by_tag(tag)
                     .and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
+            };
+            // ExpireDate is the last day the order can trade: it stops being
+            // good where that day ends, whatever clock a bridge wrote with it.
+            let exprunix = instant(126).or_else(|| instant(62)).or_else(|| {
+                instant(432)
+                    .and_then(|day| (day.div_euclid(NANOS_PER_DAY) + 1).checked_mul(NANOS_PER_DAY))
             });
             if over(fact::EXPIRY) || self.event.get_exprunix().is_none() {
                 self.event.set_exprunix(exprunix);
@@ -2070,9 +2206,7 @@ impl FixMsg {
             self.event.set_timeinforce(tif, over(fact::TIF));
         }
         if reached(fact::TICKER) {
-            let ticker = self
-                .stated_word(55)
-                .filter(|held| held != "[N/A]" && held != "[N/A");
+            let ticker = self.stated_ticker();
             self.event.set_ticker(ticker, over(fact::TICKER));
         }
         if reached(fact::CFI) {
@@ -2202,26 +2336,14 @@ impl FixMsg {
             // `LastSpotRate(194)` and `LastForwardPoints(195)`, the parts of
             // `LastPx(31)` - never of `Price(44)` - so one tag triple is one
             // statement, completed where two of its three are stated. A
-            // sided quote states its side's where it states none of its own.
+            // quote's bid and offer parts are its legs', which no last price
+            // reads: they stay the message's own fields.
             let (mut lastpx, mut spotrate, mut forwardpoints) = (
                 self.lifted.lastpx(),
                 self.lifted.lastspotrate(),
                 self.lifted.lastforwardpoints(),
             );
             fx_triple(&mut lastpx, &mut spotrate, &mut forwardpoints);
-            if self.event.marketdatakind() == MarketDataKind::Quotation {
-                match self.stated_side() {
-                    Some(side) if side.is_bid() => {
-                        spotrate = spotrate.or_else(|| self.lifted.bidspotrate());
-                        forwardpoints = forwardpoints.or_else(|| self.lifted.bidforwardpoints());
-                    }
-                    Some(side) if side.is_ask() => {
-                        spotrate = spotrate.or_else(|| self.lifted.offerspotrate());
-                        forwardpoints = forwardpoints.or_else(|| self.lifted.offerforwardpoints());
-                    }
-                    _ => {}
-                }
-            }
             let overwrite = over(fact::LASTPX);
             let event = &mut *self.event;
             event.set_lastpx(lastpx, overwrite);
@@ -2327,26 +2449,18 @@ impl FixMsg {
     /// bridge's own key names filling what the fields left open, stated on
     /// the event with the derived overlay beside them.
     fn state_securityids(&mut self, overwrite: bool) {
-        let (mut securityids, dropped) = self.stated_securityids(self.row_stated);
-        // The instrument a bridge's own key names fills only what the fields
-        // left open, and is never written back: a part its type refuses is
-        // skipped.
-        let keyed = instrument_key(&securityids)
-            .and_then(|named| Some((named.isin?, named.src)))
-            .filter(|_| !securityids.contains_kind(&IdType::Isin))
-            .and_then(|(isin, src)| Identifier::new(src, IdType::Isin, isin.as_str()).ok());
-        if let Some(isin) = keyed {
-            securityids.insert(isin);
-        }
+        let (securityids, dropped) = self.stated_securityids();
         let _ = self.event.set_securityids(securityids, overwrite);
         // The derived overlay goes back as derived, so a stated identifier
         // still answers before it and removing the ISIN still takes it back.
-        for id in self.derived.iter() {
-            self.event.derive_securityid(id.kind(), id.value());
+        for (kind, code) in &self.derived {
+            self.event.derive_securityid(kind, code);
         }
-        // What this reading dropped replaces what the last one did.
+        // What this reading dropped replaces what the last one did, and the
+        // identifier maps' tail behind it, which the next rebuild restates.
         self.anomalies.truncate(self.arrival_anomalies);
         self.anomalies.extend(dropped);
+        self.idmap_anomalies = 0;
     }
 
     /// One field's value, where it states one that is not null.
@@ -2354,9 +2468,215 @@ impl FixMsg {
         self.get_by_tag(tag).filter(|held| !held.is_null())
     }
 
-    /// One field's text, trimmed; `None` where it is null or empty.
+    /// One field's text, trimmed - an integer-typed field, such as a status
+    /// code set whose values are numbers, as its digits; `None` where it is
+    /// null or empty.
     fn stated_word(&self, tag: i32) -> Option<SmolStr> {
         stated_text(self.stated_by_tag(tag))
+    }
+
+    /// The ticker `Symbol(55)` states, where it states one that is not a
+    /// bridge's "not available".
+    fn stated_ticker(&self) -> Option<SmolStr> {
+        self.stated_word(55)
+            .filter(|held| held != "[N/A]" && held != "[N/A")
+    }
+
+    /// Resolves the views of the security identifiers a row or a line
+    /// stated, once, when the message they were read into is whole - the
+    /// row read, a parsed line's enriching pass done. A view is never a
+    /// fact of its own. The code `Symbol(55)` derives where nothing else
+    /// states its type is that derivation ([`Self::viewed_derivation`]):
+    /// the pair enters the derived overlay, as detection's does, a code off
+    /// the ticker is [`Market::fill_market`]'s. Any other code the
+    /// message's reading - the wire's `SecurityIDSource(22)`/`SecurityID(48)`
+    /// and alternates, a keyed entry that lands, the ISIN a bridge's
+    /// instrument key names - does not already answer is a statement of its
+    /// type's base key, which a view is.
+    ///
+    /// A row `read_back` with no `securityids` column says of the set only
+    /// what its views say, each the code `get` answered for its type when
+    /// the row was written: a code `get` over the reading answers states
+    /// nothing, and any other replaces its type's answer - the base key -
+    /// the type's named sources kept as evidence, a replaced ISIN taking
+    /// back every derivation but the pair. On a parsed line, and beside the
+    /// column, which is the row's word, a code an identifier of its type
+    /// already holds states nothing, a view fills only, and one its type's
+    /// answer already disagrees with is dropped beside an anomaly naming the
+    /// view's column. Where nothing stated the set, a keyed entry's code
+    /// under the base key a view stated is dropped for it and kept as an
+    /// anomaly, as two codes of one key are.
+    pub(super) fn resolve_views(&mut self, viewed: Viewed, read_back: bool) {
+        if viewed.iter().all(Option::is_none) {
+            return;
+        }
+        // Where nothing stated the set, it is first what the fields read
+        // now - a derivation's fill included - which a pending restatement
+        // would only read again, and which no later fill brings back.
+        let unstated = self.stated & fact::SECURITYIDS == 0;
+        if unstated {
+            self.state_securityids(true);
+            self.stale &= !fact::SECURITYIDS;
+        }
+        let leads = read_back && unstated;
+        let reading = self.stated_securityids().0;
+        let mut statements = Identifiers::new();
+        let mut moved = false;
+        for (((_, column), kind), value) in SECURITY_VIEWS.iter().zip(&viewed) {
+            let Some(view) = value
+                .as_ref()
+                .and_then(|value| identity::view_code(kind, value))
+                .and_then(|code| Identifier::new(IdKey::base(kind.clone()), code).ok())
+            else {
+                continue;
+            };
+            let holds =
+                |set: &Identifiers| set.of_kind(kind).any(|held| held.value() == view.value());
+            let answered = if leads {
+                reading.get(kind) == Some(view.value())
+            } else {
+                holds(self.event.get_securityids()) || holds(&reading)
+            };
+            if answered {
+                continue;
+            }
+            if let Some(derived) = self.viewed_derivation(&view, &reading) {
+                if derived.kind() == &IdType::Forex {
+                    moved |= self.derive_securityid(derived.kind(), derived.value());
+                }
+                continue;
+            }
+            // Read back with nothing else stating the set, the view is the
+            // row's word and replaces its type's answer, the sources kept as
+            // evidence; otherwise it only fills, and a view another code of
+            // its type already answers is dropped beside an anomaly.
+            let landed = if leads {
+                self.restate_answer(view.clone())
+            } else {
+                self.insert_securityid(view.clone()).unwrap_or(false)
+            };
+            if landed {
+                statements.insert(view);
+            } else if let Some(held) = self.event.get_securityids().get(kind)
+                && held != view.value()
+            {
+                let anomaly = dropped_identifier(column, &view, held);
+                self.note_anomaly(anomaly);
+            }
+        }
+        // What a security identifier reaches - the market, the currency -
+        // is stated again over what the views moved, as a write of
+        // `SecurityID(48)` states it; the identifiers are what the views
+        // left.
+        if moved || !statements.is_empty() {
+            let facts = facts_of_tag(&self.registry, 48) & !fact::SECURITYIDS;
+            self.state_market(facts);
+        }
+        if statements.is_empty() {
+            return;
+        }
+        for (key, made) in self.keyed_securityids() {
+            if let Ok(id) = made
+                && let Some(held) = statements.get_from(id.key())
+                && held != id.value()
+            {
+                self.note_anomaly(dropped_identifier(&key, &id, held));
+            }
+        }
+    }
+
+    /// What a view a caller recorded states - `isincode`, `bloombergcode`,
+    /// `figicode`, `forexcode`, viewing `kind` - over its type's base key: a
+    /// code an identifier of its type holds moves nothing, any other replaces
+    /// the type's answer, its named sources kept ([`Self::restate_answer`]),
+    /// and a null or a code its type refuses removes the type, as
+    /// [`Market::remove_securityid`] of its base key does.
+    fn record_view(&mut self, kind: &IdType, value: &Scalar) {
+        let code = identity::view_code(kind, value);
+        let held = self.event.get_securityids();
+        if code.is_some_and(|code| held.of_kind(kind).any(|id| id.value() == code)) {
+            return;
+        }
+        match code.and_then(|code| Identifier::new(IdKey::base(kind.clone()), code).ok()) {
+            Some(id) => {
+                self.restate_answer(id);
+            }
+            None => {
+                let _ = self.remove_securityid(&IdKey::base(kind.clone()));
+            }
+        }
+    }
+
+    /// Replaces the answer of `id`'s type - its base key - with `id`, the
+    /// type's named sources kept as evidence, as [`Identifiers::set`] does:
+    /// the derivation of its type goes, and a replaced ISIN takes back every
+    /// derivation but the pair, which hangs on the symbol. Whether anything
+    /// moved.
+    fn restate_answer(&mut self, id: Identifier) -> bool {
+        let kind = id.kind().clone();
+        let mut ids = self.event.get_securityids().clone();
+        if !ids.set(id) {
+            return false;
+        }
+        self.derived.retain(|(held, _)| *held != kind);
+        if kind == IdType::Isin {
+            self.derived.retain(|(held, _)| *held == IdType::Forex);
+            let taken: SmallVec<[IdKey; 4]> = ids
+                .iter()
+                .filter(|held| held.src() == &IdSource::Derived && held.kind() != &IdType::Forex)
+                .map(|held| held.key().clone())
+                .collect();
+            for key in &taken {
+                ids.remove(key);
+            }
+        }
+        self.stated |= fact::SECURITYIDS;
+        let _ = self.event.set_securityids(ids, true);
+        true
+    }
+
+    /// Keeps of the derived overlay what the event's set still holds under
+    /// [`IdSource::Derived`]: a statement took back the rest.
+    fn retain_derived(&mut self) {
+        let held = self.event.get_securityids();
+        self.derived.retain(|(kind, code)| {
+            held.get_from(&IdKey::new(IdSource::Derived, kind.clone())) == Some(code.as_str())
+        });
+    }
+
+    /// The identifier `Symbol(55)` derives for `view`'s type where it is
+    /// `view`'s code and would stand, as derived: the pair
+    /// [FX detection](super::forex) reads, else the code
+    /// [`SymbolCode::from_symbol`](crate::securityid::SymbolCode::from_symbol)
+    /// reads off the ticker [`Market::fill_market`] reads - the row's own
+    /// where it stated one - where neither the event's set nor `reading`,
+    /// what the fields state, holds another of its type: the one owner of
+    /// which view is a view of the symbol's derivation.
+    fn viewed_derivation(&self, view: &Identifier, reading: &Identifiers) -> Option<Identifier> {
+        let kind = view.kind();
+        let code = if *kind == IdType::Forex {
+            SmolStr::new(self.detected_pair(self.registry.forex_memo())?.as_str())
+        } else {
+            let ticker = if self.stated & fact::TICKER != 0 {
+                self.event.get_ticker().map(SmolStr::new)
+            } else {
+                self.stated_ticker()
+            }?;
+            let symbol = crate::securityid::SymbolCode::from_symbol(&ticker)?;
+            let (derived, code) = symbol.identifier()?;
+            if derived != *kind {
+                return None;
+            }
+            SmolStr::new(code)
+        };
+        let stated = |set: &Identifiers| {
+            set.of_kind(kind)
+                .any(|held| held.src() != &IdSource::Derived)
+        };
+        if code != view.value() || stated(self.event.get_securityids()) || stated(reading) {
+            return None;
+        }
+        Identifier::new(IdKey::new(IdSource::Derived, kind.clone()), &code).ok()
     }
 
     /// One field's exact decimal. A value stated but unreadable is none,
@@ -2458,19 +2778,20 @@ impl FixMsg {
                 self.event
                     .get_securityids()
                     .get(&IdType::Forex)
-                    .or_else(|| self.derived.get(&IdType::Forex))
+                    .or_else(|| self.derived_code(&IdType::Forex))
                     .and_then(|code| Forex::new(code).ok())
                     .map(|_| Mic::none())
             })
     }
 
     /// Whether it could trade, from whichever status says so, in the codes
-    /// FIX's own enumerations state. A status that is about something else -
-    /// a code neither list names - says nothing either way, so the next
-    /// status answers instead.
+    /// FIX's own enumerations state, each read as the integer it is however
+    /// the dictionary typed the tag ([`identity::integer_of`]). A status
+    /// that is about something else - a code neither list names - says
+    /// nothing either way, so the next status answers instead.
     fn stated_tradable(&self) -> Option<bool> {
         let status = |tag: i32, open: &[i64], shut: &[i64]| {
-            let held = self.stated_by_tag(tag)?.as_i64()?;
+            let held: i64 = identity::integer_of(&self.stated_by_tag(tag)?)?;
             if open.contains(&held) {
                 Some(true)
             } else if shut.contains(&held) {
@@ -2481,11 +2802,7 @@ impl FixMsg {
         };
         status(326, &[3, 17], &[1, 2, 4, 18, 19, 21])
             .or_else(|| status(340, &[2], &[1, 3, 4, 5, 7]))
-            .or_else(|| match self.stated_word(965)?.as_str() {
-                "1" | "3" => Some(true),
-                "2" | "4" | "5" | "6" | "9" | "11" => Some(false),
-                _ => None,
-            })
+            .or_else(|| status(965, &[1, 3], &[2, 4, 5, 6, 9, 11]))
     }
 
     /// The type of its kind the message is: the first field its kind names
@@ -2542,7 +2859,7 @@ impl FixMsg {
             || format_smolstr!("{tag}"),
             |field| format_smolstr!("{}({tag})", field.name()),
         );
-        crate::warning::warned!(
+        crate::logging::warning::warned!(
             what,
             &field,
             "{stated:?} on a {} message",
@@ -2608,94 +2925,144 @@ impl FixMsg {
         self.event.finalized(code);
     }
 
+    /// What a settle moves when a split refiled a settled message: its
+    /// category, its state, its chain - each recorded as a crate column's
+    /// word, which no settle restates - and its sources. The fields, and so
+    /// the maps and the parents read off them, stood still; of the market
+    /// the category decides what the order's quantities imply, so the
+    /// quantity is stated again off `Quantity(53)` and they settle under it:
+    /// an order's report is about what it has left, and an execution's
+    /// quantity is what it states, never what its order has left. What is
+    /// left is the cross codes in step with the category and the code the
+    /// content digests to, and the identity they derive.
+    pub(super) fn settle_refiled(&mut self) {
+        debug_assert_eq!(self.stale, 0, "a refiled message moved no field");
+        let over = self.stated & fact::QUANTITY == 0;
+        self.event.set_quantity(self.lifted.quantity(), over);
+        self.event.settle_orders();
+        self.event.sync_cross();
+        let code = self.currhashcode();
+        self.event.finalized(code);
+    }
+
     /// The security identifiers the message states, in rank order: the
     /// primary `SecurityID(48)` under its `SecurityIDSource(22)`, then each
     /// `secaltids` occurrence, each source read through
     /// [`IdType::from_security_source`] - a source it cannot read an
-    /// anomaly, the field kept on the wire -
-    /// then the crated `isincode`, `bloombergcode`, `figicode` and
-    /// `forexcode` views the row stated (`row_stated`), then each unmapped
-    /// field whose name names a source. Each code is validated and the first stated code under a
-    /// key kept.
-    fn stated_securityids(&self, row_stated: u64) -> (Identifiers, Vec<super::FixAnomaly>) {
+    /// anomaly, the field kept on the wire - then each unmapped field whose
+    /// name names a source ([`Self::keyed_securityids`]), and last the ISIN
+    /// a bridge's instrument key names where none is stated. Each code is
+    /// held to its shape; the first stated code under a key is kept unless
+    /// a later one outranks it ([`IdType::rank`]) - a real number over a
+    /// masked one - which replaces it.
+    fn stated_securityids(&self) -> (Identifiers, Vec<super::FixAnomaly>) {
         let mut ids = Identifiers::new();
         let mut anomalies = Vec::new();
-        // Fill only: the same code twice under one type and source is one
-        // entry, and a later different one is dropped with an anomaly,
+        // The same code twice under one type and source is one entry; a
+        // later different one replaces the held one only where it outranks
+        // it, and is otherwise dropped - each with an anomaly, the field
         // staying on the wire as it arrived.
-        let mut insert = |field: &str, made: crate::Result<Identifier>| match made {
-            Ok(id) => match ids.get_from(id.src(), id.kind()) {
-                Some(held) if held != id.value() => anomalies.push(super::FixAnomaly::new(
-                    field,
-                    format!(
-                        "states {id} where {}:{}={held} is already stated",
-                        id.src(),
-                        id.kind()
-                    ),
-                )),
-                Some(_) => {}
-                None => {
-                    ids.insert(id);
+        let mut insert =
+            |ids: &mut Identifiers, field: &str, made: crate::Result<Identifier>| match made {
+                Ok(id) => admit_stated(ids, field, id, &mut anomalies),
+                Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
+            };
+        let mut state =
+            |ids: &mut Identifiers, field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
+                if let (Some(source), Some(code)) = (source, code) {
+                    insert(
+                        ids,
+                        field,
+                        security_identifier(&source, IdSource::Base, &code),
+                    );
                 }
-            },
-            Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
-        };
-        let mut state = |field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
-            if let (Some(source), Some(code)) = (source, code) {
-                insert(field, security_identifier(&source, IdSource::Fix, &code));
-            }
-        };
+            };
         state(
+            &mut ids,
             "securityid",
             self.get_by_tag(22).as_ref().and_then(scalar_text),
             self.get_by_tag(48).as_ref().and_then(scalar_text),
         );
         for [source, code] in self.group_rows("secaltids", ["securityaltidsource", "securityaltid"])
         {
-            state("secaltids", source, code);
+            state(&mut ids, "secaltids", source, code);
         }
-        // A crated column's row-stated entry is the crate's own statement,
-        // ranked after the wire's and before a name a bridge happened to
-        // spell.
-        for (bit, kind, name) in [
-            (ROW_STATED_ISIN, IdType::Isin, super::ISINCODE_TAG_NAME.1),
-            (
-                ROW_STATED_BLOOMBERG,
-                IdType::Bloomberg,
-                super::BLOOMBERGCODE_TAG_NAME.1,
-            ),
-            (ROW_STATED_FIGI, IdType::Figi, super::FIGICODE_TAG_NAME.1),
-            (ROW_STATED_FOREX, IdType::Forex, super::FOREXCODE_TAG_NAME.1),
-        ] {
-            if row_stated & bit != 0
-                && let Some(id) = self.event.get_securityids().get_identifier(&kind)
-            {
-                insert(name, Ok(id.clone()));
-            }
+        for (key, made) in self.keyed_securityids() {
+            insert(&mut ids, &key, made);
         }
-        // An entry no dictionary maps whose key names a security
-        // identifier - `#ISINCODE`, `cusip_code`, a bridge's
-        // `OMS_InstrumentID` - states one after the wire's own: trimmed,
-        // validated, never a grouped member, and left on the wire as it
-        // arrived. A value its type refuses is an anomaly here, whichever
-        // set its key names.
+        // The instrument a bridge's own key names fills only what the fields
+        // left open, and is never written back: a part its type refuses is
+        // skipped.
+        let named = instrument_key(&ids)
+            .and_then(|named| Some((named.isin?, named.src)))
+            .filter(|_| !ids.contains_kind(&IdType::Isin))
+            .and_then(|(isin, src)| {
+                Identifier::new(IdKey::new(src, IdType::Isin), isin.as_str()).ok()
+            });
+        if let Some(isin) = named {
+            ids.insert(isin);
+        }
+        (ids, anomalies)
+    }
+
+    /// Each entry no dictionary maps whose key names a security identifier -
+    /// `#ISINCODE`, `cusip_code`, a bridge's `OMS_InstrumentID` - beside its
+    /// key: trimmed, validated, never a grouped member, and left on the wire
+    /// as it arrived, a value its type refuses its refusal. A key naming
+    /// another type is [`Self::rebuild_idmaps`]'s.
+    fn keyed_securityids(&self) -> SmallVec<[(SmolStr, crate::Result<Identifier>); 2]> {
         let declared = self.declared_identifiers();
+        let memo = self.registry.memo();
+        let mut keyed = SmallVec::new();
         self.for_each_unmapped(|key, text| {
-            if let Some(made) = inferred_identifier(key, text, declared, false)
-                .filter(|made| made.as_ref().ok().is_none_or(|id| id.kind().is_security()))
+            if let Some(made) =
+                inferred_identifier(memo, key, text, declared, false, IdType::is_security)
             {
-                insert(key, made);
+                keyed.push((SmolStr::new(key), made));
             }
         });
-        (ids, anomalies)
+        keyed
     }
 
     /// The identifier names this message's type declares under
     /// `FIX:identifiers`, comma-separated.
-    fn declared_identifiers(&self) -> Option<&str> {
+    pub(super) fn declared_identifiers(&self) -> Option<&str> {
         self.registry
             .get_msgtype(self.header.msgtype())
             .and_then(|definition| declared_identifiers(definition.as_field()))
+    }
+
+    /// Whether the arrival `key` states, holding `text`, is captured: its
+    /// key names an identifier - read as [`Holds::land`] reads an untagged
+    /// one, against the `declared` names of this message's type - and the
+    /// set that identifier's type belongs to ([`Operation::identifier_set`])
+    /// holds its key with the value the text states, held as the type
+    /// stores it. A captured arrival is held in that set and nowhere else:
+    /// a leaf drops it from its metadata, and a row carries it in its
+    /// residual record rather than its `metadata` cell. A key no map holds -
+    /// one naming no identifier, one whose value its type refuses, one a
+    /// held value of no lower rank refused - is not captured. Allocates
+    /// nothing: the key's reading is `memo`'s, the value is canonicalized
+    /// into a buffer and the set is searched.
+    pub(super) fn is_captured(
+        &self,
+        memo: &super::memo::Memo,
+        declared: Option<&str>,
+        key: &str,
+        text: &str,
+    ) -> bool {
+        let text = text.trim();
+        if text.is_empty() || is_null_like(text) {
+            return false;
+        }
+        let Some(id) = inferred_key(memo, key, declared, false) else {
+            return false;
+        };
+        let mut buffer = [0_u8; crate::identifier::IDENTIFIER_VALUE_WIDTH];
+        let Ok(value) = id.kind().value_into(text, &mut buffer) else {
+            return false;
+        };
+        self.identifier_set(id.kind()).held_at(&id, value).is_some()
     }
 
     /// Each entry this message states that no dictionary maps, as its key
@@ -2841,7 +3208,7 @@ impl FixMsg {
                     if let Some(value) = self.get_by_tag(*tag).as_ref().and_then(scalar_text) {
                         admit_identifier(
                             &mut identifiers,
-                            IdSource::Fix,
+                            IdSource::Base,
                             Ok(source.key().clone()),
                             &value,
                             field,
@@ -2855,7 +3222,7 @@ impl FixMsg {
                         {
                             admit_identifier(
                                 &mut identifiers,
-                                IdSource::Fix,
+                                IdSource::Base,
                                 Ok(source.key().clone()),
                                 &value,
                                 field,
@@ -2871,7 +3238,7 @@ impl FixMsg {
                 if let Some(value) = value {
                     admit_identifier(
                         &mut identifiers,
-                        IdSource::Fix,
+                        IdSource::Base,
                         regulatory_kind(kind.as_deref()),
                         &value,
                         "regulatorytradeids",
@@ -2902,15 +3269,23 @@ impl FixMsg {
         // refuses stays on the wire, unread.
         let declared = self.declared_identifiers();
         self.for_each_unmapped(|key, text| {
-            let Some(Ok(id)) = inferred_identifier(key, text, declared, false) else {
+            let Some(Ok(id)) =
+                inferred_identifier(registry.memo(), key, text, declared, false, |kind| {
+                    !kind.is_security()
+                })
+            else {
                 return;
             };
             if id.kind().is_party() {
                 partyids.insert(id);
-            } else if !id.kind().is_security() {
+            } else {
                 identifiers.insert(id);
             }
         });
+        // What this rebuild dropped replaces what the last one did.
+        self.anomalies
+            .truncate(self.anomalies.len() - self.idmap_anomalies);
+        self.idmap_anomalies = dropped.len();
         self.anomalies.extend(dropped);
         // What a caller or a row stated is its word, which no settle
         // restates: each value it holds stands, lineage included, and an
@@ -2918,22 +3293,20 @@ impl FixMsg {
         // `ClOrdID(11)` - fills it.
         // The held set is copied only where the fields name one it lacks.
         let lacks = |held: &Identifiers, stated: &Identifiers| {
-            stated
-                .iter()
-                .any(|id| held.get_from(id.src(), id.kind()).is_none())
+            stated.iter().any(|id| held.get_from(id.key()).is_none())
         };
         if self.stated & fact::IDENTIFIERS == 0 {
             let _ = self.event.set_identifiers(identifiers, true);
         } else if lacks(self.event.get_identifiers(), &identifiers) {
             let mut held = self.event.get_identifiers().clone();
-            held.merge(&identifiers);
+            held.merge(&identifiers, false);
             let _ = self.event.set_identifiers(held, true);
         }
         if self.stated & fact::PARTYIDS == 0 {
             let _ = self.event.set_partyids(partyids, true);
         } else if lacks(self.event.get_partyids(), &partyids) {
             let mut held = self.event.get_partyids().clone();
-            held.merge(&partyids);
+            held.merge(&partyids, false);
             let _ = self.event.set_partyids(held, true);
         }
     }
@@ -2948,9 +3321,9 @@ impl FixMsg {
     /// `miscfees` holds `[{"miscfeeamt":"1.5","miscfeecurr":"EUR"}]` - a
     /// group an array of one object per occurrence, a component or a map one
     /// object, nested groups and components recursing, every leaf inside the
-    /// canonical text a root scalar spells, so a decimal keeps its stored
-    /// scale and no value is a JSON number. Null, skipped and counter
-    /// members are left out, and a child left with nothing writes no key.
+    /// canonical text a root scalar spells, so a decimal is its shortest
+    /// exact text and no value is a JSON number. Null and skipped members
+    /// are left out, and a child left with nothing writes no key.
     /// Left out too are a child the [envelope](super::digest) holds, since
     /// the message's code leaves the same set out; a typed tag stated twice;
     /// a tag [`identity::MARKET_TAGS`] reads; an identifier map's source;
@@ -3044,11 +3417,6 @@ impl FixMsg {
         let named: SmallVec<[usize; 6]> =
             std::iter::once(self.child_index(&self.field, EVENT_TIMESTAMP))
                 .chain(
-                    super::cfi::DETAILED_NAMES
-                        .iter()
-                        .map(|name| self.index_of_name(name)),
-                )
-                .chain(
                     BID_CURRENCY
                         .iter()
                         .chain(&ASK_CURRENCY)
@@ -3063,17 +3431,6 @@ impl FixMsg {
                 continue;
             }
             let nested = child.dtype().is_nested();
-            // A counter beside the group it counts states nothing the group
-            // does not.
-            if !nested
-                && tag.is_some_and(|tag| {
-                    self.groups
-                        .binary_search_by_key(&tag, |(counter, _)| *counter)
-                        .is_ok()
-                })
-            {
-                continue;
-            }
             if let Some(expanded) = expanded.filter(|expanded| *counter == Some(expanded.counter)) {
                 unmapped.occurrences = self.own_occurrences(child, cell, expanded, &holds);
                 continue;
@@ -3228,10 +3585,9 @@ impl FixMsg {
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
         // differently - a group one reading declares whole and another
-        // states member by member is one group, and a child stating null or
-        // a list holding nothing beside no stated count says nothing at all
-        // - so a code taken off the row's storage would make a message read
-        // back out of a row a different message. The entries are what the
+        // states member by member is one group, and a child stating null
+        // says nothing at all - so a code taken off the row's storage would
+        // make a message read back out of a row a different message. The entries are what the
         // message says, and they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
@@ -3248,34 +3604,108 @@ impl FixMsg {
         }
     }
 
+    /// The security identifiers `table` holds for this message's instrument
+    /// that it leaves unsaid, derived ([`IsinTable::fill_identifiers`]) -
+    /// what a parse takes from the table its door fixed - and, where any
+    /// landed, the market facts they imply ([`Market::fill_market`]): the
+    /// national number the derived ISIN embeds, the unit a pair deals in.
+    /// Nothing here reaches a field, the wire, the row's word or the
+    /// identity, so the caller stamps once after it. Whether anything
+    /// moved.
+    pub(super) fn fill_instrument_ids(&mut self, table: &IsinTable) -> bool {
+        let moved = table.fill_identifiers(self);
+        if moved {
+            self.event.fill_market();
+        }
+        moved
+    }
+
+    /// What the lifecycle fills from `table`
+    /// ([`IsinTable::fill_unsettled`]): the identifiers
+    /// [`Self::fill_instrument_ids`] derives, the ticker on the same market,
+    /// the CFI code where the row's refines it and the currency on the same
+    /// stated market under the row's ticker - then the market facts they
+    /// imply, and nothing more: a parsed message is settled already, and a
+    /// fill moves nothing its identity reads. Whether anything moved.
+    pub(super) fn fill_instrument(&mut self, table: &IsinTable) -> bool {
+        let moved = table.fill_unsettled(self);
+        if moved {
+            self.event.fill_market();
+        }
+        moved
+    }
+
+    /// The country of issue the message states that its ISIN does not
+    /// already say: `CountryOfIssue(470)` where ISO 3166 lists it and it is
+    /// not the prefix of the real ISIN the message names. The crate's rule
+    /// lands that prefix on every ISO-prefixed message stating no country,
+    /// and a landed value is indistinguishable from a stated one, so a
+    /// `470` equal to the prefix states nothing a walk may learn: a
+    /// country held beside the ISIN stands until a message states another,
+    /// and an explicit [`IsinRegistry::merge`] stating the prefix is what
+    /// takes a wrong one back.
+    pub(super) fn stated_country(&self) -> Option<Country> {
+        let stated = self.get_by_tag(COUNTRYOFISSUE_TAG)?;
+        let country = Country::new(stated.as_str()?)
+            .ok()
+            .filter(Country::is_listed)?;
+        let prefix = self
+            .get_isincode()
+            .filter(|isin| IdType::Isin.is_real(isin))
+            .map(|isin| &isin[..2]);
+        (prefix != Some(country.as_str())).then_some(country)
+    }
+
+    /// The security identifiers derived of another instrument taken back
+    /// and what `table` holds of this one derived: what a batch entry does
+    /// once it has restated its own instrument over the batch's, whose
+    /// overlay it was cloned with. The pair FX detection derived stands,
+    /// since the entry's own symbol detected its own. Settled facts are
+    /// left as they are; the caller stamps the identity after.
+    pub(super) fn refill_instrument_ids(&mut self, table: Option<&IsinTable>) {
+        let stale: Vec<IdType> = self
+            .derived
+            .iter()
+            .filter(|(kind, _)| *kind != IdType::Forex)
+            .map(|(kind, _)| kind.clone())
+            .collect();
+        for kind in &stale {
+            self.derived.retain(|(held, _)| held != kind);
+            let _ = self
+                .event
+                .remove_securityid(&IdKey::new(IdSource::Derived, kind.clone()));
+        }
+        if let Some(table) = table {
+            self.fill_instrument_ids(table);
+        }
+    }
+
     /// The message dated by the transaction it states, where the parse
     /// dated it by a stand-in: a message whose `SendingTime(52)` was
     /// supplied rather than stated - a carrier's, the codec's default, the
     /// intake's own clock - takes `TransactTime(60)` as its instant where it
     /// states one with a clock, and a resend's `OrigSendingTime(122)` as its
     /// creation where that is earlier, its stand-in sending clock moved to
-    /// the same instant, and is enriched again around them - filled and
-    /// settled - exactly as a parse dated there would have built it: the row
-    /// the parse restated is the row a parse dated there restates, because a
-    /// rule reads the row and never the clock. A stated sending clock stands:
-    /// the parse dated the message by what it said, and the walk does not
-    /// second-guess it. No delay bounds this one: a clock nobody stated is
-    /// no reference to measure a distance from, which is why the parse's own
+    /// the same instant, and settles what the clock moves and nothing else
+    /// (`settle_clock`): the fields stood still, so the derivations
+    /// the parse landed and the identifiers it derived stand, and only the
+    /// execution instant a report dates from itself and the identity the
+    /// instant derives move. A stated sending clock stands: the parse dated
+    /// the message by what it said, and the walk does not second-guess it.
+    /// No delay bounds this one: a clock nobody stated is no reference to
+    /// measure a distance from, which is why the parse's own
     /// [`FixCodec::official_time_delay_ms`](super::FixCodec::official_time_delay_ms)
     /// reading of the transaction ends where this one begins. What the
     /// [lifecycle](super::FixCodec::lifecycle) reads off the structured
     /// message before it walks, so a capture whose frames state no sending
     /// clock still orders, expires and folds by when its transactions
-    /// happened rather than by when it was read. The enriching pass never
-    /// refuses the message: a step it cannot write is warned about and the
-    /// message keeps what it stated.
+    /// happened rather than by when it was read.
     #[must_use]
     pub fn dated_by_transaction(mut self) -> Self {
-        if !self.redate_by_transaction() {
-            return self;
+        if self.redate_by_transaction() {
+            self.settle_clock();
         }
-        let registry = Arc::clone(&self.registry);
-        super::enrich::redated(&registry, self)
+        self
     }
 
     /// Moves the message's clock to its transaction where the sending clock
@@ -3422,9 +3852,9 @@ impl FixMsg {
 
     /// The row read as a tree: one entry per child it states, a group's
     /// occurrences and a component's members nested under the entry that
-    /// heads them; nothing for a child stating null, nor for a list holding
-    /// nothing that no counter beside it states a count for - a group of no
-    /// occurrence is stated by its count.
+    /// heads them, the group's count its own entry's value; nothing for a
+    /// child stating null. A group holding no occurrence is stated empty -
+    /// `NoPartySubIDs(802)=0` - and is an entry like any other.
     ///
     /// Derived on the first ask and kept until a write, so a consumer
     /// walking the message twice pays once and a stream that never asks
@@ -3649,9 +4079,9 @@ impl FixMsg {
     /// and no settling, answering how many landed.
     ///
     /// The lenient twin of [`Self::set_many`], for a pass whose answers are
-    /// best effort: a value the target refuses - an identifier whose check
-    /// digit does not close, a spelling its code set does not read - is
-    /// dropped with a deduplicated warning naming the key rather than
+    /// best effort: a value the target refuses - an identifier of the wrong
+    /// width, a spelling its code set does not read - is dropped with a
+    /// deduplicated warning naming the key rather than
     /// refused, and every other value lands as `set_many` lands it. Nothing
     /// else is lenient: the rebuild's refusal, which no single value causes,
     /// is still returned and leaves the message unchanged. The identity is
@@ -3674,7 +4104,7 @@ impl FixMsg {
             match self.staged(&key, value, &|_, _| Ok(())) {
                 Ok(Staged::Typed(tag, value)) => typed.push((tag, value)),
                 Ok(Staged::Row(write)) => stage(&mut writes, write),
-                Err(error) => crate::warning::warned!(
+                Err(error) => crate::logging::warning::warned!(
                     "FIX value dropped: the field its key reaches refuses it",
                     &match key {
                         FixKey::Tag(tag) => format_smolstr!("{tag}"),
@@ -3774,10 +4204,13 @@ impl FixMsg {
         }
         // What each write reaches is stated again at the next settle: a
         // field no tag maps reaches what a bridge's own spelling can state.
+        // A group is reached by the counter it is filed under, its own tag
+        // being a definition's.
         for write in &writes {
-            self.stale |= match write.field.as_fix().tag() {
-                Ok(Some(tag)) => facts_of_tag(&self.registry, tag),
-                _ => fact::NAMED,
+            let (tag, counter) = super::schema::tag_and_counter(&self.registry, &write.field);
+            self.stale |= match counter.or(tag) {
+                Some(tag) => facts_of_tag(&self.registry, tag),
+                None => fact::NAMED,
             };
         }
         // Only a value something else states too is kept for replication:
@@ -4018,7 +4451,10 @@ impl FixMsg {
             return Ok(None);
         }
         let tag = members[at].as_fix().tag().ok().flatten();
-        self.stale |= tag.map_or(fact::NAMED, |tag| facts_of_tag(&self.registry, tag));
+        let reached = super::schema::tag_and_counter(&self.registry, &members[at])
+            .1
+            .or(tag);
+        self.stale |= reached.map_or(fact::NAMED, |tag| facts_of_tag(&self.registry, tag));
         // The children sharing the tag go with it, highest first so each
         // position still names its child.
         let mut gone = tag.map(|tag| self.siblings_of(tag)).unwrap_or_default();
@@ -4641,8 +5077,15 @@ struct InstrumentKey {
 /// spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` - read by
 /// [`SymbolCode::instrument`](crate::securityid::SymbolCode::instrument),
 /// the one reading of that shape a symbol is read by too.
+///
+/// A named source's key is read before the base key, which only echoes the
+/// first of them where nothing else stated it: the source that named the
+/// instrument is the one its ISIN is filed under.
 fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
-    ids.of_kind(&IdType::InstrumentId).find_map(|id| {
+    let keys = ids.of_kind(&IdType::InstrumentId);
+    let (named, base): (SmallVec<[&Identifier; 2]>, SmallVec<[&Identifier; 2]>) =
+        keys.partition(|id| !id.key().is_base());
+    named.into_iter().chain(base).find_map(|id| {
         match crate::securityid::SymbolCode::instrument(id.value().rsplit(';').next()?)? {
             crate::securityid::SymbolCode::Instrument { isin, mic, ccy } => Some(InstrumentKey {
                 isin,
@@ -4660,32 +5103,33 @@ fn instrument_key(ids: &Identifiers) -> Option<InstrumentKey> {
 const INSTRUMENT_ID: &str = "instrumentid";
 
 /// The security identifier a stated `source` and `code` make, from `src`:
-/// a source spelled `{NAMESPACE}INSTRUMENTID` - `ULLINKINSTRUMENTID` - is an
-/// [`IdType::InstrumentId`] from that namespace, and every other source is
-/// the type [`IdType::from_security_source`] reads it as.
+/// a source spelled `{NAMESPACE}INSTRUMENTID` - `ULLINKINSTRUMENTID`,
+/// `ULLINK.INSTRUMENTID`, `Ullink Instrument ID` - is an
+/// [`IdType::InstrumentId`] from that namespace, read as a key's source is
+/// read ([`Identifier::from_key`]): folded, the dots at its ends dropped,
+/// and a namespace folding to a source the crate reserves - `base`,
+/// `derived`, `fix` - naming none, an `instrumentid` from `src`
+/// ([`IdSource::from_namespace`], the one rule both readings share). Every
+/// other source is the type [`IdType::from_security_source`] reads it as.
 pub(super) fn security_identifier(
     source: &str,
     src: IdSource,
     code: &str,
 ) -> crate::Result<Identifier> {
-    match instrument_namespace(source) {
-        Some(namespace) => Identifier::new(namespace.parse()?, IdType::InstrumentId, code),
-        None => Identifier::new(src, IdType::from_security_source(source)?, code),
+    let mut buffer = [0_u8; crate::identifier::WORD_PAIR_WIDTH];
+    let namespace = crate::identifier::fold_into(source, &mut buffer)
+        .ok()
+        .and_then(|folded| folded.strip_suffix(INSTRUMENT_ID));
+    match namespace {
+        Some(namespace) => Identifier::new(
+            IdKey::new(
+                IdSource::from_namespace(namespace)?.unwrap_or(src),
+                IdType::InstrumentId,
+            ),
+            code,
+        ),
+        None => Identifier::new(IdKey::new(src, IdType::from_security_source(source)?), code),
     }
-}
-
-/// The namespace a source spelled `{NAMESPACE}INSTRUMENTID` names, matched
-/// in place ignoring case: the namespace is folded where the identifier is
-/// built, so no upper-cased copy of the source is made.
-fn instrument_namespace(source: &str) -> Option<&str> {
-    let source = source.trim();
-    source
-        .len()
-        .checked_sub(INSTRUMENT_ID.len())
-        .filter(|at| *at > 0)
-        .and_then(|at| Some((source.get(..at)?, source.get(at..)?)))
-        .filter(|(_, suffix)| suffix.eq_ignore_ascii_case(INSTRUMENT_ID))
-        .map(|(namespace, _)| namespace)
 }
 
 /// Feeds one level of the entry tree to a digest in canonical name order.
@@ -4749,40 +5193,22 @@ fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
 }
 
 /// One level of the row as the entries it states, in its order: every
-/// child through [`entry_of`], except the counter scalar beside the group
-/// it counts - at the root, in a component, in an occurrence alike - since
-/// a group's count is the group entry's own value and the counter child
-/// states nothing the entries do not already; and except a list holding
-/// nothing that no counter beside it states the count of.
+/// child through [`entry_of`], at the root, in a component and in an
+/// occurrence alike.
 ///
-/// A group holding no occurrence is stated by its count alone: the parse
-/// holds `NoPartySubIDs(802)=0` as the counter stating zero beside the
-/// empty list, which is the group's entry and re-emits. An empty list with
-/// no count stated beside it is the group absent - a table may store a null
-/// list as an empty one, and PyIceberg reads a null list of structs back as
-/// `[]` - so a row read back and settled again feeds its content code, its
+/// A group is its list alone - no counter child stands beside it at any
+/// level - and its entry states the list's length as its count, which is
+/// what re-emits as `NoPartyIDs(453)=2`. A list holding nothing is the group
+/// stated empty, `NoPartySubIDs(802)=0`; a null one is the group absent. A
+/// table cannot tell the two apart, so a row's column holds a group as null
+/// or as at least one occurrence and a stated zero rides the residual
+/// record: a row read back and settled again feeds its content code, its
 /// digest and the delivery a lifecycle folds it by as the parse did.
 fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
-    let counters: Vec<i32> = fields
-        .iter()
-        .filter(|child| child.dtype().is_nested())
-        .filter_map(|child| super::schema::tag_and_counter(registry, child).1)
-        .collect();
-    let counted = |child: &Field| {
-        !counters.is_empty()
-            && !child.dtype().is_nested()
-            && super::schema::tag_and_counter(registry, child)
-                .0
-                .is_some_and(|tag| counters.contains(&tag))
-    };
-    let unstated = |child: &Field, value: &Scalar| {
-        super::schema::is_unstated_group(registry, child, value, fields, values)
-    };
     let mut entries = Vec::new();
     for entry in fields
         .iter()
         .zip(values)
-        .filter(|(child, value)| !counted(child) && !unstated(child, value))
         .filter_map(|(child, value)| entry_of(registry, child, value))
     {
         // Sized once, on the first entry, for every child there is: a level
@@ -5025,7 +5451,10 @@ impl Holds<'_> {
         metadata: &mut Metadata,
         lifted: &mut Lifted,
     ) {
-        match inferred_identifier(key, &text, identifiers, tagged).and_then(Result::ok) {
+        let memo = self.registry.memo();
+        match inferred_identifier(memo, key, &text, identifiers, tagged, |_| true)
+            .and_then(Result::ok)
+        {
             Some(id) => lifted.push((SmolStr::new(key), text, id)),
             None => {
                 metadata.insert(SmolStr::new(key), text);
@@ -5034,30 +5463,71 @@ impl Holds<'_> {
     }
 }
 
-/// The identifier one unmapped scalar names, as [`Holds::land`] reads it:
-/// `None` where its key names none or its value states nothing, the type's
-/// refusal where the type refuses it.
+/// What dropping `id`, which `field` states under a key already holding
+/// `held`, records: the first code under a key stands over one of no
+/// higher rank.
+fn dropped_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAnomaly {
+    super::FixAnomaly::new(
+        field,
+        format!("states {id} where {}={held} is already stated", id.key()),
+    )
+}
+
+/// What replacing `held` by `id`, which `field` states under its key and
+/// which outranks it, records: a real number over a masked one or a typo.
+fn replaced_identifier(field: &str, id: &Identifier, held: &str) -> super::FixAnomaly {
+    super::FixAnomaly::new(
+        field,
+        format!(
+            "states {id}, replacing {}={held}, which ranks below it",
+            id.key()
+        ),
+    )
+}
+
+/// The identifier one unmapped scalar names, as [`Holds::land`] reads it,
+/// where its type is one `wanted` takes: `None` where its key names none of
+/// those or its value states nothing, the type's refusal where the type
+/// refuses it. The key's reading is a fact of the dictionary and the key
+/// alone, so `memo` answers it once per distinct key and declaration.
 fn inferred_identifier(
+    memo: &super::memo::Memo,
     key: &str,
     value: &str,
     declared: Option<&str>,
     tagged: bool,
+    wanted: impl FnOnce(&IdType) -> bool,
 ) -> Option<crate::Result<Identifier>> {
     let value = value.trim();
     if value.is_empty() || is_null_like(value) {
         return None;
     }
-    let names = declared
-        .into_iter()
-        .flat_map(|names| names.split(','))
-        .chain(
-            (!tagged)
-                .then(IdType::identifier_names)
-                .into_iter()
-                .flatten(),
-        );
-    let (src, kind) = Identifier::key_parts(key, names)?;
-    Some(Identifier::new(src, kind, value))
+    let key = inferred_key(memo, key, declared, tagged)?;
+    wanted(key.kind()).then(|| Identifier::new(key, value))
+}
+
+/// The identifier key one unmapped `key` names, as [`inferred_identifier`]
+/// reads it: the `declared` names of its level and, where no dictionary
+/// field is `tagged` by it, the crate's identifier names too - answered by
+/// `memo` once per distinct key and declaration.
+fn inferred_key(
+    memo: &super::memo::Memo,
+    key: &str,
+    declared: Option<&str>,
+    tagged: bool,
+) -> Option<IdKey> {
+    memo.identifier_key(declared, tagged, key, || {
+        let names = declared
+            .into_iter()
+            .flat_map(|names| names.split(','))
+            .chain(
+                (!tagged)
+                    .then(IdType::identifier_names)
+                    .into_iter()
+                    .flatten(),
+            );
+        IdKey::infer(key, names)
+    })
 }
 
 /// The `FIX:identifiers` a component - a message's definition, an
@@ -5075,27 +5545,17 @@ struct Walk<'a> {
 
 impl<'a> Walk<'a> {
     /// The members of one component or occurrence, each resolved once: a
-    /// counter beside the group it counts is left out, as [`entries_of`]
-    /// leaves it out, and so is a member whose tag or counter the walk
-    /// skips. What a member holds is planned only once a value reaches it.
+    /// member whose tag or counter the walk skips is left out. What a member
+    /// holds is planned only once a value reaches it.
     fn members(&self, fields: &'a [Field]) -> Vec<Planned<'a>> {
-        let counters: SmallVec<[i32; 4]> = fields
-            .iter()
-            .filter(|field| field.dtype().is_nested())
-            .filter_map(|field| super::schema::tag_and_counter(self.registry, field).1)
-            .collect();
         fields
             .iter()
             .map(|field| {
                 let (tag, counter) = super::schema::tag_and_counter(self.registry, field);
-                let counts =
-                    !field.dtype().is_nested() && tag.is_some_and(|tag| counters.contains(&tag));
                 Planned {
                     tag,
                     counter,
-                    skipped: counts
-                        || tag.is_some_and(self.skipped)
-                        || counter.is_some_and(self.skipped),
+                    skipped: tag.is_some_and(self.skipped) || counter.is_some_and(self.skipped),
                     ..Planned::new(field)
                 }
             })
@@ -5131,8 +5591,7 @@ struct Planned<'a> {
     /// type, where it is a group a leaf's identifier maps read; planned on
     /// the first value that reaches it.
     held: OnceCell<Option<[Option<usize>; 2]>>,
-    /// Whether it is left out: a counter beside its group, or a tag a leaf
-    /// reads.
+    /// Whether it is left out: a tag a leaf reads.
     skipped: bool,
     shape: OnceCell<Shape<'a>>,
 }
@@ -5184,8 +5643,8 @@ impl<'a> Planned<'a> {
 
 impl<'a> Shape<'a> {
     /// `value` rebuilt as named values: a leaf as the canonical text it
-    /// spells - the same text a root scalar lands as, decimals at their
-    /// stored scale and codes as their names, so no number is ever a JSON
+    /// spells - the same text a root scalar lands as, decimals as their
+    /// shortest exact text and codes as their names, so no number is ever a JSON
     /// number - a component or an occurrence as one record of its members
     /// under their names, a group or a list as the sequence of its
     /// occurrences, a map as one record of its text keys. A null, a skipped
@@ -5430,6 +5889,7 @@ impl Clone for FixMsg {
             detected_fx: self.detected_fx,
             anomalies: self.anomalies.clone(),
             arrival_anomalies: self.arrival_anomalies,
+            idmap_anomalies: self.idmap_anomalies,
         }
     }
 }
@@ -5747,47 +6207,66 @@ impl Market for FixMsg {
 
     /// The caller's word: the identifiers become the message's, which no
     /// settle restates from the fields, and the wire stays as the source
-    /// sent it. Under `overwrite` the derived overlay goes too.
+    /// sent it. The derived overlay becomes what the set now holds under
+    /// [`IdSource::Derived`], so a whole set handed over - a merge's - keeps
+    /// its derivations across the next settle.
     fn set_securityids(&mut self, ids: Identifiers, overwrite: bool) -> Result<()> {
         self.stated |= fact::SECURITYIDS;
-        if overwrite {
-            self.derived = Identifiers::new();
-        }
-        self.event.set_securityids(ids, overwrite)
+        self.event.set_securityids(ids, overwrite)?;
+        self.derived = self
+            .event
+            .get_securityids()
+            .iter()
+            .filter(|id| id.src() == &IdSource::Derived)
+            .map(|id| (id.kind().clone(), SmolStr::new(id.value())))
+            .collect();
+        Ok(())
     }
 
     fn insert_securityid(&mut self, id: Identifier) -> Result<bool> {
         if id.src() == &IdSource::Derived {
             return Ok(self.derive_securityid(id.kind(), id.value()));
         }
-        // A stated identifier answers before a derived one of its type.
-        self.derived.remove_kind(id.kind());
         self.stated |= fact::SECURITYIDS;
-        self.event.insert_securityid(id)
+        let landed = self.event.insert_securityid(id)?;
+        // A statement takes back the derivation of its type, in the overlay
+        // as in the set.
+        self.retain_derived();
+        Ok(landed)
     }
 
-    fn remove_securityid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
-        self.derived.remove(src, kind);
-        if kind == &IdType::Isin {
+    fn remove_securityid(&mut self, key: &IdKey) -> Result<bool> {
+        self.stated |= fact::SECURITYIDS;
+        // What the key removes leaves the overlay too: a derivation's own
+        // key, or, a base key, every key of its type.
+        if key.is_base() || key.src() == &IdSource::Derived {
+            self.derived.retain(|(kind, _)| kind != key.kind());
+        }
+        let removed = self.event.remove_securityid(key)?;
+        if self.event.get_securityids().get(&IdType::Isin).is_none() {
             // Every derived identifier hangs on the ISIN but the pair, which
             // hangs on the symbol.
-            let pair = self.derived.get_identifier(&IdType::Forex).cloned();
-            self.derived = Identifiers::new();
-            if let Some(pair) = pair {
-                self.derived.insert(pair);
-            }
+            self.derived.retain(|(kind, _)| *kind == IdType::Forex);
         }
-        self.stated |= fact::SECURITYIDS;
-        self.event.remove_securityid(src, kind)
+        // The event takes back every derived identifier with the ISIN; what
+        // the overlay still holds goes back as derived.
+        for (kind, code) in &self.derived {
+            self.event.derive_securityid(kind, code);
+        }
+        Ok(removed)
     }
 
     fn derive_securityid(&mut self, kind: &IdType, code: &str) -> bool {
         let added = self.event.derive_securityid(kind, code);
-        if let Some(id) = added
-            .then(|| self.event.get_securityids().get_identifier(kind))
-            .flatten()
+        if added
+            && let Some(code) = self
+                .event
+                .get_securityids()
+                .get_from(&IdKey::new(IdSource::Derived, kind.clone()))
         {
-            self.derived.insert(id.clone());
+            let code = SmolStr::new(code);
+            self.derived.retain(|(held, _)| held != kind);
+            self.derived.push((kind.clone(), code));
         }
         added
     }
@@ -6048,9 +6527,9 @@ impl Operation for FixMsg {
         self.event.insert_identifier(id)
     }
 
-    fn remove_identifier(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+    fn remove_identifier(&mut self, key: &IdKey) -> Result<bool> {
         self.stated |= fact::IDENTIFIERS;
-        self.event.remove_identifier(src, kind)
+        self.event.remove_identifier(key)
     }
 
     fn get_partyids(&self) -> &Identifiers {
@@ -6068,9 +6547,9 @@ impl Operation for FixMsg {
         self.event.insert_partyid(partyid)
     }
 
-    fn remove_partyid(&mut self, src: &IdSource, kind: &IdType) -> Result<bool> {
+    fn remove_partyid(&mut self, key: &IdKey) -> Result<bool> {
         self.stated |= fact::PARTYIDS;
-        self.event.remove_partyid(src, kind)
+        self.event.remove_partyid(key)
     }
 
     /// The registry's own answer: the `FIX:parents` its fields state, else
@@ -6085,13 +6564,20 @@ impl Operation for FixMsg {
     }
 
     /// The registry's own answer: an identifier whose type's `FIX:idmap`
-    /// entry follows.
+    /// entry follows, or a parent of one, which travels with its base.
     fn is_followed_identifier(&self, id: &Identifier) -> bool {
-        self.registry.idmap_sources().iter().any(|(_, source)| {
-            source.follows()
-                && source.map() == FixIdMapKind::Identifiers
-                && source.key() == id.kind()
-        })
+        let follows = |kind: &IdType| {
+            self.registry.idmap_sources().iter().any(|(_, source)| {
+                source.follows()
+                    && source.map() == FixIdMapKind::Identifiers
+                    && source.key() == kind
+            })
+        };
+        follows(id.kind())
+            || self
+                .registry
+                .parent_of(id.kind())
+                .is_some_and(|(base, _)| follows(&base))
     }
 }
 
@@ -6105,7 +6591,8 @@ impl FixMsg {
         // A message stating every base its parents name - most of them -
         // copies no set to learn so.
         if !held.iter().any(|id| {
-            parent_of(id.kind()).is_some_and(|(base, _)| held.get_from(id.src(), &base).is_none())
+            parent_of(id.kind())
+                .is_some_and(|(base, _)| held.get_from(&id.key().with_kind(base)).is_none())
         }) {
             return;
         }
@@ -6113,11 +6600,6 @@ impl FixMsg {
         if identifiers.fill_parents(parent_of) {
             let _ = self.event.set_identifiers(identifiers, true);
         }
-    }
-
-    /// Whether the row stated the currency pair, which FX detection leaves.
-    pub(super) const fn states_forex(&self) -> bool {
-        self.row_stated & ROW_STATED_FOREX != 0
     }
 
     /// Which cells FX detection wrote, one bit per cell.
@@ -6130,14 +6612,22 @@ impl FixMsg {
         self.detected_fx = cells;
     }
 
+    /// The code the derived overlay holds for `kind`.
+    fn derived_code(&self, kind: &IdType) -> Option<&str> {
+        self.derived
+            .iter()
+            .find(|(held, _)| held == kind)
+            .map(|(_, code)| code.as_str())
+    }
+
     /// Whether the derived overlay holds a currency pair.
     pub(super) fn derives_pair(&self) -> bool {
-        self.derived.contains_kind(&IdType::Forex)
+        self.derived_code(&IdType::Forex).is_some()
     }
 
     /// Whether the derived overlay holds exactly the pair `code`.
     pub(super) fn derives_pair_of(&self, code: &str) -> bool {
-        self.derived.get(&IdType::Forex) == Some(code)
+        self.derived_code(&IdType::Forex) == Some(code)
     }
 
     /// Replaces the derived currency pair, or takes it back: in the overlay,
@@ -6147,10 +6637,10 @@ impl FixMsg {
         // What a pair implies - the identifiers, and no one market - is
         // stated again at the next settle.
         self.stale |= fact::SECURITYIDS | fact::MIC;
-        self.derived.remove_kind(&IdType::Forex);
+        self.derived.retain(|(kind, _)| *kind != IdType::Forex);
         let _ = self
             .event
-            .remove_securityid(&IdSource::Derived, &IdType::Forex);
+            .remove_securityid(&IdKey::new(IdSource::Derived, IdType::Forex));
         if let Some(pair) = pair {
             self.derive_securityid(&IdType::Forex, pair);
         }

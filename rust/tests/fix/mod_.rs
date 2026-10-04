@@ -17,6 +17,35 @@ use super::format_target;
 use super::sole_message;
 use super::tag_index;
 
+/// `FixKey::from_text` reads a typed key the way the dictionary's own tag
+/// reader reads a tag, and anything it does not read is a name, so a signed
+/// or zero number reaches no field by tag and a leading zero is kept.
+#[test]
+fn a_typed_key_is_a_tag_by_the_dictionary_tag_reader_and_a_name_otherwise() {
+    use yggdryl::FixKey;
+
+    for (text, tag) in [("35", 35), ("035", 35), ("1", 1), ("2147483647", i32::MAX)] {
+        assert_eq!(FixKey::from_text(text), FixKey::Tag(tag), "{text:?}");
+    }
+    for text in [
+        "+35",
+        "-1",
+        "0",
+        "00",
+        " 35",
+        "35 ",
+        "3_5",
+        "2147483648",
+        "",
+        "MsgType",
+        "Symbol.absent",
+        "35:MsgType",
+        "\u{661}\u{662}",
+    ] {
+        assert_eq!(FixKey::from_text(text), FixKey::Name(text), "{text:?}");
+    }
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use std::collections::HashSet;
@@ -2773,7 +2802,7 @@ mod internal {
         qty.as_fix_mut().set_names(["Quantity"]).unwrap();
         let count = counter("NoPartyIDs", 453);
         let mut registry =
-            FixRegistry::from_fields([count.clone(), qty.clone(), tagged("Symbol", 55)]).unwrap();
+            FixRegistry::from_fields([count, qty.clone(), tagged("Symbol", 55)]).unwrap();
         registry
             .insert_definition(FixCategory::Groups, group.clone())
             .unwrap();
@@ -2784,7 +2813,6 @@ mod internal {
         let root = StructType::from_fields([
             qty,
             instrument,
-            count,
             group,
             DataType::utf8().nullable_field("9999"),
             registry.field_by_tag(52).unwrap().clone(),
@@ -2813,7 +2841,6 @@ mod internal {
                     .unwrap(),
                 ]),
             ),
-            ("NoPartyIDs", Scalar::from(2_i32)),
             ("9999", Scalar::from("custom")),
             (
                 "sendingtime",
@@ -2852,18 +2879,18 @@ mod internal {
             FixMsg::with_registry(Arc::clone(&registry), root.clone(), value.clone()).unwrap();
         assert!(Arc::ptr_eq(msg.registry(), &registry));
         assert_eq!(msg.as_field().name(), root.name());
-        assert_eq!(&msg.as_field().fields()[..4], &root.fields()[1..5]);
+        assert_eq!(&msg.as_field().fields()[..3], &root.fields()[1..4]);
 
         // A record input canonicalizes to the ordered sequence the root declares.
         let row = msg.as_value().as_sequence().unwrap();
         assert_eq!(
             row.len(),
-            4,
-            "four business fields; the clock is the header's and OrderQty is the \
+            3,
+            "three business fields; the clock is the header's and OrderQty is the \
          event's own quantity"
         );
-        assert_eq!(row[1], Scalar::from(2_i32));
-        assert_eq!(row[3], Scalar::from("custom"));
+        assert_eq!(row[1].as_sequence().map(<[Scalar]>::len), Some(2));
+        assert_eq!(row[2], Scalar::from("custom"));
         assert_eq!(
             msg.by_tag(52).unwrap(),
             Scalar::datetime64(0, yggdryl::TimeUnit::Nanosecond, yggdryl::Timezone::UTC).unwrap()
@@ -2915,7 +2942,9 @@ mod internal {
         );
         assert!(msg.get_by_tag(-1).is_none());
 
-        // The generic pair matches the specialized one for every key.
+        // The generic pair matches the specialized one for every key; a
+        // group's counter tag reaches nothing, the group being its list.
+        assert!(msg.get_by_tag(453).is_none());
         for tag in [38, 9999, 55, 453] {
             assert_eq!(msg.get(tag), msg.get_by_tag(tag), "{tag}");
             assert_eq!(msg.value(tag).ok(), msg.by_tag(tag).ok(), "{tag}");
@@ -4320,7 +4349,7 @@ mod internal {
             )
             .expect("the partyids")
             .to_string(),
-            "[base:executingfirm=BUYSIDE]"
+            "[executingfirm=BUYSIDE]"
         );
         assert_eq!(
             columns[full.index_of("symbol").expect("the projected symbol")].as_str(),

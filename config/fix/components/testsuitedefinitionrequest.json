@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -65,17 +54,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "parties"
-        }
-      },
-      {
-        "name": "notestsuiteparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notestsuiteparameters",
-          "FIX:tag": "3126"
         }
       },
       {
@@ -89,17 +67,6 @@
         }
       },
       {
-        "name": "nostrategyparameters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostrategyparameters",
-          "FIX:tag": "957"
-        }
-      },
-      {
         "name": "strategyparameters",
         "dtype": {
           "type": "null"
@@ -107,17 +74,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "strategyparameters"
-        }
-      },
-      {
-        "name": "noalgosystemmodules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noalgosystemmodules",
-          "FIX:tag": "3025"
         }
       },
       {
@@ -139,17 +95,6 @@
         "metadata": {
           "FIX:field": "testscenariogroupid",
           "FIX:tag": "3079"
-        }
-      },
-      {
-        "name": "notestscenarios",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": false,
-        "metadata": {
-          "FIX:field": "notestscenarios",
-          "FIX:tag": "3028"
         }
       },
       {

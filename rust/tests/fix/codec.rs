@@ -19,6 +19,44 @@ fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
 }
 
+/// A chain whose first statement masks its instrument's number and whose
+/// later statement the walk's own registry fills with the real one - learned
+/// from another order's line between them - keeps the real number: what a
+/// follower derived outranks what its chain stated, so the instrument is one
+/// book key however its lines spell it.
+#[test]
+fn a_followers_derived_real_isin_stands_over_its_chains_masked_statement() {
+    use yggdryl::IdType;
+    use yggdryl::graph::Market;
+
+    let codec = codec();
+    let lines: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=8|52=20260921-10:00:00|37=O1|11=C1|17=E1|150=0|39=0|55=ACME|54=1|38=10|44=100|14=0|151=10|ISINCODE=XX0000000001|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:01|37=O2|11=C2|17=E2|150=0|39=0|55=ACME|48=US0378331005|22=4|54=2|38=5|44=101|14=0|151=5|10=0|",
+        b"8=FIX.4.4|35=8|52=20260921-10:00:02|37=O1|11=C1|17=E3|150=5|39=0|55=ACME|54=1|38=10|44=100|14=0|151=10|10=0|",
+    ];
+    let parsed: Vec<yggdryl::FixMsg> = codec
+        .parse_lines(lines)
+        .collect::<yggdryl::Result<_>>()
+        .expect("three messages");
+    let chained: Vec<yggdryl::FixMsg> = codec
+        .lifecycle(parsed)
+        .collect::<yggdryl::Result<_>>()
+        .expect("the walk");
+    assert_eq!(chained.len(), 3);
+    assert_eq!(chained[0].get_isincode(), Some("XX0000000001"));
+    let last = &chained[2];
+    assert_eq!(last.get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(last.get_isincode(), Some("US0378331005"));
+    assert_eq!(last.book_crosscode(), "US0378331005");
+    assert!(last.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(
+        last.get_securityids().get(&IdType::Cusip),
+        Some("037833100"),
+        "the number it derived embeds the CUSIP"
+    );
+}
+
 fn codec() -> FixCodec {
     super::fixed_codec(registry())
 }
@@ -406,7 +444,13 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let reader = reader();
     let wire = b"8=FIX.4.4|35=D|453=2|448=A|447=D|452=1|802=2|523=DESK|803=1|523=CLIENT|803=2|448=B|447=D|452=3|802=1|523=OTHER|803=3|55=AAPL|10=0|";
     let message = reader.parse_fix_line(wire).unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    // A group is its list alone: its length is the count, and the counter's
+    // tag is no child of its own.
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        2
+    );
+    assert!(message.get_by_tag(453).is_none(), "no counter column");
     assert_eq!(
         message
             .by_path(&path("Parties[0].PartyID"))
@@ -422,8 +466,8 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
         Some("B")
     );
     assert_eq!(
-        message.by_path(&path("Parties[0].NoPartySubIDs")).unwrap(),
-        Scalar::from(2_i32)
+        super::sequence(message.by_path(&path("Parties[0].PartySubIDs")).unwrap()).len(),
+        2
     );
     assert_eq!(
         message
@@ -456,10 +500,11 @@ fn numeric_group_counters_and_nested_occurrences_keep_their_declared_shapes() {
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
     // The `partyids` column is a sorted map keyed `src:type`: one entry per
-    // party the two occurrences name.
+    // party the two occurrences name, and the base key each one's source
+    // fills.
     let partyids = row.get(schema.index_of("partyids").unwrap()).unwrap();
     let partyids = yggdryl::Identifiers::from_scalar(partyids.as_ref()).unwrap();
-    assert_eq!(partyids.len(), 2, "projection retains parsed occurrences");
+    assert_eq!(partyids.len(), 4, "projection retains parsed occurrences");
 }
 
 #[test]
@@ -486,11 +531,11 @@ fn numeric_group_counts_describe_arrivals_without_allocating_stated_lengths() {
             "{wire}"
         );
         assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
-        // The counter describes the arrival: the group entry carries the
-        // occurrences it holds, whatever length the wire claimed, so a
-        // miscount, a word and an overflow all re-emit as what came.
-        let held = i32::try_from(held).expect("a small count");
-        assert_eq!(message.by_tag(453).unwrap(), Scalar::from(held), "{wire}");
+        // The counter frames the arrival and is no field: the group entry
+        // carries the occurrences it holds, whatever length the wire
+        // claimed, so a miscount, a word and an overflow all re-emit as what
+        // came.
+        assert!(message.get_by_tag(453).is_none(), "{wire}");
         assert_eq!(
             String::from_utf8(message.into_bytes(b'|')).unwrap(),
             format!("8=FIX.4.4|35=D|453={held}|{members}55=AAPL|59=0|10=0|"),
@@ -677,7 +722,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
 }
 
 #[test]
-fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
+fn a_bridge_frame_of_raw_bytes_reads_its_types_and_its_group_by_its_length() {
     let reader = reader();
     // One real bridge frame, byte for byte: a leading separator, `#`-prefixed
     // name keys, and one occurrence whose value packs its members behind the
@@ -922,9 +967,10 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
 
     // A group is one thing however many occurrences it states, so a bare
     // group claims every marked one of it: the marked occurrences are
-    // numbered past the bare ones, the group counts what is left, and the
-    // list is sorted by what each occurrence states - so the two spellings
-    // of one row answer one group whichever side arrived first.
+    // numbered past the bare ones, the group holds what is left - its length
+    // the count, a marked count no fact beside the bare one - and the list
+    // is sorted by what each occurrence states - so the two spellings of one
+    // row answer one group whichever side arrived first.
     for row in [
         b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3"
@@ -935,7 +981,8 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     ] {
         let message = reader.sole_line(row).unwrap();
         let spelled = String::from_utf8_lossy(row);
-        assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(3), "{spelled}");
+        assert!(message.get_by_tag(453).is_none(), "{spelled}");
+        assert!(message.anomalies().is_empty(), "{spelled}");
         let ids: Vec<String> = super::sequence(message.by_name("parties").unwrap())
             .iter()
             .map(|occurrence| {
@@ -946,13 +993,13 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
             })
             .collect();
         assert_eq!(ids, ["A", "B", "BARE"], "{spelled}");
-        // One counter and one group, whichever spelling the row opened with.
+        // One group, whichever spelling the row opened with.
         let mut columns: Vec<&str> =
             message.as_field().fields().iter().map(Field::name).collect();
         columns.sort_unstable();
         assert_eq!(
             columns,
-            ["nopartyids", "parties", "timeinforce"],
+            ["parties", "timeinforce"],
             "{spelled}"
         );
     }
@@ -962,7 +1009,10 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     let restated: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.sole_line(restated).unwrap();
-    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        1
+    );
     assert_eq!(
         message.by_path(&path("Parties[0].PartyID")).unwrap(),
         Scalar::from("A")
@@ -1123,7 +1173,10 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
         deep.extend_from_slice(b"NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03");
     }
     let message = reader.sole_line(&deep).unwrap();
-    assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        1
+    );
     // The entries are that row read as a tree, so they nest as deep as it
     // does and no deeper: one group, one occurrence, then the sub-group
     // repeated to the bound.
@@ -1564,7 +1617,10 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     frame.extend_from_slice(b"|10=0|");
 
     let message = reader().sole_line(&frame).unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(
+        super::sequence(message.by_name("parties").unwrap()).len(),
+        2
+    );
     assert_eq!(message.by_tag(38).unwrap(), super::decimal("3"));
 
     // The message's own group holds the two outer occurrences, and the
@@ -1593,7 +1649,7 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
             .expect("the partyids")
             .to_string()
     };
-    const OUTER: &str = "[proprietary:clientid=OUTER-B, proprietary:executingfirm=OUTER-A]";
+    const OUTER: &str = "[clientid=OUTER-B, executingfirm=OUTER-A, proprietary:clientid=OUTER-B, proprietary:executingfirm=OUTER-A]";
     let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
     outer(&message);
     let row = message.into_row(&schema).unwrap();
@@ -1611,7 +1667,10 @@ NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
     frame.extend_from_slice(payload);
     frame.extend_from_slice(b"|10=0|");
     let numeric = reader().sole_line(&frame).unwrap();
-    assert_eq!(numeric.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(
+        super::sequence(numeric.by_name("parties").unwrap()).len(),
+        2
+    );
     assert_eq!(numeric.by_tag(38).unwrap(), super::decimal("3"));
     outer(&numeric);
     let row = numeric.into_row(&schema).unwrap();
@@ -1705,7 +1764,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // an occurrence, a member the occurrence already holds opens the next,
     // and a tag the group does not declare closes it - so the frame lands in
     // the shape a bridge's indexed keys would have built, with the numeric
-    // delimiter opening each Party while NoPartyIDs keeps the count.
+    // delimiter opening each Party, and the group's length is the count.
     let row =
         "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|54=1|10=000|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
@@ -1725,9 +1784,9 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
         .map(|occurrence| occurrence.as_sequence().unwrap()[0].as_str().unwrap())
         .collect();
     assert_eq!(ids, ["BUYSIDE", "VENUE"]);
-    // The counter is a scalar column of its own and keeps what the frame
-    // stated, beside the group the occurrences reach.
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    // The counter frames the group and is no column of its own: the
+    // group's length is the count.
+    assert!(message.get_by_tag(453).is_none(), "no counter column");
     assert_eq!(
         message.by_path(&path("Parties[0].PartyRole")).unwrap(),
         Scalar::from(1_i32)
@@ -1765,8 +1824,8 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
     // A dictionary that does not nest one group inside another reads a
     // frame that does as two statements of the inner counter at one level.
     // Nothing is lost for it: the second counter appends to what the first
-    // gathered, and the miscount says the group holds more than one
-    // counter stated.
+    // gathered, and the group holds every occurrence that arrived - its
+    // length the count, whatever either counter stated.
     let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
     let message = reader.sole_line(row.as_bytes()).unwrap();
     let alternates = super::sequence(message.by_name("secaltids").unwrap());
@@ -1780,9 +1839,9 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
 #[test]
 fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     // A dictionary declaring one group inside another reads the inner
-    // counter as a member: it opens its group inside the occurrence being
-    // filled, the members that follow fill that group first, and a member of
-    // the outer group closes it.
+    // counter as that group's opening: it opens its group inside the
+    // occurrence being filled, the members that follow fill that group
+    // first, and a member of the outer group closes it.
     let mut sub_id = DataType::utf8().nullable_field("partysubid");
     sub_id.as_fix_mut().set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
@@ -1793,21 +1852,18 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
     sub_count.as_fix_mut().set_tag(802).unwrap();
+    // The counter is a field of the dictionary and no member of the item:
+    // the nested group is its list alone.
     let mut subs = DataType::serie(sub_item).nullable_field("partysubids");
     subs.as_fix_mut().set_counter(802).unwrap();
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = StructType::from_fields([
-        party_id.clone(),
-        role.clone(),
-        sub_count.clone(),
-        subs.clone(),
-    ])
-    .map(DataType::from)
-    .unwrap()
-    .required_field("party");
+    let item = StructType::from_fields([party_id.clone(), role.clone(), subs.clone()])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("party");
     let mut count = DataType::Int32.nullable_field("nopartyids");
     count.as_fix_mut().set_tag(453).unwrap();
     let mut parties = DataType::serie(item).nullable_field("parties");
@@ -1833,7 +1889,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     assert_eq!(occurrences.len(), 2);
     let first = occurrences[0].as_sequence().unwrap();
     assert_eq!(first[0].as_str(), Some("A"));
-    let subs = first[3]
+    let subs = first[2]
         .as_sequence()
         .expect("the nested group in the first occurrence");
     let sub_ids: Vec<&str> = subs
@@ -1843,7 +1899,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     assert_eq!(sub_ids, ["S1", "S2"]);
     let second = occurrences[1].as_sequence().unwrap();
     assert_eq!(second[0].as_str(), Some("B"));
-    assert!(second[3].is_null(), "the second party stated no sub-ids");
+    assert!(second[2].is_null(), "the second party stated no sub-ids");
     assert!(
         message.by_tag(802).is_err(),
         "the inner counter is no root column"
@@ -1878,7 +1934,7 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
     let reader = reader();
     // `FixKey` reads every string as a name, so a numeric group key resolves
     // only tag-first. Resolving it by name alone built a second, tag-less
-    // column beside the counter's own and left the counter holding nothing.
+    // column beside the group's own.
     let by_tag = reader
         .sole_line(b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
         .unwrap();
@@ -1899,10 +1955,10 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
             .collect();
         assert_eq!(
             columns,
-            ["nopartyids", "parties", "timeinforce"],
-            "one counter, one group and the day order the dictionary derives"
+            ["parties", "timeinforce"],
+            "one group and the day order the dictionary derives"
         );
-        assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+        assert!(message.get_by_tag(453).is_none());
         let occurrences = super::sequence(message.by_name("parties").unwrap());
         assert_eq!(occurrences.len(), 2);
     }
@@ -1917,7 +1973,6 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
     let message = reader()
         .sole_line(b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO")
         .unwrap();
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
     let occurrences = super::sequence(message.by_name("parties").unwrap());
     assert_eq!(occurrences, [Scalar::Null, Scalar::Null]);
     let group = message.as_field().get_field_by_path("parties").unwrap();
@@ -1957,7 +2012,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["nolinesoftext", "linesoftextgrp"], "{names:?}");
+    assert_eq!(names, ["linesoftextgrp"], "{names:?}");
     // One group, one column: the counter and its members reach one slot.
     assert_eq!(
         message
@@ -1968,21 +2023,21 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             .len(),
         2
     );
-    let group = message
-        .as_field()
-        .field("nolinesoftext")
-        .expect("the counter's column");
+    let counter = message
+        .registry()
+        .get_field_by_tag(33)
+        .expect("the counter's field");
     assert!(
-        group.as_fix().names().any(|held| held == "linesoftext"),
-        "the 4.2 spelling is still readable off the column",
+        counter.as_fix().names().any(|held| held == "linesoftext"),
+        "the 4.2 spelling is still readable off the counter's field",
     );
 }
 
 #[test]
-fn a_group_the_dictionary_holds_as_a_large_serie_still_states_its_count() {
+fn a_group_the_dictionary_holds_as_a_large_serie_is_its_list_alone() {
     // The FIX layer reads a group as `Serie` or `LargeSerie` everywhere it looks
-    // at one, so the miscount looks at the same pair: a dictionary that stored
-    // its group in the wider variant is still a dictionary of groups.
+    // at one: a dictionary that stored its group in the wider variant is still
+    // a dictionary of groups, each its list alone.
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let item = StructType::from_fields([party_id])
@@ -2004,14 +2059,13 @@ fn a_group_the_dictionary_holds_as_a_large_serie_still_states_its_count() {
     let message = super::fixed_codec(registry)
         .sole_line(b"35=D|55=AAPL|453=2|10=0|")
         .unwrap();
-    // The counter describes the group: it holds no occurrence, so the count
-    // is zero however wide a serie the dictionary stores the group in.
-    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(0_i32));
-    assert!(
-        message
-            .get_by_name("parties")
-            .is_none_or(|held| held.as_sequence().is_none_or(<[Scalar]>::is_empty))
-    );
+    // The counter frames the group: it holds no occurrence, so the group is
+    // stated empty and re-emits a zero count however wide a serie the
+    // dictionary stores it in.
+    assert!(message.get_by_tag(453).is_none());
+    assert!(super::sequence(message.by_name("parties").unwrap()).is_empty());
+    let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
+    assert!(wire.contains("|453=0|"), "{wire}");
 }
 
 /// A capture that cannot print `0x01` writes it, and the frame is the same.
@@ -2145,11 +2199,10 @@ fn separatorless_group_inference_uses_only_direct_members() {
     let mut group = DataType::serie(item).nullable_field("minimalparties");
     group.as_fix_mut().set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
-    let mut definition =
-        StructType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("minimalpartiesmessage");
+    let mut definition = StructType::from_fields([group])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("minimalpartiesmessage");
     definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
     scoped.insert(definition).unwrap();
     let numeric_name = super::fixed_codec(Arc::new(scoped))
@@ -2268,6 +2321,51 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
         instant(1_704_208_530_000_000_000),
     );
 
+    // A formatter that separates its fields writes the offset after one
+    // blank - `yyyyMMdd-HH:mm:ss Z` - and it is the same instant, whichever
+    // of the two datatypes the field is.
+    assert_eq!(
+        latest("20240102-10:15:30.000 -0500", 1132),
+        instant(1_704_208_530_000_000_000),
+    );
+    assert_eq!(
+        read("8=FIX.4.4", "20260101-10:00:00 +0400", 60),
+        instant(1_767_247_200_000_000_000),
+    );
+    // A bridge closes that offset with `s`, and the offset is the reading;
+    // any other letter after it is no offset, and the value is left
+    // unstated rather than guessed at.
+    assert_eq!(
+        read("8=FIX.4.4", "20260101-10:00:00 +0400s", 60),
+        instant(1_767_247_200_000_000_000),
+    );
+    assert_eq!(
+        latest("20240102-10:15:30.000-05:00s", 1132),
+        instant(1_704_208_530_000_000_000),
+    );
+    let suffixed = reader
+        .parse_fix_line(b"8=FIX.4.4|35=D|60=20260101-10:00:00 +0400m|10=0|")
+        .expect("a message");
+    assert!(suffixed.by_tag(60).map_or(true, |held| held.is_null()));
+    // A `TZTimestamp` may stop at its minutes.
+    assert_eq!(
+        latest("20240102-10:15-05:00", 1132),
+        instant(1_704_208_500_000_000_000),
+    );
+    // A bridge writes a clock as one digit run - the date, the time and
+    // three, six or nine digits of fraction - and it is the same instant
+    // the separators spell.
+    assert_eq!(
+        read("8=FIX.4.4", "20240102101530123", 60),
+        instant(1_704_190_530_123_000_000),
+    );
+    // An ISO spelling stating no zone is UTC under a `UTCTimestamp` exactly
+    // as the FIX one is: the column zones what the value leaves unsaid.
+    assert_eq!(
+        read("8=FIX.4.4", "2024-01-02T10:15:30", 60),
+        instant(1_704_190_530_000_000_000),
+    );
+
     // TransactTime(60) is a UTCTimestamp: no zone stated, and UTC meant.
     assert_eq!(
         read("8=FIX.4.4", "20240102-10:15:30.000", 60),
@@ -2275,8 +2373,8 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     );
 
     // FIX spells a fraction with the full stop and nothing else, but the wire
-    // spelling is handed to this crate's shared ISO reader rather than to a
-    // second parser of FIX's own, and that reader takes either decimal sign.
+    // spelling is read by the datetime's own reader rather than by a second
+    // parser of FIX's own, and that reader takes either decimal sign.
     // So a bridge writing the comma its locale writes reads the same instant
     // where it used to be Null, without FIX itself gaining a spelling.
     assert_eq!(
@@ -2877,13 +2975,13 @@ mod msgtype_filter_tests {
             .unwrap();
         assert_eq!(read.len(), 1);
         assert_eq!(read[0].by_tag(11).unwrap().as_str(), Some("A"));
-        // And a walk refuses what the parse would have: a keepalive handed
-        // in from elsewhere never enters a chain.
+        // A walk reads its input as already cleaned: a keepalive handed in
+        // from elsewhere is the caller's to refuse, and is walked as given.
         let keepalive = codec()
             .with_exclude_msgtypes::<[&str; 0], &str>([])
             .parse_fix_line(b"8=FIX.4.4|35=0|10=0|")
             .unwrap();
-        assert_eq!(codec().lifecycle([keepalive]).count(), 0);
+        assert_eq!(codec().lifecycle([keepalive]).count(), 1);
     }
 
     #[test]
@@ -3835,9 +3933,9 @@ mod equivalence {
             .map(|line| {
                 let mut line = line.expect("a line");
                 // The bytes are the committed file above, not the temporary
-                // in-memory allocation used to exercise the reader. Text-line
-                // identity includes the identifier it was read under, so
-                // state that stable source.
+                // in-memory allocation used to exercise the reader. A line's
+                // identity is seeded by the cross hash of the identifier it
+                // was read under, so state that stable source.
                 line.set_sourceuri(Some(Arc::clone(&uri)));
                 line
             })
@@ -3989,16 +4087,20 @@ mod equivalence {
 }
 
 mod threads {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use arrow_array::RecordBatch;
     use yggdryl::arrow::BatchReader;
-    use yggdryl::graph::{Element, Event};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-    use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
+    use yggdryl::{
+        FixCodec, FixMsg, IOMedia, IdType, Isin, IsinEntry, IsinRegistry, MimeType, Timezone, Url,
+        fix_schema,
+    };
 
     /// The bridge capture as the bytes a `.log` file holds, and the options
     /// its rows are read under.
@@ -4276,6 +4378,113 @@ mod threads {
         );
     }
 
+    /// A batch past twice [`FixCodec::PARALLEL_JOB_ROWS`] rows is cut into
+    /// row ranges the workers share, and the cut is invisible: the bridge
+    /// capture sixteen times over, read as the text reader batches it by
+    /// default - one batch of every line - and in batches of eight lines,
+    /// answers on four threads the messages and the batches it answers on
+    /// one, the output closing every eight rows across the cuts as well as
+    /// on its own bytes.
+    #[test]
+    fn arrow_parse_pool_cuts_a_large_batch_into_rows_answering_what_one_thread_does() {
+        let (_, mut options) = capture();
+        let source = Buffer::from_bytes(include_bytes!("ulbridge.log").repeat(16)).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        );
+        let one = super::fixed_codec(super::committed_registry())
+            .with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let four = one.clone().with_threads(4);
+        let whole: RecordOptions = options.clone().into();
+        let held = source
+            .read_arrow_reader(&whole)
+            .expect("a text reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .collect::<Vec<_>>();
+        assert_eq!(held.len(), 1, "one batch of every line");
+        assert!(held[0] > 4 * FixCodec::PARALLEL_JOB_ROWS, "{held:?}");
+        options.batch_row_size = Some(8);
+        let eights: RecordOptions = options.into();
+        for (record, closing) in [(&whole, 8), (&eights, FixCodec::DEFAULT_BATCH_ROW_SIZE)] {
+            let reader = || source.read_arrow_reader(record).expect("a text reader");
+            let (one, four) = (
+                one.clone().with_batch_row_size(closing),
+                four.clone().with_batch_row_size(closing),
+            );
+            let read = messages(one.parse_arrow_messages(reader()).expect("messages"));
+            assert!(read.len() > 16 * 100, "{}", read.len());
+            same_messages(
+                &read,
+                &messages(four.parse_arrow_messages(reader()).expect("messages")),
+            );
+            same_batches(
+                &batches(one.parse_text_arrow_reader(reader()).expect("a reader")),
+                &batches(four.parse_text_arrow_reader(reader()).expect("a reader")),
+            );
+        }
+    }
+
+    /// A cell the landing refuses costs its row alone wherever the cut put
+    /// it, and its warning names the row of the source batch - never the
+    /// row of the range a worker was handed.
+    #[test]
+    fn arrow_parse_pool_names_a_refused_cell_by_the_row_of_its_source_batch() {
+        use std::fmt::Write as _;
+
+        const ROWS: usize = 4096;
+        // A code no member of the state enum takes.
+        const FOREIGN: u16 = 7;
+        let capture = yggdryl::DataType::from(
+            yggdryl::StructType::from_fields([
+                yggdryl::DataType::binary().required_field("body"),
+                yggdryl::DataType::State.nullable_field("cutstate"),
+            ])
+            .unwrap(),
+        )
+        .required_field("capture");
+        let frames: Vec<Vec<u8>> = (0..ROWS)
+            .map(|row| {
+                let mut frame = String::new();
+                write!(frame, "8=FIX.4.4|35=D|11=R{row}|10=0|").unwrap();
+                frame.into_bytes()
+            })
+            .collect();
+        let mut codes = vec![yggdryl::State::New.code(); ROWS];
+        codes[ROWS - 1] = FOREIGN;
+        let batch = RecordBatch::try_new(
+            capture.into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(arrow_array::BinaryArray::from_iter_values(&frames)),
+                Arc::new(arrow_array::UInt16Array::from(codes)),
+            ],
+        )
+        .unwrap();
+        const { assert!(ROWS > 2 * FixCodec::PARALLEL_JOB_ROWS, "the batch is cut") };
+        let codec = super::fixed_codec(super::committed_registry()).with_threads(4);
+        let (read, warnings) = crate::warned::naming("yggdryl::fix::batch", "cutstate", || {
+            codec
+                .parse_arrow_messages(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap()
+                .collect::<yggdryl::Result<Vec<FixMsg>>>()
+                .expect("a refused row is no error")
+        });
+        assert_eq!(read.len(), ROWS - 1, "every row but the refused one");
+        for (row, message) in read.iter().enumerate() {
+            let id = message.get_by_tag(11).unwrap();
+            assert_eq!(
+                id.as_str(),
+                Some(format!("R{row}").as_str()),
+                "in row order"
+            );
+        }
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains(&format!("in row {} of its batch", ROWS - 1)),
+            "{warnings:?}"
+        );
+    }
+
     /// The source's own failure is yielded after every message read before
     /// it, and ends the stream: nothing after a reader that failed is read.
     #[test]
@@ -4336,6 +4545,307 @@ mod threads {
             output.next().is_none(),
             "Arrow output fuses at the first error"
         );
+    }
+    /// The bridge capture's bodies as bytes.
+    fn bodies(held: &[TextLine]) -> Vec<Vec<u8>> {
+        held.iter().map(|line| line.body_bytes().to_vec()).collect()
+    }
+
+    /// A registry holding what the capture states about its instruments,
+    /// learned by walking it once on one thread, with a common code beside
+    /// every row that no message states - what a parse through the registry
+    /// fills, derived - committed to a buffer so it stands clean.
+    fn learned_registry(bare: &FixCodec, bodies: &[Vec<u8>]) -> Arc<Mutex<IsinRegistry>> {
+        let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+        let learning = bare.clone().with_isin_registry(Arc::clone(&instruments));
+        let parsed: Vec<FixMsg> = learning
+            .parse_lines(bodies)
+            .filter_map(Result::ok)
+            .collect();
+        for walked in learning.lifecycle(parsed) {
+            walked.expect("a walked message");
+        }
+        let mut registry = instruments.lock().expect("the registry");
+        let isins: Vec<String> = registry
+            .iter()
+            .map(|row| row.isin().as_str().to_owned())
+            .collect();
+        assert!(isins.len() > 2, "the capture names instruments: {isins:?}");
+        for isin in &isins {
+            registry
+                .merge(
+                    IsinEntry::new(Isin::new(isin).expect("a learned key"))
+                        .try_with_code(IdType::Common, &format!("C-{isin}"))
+                        .expect("a common code"),
+                )
+                .expect("a fold");
+        }
+        registry
+            .set_holder(Buffer::new().with_media_type(MimeType::ARROW_STREAM.into()))
+            .expect("bound");
+        registry.commit().expect("committed");
+        assert!(!registry.is_dirty());
+        drop(registry);
+        instruments
+    }
+
+    /// The messages of `read` that carry a common code the table derived.
+    fn filled(read: &[Result<FixMsg, String>]) -> usize {
+        read.iter()
+            .filter_map(|held| held.as_ref().ok())
+            .filter(|message| message.get_securityids().is_derived(&IdType::Common))
+            .count()
+    }
+
+    /// Every door fills from the one table its codec's registry holds alike
+    /// on one thread and on four, and no door moves the registry.
+    #[test]
+    fn every_door_fills_from_one_table_alike_on_four_threads_and_moves_nothing() {
+        let bare = super::fixed_codec(super::committed_registry());
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let before: Vec<IsinEntry> = instruments
+            .lock()
+            .expect("the registry")
+            .iter()
+            .cloned()
+            .collect();
+        let one = bare.with_isin_registry(Arc::clone(&instruments));
+        let four = one.clone().with_threads(4);
+        let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
+
+        let bytes_one = messages(one.parse_lines(&bodies));
+        let bytes_four = messages(four.parse_lines(&bodies));
+        same_messages(&bytes_one, &bytes_four);
+        assert!(filled(&bytes_one) > 0, "the table filled a message");
+        let text_one = messages(composed(&one).parse_text_lines(held.iter()));
+        let text_four = messages(composed(&four).parse_text_lines(held.iter()));
+        same_messages(&text_one, &text_four);
+        assert_eq!(filled(&text_one), filled(&bytes_one));
+        let record: RecordOptions = options.clone().into();
+        let reader = || source.read_arrow_reader(&record).expect("a text reader");
+        same_batches(
+            &batches(one.parse_text_arrow_reader(reader()).expect("a reader")),
+            &batches(four.parse_text_arrow_reader(reader()).expect("a reader")),
+        );
+        // The singular door, which takes the table per row under one lock,
+        // fills the same rows; it places each row's messages on its own, so
+        // the messages themselves are not the stream door's.
+        let singular: Vec<Result<FixMsg, String>> = bodies
+            .iter()
+            .flat_map(|body| one.parse_line(body).map(messages).unwrap_or_default())
+            .collect();
+        assert_eq!(filled(&singular), filled(&bytes_one));
+
+        let registry = instruments.lock().expect("the registry");
+        assert!(!registry.is_dirty(), "a parse never moves the registry");
+        assert!(registry.iter().eq(before.iter()));
+    }
+
+    /// A door fixes the registry's table as it opens, on the calling thread,
+    /// and its workers never reach the lock: every stream built before the
+    /// lock is taken drains under it, and a learn after the door opened
+    /// reaches no message of it.
+    #[test]
+    fn a_door_fixes_the_table_as_it_opens_and_no_worker_reaches_the_lock() {
+        let bare = super::fixed_codec(super::committed_registry());
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let four = bare
+            .with_isin_registry(Arc::clone(&instruments))
+            .with_threads(4)
+            .with_capture_names(options.capture_names());
+        let record: RecordOptions = options.clone().into();
+        let unlocked = messages(four.parse_lines(&bodies));
+        let belgian = "B-LEARNED-LATER";
+        let learned = |message: &FixMsg| {
+            message
+                .get_securityids()
+                .get(&IdType::Belgian)
+                .is_some_and(|code| code == belgian)
+        };
+
+        // The doors open: each takes the table now.
+        let bytes = four.parse_lines(&bodies);
+        let text = four.parse_text_lines(held.iter());
+        let arrow = four
+            .parse_text_arrow_reader(source.read_arrow_reader(&record).expect("a text reader"))
+            .expect("a reader");
+        let rows = four.messages(
+            four.parse_text_arrow_reader(source.read_arrow_reader(&record).expect("a text reader"))
+                .expect("a reader"),
+        );
+        // A learn after the doors opened: no message of theirs sees it.
+        {
+            let mut registry = instruments.lock().expect("the registry");
+            let isin = registry.iter().next().expect("a row").isin().clone();
+            registry
+                .merge(
+                    IsinEntry::new(isin)
+                        .try_with_code(IdType::Belgian, belgian)
+                        .expect("a code"),
+                )
+                .expect("a fold");
+        }
+        // The lock, held on another thread until the doors have drained;
+        // a worker reaching it would hang the drain, and the deadline is
+        // what names that.
+        let (held_sender, held_receiver) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let locker = {
+            let instruments = Arc::clone(&instruments);
+            let timed_out = Arc::clone(&timed_out);
+            std::thread::spawn(move || {
+                let guard = instruments.lock().expect("the registry");
+                held_sender.send(()).expect("the test waits");
+                if released.recv_timeout(Duration::from_secs(300)).is_err() {
+                    timed_out.store(true, Ordering::SeqCst);
+                }
+                drop(guard);
+            })
+        };
+        held_receiver.recv().expect("the lock is held");
+        let bytes = messages(bytes);
+        let text = messages(text);
+        let arrow = batches(arrow);
+        let rows = messages(rows);
+        release.send(()).expect("the locker waits");
+        locker.join().expect("the locker");
+        assert!(
+            !timed_out.load(Ordering::SeqCst),
+            "a door drained under the registry's lock"
+        );
+        same_messages(&bytes, &unlocked);
+        assert_eq!(text.len(), unlocked.len());
+        assert!(!arrow.is_empty());
+        assert!(
+            !bytes
+                .iter()
+                .chain(&text)
+                .chain(&rows)
+                .filter_map(|held| held.as_ref().ok())
+                .any(learned),
+            "a learn after the door opened reaches no message of it"
+        );
+        // A door opened after the learn fills it.
+        let after = messages(four.parse_lines(&bodies));
+        assert!(
+            after
+                .iter()
+                .filter_map(|held| held.as_ref().ok())
+                .any(learned)
+        );
+    }
+
+    /// The table leaves a message's identity alone: with and without a
+    /// registry every message of the capture, read as bytes, as lines and
+    /// as rows, has the same `curruuid`, `currhashcode`, `crosscode`,
+    /// `seqnum` and entries, and only its derived identifiers differ; and a
+    /// parse-filled message is learned back as nothing, in memory and
+    /// through a row round trip.
+    #[test]
+    fn the_table_leaves_a_messages_identity_alone_and_feeds_nothing_back() {
+        let registry = super::committed_registry();
+        let bare = super::fixed_codec(Arc::clone(&registry));
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let filling = bare.clone().with_isin_registry(Arc::clone(&instruments));
+        let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
+        let identity = |message: &FixMsg| {
+            (
+                message.get_curruuid(),
+                message.get_currhashcode(),
+                message.get_crosscode().to_owned(),
+                message.get_seqnum(),
+                message.entries().to_vec(),
+                message.into_bytes(b'|'),
+            )
+        };
+        let same_identity = |without: &[Result<FixMsg, String>],
+                             with: &[Result<FixMsg, String>]| {
+            assert_eq!(without.len(), with.len());
+            let mut differ = 0;
+            for (without, with) in without.iter().zip(with) {
+                match (without, with) {
+                    (Ok(without), Ok(with)) => {
+                        assert_eq!(identity(without), identity(with));
+                        differ += usize::from(without.get_securityids() != with.get_securityids());
+                    }
+                    (without, with) => assert_eq!(without.is_ok(), with.is_ok()),
+                }
+            }
+            assert!(differ > 0, "the table filled something");
+        };
+        same_identity(
+            &messages(bare.parse_lines(&bodies)),
+            &messages(filling.parse_lines(&bodies)),
+        );
+        same_identity(
+            &messages(composed(&bare).parse_text_lines(held.iter())),
+            &messages(composed(&filling).parse_text_lines(held.iter())),
+        );
+        let record: RecordOptions = options.clone().into();
+        let reader = || source.read_arrow_reader(&record).expect("a text reader");
+        let rows_without = batches(bare.parse_text_arrow_reader(reader()).expect("a reader"));
+        let rows_with = batches(filling.parse_text_arrow_reader(reader()).expect("a reader"));
+        assert_eq!(rows_without.len(), rows_with.len());
+        for (without, with) in rows_without.iter().zip(&rows_with) {
+            let (without, with) = (
+                without.as_ref().expect("a batch"),
+                with.as_ref().expect("a batch"),
+            );
+            for column in [
+                "curruuid",
+                "currhashcode",
+                "crosscode",
+                "seqnum",
+                "fixentries",
+            ] {
+                let at = without.schema().index_of(column).expect(column);
+                assert_eq!(without.column(at), with.column(at), "{column}");
+            }
+            let at = without
+                .schema()
+                .index_of("securityids")
+                .expect("securityids");
+            assert_ne!(without.column(at), with.column(at));
+        }
+
+        // No feedback: what a parse derived is learned back as nothing. A
+        // fresh registry learns the same of a message parsed with the table
+        // and without it, so the table's fill reaches nothing a learn reads;
+        // the registry the table came from learns nothing new either.
+        let without: Vec<FixMsg> = bare.parse_lines(&bodies).filter_map(Result::ok).collect();
+        let with: Vec<FixMsg> = filling
+            .parse_lines(&bodies)
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(without.len(), with.len());
+        let target = fix_schema(&registry, "fix").expect("the fixed schema");
+        let mut held = instruments.lock().expect("the registry");
+        for (without, with) in without.iter().zip(&with) {
+            let mut bare_learns = IsinRegistry::new();
+            let mut filled_learns = IsinRegistry::new();
+            assert_eq!(bare_learns.learn(without), filled_learns.learn(with));
+            assert!(
+                bare_learns.iter().eq(filled_learns.iter()),
+                "{}",
+                with.get_curruuid()
+            );
+            assert!(!held.learn(with), "{}", with.get_curruuid());
+            let row = with.into_row(&target).expect("a row");
+            let back = FixMsg::from_row(Arc::clone(&registry), &target, &row).expect("a message");
+            assert_eq!(back.get_securityids(), with.get_securityids());
+            assert!(!held.learn(&back));
+        }
+        assert!(!held.is_dirty());
     }
 }
 

@@ -70,17 +70,6 @@
         }
       },
       {
-        "name": "nounderlyingcomplexeventdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingcomplexeventdatebusinesscenters",
-          "FIX:tag": "41737"
-        }
-      },
-      {
         "name": "underlyingcomplexeventdatebusinesscenters",
         "dtype": {
           "type": "null"

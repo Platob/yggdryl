@@ -1474,9 +1474,10 @@ fn malformed_environment_keys_are_a_failed_source_and_the_chain_walks_on() {
 // --- refresh and invalidation -----------------------------------------------
 
 #[test]
-fn a_set_that_is_stale_at_once_is_traded_again_on_every_ask_until_one_lasts() {
+fn a_set_already_lapsed_when_traded_is_never_signed_with_and_the_refusal_names_both_clocks() {
     let identity = Identity::start();
     identity.expire_sessions(true);
+    identity.set_imds_role(None);
     let (session, _) = walled(&identity, "refresh", &[]);
     let session = session
         .with_config_text(
@@ -1485,34 +1486,43 @@ fn a_set_that_is_stale_at_once_is_traded_again_on_every_ask_until_one_lasts() {
         .with_credentials_text(BASE_CREDENTIALS)
         .with_profile("trader");
 
+    // STS answers a set that lapsed in 2000: signing with it is a refusal
+    // waiting to happen, so it is passed over by name - with both instants,
+    // because a machine whose clock is wrong reads a fresh set this way.
     let now = SystemTime::now();
-    let first = session
+    let message = session
         .credentials(now)
-        .expect("an exchange")
-        .expect("a set");
-    assert_eq!(first.access_key_id(), "ASIAlake-reader");
+        .expect_err("nothing else answers")
+        .to_string();
+    assert!(
+        message.contains("assumed role")
+            && message.contains("lapsed at 2000-01-01T00:00:00Z")
+            && message.contains("this machine's clock reads"),
+        "{message}"
+    );
     session
         .credentials(now)
-        .expect("an exchange")
-        .expect("a set");
+        .expect_err("the refusal is held for the pause");
     assert_eq!(
         exchanges(&identity, "AssumeRole").len(),
-        2,
-        "a set inside its refresh window is replaced rather than signed with"
+        1,
+        "a set that lapsed on arrival is not traded for again on every ask"
     );
 
     identity.expire_sessions(false);
-    session
-        .credentials(now)
-        .expect("an exchange")
+    let later = now + Duration::from_secs(31);
+    let traded = session
+        .credentials(later)
+        .expect("an exchange after the pause")
         .expect("a set");
+    assert_eq!(traded.access_key_id(), "ASIAlake-reader");
     session
-        .credentials(now)
+        .credentials(later)
         .expect("the set in hand")
         .expect("a set");
     assert_eq!(
         exchanges(&identity, "AssumeRole").len(),
-        3,
+        2,
         "a set that lasts is held rather than traded again"
     );
 }
@@ -1846,23 +1856,37 @@ s3 =
 #[test]
 fn a_service_endpoint_is_stated_then_its_variable_then_aws_endpoint_url_then_services_then_the_profile_s()
  {
-    assert_eq!(offline("endpoint-none", &[]).endpoint_url("s3"), None);
+    assert_eq!(
+        offline("endpoint-none", &[])
+            .endpoint_url("s3")
+            .expect("a readable endpoint"),
+        None
+    );
 
     let profile_only = offline("endpoint-profile", &[])
         .with_config_text("[default]\nendpoint_url = http://profile-wide:1000/\n");
     assert_eq!(
-        profile_only.endpoint_url("s3").as_deref(),
+        profile_only
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://profile-wide:1000"),
         "a trailing slash is dropped"
     );
 
     let services = offline("endpoint-services", &[]).with_config_text(ENDPOINTS);
     assert_eq!(
-        services.endpoint_url("s3").as_deref(),
+        services
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://services-s3:2000")
     );
     assert_eq!(
-        services.endpoint_url("sts").as_deref(),
+        services
+            .endpoint_url("sts")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://profile-wide:1000"),
         "a service the [services] section does not name falls to the profile's"
     );
@@ -1873,7 +1897,10 @@ fn a_service_endpoint_is_stated_then_its_variable_then_aws_endpoint_url_then_ser
     )
     .with_config_text(ENDPOINTS);
     assert_eq!(
-        global.endpoint_url("s3").as_deref(),
+        global
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://env-wide:3000")
     );
 
@@ -1884,19 +1911,31 @@ fn a_service_endpoint_is_stated_then_its_variable_then_aws_endpoint_url_then_ser
     ];
     let specific = offline("endpoint-specific", &pairs).with_config_text(ENDPOINTS);
     assert_eq!(
-        specific.endpoint_url("s3").as_deref(),
+        specific
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://env-s3:4000")
     );
     assert_eq!(
-        specific.endpoint_url("S3").as_deref(),
+        specific
+            .endpoint_url("S3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://env-s3:4000")
     );
     assert_eq!(
-        specific.endpoint_url("sts").as_deref(),
+        specific
+            .endpoint_url("sts")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://env-wide:3000")
     );
     assert_eq!(
-        specific.endpoint_url("sso-oidc").as_deref(),
+        specific
+            .endpoint_url("sso-oidc")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://env-oidc:6000"),
         "a hyphen in the service id is an underscore in the variable"
     );
@@ -1904,23 +1943,362 @@ fn a_service_endpoint_is_stated_then_its_variable_then_aws_endpoint_url_then_ser
     let mut ignoring = pairs.to_vec();
     ignoring.push(("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true"));
     let ignored = offline("endpoint-ignored", &ignoring).with_config_text(ENDPOINTS);
-    assert_eq!(ignored.endpoint_url("s3"), None);
-    assert_eq!(ignored.endpoint_url("sts"), None);
+    assert_eq!(
+        ignored.endpoint_url("s3").expect("a readable endpoint"),
+        None
+    );
+    assert_eq!(
+        ignored.endpoint_url("sts").expect("a readable endpoint"),
+        None
+    );
     let stated = ignored.with_endpoint_url("http://explicit:5000/");
     assert_eq!(
-        stated.endpoint_url("s3").as_deref(),
+        stated
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://explicit:5000"),
         "what the caller states is never ignored"
     );
     assert_eq!(
-        stated.endpoint_url("sts").as_deref(),
+        stated
+            .endpoint_url("sts")
+            .expect("a readable endpoint")
+            .as_deref(),
         Some("http://explicit:5000")
     );
 
     let ignored_by_profile = offline("endpoint-ignored-profile", &[]).with_config_text(
         "[default]\nendpoint_url = http://profile-wide:1000\nignore_configured_endpoint_urls = true\n",
     );
-    assert_eq!(ignored_by_profile.endpoint_url("s3"), None);
+    assert_eq!(
+        ignored_by_profile
+            .endpoint_url("s3")
+            .expect("a readable endpoint"),
+        None
+    );
+}
+
+#[test]
+fn every_service_the_crate_calls_reads_the_variable_botocore_names_after_its_service_id() {
+    // A service's variable and its `[services]` key are named after its
+    // service id - never its endpoint prefix or its signing name - and each
+    // beats the generic source beside it.
+    for (service, variable) in [
+        ("s3", "AWS_ENDPOINT_URL_S3"),
+        ("sts", "AWS_ENDPOINT_URL_STS"),
+        ("sso", "AWS_ENDPOINT_URL_SSO"),
+        ("sso-oidc", "AWS_ENDPOINT_URL_SSO_OIDC"),
+        ("SSO OIDC", "AWS_ENDPOINT_URL_SSO_OIDC"),
+        ("signin", "AWS_ENDPOINT_URL_SIGNIN"),
+        ("s3tables", "AWS_ENDPOINT_URL_S3TABLES"),
+        ("Secrets Manager", "AWS_ENDPOINT_URL_SECRETS_MANAGER"),
+    ] {
+        let alone = offline(
+            "endpoint-by-service",
+            &[(variable, "http://service.local:4566/")],
+        );
+        assert_eq!(
+            alone
+                .endpoint_url(service)
+                .expect("a readable endpoint")
+                .as_deref(),
+            Some("http://service.local:4566"),
+            "{service}: {variable} alone"
+        );
+        let beside = offline(
+            "endpoint-by-service-beside",
+            &[
+                (variable, "http://service.local:4566"),
+                ("AWS_ENDPOINT_URL", "http://every.local:4566"),
+            ],
+        );
+        assert_eq!(
+            beside
+                .endpoint_url(service)
+                .expect("a readable endpoint")
+                .as_deref(),
+            Some("http://service.local:4566"),
+            "{service}: {variable} over AWS_ENDPOINT_URL"
+        );
+        let key = variable["AWS_ENDPOINT_URL_".len()..].to_ascii_lowercase();
+        let entry = offline("endpoint-by-service-entry", &[]).with_config_text(format!(
+            "[default]\nservices = local\nendpoint_url = http://profile.local:1000\n\n\
+             [services local]\n{key} =\n  endpoint_url = http://entry.local:4566/\n"
+        ));
+        assert_eq!(
+            entry
+                .endpoint_url(service)
+                .expect("a readable endpoint")
+                .as_deref(),
+            Some("http://entry.local:4566"),
+            "{service}: the [services] entry {key} over the profile's endpoint_url"
+        );
+    }
+
+    // The endpoint prefix names another variable: `oidc` is not SSO OIDC.
+    let prefix = offline(
+        "endpoint-prefix",
+        &[("AWS_ENDPOINT_URL_SSO_OIDC", "http://oidc.local")],
+    );
+    assert_eq!(
+        prefix.endpoint_url("oidc").expect("a readable endpoint"),
+        None
+    );
+
+    // The door a catalog client asks, for S3 Tables: its own variable, path
+    // and all, else the generic one, else the partition's host.
+    let tables = offline(
+        "endpoint-s3tables",
+        &[(
+            "AWS_ENDPOINT_URL_S3TABLES",
+            "http://tables.local:4566/gateway/",
+        )],
+    );
+    assert_eq!(
+        tables
+            .service_endpoint("s3tables", "eu-west-3")
+            .expect("an endpoint"),
+        "http://tables.local:4566/gateway"
+    );
+    let every = offline(
+        "endpoint-s3tables-global",
+        &[("AWS_ENDPOINT_URL", "http://every.local:4566")],
+    );
+    assert_eq!(
+        every
+            .service_endpoint("s3tables", "eu-west-3")
+            .expect("an endpoint"),
+        "http://every.local:4566"
+    );
+    assert_eq!(
+        offline("endpoint-s3tables-none", &[])
+            .service_endpoint("s3tables", "eu-west-3")
+            .expect("an endpoint"),
+        "https://s3tables.eu-west-3.amazonaws.com"
+    );
+}
+
+#[test]
+fn the_ignore_flag_switches_every_configured_endpoint_off_and_never_a_stated_one() {
+    let ignoring = offline(
+        "ignore-every-service",
+        &[
+            ("AWS_ENDPOINT_URL_SSO", "http://sso.local"),
+            ("AWS_ENDPOINT_URL_S3TABLES", "http://tables.local"),
+            ("AWS_ENDPOINT_URL", "http://every.local"),
+            ("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true"),
+        ],
+    )
+    .with_config_text(ENDPOINTS);
+    for service in ["s3", "sts", "sso", "sso-oidc", "signin", "s3tables"] {
+        assert_eq!(
+            ignoring.endpoint_url(service).expect("a readable endpoint"),
+            None,
+            "{service}"
+        );
+    }
+    assert_eq!(
+        ignoring
+            .service_endpoint("s3tables", "eu-west-3")
+            .expect("an endpoint"),
+        "https://s3tables.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        ignoring.sts_endpoint("eu-west-3").expect("an STS endpoint"),
+        "https://sts.eu-west-3.amazonaws.com"
+    );
+
+    // What the caller states for one service stands, for that service alone.
+    let stated = ignoring.with_service_endpoint_url("sso", "http://stated-sso.local/");
+    assert_eq!(
+        stated
+            .endpoint_url("sso")
+            .expect("a readable endpoint")
+            .as_deref(),
+        Some("http://stated-sso.local")
+    );
+    assert_eq!(
+        stated.endpoint_url("sts").expect("a readable endpoint"),
+        None
+    );
+
+    // The flag reads the crate's one boolean table, wider than botocore's
+    // `true` alone: `1` ignores the configured endpoints here.
+    for (spelling, ignored) in [
+        ("1", true),
+        ("yes", true),
+        ("on", true),
+        ("TRUE", true),
+        ("false", false),
+        ("0", false),
+        ("perhaps", false),
+    ] {
+        let flagged = offline(
+            "ignore-spelling",
+            &[
+                ("AWS_ENDPOINT_URL_S3", "http://s3.local"),
+                ("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", spelling),
+            ],
+        );
+        assert_eq!(
+            flagged.endpoint_url("s3").expect("a readable endpoint"),
+            (!ignored).then(|| "http://s3.local".to_owned()),
+            "{spelling:?}"
+        );
+    }
+
+    // A blank variable is unset, so the profile's flag is read next - where
+    // botocore stops at a set, blank and so false one.
+    let blank = offline(
+        "ignore-blank",
+        &[
+            ("AWS_ENDPOINT_URL_S3", "http://s3.local"),
+            ("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", ""),
+        ],
+    )
+    .with_config_text("[default]\nignore_configured_endpoint_urls = true\n");
+    assert_eq!(blank.endpoint_url("s3").expect("a readable endpoint"), None);
+}
+
+#[test]
+fn a_blank_endpoint_is_no_source_and_one_that_names_no_endpoint_is_refused_by_name() {
+    for blank in ["", "   "] {
+        let session = offline(
+            "endpoint-blank",
+            &[
+                ("AWS_ENDPOINT_URL_S3", blank),
+                ("AWS_ENDPOINT_URL", "http://every.local"),
+            ],
+        );
+        assert_eq!(
+            session
+                .endpoint_url("s3")
+                .expect("a readable endpoint")
+                .as_deref(),
+            Some("http://every.local"),
+            "{blank:?}"
+        );
+    }
+    let blank_entry = offline("endpoint-blank-entry", &[]).with_config_text(
+        "[default]\nendpoint_url = http://profile.local\nservices = local\n\n\
+         [services local]\ns3 =\n  endpoint_url =\n",
+    );
+    assert_eq!(
+        blank_entry
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
+        Some("http://profile.local")
+    );
+
+    // `/` is no endpoint: botocore refuses it, and so does the session,
+    // naming where it was read rather than reaching the published host.
+    for (pairs, config, source) in [
+        (
+            &[("AWS_ENDPOINT_URL_S3", "/")][..],
+            "",
+            "AWS_ENDPOINT_URL_S3",
+        ),
+        (&[("AWS_ENDPOINT_URL", "//")][..], "", "AWS_ENDPOINT_URL"),
+        (
+            &[][..],
+            "[default]\nservices = local\n\n[services local]\ns3 =\n  endpoint_url = /\n",
+            "the endpoint_url of s3 in the [services] section the profile default names",
+        ),
+        (
+            &[][..],
+            "[default]\nendpoint_url = /\n",
+            "the endpoint_url of the profile default",
+        ),
+    ] {
+        let message = offline("endpoint-slash", pairs)
+            .with_config_text(config)
+            .endpoint_url("s3")
+            .expect_err(source)
+            .to_string();
+        assert!(
+            message.contains(source) && message.contains("which names no endpoint"),
+            "{message}"
+        );
+    }
+}
+
+/// A profile naming a `[services]` section nobody wrote, beside the one
+/// meant and an endpoint of its own.
+const MISSPELT_SERVICES: &str = "\
+[default]
+endpoint_url = http://profile.local
+services = locl
+
+[services local]
+s3 =
+  endpoint_url = http://entry.local
+";
+
+#[test]
+fn a_profile_naming_a_services_section_nobody_wrote_is_refused_where_the_lookup_reaches_it() {
+    let misspelt = offline("services-misspelt", &[]).with_config_text(MISSPELT_SERVICES);
+    for service in ["s3", "sts", "sso", "sso-oidc", "signin", "s3tables"] {
+        let message = misspelt
+            .endpoint_url(service)
+            .expect_err(service)
+            .to_string();
+        assert!(
+            message.contains(
+                "the profile default names services locl, which no [services locl] section defines"
+            ),
+            "{service}: {message}"
+        );
+    }
+    // Neither the profile's own endpoint_url nor the published host answers.
+    assert!(misspelt.sts_endpoint("eu-west-3").is_err());
+    assert!(misspelt.service_endpoint("s3tables", "eu-west-3").is_err());
+
+    // A lookup that ends before the `[services]` step never reaches it, as
+    // botocore's does not.
+    let variable = offline(
+        "services-misspelt-variable",
+        &[("AWS_ENDPOINT_URL_S3", "http://s3.local")],
+    )
+    .with_config_text(MISSPELT_SERVICES);
+    assert_eq!(
+        variable
+            .endpoint_url("s3")
+            .expect("a readable endpoint")
+            .as_deref(),
+        Some("http://s3.local")
+    );
+    assert!(variable.endpoint_url("sts").is_err(), "STS reaches it");
+    let global = offline(
+        "services-misspelt-global",
+        &[("AWS_ENDPOINT_URL", "http://every.local")],
+    )
+    .with_config_text(MISSPELT_SERVICES);
+    assert_eq!(
+        global
+            .endpoint_url("sts")
+            .expect("a readable endpoint")
+            .as_deref(),
+        Some("http://every.local")
+    );
+    let ignored = offline(
+        "services-misspelt-ignored",
+        &[("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")],
+    )
+    .with_config_text(MISSPELT_SERVICES);
+    assert_eq!(
+        ignored.endpoint_url("sts").expect("a readable endpoint"),
+        None
+    );
+    assert_eq!(
+        misspelt
+            .with_endpoint_url("http://stated.local")
+            .endpoint_url("sts")
+            .expect("a readable endpoint")
+            .as_deref(),
+        Some("http://stated.local")
+    );
 }
 
 #[test]
@@ -1928,37 +2306,38 @@ fn the_sts_endpoint_is_regional_by_default_and_global_only_for_the_legacy_region
     let regional = offline("sts-regional", &[]);
     assert!(regional.sts_regional_endpoints());
     assert_eq!(
-        regional.sts_endpoint("eu-west-3"),
+        regional.sts_endpoint("eu-west-3").expect("an STS endpoint"),
         "https://sts.eu-west-3.amazonaws.com"
     );
     assert_eq!(
-        regional.sts_endpoint("us-east-1"),
+        regional.sts_endpoint("us-east-1").expect("an STS endpoint"),
         "https://sts.us-east-1.amazonaws.com"
     );
 
     let legacy = regional.with_sts_regional_endpoints(false);
     assert!(!legacy.sts_regional_endpoints());
     assert_eq!(
-        legacy.sts_endpoint("us-east-1"),
+        legacy.sts_endpoint("us-east-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
     );
     assert_eq!(
-        legacy.sts_endpoint("eu-west-3"),
+        legacy.sts_endpoint("eu-west-3").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
     );
     assert_eq!(
-        legacy.sts_endpoint("af-south-1"),
+        legacy.sts_endpoint("af-south-1").expect("an STS endpoint"),
         "https://sts.af-south-1.amazonaws.com",
         "a region outside the legacy list is regional in both modes"
     );
     assert_eq!(
-        legacy.sts_endpoint("cn-north-1"),
+        legacy.sts_endpoint("cn-north-1").expect("an STS endpoint"),
         "https://sts.cn-north-1.amazonaws.com.cn"
     );
     assert_eq!(
         legacy
             .with_use_fips_endpoint(true)
-            .sts_endpoint("us-east-1"),
+            .sts_endpoint("us-east-1")
+            .expect("an STS endpoint"),
         "https://sts-fips.us-east-1.amazonaws.com",
         "FIPS is regional even in legacy mode"
     );
@@ -1966,31 +2345,37 @@ fn the_sts_endpoint_is_regional_by_default_and_global_only_for_the_legacy_region
     assert_eq!(
         regional
             .with_use_fips_endpoint(true)
-            .sts_endpoint("us-west-2"),
+            .sts_endpoint("us-west-2")
+            .expect("an STS endpoint"),
         "https://sts-fips.us-west-2.amazonaws.com"
     );
     assert_eq!(
         regional
             .with_use_dualstack_endpoint(true)
-            .sts_endpoint("eu-west-3"),
+            .sts_endpoint("eu-west-3")
+            .expect("an STS endpoint"),
         "https://sts.eu-west-3.api.aws"
     );
     assert_eq!(
         regional
             .with_use_fips_endpoint(true)
             .with_use_dualstack_endpoint(true)
-            .sts_endpoint("us-east-1"),
+            .sts_endpoint("us-east-1")
+            .expect("an STS endpoint"),
         "https://sts-fips.us-east-1.api.aws"
     );
     assert_eq!(
-        regional.sts_endpoint("cn-northwest-1"),
+        regional
+            .sts_endpoint("cn-northwest-1")
+            .expect("an STS endpoint"),
         "https://sts.cn-northwest-1.amazonaws.com.cn"
     );
 
     assert_eq!(
         regional
             .with_endpoint_url("http://localhost:4566/")
-            .sts_endpoint("eu-west-3"),
+            .sts_endpoint("eu-west-3")
+            .expect("an STS endpoint"),
         "http://localhost:4566",
         "a configured endpoint replaces the published host"
     );
@@ -1999,7 +2384,8 @@ fn the_sts_endpoint_is_regional_by_default_and_global_only_for_the_legacy_region
             "sts-variable",
             &[("AWS_ENDPOINT_URL_STS", "http://sts.local:8000")]
         )
-        .sts_endpoint("eu-west-3"),
+        .sts_endpoint("eu-west-3")
+        .expect("an STS endpoint"),
         "http://sts.local:8000"
     );
 }
@@ -2028,7 +2414,7 @@ fn the_sts_endpoint_mode_is_read_from_the_variable_then_the_profile() {
         .with_config_text("[default]\nsts_regional_endpoints = legacy\n");
     assert!(!profile.sts_regional_endpoints());
     assert_eq!(
-        profile.sts_endpoint("us-east-1"),
+        profile.sts_endpoint("us-east-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
     );
     assert!(
@@ -2084,7 +2470,7 @@ fn fips_and_dual_stack_are_stated_then_read_from_the_variable_then_the_profile()
         .with_config_text("[default]\nuse_dualstack_endpoint = true\n");
     assert!(profile.use_dualstack_endpoint());
     assert_eq!(
-        profile.sts_endpoint("eu-west-3"),
+        profile.sts_endpoint("eu-west-3").expect("an STS endpoint"),
         "https://sts.eu-west-3.api.aws"
     );
     assert!(
@@ -2121,6 +2507,18 @@ fn max_attempts_is_read_from_the_variable_then_the_profile_and_a_count_that_is_n
         offline("attempts-word", &[("AWS_MAX_ATTEMPTS", "many")]).max_attempts(),
         None
     );
+    assert_eq!(
+        offline("attempts-plus", &[("AWS_MAX_ATTEMPTS", "+3")]).max_attempts(),
+        Some(3),
+        "the integer reader every count reads takes a sign"
+    );
+    for spelling in ["3.5", "-2", "-0", "4294967296", "1e2"] {
+        assert_eq!(
+            offline("attempts-no-count", &[("AWS_MAX_ATTEMPTS", spelling)]).max_attempts(),
+            None,
+            "{spelling:?} is no count of attempts"
+        );
+    }
 }
 
 #[test]
@@ -2279,10 +2677,658 @@ fn debug_output_never_renders_a_secret() {
     assert!(!rendered.contains("variable-secret"), "{rendered}");
 }
 
+// --- the shared files as they move ------------------------------------------
+
+/// The set `[default]` of a credentials file holds, spelled for `key`.
+fn dumped(key: &str, extra: &str) -> String {
+    format!(
+        "[default]\naws_access_key_id = {key}\naws_secret_access_key = {key}-secret\n\
+         aws_session_token = {key}-token\n{extra}"
+    )
+}
+
+#[test]
+fn a_set_dumped_while_the_session_went_unsigned_is_read_at_the_next_ask() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "dumped-later", &[]);
+    assert_eq!(
+        session.credentials(SystemTime::now()).expect("unsigned"),
+        None,
+        "nothing configured yet"
+    );
+
+    // The unsigned answer is held for minutes; a file written meanwhile is
+    // what the hold was about, so the next ask reads it.
+    write(
+        &directory.join("credentials"),
+        &dumped("ASIADUMPEDLATER", ""),
+    );
+    assert_eq!(found(&session).access_key_id(), "ASIADUMPEDLATER");
+    assert_eq!(session.credential_source(), Some("shared credentials file"));
+}
+
+#[test]
+fn a_key_a_store_refused_is_passed_over_by_name_and_a_set_dumped_anew_is_read_at_once() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "refused-dump", &[]);
+    let credentials = directory.join("credentials");
+    write(&credentials, &dumped("ASIASTALEDUMP", ""));
+    assert_eq!(found(&session).access_key_id(), "ASIASTALEDUMP");
+
+    // The store says the set lapsed: the key never signs again here, and
+    // the source that keeps answering it is passed over by name.
+    assert!(session.invalidate_if("ASIASTALEDUMP"));
+    let message = refused(&session);
+    assert!(
+        message.contains("shared credentials file")
+            && message.contains("a store refused its key ASIA...DUMP")
+            && message.contains("write a fresh set under [default]"),
+        "{message}"
+    );
+    assert!(!message.contains("ASIASTALEDUMP-secret"), "{message}");
+
+    // The refusal is held for its pause, and a set dumped anew breaks it.
+    write(&credentials, &dumped("ASIAFRESHDUMPED", ""));
+    assert_eq!(found(&session).access_key_id(), "ASIAFRESHDUMPED");
+}
+
+#[test]
+fn a_set_whose_written_expiry_has_passed_is_passed_over_to_the_instance() {
+    let identity = Identity::start();
+    let (session, directory) = walled(&identity, "lapsed-dump", &[]);
+    write(
+        &directory.join("credentials"),
+        &dumped(
+            "ASIALAPSEDDUMP",
+            "x_security_token_expires = 2000-01-01T00:00:00Z\n",
+        ),
+    );
+    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
+    assert_eq!(session.credential_source(), Some("instance metadata"));
+}
+
+#[test]
+fn a_set_whose_written_expiry_nears_is_replaced_from_the_file_before_it_lapses() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    let (session, directory) = walled(&identity, "expiring-dump", &[]);
+    let credentials = directory.join("credentials");
+    let expiry = |seconds: i64| {
+        format!(
+            "aws_credential_expiration = {}\n",
+            iso8601(now_seconds() + seconds)
+        )
+    };
+    write(&credentials, &dumped("ASIASOONGONE", &expiry(60 * 60)));
+    let first = found(&session);
+    assert_eq!(first.access_key_id(), "ASIASOONGONE");
+    assert!(
+        first.expires_at().is_some(),
+        "the written expiry is carried"
+    );
+
+    // Inside the fifteen minutes before it lapses the chain is walked
+    // again, and a set dumped meanwhile is what it finds.
+    write(
+        &credentials,
+        &dumped("ASIADUMPEDAHEAD", &expiry(2 * 60 * 60)),
+    );
+    let later = SystemTime::now() + Duration::from_secs(50 * 60);
+    let replaced = session.credentials(later).expect("a walk").expect("a set");
+    assert_eq!(replaced.access_key_id(), "ASIADUMPEDAHEAD");
+}
+
+#[test]
+fn a_shared_file_written_with_a_byte_order_mark_reads_every_profile_in_its_charset() {
+    let text = "[default]\naws_access_key_id = AKIAMARKED\naws_secret_access_key = marked\n";
+    let utf16 = |big: bool| {
+        let mut bytes = if big {
+            vec![0xFE, 0xFF]
+        } else {
+            vec![0xFF, 0xFE]
+        };
+        for unit in text.encode_utf16() {
+            let pair = if big {
+                unit.to_be_bytes()
+            } else {
+                unit.to_le_bytes()
+            };
+            bytes.extend_from_slice(&pair);
+        }
+        bytes
+    };
+    let mut utf8 = vec![0xEF, 0xBB, 0xBF];
+    utf8.extend_from_slice(text.as_bytes());
+    for (name, bytes) in [
+        ("utf8-bom", utf8),
+        ("utf16le", utf16(false)),
+        ("utf16be", utf16(true)),
+    ] {
+        let session = offline(name, &[]);
+        let directory = session.directory().expect("a directory");
+        std::fs::write(directory.join("credentials"), bytes).expect("a written file");
+        assert_eq!(session.available_profiles(), ["default"], "{name}");
+        assert_eq!(found(&session).access_key_id(), "AKIAMARKED", "{name}");
+    }
+}
+
+#[test]
+fn a_shared_file_that_is_there_and_cannot_be_read_is_a_named_failure() {
+    let session = offline("unreadable", &[]);
+    let directory = session.directory().expect("a directory");
+    std::fs::create_dir_all(directory.join("credentials"))
+        .expect("a directory where the file goes");
+    let message = refused(&session);
+    assert!(
+        message.contains("shared files")
+            && message.contains("credentials file")
+            && message.contains("could not be read"),
+        "{message}"
+    );
+}
+
+// --- the console sign-in `aws login` files ----------------------------------
+
+/// A console session and the SHA-256 its cache file is named by, pinned
+/// from outside the crate.
+const LOGIN_SESSION: &str = "arn:aws:iam::0123456789012:user/Admin";
+const LOGIN_SESSION_KEY: &str = "36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726";
+/// The P-256 key a sign-in is bound to, which the fake checks every proof by.
+const LOGIN_KEY: &str = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIFDZHUzOG1Pzq+6F0mjMlOSp1syN9LRPBuHMoCFXTcXhoAoGCCqGSM49\nAwEHoUQDQgAE9qhj+KtcdHj1kVgwxWWWw++tqoh7H7UHs7oXh8jBbgF47rrYGC+t\ndjiIaHK3dBvvdE7MGj5HsepzLm3Kj91bqA==\n-----END EC PRIVATE KEY-----\n";
+
+/// A session whose profile `console` names the sign-in, the sign-in filed
+/// under its `~/.aws/login/cache` lapsing `expires_in` seconds from now.
+fn signed_in_console(identity: &Identity, name: &str, expires_in: i64) -> (Session, PathBuf) {
+    let (session, directory) = walled(identity, name, &[]);
+    let file = file_console_sign_in(&directory, expires_in);
+    let session = session
+        .with_config_text(format!(
+            "[profile console]\nlogin_session = {LOGIN_SESSION}\n"
+        ))
+        .with_profile("console");
+    (session, file)
+}
+
+/// File the sign-in `aws login` would under `directory`'s `login/cache`,
+/// lapsing `expires_in` seconds from now, and answer the file.
+fn file_console_sign_in(directory: &Path, expires_in: i64) -> PathBuf {
+    let cache = directory.join("login").join("cache");
+    std::fs::create_dir_all(&cache).expect("a cache directory");
+    let document = serde_json::json!({
+        "accessToken": {
+            "accessKeyId": "ASIACONSOLECACHED",
+            "secretAccessKey": "console-cached-secret",
+            "sessionToken": "console-cached-token",
+            "accountId": "012345678901",
+            "expiresAt": iso8601(now_seconds() + expires_in),
+        },
+        "tokenType": "aws_sigv4",
+        "refreshToken": "console-refresh-token",
+        "clientId": "arn:aws:signin:::devtools/same-device",
+        "dpopKey": LOGIN_KEY,
+    });
+    let file = cache.join(format!("{LOGIN_SESSION_KEY}.json"));
+    std::fs::write(&file, document.to_string()).expect("a filed sign-in");
+    file
+}
+
+#[test]
+fn a_console_sign_in_answers_from_its_cache_with_no_request() {
+    let identity = Identity::start();
+    let (session, _) = signed_in_console(&identity, "console-cached", 60 * 60);
+    let keys = found(&session);
+    assert_eq!(keys.access_key_id(), "ASIACONSOLECACHED");
+    assert_eq!(keys.account_id(), Some("012345678901"));
+    assert_eq!(session.credential_source(), Some("login"));
+    assert_eq!(
+        identity.request_count(),
+        0,
+        "a cached set that lasts costs nothing"
+    );
+}
+
+#[test]
+fn a_console_sign_in_near_its_end_is_refreshed_once_and_held_until_five_minutes_before_the_next() {
+    let identity = Identity::start();
+    let (session, file) = signed_in_console(&identity, "console-refreshed", 2 * 60);
+    let keys = found(&session);
+    assert_eq!(keys.access_key_id(), crate::identity::LOGIN_ACCESS_KEY);
+    assert_eq!(shape(&identity), ["POST /v1/token"]);
+    let filed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&file).expect("the refiled sign-in")).expect("JSON");
+    assert_eq!(
+        filed["accessToken"]["accessKeyId"],
+        crate::identity::LOGIN_ACCESS_KEY,
+        "the refreshed set is filed where the CLI reads it"
+    );
+
+    // Fifteen minutes long, the set is held until five minutes before it
+    // lapses - not re-walked for want of the chain's fifteen-minute window.
+    let later = SystemTime::now() + Duration::from_secs(5 * 60);
+    session.credentials(later).expect("the set in hand");
+    assert_eq!(identity.request_count(), 1);
+}
+
+#[test]
+fn a_console_sign_in_the_service_ended_is_a_refusal_naming_aws_login() {
+    let identity = Identity::start();
+    identity.set_imds_role(None);
+    identity.refuse_login(400, "TOKEN_EXPIRED", 1);
+    let (session, _) = signed_in_console(&identity, "console-ended", -60);
+    let message = refused(&session);
+    assert!(
+        message.contains("login") && message.contains("aws login --profile console"),
+        "{message}"
+    );
+    assert!(!message.contains("console-refresh-token"), "{message}");
+}
+
+// --- the walk, as the logging tree hears it ----------------------------------
+
+#[test]
+fn a_walk_is_logged_source_by_source_and_no_record_holds_a_secret() {
+    use yggdryl::logging::{self, Level};
+
+    let _tree = crate::logging::serial();
+    logging::install().expect("the tree");
+    let logger = logging::get_logger("yggdryl.aws.session");
+    logger.set_level(Level::DEBUG);
+    let collect = crate::logging::Collect::shared();
+    logger.add_handler(collect.clone());
+
+    let identity = Identity::start();
+    let (session, directory) = walled(&identity, "logged-walk", &[]);
+    write(
+        &directory.join("credentials"),
+        &dumped(
+            "ASIALOGGEDDUMP",
+            "x_security_token_expires = 2000-01-01T00:00:00Z\n",
+        ),
+    );
+    assert_eq!(found(&session).access_key_id(), INSTANCE_KEY);
+    logger.set_level(Level::NOTSET);
+
+    // The tree is the process's, and other suites walk beside this one: the
+    // records this walk wrote are the ones naming its own dump.
+    let lines: Vec<(Level, String)> = collect
+        .take()
+        .into_iter()
+        .map(|kept| (kept.level, kept.line))
+        .collect();
+    let passed_over = lines
+        .iter()
+        .find(|(_, line)| line.contains("passing over") && line.contains("ASIA...DUMP"))
+        .unwrap_or_else(|| panic!("the lapsed dump is passed over by name: {lines:#?}"));
+    assert_eq!(passed_over.0, Level::WARNING);
+    assert!(
+        passed_over.1.contains("lapsed at 2000-01-01T00:00:00Z"),
+        "{}",
+        passed_over.1
+    );
+    assert!(
+        lines.iter().any(|(level, line)| *level == Level::INFO
+            && line.contains("AWS credentials from instance metadata")),
+        "the answering source is logged: {lines:#?}"
+    );
+    assert!(
+        lines.iter().any(|(level, line)| *level == Level::DEBUG && line.contains("shared credentials file")),
+        "each failing source is logged as it is asked: {lines:#?}"
+    );
+    for (_, line) in &lines {
+        for secret in [
+            "ASIALOGGEDDUMP-secret",
+            "ASIALOGGEDDUMP-token",
+            "ASIALOGGEDDUMP\n",
+            "instance-secret",
+        ] {
+            assert!(!line.contains(secret), "{secret} rendered in {line}");
+        }
+        assert!(
+            !line.contains("ASIALOGGEDDUMP"),
+            "a key id is logged masked: {line}"
+        );
+    }
+}
+
+#[test]
+fn the_sts_host_of_a_partition_is_built_on_its_own_suffixes() {
+    let session = offline("sts-china", &[]).with_use_dualstack_endpoint(true);
+    assert_eq!(
+        session.sts_endpoint("cn-north-1").expect("an STS endpoint"),
+        "https://sts.cn-north-1.api.amazonwebservices.com.cn",
+        "dual-stack in China is China's dual-stack suffix"
+    );
+    assert_eq!(
+        offline("sts-govcloud", &[])
+            .sts_endpoint("us-gov-east-1")
+            .expect("an STS endpoint"),
+        "https://sts.us-gov-east-1.amazonaws.com"
+    );
+}
+
+// --- each service, reached where its configuration names it -----------------
+//
+// Every walk above reaches the fake through the endpoint `sealed` states,
+// which beats every source a person configures. These state none: each
+// service is reached where `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL`,
+// the profile's `[services]` entry or its `endpoint_url` names it, and the
+// source a wrong reading would take instead points at a loopback port
+// nothing listens on - so a session reading the wrong one fails here, on
+// this machine, rather than reaching anything.
+//
+// A session that read no configured endpoint at all would fall back to the
+// published host, so that is made unreachable too. The session's region and
+// every sign-in's are `NOWHERE_REGION`, which no partition publishes a host
+// for: STS, the portal and OIDC would be asked at
+// `{service}.zz-nowhere-1.amazonaws.com`, a name that resolves to nothing. The
+// Sign-In service's published host is `{region}.signin.aws.amazon.com`, under
+// which every label resolves, so the two sign-in walks are in
+// `NO_LABEL_REGION` instead: no host label, which the Sign-In host is refused
+// for before any lookup.
+
+/// A region no AWS partition publishes a host for.
+const NOWHERE_REGION: &str = "zz-nowhere-1";
+
+/// A region that is no host label, so no Sign-In host is built for it.
+const NO_LABEL_REGION: &str = "zz.nowhere";
+
+/// [`SSO_CONFIG`], its sign-in served from [`NOWHERE_REGION`].
+fn nowhere_sso_config() -> String {
+    SSO_CONFIG.replace(
+        "sso_region = eu-west-1",
+        &format!("sso_region = {NOWHERE_REGION}"),
+    )
+}
+
+/// A loopback URL nothing listens on.
+fn nowhere() -> String {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    drop(listener);
+    format!("http://{address}")
+}
+
+/// A session reading exactly `pairs` as its environment, its `~/.aws` a
+/// directory of its own, the metadata service off and its region
+/// [`NOWHERE_REGION`] - and, unlike [`walled`], no endpoint stated.
+fn unstated(name: &str, pairs: &[(&str, &str)]) -> (Session, PathBuf) {
+    let directory = scratch(name);
+    let session = Session::new()
+        .with_directory(&directory)
+        .with_variables(variables(&directory, pairs))
+        .with_metadata_disabled(true)
+        .with_region(NOWHERE_REGION);
+    (session, directory)
+}
+
+#[test]
+fn aws_endpoint_url_sts_alone_is_where_a_profile_role_is_traded() {
+    let identity = Identity::start();
+    let (sts, decoy) = (identity.endpoint(), nowhere());
+    let (session, _) = unstated(
+        "sts-by-variable",
+        &[
+            ("AWS_ENDPOINT_URL_STS", sts.as_str()),
+            ("AWS_ENDPOINT_URL", decoy.as_str()),
+        ],
+    );
+    let session = session
+        .with_config_text(ROLE_CONFIG)
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
+
+    assert_eq!(found(&session).access_key_id(), "ASIAlake-reader");
+    let traded = exchanges(&identity, "AssumeRole");
+    assert_eq!(traded.len(), 1, "{:?}", shape(&identity));
+    assert_eq!(traded[0].path, "/");
+    assert!(
+        header(&traded[0], "authorization")
+            .contains(&format!("/{NOWHERE_REGION}/sts/aws4_request")),
+        "signed for STS in the session's region: {:?}",
+        traded[0]
+    );
+}
+
+#[test]
+fn the_services_section_s_sts_entry_is_where_a_profile_role_is_traded() {
+    let identity = Identity::start();
+    let (sts, decoy) = (identity.endpoint(), nowhere());
+    let (session, _) = unstated("sts-by-services", &[]);
+    // The profile's own endpoint and another service's entry point nowhere.
+    let session = session
+        .with_config_text(format!(
+            "{ROLE_CONFIG}services = local\nendpoint_url = {decoy}\n\n\
+             [services local]\ns3 =\n  endpoint_url = {decoy}\n\
+             sts =\n  endpoint_url = {sts}\n"
+        ))
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
+
+    assert_eq!(found(&session).access_key_id(), "ASIAlake-reader");
+    let traded = exchanges(&identity, "AssumeRole");
+    assert_eq!(traded.len(), 1, "{:?}", shape(&identity));
+    assert_eq!(traded[0].path, "/");
+}
+
+#[test]
+fn an_sts_endpoint_s_path_is_where_the_exchange_is_sent() {
+    // A gateway mounting STS below a path is reached there, as botocore
+    // reaches it; the trailing slash is the one thing the session drops.
+    let identity = Identity::start();
+    let gateway = format!("{}/gateway/sts/", identity.endpoint());
+    let (session, _) = unstated("sts-by-path", &[("AWS_ENDPOINT_URL_STS", gateway.as_str())]);
+    let session = session
+        .with_config_text(ROLE_CONFIG)
+        .with_credentials_text(BASE_CREDENTIALS)
+        .with_profile("trader");
+
+    assert_eq!(found(&session).access_key_id(), "ASIAlake-reader");
+    let traded = exchanges(&identity, "AssumeRole");
+    assert_eq!(traded.len(), 1, "{:?}", shape(&identity));
+    assert_eq!(traded[0].path, "/gateway/sts");
+}
+
+#[test]
+fn aws_endpoint_url_alone_is_where_a_web_identity_is_traded_over_the_profile_s_endpoint() {
+    let identity = Identity::start();
+    identity.require_web_identity_token(Some("web-identity-token"));
+    let (global, decoy) = (identity.endpoint(), nowhere());
+    let directory = scratch("web-identity-global-token");
+    let token_file = directory.join("token");
+    write(&token_file, "web-identity-token\n");
+    let token_location = token_file.display().to_string();
+    let (session, _) = unstated(
+        "web-identity-global",
+        &[
+            ("AWS_ENDPOINT_URL", global.as_str()),
+            ("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/web-reader"),
+            ("AWS_WEB_IDENTITY_TOKEN_FILE", token_location.as_str()),
+        ],
+    );
+    let session = session.with_config_text(format!("[default]\nendpoint_url = {decoy}\n"));
+
+    assert_eq!(found(&session).access_key_id(), "ASIAweb-reader");
+    assert_eq!(
+        exchanges(&identity, "AssumeRoleWithWebIdentity").len(),
+        1,
+        "{:?}",
+        shape(&identity)
+    );
+}
+
+/// A lapsed sign-in that registered a client, filed under `directory`: a
+/// walk refreshes it at the OIDC service, then trades it at the portal.
+fn file_lapsed_sign_in(directory: &Path) {
+    write_token(
+        directory,
+        CORP_TOKEN_KEY,
+        &serde_json::json!({
+            "startUrl": CORP_START_URL,
+            "region": NOWHERE_REGION,
+            "accessToken": "lapsed-token",
+            "expiresAt": "2000-01-01T00:00:00Z",
+            "clientId": "client-1",
+            "clientSecret": "client-secret-1",
+            "registrationExpiresAt": FAR,
+            "refreshToken": "cached-refresh-token",
+        }),
+    );
+}
+
+/// Two fakes, one answering as the OIDC service and one as the portal, so a
+/// walk asking either service's key for the other's endpoint is seen.
+fn oidc_and_portal() -> (Identity, Identity) {
+    let (oidc, portal) = (Identity::start(), Identity::start());
+    for fake in [&oidc, &portal] {
+        fake.set_sso_token("fresh-sso-token");
+    }
+    (oidc, portal)
+}
+
+/// What the two fakes were asked, once a sign-in is refreshed and traded.
+fn assert_refreshed_then_traded(oidc: &Identity, portal: &Identity) {
+    assert_eq!(
+        shape(oidc),
+        ["POST /token"],
+        "the refresh, at the OIDC service"
+    );
+    assert_eq!(
+        shape(portal),
+        ["GET /federation/credentials"],
+        "the trade, at the portal"
+    );
+}
+
+#[test]
+fn aws_endpoint_url_sso_oidc_and_aws_endpoint_url_sso_each_reach_their_own_service() {
+    let (oidc, portal) = oidc_and_portal();
+    let (oidc_url, portal_url, decoy) = (oidc.endpoint(), portal.endpoint(), nowhere());
+    let (session, directory) = unstated(
+        "sso-by-variables",
+        &[
+            ("AWS_ENDPOINT_URL_SSO_OIDC", oidc_url.as_str()),
+            ("AWS_ENDPOINT_URL_SSO", portal_url.as_str()),
+            ("AWS_ENDPOINT_URL", decoy.as_str()),
+        ],
+    );
+    file_lapsed_sign_in(&directory);
+    let session = session
+        .with_config_text(nowhere_sso_config())
+        .with_profile("desk");
+
+    assert_eq!(found(&session).access_key_id(), "ASIALakeReader");
+    assert_eq!(session.credential_source(), Some("sso"));
+    assert_refreshed_then_traded(&oidc, &portal);
+}
+
+#[test]
+fn aws_endpoint_url_sso_oidc_alone_is_where_a_device_sign_in_is_made() {
+    let identity = Identity::start();
+    let (oidc, decoy) = (identity.endpoint(), nowhere());
+    let (session, directory) = unstated(
+        "device-sign-in-by-variable",
+        &[
+            ("AWS_ENDPOINT_URL_SSO_OIDC", oidc.as_str()),
+            ("AWS_ENDPOINT_URL", decoy.as_str()),
+        ],
+    );
+    let session = session
+        .with_sso(
+            Sso::new(CORP_START_URL, NOWHERE_REGION, "123456789012", "LakeReader")
+                .with_session_name("corp"),
+        )
+        .with_sso_login(SsoLogin::Handler(Arc::new(|_: &DeviceAuthorization| {})));
+
+    session.login().expect("a sign-in");
+    assert_eq!(
+        shape(&identity),
+        [
+            "POST /client/register",
+            "POST /device_authorization",
+            "POST /token",
+        ],
+        "register, authorize, and the token, all at the OIDC service the variable names"
+    );
+    let filed = read_json(&token_path(&directory, CORP_TOKEN_KEY));
+    assert_eq!(filed["accessToken"], SSO_TOKEN);
+    assert_eq!(filed["region"], NOWHERE_REGION);
+}
+
+#[test]
+fn the_services_section_s_sso_oidc_and_sso_entries_each_reach_their_own_service() {
+    let (oidc, portal) = oidc_and_portal();
+    let (oidc_url, portal_url, decoy) = (oidc.endpoint(), portal.endpoint(), nowhere());
+    let (session, directory) = unstated("sso-by-services", &[]);
+    file_lapsed_sign_in(&directory);
+    let session = session
+        .with_config_text(format!(
+            "[profile desk]\nsso_session = corp\nsso_account_id = 123456789012\n\
+             sso_role_name = LakeReader\nservices = local\nendpoint_url = {decoy}\n\n\
+             [sso-session corp]\nsso_start_url = {CORP_START_URL}\nsso_region = {NOWHERE_REGION}\n\n\
+             [services local]\nsso_oidc =\n  endpoint_url = {oidc_url}\n\
+             sso =\n  endpoint_url = {portal_url}\n"
+        ))
+        .with_profile("desk");
+
+    assert_eq!(found(&session).access_key_id(), "ASIALakeReader");
+    assert_refreshed_then_traded(&oidc, &portal);
+}
+
+#[test]
+fn aws_endpoint_url_signin_alone_is_where_a_console_sign_in_is_refreshed() {
+    let identity = Identity::start();
+    let (signin, decoy) = (identity.endpoint(), nowhere());
+    let (session, directory) = unstated(
+        "signin-by-variable",
+        &[
+            ("AWS_ENDPOINT_URL_SIGNIN", signin.as_str()),
+            ("AWS_ENDPOINT_URL", decoy.as_str()),
+        ],
+    );
+    file_console_sign_in(&directory, 2 * 60);
+    let session = session
+        .with_region(NO_LABEL_REGION)
+        .with_config_text(format!(
+            "[profile console]\nlogin_session = {LOGIN_SESSION}\n"
+        ))
+        .with_profile("console");
+
+    assert_eq!(
+        found(&session).access_key_id(),
+        crate::identity::LOGIN_ACCESS_KEY
+    );
+    assert_eq!(shape(&identity), ["POST /v1/token"]);
+}
+
+#[test]
+fn the_services_section_s_signin_entry_is_where_a_console_sign_in_is_refreshed() {
+    let identity = Identity::start();
+    let (signin, decoy) = (identity.endpoint(), nowhere());
+    let (session, directory) = unstated("signin-by-services", &[]);
+    file_console_sign_in(&directory, 2 * 60);
+    let session = session
+        .with_region(NO_LABEL_REGION)
+        .with_config_text(format!(
+            "[profile console]\nlogin_session = {LOGIN_SESSION}\nservices = local\n\
+             endpoint_url = {decoy}\n\n[services local]\nsignin =\n  endpoint_url = {signin}\n"
+        ))
+        .with_profile("console");
+
+    assert_eq!(
+        found(&session).access_key_id(),
+        crate::identity::LOGIN_ACCESS_KEY
+    );
+    assert_eq!(shape(&identity), ["POST /v1/token"]);
+}
+
 #[cfg(feature = "internals")]
 mod internal {
+    use std::time::Duration;
+
     use yggdryl::aws::Session;
-    use yggdryl::internals::aws_session::imds_endpoint;
+    use yggdryl::internals::aws_session::{imds_endpoint, imds_timeout};
 
     use crate::mod_::scratch;
 
@@ -2347,5 +3393,54 @@ mod internal {
             None,
             "a session consulting no environment reaches no metadata service"
         );
+    }
+
+    #[test]
+    fn the_metadata_timeout_reads_a_length_from_the_variable_then_the_profile() {
+        let timeout = |pairs: &[(&str, &str)], config: &str| imds_timeout(&reaching(pairs, config));
+        assert_eq!(
+            timeout(&[], ""),
+            Some(Duration::from_secs(1)),
+            "nothing stated is the service's own default"
+        );
+        for (spelling, expected) in [
+            ("5", Duration::from_secs(5)),
+            ("2.5", Duration::from_millis(2500)),
+            ("3s", Duration::from_secs(3)),
+            ("250ms", Duration::from_millis(250)),
+            ("1e1", Duration::from_secs(10)),
+        ] {
+            assert_eq!(
+                timeout(&[("AWS_METADATA_SERVICE_TIMEOUT", spelling)], ""),
+                Some(expected),
+                "{spelling:?}"
+            );
+        }
+        assert_eq!(
+            timeout(&[], "[default]\nmetadata_service_timeout = 7\n"),
+            Some(Duration::from_secs(7)),
+            "the profile's"
+        );
+        assert_eq!(
+            timeout(
+                &[("AWS_METADATA_SERVICE_TIMEOUT", "2")],
+                "[default]\nmetadata_service_timeout = 7\n"
+            ),
+            Some(Duration::from_secs(2)),
+            "the variable beats the profile"
+        );
+    }
+
+    #[test]
+    fn a_metadata_timeout_that_is_no_bound_is_the_default_and_never_a_panic() {
+        // Zero bounds nothing, a negative or a word is no length, and a
+        // length no `Duration` holds used to abort the process.
+        for spelling in ["0", "-1", "soon", "1e30", "1e30ms", "nan", "inf", "1m"] {
+            assert_eq!(
+                imds_timeout(&reaching(&[("AWS_METADATA_SERVICE_TIMEOUT", spelling)], "")),
+                Some(Duration::from_secs(1)),
+                "{spelling:?}"
+            );
+        }
     }
 }

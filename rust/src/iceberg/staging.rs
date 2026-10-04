@@ -39,6 +39,10 @@ pub(super) struct Staging {
     /// Whether the versioned document went out, which is what keeps the
     /// published files.
     committed: AtomicBool,
+    /// Whether nothing published is ever removed again: a table whose
+    /// store takes no delete keeps a failed commit's files as the orphans
+    /// its own maintenance collects.
+    keeps: bool,
 }
 
 impl Staging {
@@ -74,7 +78,18 @@ impl Staging {
             directory,
             published: Mutex::new(Vec::new()),
             committed: AtomicBool::new(false),
+            keeps: false,
         })
+    }
+
+    /// This staging, removing nothing it published: no rollback when the
+    /// commit fails, no withdrawal of a beaten attempt's manifest list, no
+    /// removal of a file whose upload failed part way. What a table whose
+    /// current document a [`MetadataPointer`](super::MetadataPointer) names
+    /// commits through, because its store need not take a delete.
+    pub(super) fn keeping(mut self) -> Self {
+        self.keeps = true;
+        self
     }
 
     /// Write one file of the commit and answer what `write` answered beside
@@ -106,7 +121,7 @@ impl Staging {
                 Ok(answer)
             }) {
                 Ok(answer) => answer,
-                Err(error) => return Err(unpublished(target, error)),
+                Err(error) => return Err(unpublished(target, error, self.keeps)),
             };
             let size = target.size();
             self.record(relative, target)?;
@@ -130,7 +145,7 @@ impl Staging {
             );
         }
         if let Err(error) = uploaded {
-            return Err(unpublished(target, error));
+            return Err(unpublished(target, error, self.keeps));
         }
         self.record(relative, target)?;
         Ok((answer, size))
@@ -152,7 +167,8 @@ impl Staging {
     /// removed here - one `DELETE` - rather than kept as the orphan a
     /// successful commit would otherwise leave. A removal the store refuses
     /// is logged rather than reported, because the orphan is a cost and not
-    /// a wrong table; the file leaves the record either way.
+    /// a wrong table; the file leaves the record either way. A
+    /// [`keeping`](Self::keeping) staging removes nothing.
     ///
     /// # Errors
     ///
@@ -166,6 +182,7 @@ impl Staging {
                 .map(|index| published.remove(index))
         };
         if let Some((path, mut handle)) = withdrawn
+            && !self.keeps
             && let Err(error) = handle.remove(false)
         {
             log::warn!(
@@ -194,9 +211,11 @@ impl Drop for Staging {
     ///
     /// A failure here cannot be reported; a file the rollback could not
     /// remove is the orphan a failed commit always could leave, and the
-    /// local directory is under the temporary folder.
+    /// local directory is under the temporary folder. A
+    /// [`keeping`](Self::keeping) staging rolls nothing back.
     fn drop(&mut self) {
         if !self.committed.load(Ordering::Acquire)
+            && !self.keeps
             && let Ok(mut published) = self.published.lock()
         {
             for (_, handle) in published.iter_mut().rev() {
@@ -249,16 +268,18 @@ fn upload(target: &mut Holder, path: &Path, size: u64) -> Result<()> {
 /// stores nothing and an abandoned multipart upload is aborted, so what the
 /// handle staged is dropped and no `DELETE` goes out for a key that was
 /// never written. Any other handle may have landed part of the file, and a
-/// leaf publishes what it holds when it is dropped, so it is removed first.
-fn unpublished(target: Holder, error: crate::Error) -> crate::Error {
+/// leaf publishes what it holds when it is dropped, so it is removed first -
+/// unless the staging `keeps` what it wrote, which leaves it as an orphan.
+fn unpublished(target: Holder, error: crate::Error, keeps: bool) -> crate::Error {
     match target {
         #[cfg(feature = "s3")]
         Holder::S3File(file) => {
             let _ = file.discard();
         }
-        mut other => {
+        mut other if !keeps => {
             let _ = other.remove(false);
         }
+        _ => {}
     }
     error
 }

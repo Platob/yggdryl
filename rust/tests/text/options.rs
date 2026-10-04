@@ -367,9 +367,9 @@ mod text {
             // The numbering `seqnum` states is the physical line's own, so the
             // gap the blank line left is visible rather than closed over:
             // `beta` is the third line and counts as two, from the zero this
-            // read starts at. Zero is no sequence at all, so the row that
-            // counts as zero states that by leaving its cell null.
-            assert_eq!(uint64s(&batches, "seqnum"), [None, Some(2)]);
+            // read starts at. A place is never absent: the row that counts
+            // as zero states zero.
+            assert_eq!(uint64s(&batches, "seqnum"), [Some(0), Some(2)]);
         }
 
         #[test]
@@ -485,16 +485,20 @@ mod text {
                     .collect::<Vec<_>>(),
                 with_event(&["mimetype", "body", "dropped_byte_size", "level"])
             );
-            // The five facts every event settles are the five a line always
-            // states; everything a line may leave unsaid is nullable, and the
-            // two the reader itself answers - what the line was classified as,
+            // The seven facts every event settles are the seven a line
+            // always states - its place among them, zero for the first, and
+            // its cross code, the empty text where nothing addressed it;
+            // everything a line may leave unsaid is nullable, and the two
+            // the reader itself answers - what the line was classified as,
             // and the line - are not.
             let required = [
                 "currunix",
                 "curruuid",
                 "crossuuid",
+                "crosscode",
                 "currhashcode",
                 "crosshashcode",
+                "seqnum",
             ];
             for field in schema.fields() {
                 let expected = !(required.contains(&field.name().as_str())

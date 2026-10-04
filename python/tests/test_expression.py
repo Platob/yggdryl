@@ -23,7 +23,7 @@ from yggdryl.expression import (
     user_function_signature,
     user_functions,
 )
-from yggdryl.iceberg import ScanPlan, Table
+from yggdryl.iceberg import ScanPlan, IcebergTable
 
 def trades_schema() -> Field:
     return Field(
@@ -123,7 +123,7 @@ def test_binding_resolves_and_folds() -> None:
     assert bound.is_predicate
     assert bound.columns == ["price", "size"]
     # The literal is converted once, into the column's own exact type.
-    assert str(bound.term) == "price > decimal128(9,2) '100.00' and size is not null"
+    assert str(bound.term) == "price > decimal128(9,2) '100' and size is not null"
     assert "column price" in bound.explain()
     with pytest.raises(TypeError, match="unhashable"):
         hash(bound)
@@ -240,7 +240,8 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "=" in COMPARISONS
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
-    assert len(FUNCTIONS) == 20
+    assert "time_bucket" in FUNCTIONS
+    assert len(FUNCTIONS) == 28
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"
@@ -728,6 +729,56 @@ def test_a_plan_is_built_section_by_section() -> None:
         Plan().with_ordering([(price, "sideways")])
 
 
+def test_a_write_verb_an_ordering_key_and_a_comparison_read_as_the_grammar_spells_them() -> None:
+    # Each word crosses the core's own reader of it - the one table the plan
+    # grammar reads - so every spelling the grammar takes is taken here, in
+    # any case, and nothing else is.
+    for text, verb in (
+        ("insert", "insert into"),
+        ("Append To", "insert into"),
+        ("insert overwrite into", "insert overwrite"),
+        ("OVERWRITE", "insert overwrite"),
+        ("Replace Into", "insert overwrite"),
+        ("upsert", "upsert into"),
+        ("merge into", "upsert into"),
+        ("delete from", "delete from"),
+    ):
+        assert Plan().with_write(text).verb == verb, text
+    for refused in ("sideways", "", "insert into t", "delete into", "select"):
+        with pytest.raises(ValueError):
+            Plan().with_write(refused)
+
+    # An ordering key is the text of one, a term, or a term beside its words.
+    for key in ("a", "a asc", "a ASC NULLS LAST", "a desc", "a desc nulls first", "a nulls first"):
+        assert Plan().with_ordering([key]) == Plan(f"select * order by {key}"), key
+    a = Term.column("a")
+    assert Plan().with_ordering([(a, "DESC")]).ordering == [(a, "desc", "last")]
+    assert Plan().with_ordering([(a, "desc nulls first")]).ordering == [(a, "desc", "first")]
+    assert Plan().with_ordering([("a", "asc", "FIRST")]).ordering == [(a, "asc", "first")]
+    assert str(Plan().with_ordering(["price * 2 desc nulls first"])) == (
+        "select * order by price * 2 desc nulls first"
+    )
+    for refused_key in ("", "a, b", "a descending", "a nulls", "a desc first", "a asc desc"):
+        with pytest.raises(ValueError):
+            Plan().with_ordering([refused_key])
+    for refused_words in (("descending",), ("desc", "middle"), ("desc nulls first", "last")):
+        with pytest.raises(ValueError):
+            Plan().with_ordering([(a, *refused_words)])
+
+    price = Term.column("price")
+    for spelling, written in (
+        ("=", "price = 1"),
+        ("<>", "price <> 1"),
+        ("!=", "price <> 1"),
+        (" >= ", "price >= 1"),
+        ("IS NOT DISTINCT FROM", "price is not distinct from 1"),
+    ):
+        assert str(price.compare(spelling, 1)) == written, spelling
+    for refused_comparison in ("approximately", "==", "is distinct"):
+        with pytest.raises(ValueError):
+            price.compare(refused_comparison, 1)
+
+
 def test_a_field_is_a_plan_and_a_plan_is_a_field() -> None:
     root = Field(
         "trades",
@@ -857,7 +908,7 @@ def test_a_lake_selects_the_leaves_carrying_a_partition(tmp_path) -> None:
     assert str(pairs[0].url).endswith("year=2024/part-0.parquet")
 
 
-def trades_table(root) -> Table:
+def trades_table(root) -> IcebergTable:
     """A venue-partitioned table whose XLON partition holds two rows.
 
     One commit is one manifest, so three commits give the manifest list rows to
@@ -871,7 +922,7 @@ def trades_table(root) -> Table:
             pa.field("venue", pa.string()),
         ]
     )
-    table = Table.create(yggdryl.IOBase(root / "trades"), schema, ["venue"])
+    table = IcebergTable.create(yggdryl.IOBase(root / "trades"), schema, ["venue"])
     for identifier, venue in ((1, "XNAS"), (2, "XNYS"), (3, "XLON"), (4, "XLON")):
         batch = pa.record_batch({"id": [identifier], "venue": [venue]}, schema=schema)
         table.append(batch)
@@ -987,7 +1038,8 @@ def test_defaults_fill_in_and_a_stored_column_derives_by_function() -> None:
 
     stored = Selector("ccy, test.add(size) as next").into_field(ROWS)
     assert stored.dtype["next"].transform["function"] == "test.add"
-    assert stored.dtype["next"].transform["sources"] == '["size"]'
+    assert stored.dtype["next"].transform["by"] == '["size"]'
+    assert stored.dtype["next"].transform.by == ["size"]
     assert str(Selector.from_field(stored)) == "ccy utf8 null, test.add(size) as next int64 null"
     with pytest.raises(ValueError, match="test.add"):
         Term("test.add()").field(ROWS)

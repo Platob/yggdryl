@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nodeliverystreamcommoditysources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodeliverystreamcommoditysources",
-          "FIX:tag": "41085"
-        }
-      },
-      {
         "name": "deliverystreamcommoditysources",
         "dtype": {
           "type": "null"
@@ -165,17 +154,6 @@
         "metadata": {
           "FIX:field": "deliverystreamriskapportionmentsource",
           "FIX:tag": "41218"
-        }
-      },
-      {
-        "name": "nodeliverystreamcycles",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodeliverystreamcycles",
-          "FIX:tag": "41081"
         }
       },
       {

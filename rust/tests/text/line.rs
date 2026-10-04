@@ -940,38 +940,35 @@ mod text {
             assert_eq!(line.get_recdunix(), None);
             assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
             // The identity: the instant coupled with the content code, and no
-            // cross-hash seed on this unlocated line. The code is the event the
-            // line is - the names the header lifts out of it, its state, the
-            // element it follows - with the body behind them, so the body
-            // alone does not digest to it.
-            assert_ne!(
+            // cross-hash seed on this unlocated line. The code is the body's
+            // XXH3-64 and nothing else - not the captures the header lifted,
+            // the state or the element it follows.
+            assert_eq!(
                 line.get_currhashcode(),
-                yggdryl::xxhash::xxh3(line.body().as_bytes()),
-                "the header's facts are in the code, not the body alone"
+                yggdryl::xxhash::xxh3(b"k=v|x=y"),
+                "the code is the body alone"
             );
-            // Pinned as a number because no public door reproduces it: the
-            // code leaves the capture that dates the line out, which
-            // `digest_event` feeds. It moved when the code became the
-            // event's own facts rather than the cross code, the row and the
-            // body - the header's captures, its state, its place
-            // and what it follows, with the body behind them. It last moved
-            // when the names an element went by left the event: the named
-            // captures are the line's own reading, no longer an event fact
-            // `digest_event` feeds, so the code is the state, the place, what
-            // it follows and the body. It moved when the state fed its
-            // `int32` code rather than its ten-byte spelling. It last moved
-            // when the place left the code: a line's row number is where it
-            // stands, never what it says, and reaches its identity through
-            // `curruuid` alone.
-            assert_eq!(line.get_currhashcode(), 4_198_288_935_991_861_489);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
-            // The one capture left out of the code is the one that dates the
-            // line, because the instant is coupled with the code rather than
-            // fed into it: the same line at another instant says the same thing
-            // and is another event.
+            // The header stays out of the code, the capture that dates the
+            // line included, because the instant is coupled with the code
+            // rather than fed into it: the same line at another instant says
+            // the same thing and is another event.
             let later = self::line(&body.replace("10:15:30Z", "10:15:31Z"), &options);
             assert_eq!(later.get_currhashcode(), line.get_currhashcode());
             assert_ne!(later.get_curruuid(), line.get_curruuid());
+            // A header stating another state or predecessor is the same code,
+            // and the same identity at the same instant and row.
+            let restated = self::line(
+                &format!(
+                    "2026-01-02T10:15:30Z [New] 7 {} O-200 k=v|x=y",
+                    Uuid::from_v8(5)
+                ),
+                &options,
+            );
+            assert!(!restated.get_state().is_done());
+            assert_ne!(restated.get_prevuuid(), line.get_prevuuid());
+            assert_eq!(restated.get_currhashcode(), line.get_currhashcode());
+            assert_eq!(restated.get_curruuid(), line.get_curruuid());
             // A line is read from a handle: no source.
             assert!(line.get_srcuuids().is_empty());
             // The same bytes, instant, physical sequence and absent cross seed
@@ -1379,12 +1376,8 @@ mod text {
             line.set_body(TextBytes::from_bytes("plain").expect("a page"))
                 .expect("a body");
             assert_ne!(line.get_curruuid(), sequenced);
-            // The content code is the event's own facts - here the state and
-            // the sequence the caller stated, the header having matched nothing
-            // on the new body - with the body behind them.
-            let mut digest = line.digest_event();
-            digest.write_bytes(b"plain");
-            assert_eq!(line.get_currhashcode(), digest.as_u64());
+            // The content code is the new body's, whatever the caller stated.
+            assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
             assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
             assert!(line.get_state().is_done(), "stated, so it stands");
             assert_eq!(line.get_seqnum(), 9);
@@ -1465,6 +1458,31 @@ mod text {
         }
 
         #[test]
+        fn a_stated_state_predecessor_or_name_moves_neither_code_nor_identity() {
+            let options = options();
+            let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
+            let mut line = line(&body, &options);
+            let (code, identity) = (line.get_currhashcode(), line.get_curruuid());
+            line.set_state(yggdryl::State::from_spelling("Filled").expect("a state"));
+            line.set_prevuuid(Some(Uuid::from_v8(9)));
+            line.set_named_captures(std::collections::BTreeMap::from([(
+                "level".to_owned(),
+                "WARN".to_owned(),
+            )]));
+            assert_eq!(
+                (line.get_currhashcode(), line.get_curruuid()),
+                (code, identity),
+                "the code is the body's, and the identity reads none of them"
+            );
+            // A stated code stands until finalizing derives the body's again.
+            line.set_currhashcode(0xAB);
+            assert_eq!(line.get_currhashcode(), 0xAB);
+            line.finalize();
+            assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"k=v"));
+            assert_eq!(line.get_curruuid(), identity);
+        }
+
+        #[test]
         fn the_identity_reads_the_cross_seed_but_not_a_stated_cross_element_or_source() {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
@@ -1490,12 +1508,12 @@ mod text {
             assert_eq!(crossed.get_crosshashcode(), stated.get_crosshashcode());
             assert_eq!(crossed.get_crossuuid(), stated.get_crossuuid());
 
-            // The cross code is what the code digests, so it is what moves
-            // the identity - and finalizing derives the same one again rather
-            // than dropping it, because the code still states it.
+            // The cross code seeds the identity and stays out of the content
+            // code - and finalizing derives the same identity again rather
+            // than dropping it, because the cross code still states it.
             let mut sourced = line(&body, &options);
             sourced.set_crosscode("O-100".to_owned());
-            assert_ne!(sourced.get_currhashcode(), stated.get_currhashcode());
+            assert_eq!(sourced.get_currhashcode(), stated.get_currhashcode());
             let moved = sourced.get_curruuid();
             assert_ne!(moved, stated.get_curruuid());
             sourced.finalize();

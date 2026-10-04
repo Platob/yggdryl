@@ -11,7 +11,10 @@
 // Write intent and representation are both explicit. Each of ArrowReader,
 // ArrowTable, ArrowBatch, and Records has overwrite/append/merge entry
 // points. The representation-specific adapter widens to one native reader and
-// the intent-specific call redirects to the matching Rust primitive.
+// the intent-specific call redirects to the matching Rust primitive. The
+// Serie verbs are the one generic door: rows in any shape the crate holds
+// them - a Serie, a ChunkedSerie, a SerieReader - or any columnar value a
+// BatchReader is built from, read back as a SerieReader.
 
 const { arrow, ipcBytes } = require('./values.js')
 const optionProperties = require('./properties.js')
@@ -74,15 +77,21 @@ function arrowKind(value) {
 
 function installRecords({
   BatchReader,
+  ChunkedSerie,
   Field,
   IcebergOptions,
   IOBase,
+  IOResult,
   RecordOptions,
+  Serie,
   SerieReader,
   TextOptions,
   Table,
-  Tables,
+  nativeWriteMode,
 }) {
+  if (typeof IOResult !== 'function') {
+    throw new TypeError('native binding is missing IOResult')
+  }
   const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
@@ -104,6 +113,9 @@ function installRecords({
     throw new TypeError('native binding is missing RecordOptions._requireWritePreflightNative')
   }
   delete RecordOptions.prototype._requireWritePreflightNative
+  if (typeof nativeWriteMode !== 'function') {
+    throw new TypeError('native binding is missing RecordOptions._writeModeNative')
+  }
   const textRecordOptions = TextOptions.prototype._recordOptionsNative
   if (typeof textRecordOptions !== 'function') {
     throw new TypeError('native binding is missing TextOptions._recordOptionsNative')
@@ -129,6 +141,11 @@ function installRecords({
     }
     delete IOBase.prototype[name]
   }
+  const writeSerieNative = IOBase.prototype._writeSerieNative
+  if (typeof writeSerieNative !== 'function') {
+    throw new TypeError('native binding is missing IOBase._writeSerieNative')
+  }
+  delete IOBase.prototype._writeSerieNative
 
   // One batch arrives as its own IPC stream, so its schema travels with it and
   // Arrow JS needs no separate handshake. That per-batch header is what a
@@ -289,10 +306,10 @@ function installRecords({
     })
   }
 
+  // Each chunk is one batch of `batchRowSize` records; a commit cadence counts
+  // these batches whole in the core and never cuts one.
   function recordChunker(settings, defaultBatchRowSize) {
     const rowSize = settings.batchRowSize ?? defaultBatchRowSize
-    const cadence = settings.commitRowSize
-    let rowsToCommit = cadence
     // The rows the limit seam keeps are the ones after its skip, so
     // conversion stops once both are covered.
     let remainingRows =
@@ -364,17 +381,12 @@ function installRecords({
 
     function nextRowSize() {
       let size = rowSize
-      if (rowsToCommit !== null) size = Math.min(size, rowsToCommit)
       if (remainingRows !== null) size = Math.min(size, remainingRows)
       return size
     }
 
     function accepted(rows) {
       if (remainingRows !== null) remainingRows -= rows
-      if (rowsToCommit !== null) {
-        rowsToCommit -= rows
-        if (rowsToCommit === 0) rowsToCommit = cadence
-      }
     }
 
     function sync(iterator) {
@@ -577,6 +589,7 @@ function installRecords({
   // core push. The Rust session retains the operation-wide cast, byte/row
   // limits, cadence remainder, and destination routing plan, so a later
   // source/conversion failure leaves every earlier complete prefix visible.
+  // The session's finish answers the write's IOResult, counted in the core.
   async function awaitedCommittedRecordsWrite(
     handle,
     source,
@@ -602,10 +615,10 @@ function installRecords({
         }
         const more = Reflect.apply(pushWriteSession, handle, [session, reader])
         if (!more) {
-          Reflect.apply(finishWriteSession, handle, [session])
+          const result = Reflect.apply(finishWriteSession, handle, [session])
           finished = true
           if (typeof iterator.return === 'function') await iterator.return()
-          return
+          return result
         }
       }
 
@@ -613,8 +626,9 @@ function installRecords({
         const converted = emptyRecordsReader(settings)
         return publish(converted.reader, converted.settings)
       }
-      Reflect.apply(finishWriteSession, handle, [session])
+      const result = Reflect.apply(finishWriteSession, handle, [session])
       finished = true
+      return result
     } catch (error) {
       if (session !== undefined && !finished) {
         try {
@@ -699,19 +713,24 @@ function installRecords({
     return Reflect.apply(requireWritePreflight, settings, [intent])
   }
 
+  // The mode is read by the core's `IOMode` vocabulary, before any input is
+  // touched; only its type is checked here.
   function writeMode(mode) {
     if (typeof mode !== 'string') {
       throw new TypeError('mode must be overwrite, append, or merge')
     }
-    const canonical = mode.trim().toLowerCase()
-    if (!['overwrite', 'append', 'merge'].includes(canonical)) {
-      throw new TypeError(`unknown write mode ${JSON.stringify(mode)}`)
-    }
-    return canonical
+    return nativeWriteMode(mode)
   }
 
   function writeLimitIsZero(settings) {
     return settings.maxRowSize === 0 || settings.maxByteSize === 0
+  }
+
+  // An append bounded to no row reads no source and writes nothing, which is
+  // the core's own answer to that bound: its empty result, built by its
+  // constructor, so the source is never converted only to be handed over.
+  function emptyAppendResult() {
+    return new IOResult()
   }
 
   // Metadata must be an accessor, not a stored value or a method. Looking up
@@ -866,7 +885,7 @@ function installRecords({
           let settings = resolvedRecordOptions(this, options, properties)
           preflightWriteIntent(settings, intent)
           if (writeLimitIsZero(settings)) {
-            if (intent === 'append') return undefined
+            if (intent === 'append') return emptyAppendResult()
             const converted = emptyRecordsReader(settings)
             return native.call(this, converted.reader, converted.settings)
           }
@@ -889,7 +908,7 @@ function installRecords({
         let settings = resolvedRecordOptions(this, options, properties)
         preflightWriteIntent(settings, intent)
         if (writeLimitIsZero(settings)) {
-          if (intent === 'append') return undefined
+          if (intent === 'append') return emptyAppendResult()
           const converted = emptyRecordsReader(settings)
           return nativeWrite.call(
             this,
@@ -929,6 +948,109 @@ function installRecords({
     configurable: true,
     value(options, properties) {
       return readTextLines.call(this, readRecordOptions(this, options, properties))
+    },
+  })
+
+  // The Serie verbs keep an absent options value absent, so the core resolves
+  // the handle's own - a container's the table beneath it, a structured text
+  // document the record column its rows parse into. A property bag lands on
+  // a copy of the options given, else of the handle's own, else - for a
+  // handle naming no record encoding, as a structured document does, which
+  // reads the declared field alone - of Arrow stream options.
+  const ARROW_STREAM_MIME_TYPE = 'application/vnd.apache.arrow.stream'
+
+  function serieOptionsBase(handle, options) {
+    if (options !== undefined && options !== null) return propertyBase(handle, options)
+    try {
+      return handle.recordOptions()
+    } catch {
+      return new RecordOptions(ARROW_STREAM_MIME_TYPE)
+    }
+  }
+
+  function serieRecordOptions(handle, options, properties) {
+    if (isPropertyBag(options)) {
+      properties = options
+      options = undefined
+    }
+    if (properties === undefined || properties === null) return recordOptions(options)
+    return recordOptions(withProperties(serieOptionsBase(handle, options), properties))
+  }
+
+  // Rows in any shape the crate holds them cross as they are; every other
+  // columnar value is the stream of its batches - a native BatchReader as it
+  // is, an Arrow JS table, batch or batches and IPC bytes through
+  // `BatchReader.from` - read under one plan.
+  function serieSource(source, rootName) {
+    if (
+      source instanceof Serie ||
+      source instanceof ChunkedSerie ||
+      source instanceof SerieReader
+    ) {
+      return source
+    }
+    if (!isArrowShaped(source)) {
+      throw new TypeError(
+        'value must be a Serie, a ChunkedSerie, a SerieReader, a BatchReader, an Apache Arrow JS Table or RecordBatch, or Arrow IPC bytes',
+      )
+    }
+    return SerieReader.fromArrowReader(batchReader(source, rootName))
+  }
+
+  // The one generic write: preflighted, bounded and typed exactly as the
+  // other record writes are, the rows' own root standing in for a field the
+  // options do not declare. An absent options value crosses absent.
+  function writeSerie(handle, source, intent, options, properties) {
+    const settings = serieRecordOptions(handle, options, properties)
+    if (settings === undefined || settings === null) {
+      return Reflect.apply(writeSerieNative, handle, [serieSource(source), intent, undefined])
+    }
+    preflightWriteIntent(settings, intent)
+    if (writeLimitIsZero(settings)) {
+      if (intent === 'append') return emptyAppendResult()
+      // A limited merge was rejected by preflight. An overwrite bounded to no
+      // row publishes the declared field's empty value without reading the
+      // source; with no field declared, the source's own root names it.
+      if (settings.field !== null) {
+        const converted = emptyRecordsReader(settings)
+        return Reflect.apply(writeSerieNative, handle, [
+          SerieReader.fromArrowReader(converted.reader),
+          intent,
+          converted.settings,
+        ])
+      }
+    }
+    return Reflect.apply(writeSerieNative, handle, [
+      serieSource(source, settings.name),
+      intent,
+      settings,
+    ])
+  }
+
+  const readSerie = IOBase.prototype.readSerie
+  if (typeof readSerie !== 'function') {
+    throw new TypeError('native binding is missing IOBase.readSerie')
+  }
+  Object.defineProperty(IOBase.prototype, 'readSerie', {
+    configurable: true,
+    value(options, properties) {
+      return readSerie.call(this, serieRecordOptions(this, options, properties))
+    },
+  })
+
+  for (const intent of intents) {
+    Object.defineProperty(IOBase.prototype, `${intent}Serie`, {
+      configurable: true,
+      value(value, options, properties) {
+        return writeSerie(this, value, intent, options, properties)
+      },
+    })
+  }
+
+  Object.defineProperty(IOBase.prototype, 'writeSerie', {
+    configurable: true,
+    value(value, mode = 'overwrite', options, properties) {
+      return writeSerie(this, value, writeMode(mode), options, properties)
     },
   })
 
@@ -977,14 +1099,14 @@ function installRecords({
     const settings = resolvedRecordOptions(handle, options, properties)
     const defaultBatchRowSize = preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
-      if (intent === 'append') return undefined
+      if (intent === 'append') return emptyAppendResult()
       // A limited merge was rejected by preflight. Overwrite still publishes
       // the explicitly typed empty value without inspecting the input.
       const converted = emptyRecordsReader(settings)
       return publish(converted.reader, converted.settings)
     }
     const asynchronous = needsAwait(rows)
-    if (asynchronous && settings.commitRowSize !== null) {
+    if (asynchronous && settings.commitBatchNum !== null) {
       return awaitedCommittedRecordsWrite(
         handle,
         rows,
@@ -1058,27 +1180,11 @@ function installRecords({
     if (source === undefined || source === null || isArrowShaped(source)) {
       return batchReader(source)
     }
-    let settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE)
-    const stored = table == null ? null : table.schema
-    if (stored != null) settings = settings.withField(stored)
-    const converted = recordsReader(
-      source,
-      settings,
-      preflightWriteIntent(settings, 'append'),
-    )
-    if (stored != null) return converted.reader
-    // Nothing declared a schema, so the rows named one - and the rows were
-    // encoded by Arrow JS, which dictionary-encodes a string, a datatype
-    // Iceberg does not express. The comparison is against the reader's own
-    // field rather than the declared one: a field class declares `utf8` and
-    // still arrives as `dictionary(int32, utf8)`, so comparing declarations
-    // would skip the cast that is exactly what the create needs. The cast is
-    // the stream's own: one plan, each batch reconciled as it is pulled.
-    const declared = converted.settings.field
-    if (declared === null || declared === undefined) return converted.reader
-    const widened = declared.intoSchemeCompat('iceberg')
-    if (widened.equals(converted.reader.field)) return converted.reader
-    return SerieReader.fromArrowReader(converted.reader, widened).intoArrowReader()
+    // The table's stored schema types the rows. A schema the rows would have
+    // to name is a catalog's business: `Tables.append` creates there, over
+    // the schema as Iceberg expresses it.
+    const settings = new RecordOptions(ICEBERG_DATA_MIME_TYPE).withField(table.schema)
+    return recordsReader(source, settings, preflightWriteIntent(settings, 'append')).reader
   }
 
   const explicitOptions = Table.prototype._explicitOptionsNative
@@ -1196,42 +1302,7 @@ function installRecords({
     },
   })
 
-  // The tables view's own writes take a name first and then the rows, so they
-  // widen the rows the same way the table's do and pass the options along.
-  if (Tables) {
-    for (const name of ['append', 'overwrite']) {
-      const native = Tables.prototype[name]
-      if (!native) continue
-      Object.defineProperty(Tables.prototype, name, {
-        configurable: true,
-        value(table, batches, options, properties) {
-          // An existing table declares the schema its rows are typed against;
-          // a create-on-write names none yet, and the rows declare it.
-          const stored = this.has(table) ? this.get(table) : null
-          const settings = icebergCallOptions(null, options, properties)
-          return native.call(this, table, icebergBatchReader(stored, batches), settings)
-        },
-      })
-    }
-    for (const name of ['create', 'openOrCreate']) {
-      const native = Tables.prototype[name]
-      if (!native) continue
-      Object.defineProperty(Tables.prototype, name, {
-        configurable: true,
-        value(table, schema) {
-          // An array of child Fields is a shape the native call assembles
-          // itself, under a root named `row`; only scalar spellings coerce.
-          return native.call(
-            this,
-            table,
-            Array.isArray(schema) ? schema : intoField(schema),
-          )
-        },
-      })
-    }
-  }
-
-  return Object.freeze({ icebergBatchReader, icebergCallOptions, intoField })
+  return Object.freeze({ intoField })
 }
 
 module.exports = { installRecords }

@@ -59,17 +59,6 @@
         }
       },
       {
-        "name": "nothrottlemsgtype",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nothrottlemsgtype",
-          "FIX:tag": "1618"
-        }
-      },
-      {
         "name": "throttlemsgtypegrp",
         "dtype": {
           "type": "null"

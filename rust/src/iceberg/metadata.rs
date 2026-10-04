@@ -1,4 +1,4 @@
-//! Table metadata: the JSON document that is the table.
+//! IcebergTable metadata: the JSON document that is the table.
 //!
 //! Everything else in a table - manifests, data files, the directory layout -
 //! is reachable only from this one document, which is why committing a change
@@ -29,15 +29,72 @@ use iceberg_official::spec::{
     SortOrder as OfficialSortOrder, StatisticsFile as OfficialStatisticsFile,
     Summary as OfficialSummary, TableMetadataBuildResult as OfficialTableMetadataBuildResult,
     TableMetadataBuilder as OfficialTableMetadataBuilder,
-    TableProperties as OfficialTableProperties, Transform as OfficialTransform,
-    Type as OfficialType, UnboundPartitionSpec as OfficialUnboundPartitionSpec,
+    TableProperties as OfficialTableProperties, Type as OfficialType,
+    UnboundPartitionSpec as OfficialUnboundPartitionSpec,
 };
 use smol_str::{SmolStr, format_smolstr};
 
 use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use super::{Transform, schema_from_json, schema_into_json};
-use crate::{DataType, Error, Field, Result, Scalar, Serie};
+use crate::expression::{Function, Literal, Ordering, Term};
+use crate::{DataType, Error, Field, Result, Scalar, Serie, SortOptions};
+
+impl TableMetadata {
+    /// The prefix of the table property holding one derived column's term:
+    /// `yggdryl.transform.<column>` is the `TRANSFORM:expression` of the
+    /// top-level column it names. An Iceberg schema states a column's
+    /// identifier, name, type and nullability and nothing else, so this is
+    /// where a table keeps how one of its columns is computed.
+    pub const TRANSFORM_PROPERTY_PREFIX: &'static str = "yggdryl.transform.";
+}
+
+/// The properties stating the terms `schema`'s top-level columns derive
+/// with, in key order.
+fn transform_properties(schema: &Field) -> Result<Vec<(SmolStr, SmolStr)>> {
+    let mut properties = Vec::new();
+    for child in schema.fields() {
+        if let Some(term) = child.as_transform().term()? {
+            properties.push((
+                format_smolstr!(
+                    "{}{}",
+                    TableMetadata::TRANSFORM_PROPERTY_PREFIX,
+                    child.name()
+                ),
+                format_smolstr!("{term}"),
+            ));
+        }
+    }
+    properties.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(properties)
+}
+
+/// Declare on every schema the terms the table's properties state.
+///
+/// A property naming a column a schema does not have declares nothing on
+/// it - the column was dropped, or not yet added, under that schema - and a
+/// term that does not parse is refused naming its property.
+fn mark_transforms(schemas: &mut [Field], properties: &[(SmolStr, SmolStr)]) -> Result<()> {
+    for (key, text) in properties {
+        let Some(column) = key.strip_prefix(TableMetadata::TRANSFORM_PROPERTY_PREFIX) else {
+            continue;
+        };
+        let term: Term = text.parse().map_err(|error| {
+            invalid(format_smolstr!(
+                "expected a term in the table property {key:?}, got {text:?}: {error}"
+            ))
+        })?;
+        for schema in schemas.iter_mut() {
+            let Some(index) = schema.index_of(column) else {
+                continue;
+            };
+            let mut child = schema.fields()[index].clone();
+            child.as_transform_mut().set_term(&term)?;
+            schema.set_field_at(index, child)?;
+        }
+    }
+    Ok(())
+}
 
 /// Which revision of the Iceberg table specification a table is written to.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -99,6 +156,64 @@ impl SortField {
     }
 }
 
+/// Read one `order by` key as the column it reads and the transform it
+/// spells: an identity, an epoch function the grammar maps to a transform,
+/// or `truncate(col, w)`; anything else is refused by name.
+fn sort_entry<'schema>(
+    schema: &'schema Field,
+    key: &Ordering,
+) -> Result<(&'schema Field, Transform)> {
+    let refuse = |reason: &str| {
+        invalid(format_smolstr!(
+            "expected an Iceberg sort transform - a column, an epoch function over one, or \
+             truncate(column, width) - got `{key}`: {reason}"
+        ))
+    };
+    let term = key.term();
+    let source = |path: &[crate::FieldSegment]| -> Result<&'schema Field> {
+        let mut current = schema;
+        for segment in path {
+            let crate::FieldSegment::Field(name) = segment else {
+                return Err(refuse(
+                    "a source is a column or a struct child, never an element",
+                ));
+            };
+            current = current
+                .dtype()
+                .get_field_by_name(name)
+                .ok_or_else(|| refuse(&format!("no column {name:?} to sort on")))?;
+        }
+        Ok(current)
+    };
+    if let Some(path) = term.as_path() {
+        return Ok((source(path)?, Transform::Identity));
+    }
+    let Term::Function(function, arguments) = term else {
+        return Err(refuse("not a function over a column"));
+    };
+    let Some(column) = arguments.first().and_then(Term::as_path) else {
+        return Err(refuse("the first argument is not a column"));
+    };
+    let column = source(column)?;
+    if let Some(transform) = Transform::from_term(term) {
+        return Ok((column, transform));
+    }
+    if *function == Function::Truncate {
+        let width = arguments
+            .get(1)
+            .and_then(Term::as_literal)
+            .map(Literal::value)
+            .and_then(Scalar::as_i64)
+            .and_then(|width| u32::try_from(width).ok())
+            .filter(|width| *width > 0);
+        return match width {
+            Some(width) => Ok((column, Transform::Truncate(width))),
+            None => Err(refuse("truncate takes a positive whole-number width")),
+        };
+    }
+    Err(refuse("not a transform a sort field can hold"))
+}
+
 /// An identified ordering a table's writers maintain.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SortOrder {
@@ -151,6 +266,138 @@ impl SortOrder {
             order_id: 1,
             fields,
         }
+    }
+
+    /// The order a schema's `SORT:by` declares, under `order_id`.
+    ///
+    /// Each `order by` key is one sort field: a bare column sorts on it
+    /// unchanged, an epoch function over a column - `years(ts)`,
+    /// `minutes(ts, 15)` - under the transform [`Transform::from_term`]
+    /// reads, `truncate(col, w)` under [`Transform::Truncate`]; the key's
+    /// direction and nulls placement are the field's. A schema declaring no
+    /// order answers [`Self::unsorted`].
+    ///
+    /// ```
+    /// use yggdryl::iceberg::{SortOrder, Transform, assign_field_ids};
+    /// use yggdryl::{DataType, StructType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut schema = DataType::from(StructType::from_fields([
+    ///     DataType::utf8().required_field("venue"),
+    ///     DataType::Float64.nullable_field("price"),
+    /// ])?)
+    /// .required_field("row");
+    /// schema.as_sort_mut().set_by_texts(["venue", "price desc nulls first"])?;
+    /// assign_field_ids(&mut schema, 1)?;
+    ///
+    /// let order = SortOrder::from_schema(1, &schema)?;
+    /// assert_eq!(order.fields.len(), 2);
+    /// assert_eq!(order.fields[1].source_id, 2);
+    /// assert_eq!(order.fields[1].transform, Transform::Identity);
+    /// assert_eq!(order.fields[1].direction, "desc");
+    /// assert_eq!(order.fields[1].null_order, "nulls-first");
+    /// assert_eq!(
+    ///     order.into_orderings(&schema)?.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    ///     ["venue", "price desc nulls first"]
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the schema is not a struct root, a key reads a
+    /// column the schema does not have or one with no field identifier, or
+    /// a key is not a transform a sort field can hold, naming the key.
+    pub fn from_schema(order_id: i64, schema: &Field) -> Result<Self> {
+        schema.require_struct()?;
+        let Some(keys) = schema.as_sort().by()? else {
+            return Ok(Self::unsorted());
+        };
+        let mut fields = Vec::with_capacity(keys.len());
+        for key in &keys {
+            let (source, transform) = sort_entry(schema, key)?;
+            let source_id = source.parquet_field_id()?.ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a PARQUET:field_id on the sort column {:?}; call assign_field_ids \
+                     first",
+                    source.name()
+                ))
+            })?;
+            fields.push(SortField {
+                source_id,
+                transform,
+                direction: SmolStr::new_static(if key.is_descending() { "desc" } else { "asc" }),
+                null_order: SmolStr::new_static(if key.is_nulls_first() {
+                    "nulls-first"
+                } else {
+                    "nulls-last"
+                }),
+            });
+        }
+        if fields.is_empty() {
+            return Ok(Self::unsorted());
+        }
+        Ok(Self { order_id, fields })
+    }
+
+    /// The `order by` keys this order spells against `schema`, most
+    /// significant first: the inverse of [`Self::from_schema`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a sort field names a column the schema does not
+    /// have, or a transform no key spells - a `bucket`, a `void`, an
+    /// `unknown`.
+    pub fn into_orderings(&self, schema: &Field) -> Result<Vec<Ordering>> {
+        let mut keys = Vec::with_capacity(self.fields.len());
+        for field in &self.fields {
+            let (path, _) = super::partition::source_path(schema, field.source_id)?;
+            let mut segments = path.iter();
+            let root = segments.next().map_or("", SmolStr::as_str);
+            let column = segments.fold(Term::column(root), |term, name| term.child(name.clone()));
+            let term = match field.transform {
+                Transform::Identity => column,
+                Transform::Truncate(width) => Term::call(
+                    Function::Truncate,
+                    [column, Term::literal(i64::from(width))],
+                ),
+                transform => transform.into_term(column).ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a sort transform an order by key spells, got {transform} on \
+                         field {}",
+                        field.source_id
+                    ))
+                })?,
+            };
+            let direction = if field.direction == "desc" {
+                SortOptions::descending()
+            } else {
+                SortOptions::ascending()
+            };
+            keys.push(Ordering::new(
+                term,
+                direction.with_nulls_first(field.null_order == "nulls-first"),
+            ));
+        }
+        Ok(keys)
+    }
+
+    /// Return `schema` declaring this order as its `SORT:by`, or declaring
+    /// none for the unsorted order or one no key spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the declaration cannot be written.
+    pub(super) fn mark_order(&self, schema: &Field) -> Result<Field> {
+        let mut marked = schema.clone();
+        match self.into_orderings(schema) {
+            Ok(keys) if !keys.is_empty() => marked.as_sort_mut().set_by(keys)?,
+            _ => {
+                marked.as_sort_mut().remove_by();
+            }
+        }
+        Ok(marked)
     }
 
     /// Read one sort order object.
@@ -677,8 +924,13 @@ impl TableMetadata {
             schema.as_iceberg_mut().set_schema_id(0)?;
         }
         // The schema says how the table is laid out, so the columns the spec
-        // partitions on are marked on it rather than only named beside it.
-        let schema = spec.mark_partitions(&schema)?;
+        // partitions on are marked on it rather than only named beside it,
+        // and the order its files keep is declared on it the same way.
+        let schema = order.mark_order(&spec.mark_partitions(&schema)?)?;
+        // An Iceberg schema has nowhere to state how a column is computed,
+        // so a derived column's term rides the table's properties and is
+        // declared back on the column wherever the document is read.
+        let properties = transform_properties(&schema)?;
         let last_partition_id = spec.last_field_id();
         let current_schema_id = schema
             .as_iceberg()
@@ -700,7 +952,7 @@ impl TableMetadata {
             last_partition_id,
             sort_orders: vec![SortOrder::unsorted()],
             default_sort_order_id: 0,
-            properties: Vec::new(),
+            properties,
             current_snapshot_id: None,
             snapshots: Vec::new(),
             snapshot_log: Vec::new(),
@@ -927,12 +1179,12 @@ impl TableMetadata {
             .and_then(Scalar::as_sequence)
             .unwrap_or_default()
         {
-            schemas.push(schema_from_json("row", entry)?);
+            schemas.push(schema_from_json(crate::media::DEFAULT_ROOT_NAME, entry)?);
         }
         if schemas.is_empty()
             && let Some(schema) = document.get_key_str("schema")
         {
-            schemas.push(schema_from_json("row", schema)?);
+            schemas.push(schema_from_json(crate::media::DEFAULT_ROOT_NAME, schema)?);
         }
         if schemas.is_empty() {
             return Err(invalid(SmolStr::new_static(
@@ -981,6 +1233,20 @@ impl TableMetadata {
             .unwrap_or_default()
         {
             sort_orders.push(SortOrder::from_json(entry)?);
+        }
+        // The default order is declared on every schema, as the spec's marks
+        // are, so a table read back says how its files are sorted.
+        let default_sort_order_id = document
+            .get_key_str("default-sort-order-id")
+            .and_then(Scalar::as_i64)
+            .unwrap_or_default();
+        if let Some(order) = sort_orders
+            .iter()
+            .find(|order| order.order_id == default_sort_order_id)
+        {
+            for schema in &mut schemas {
+                *schema = order.mark_order(schema)?;
+            }
         }
         if sort_orders.is_empty() {
             sort_orders.push(SortOrder::unsorted());
@@ -1034,6 +1300,7 @@ impl TableMetadata {
             })
             .unwrap_or_default();
         properties.sort_by(|left, right| left.0.cmp(&right.0));
+        mark_transforms(&mut schemas, &properties)?;
 
         let mut statistics = sequence(document, "statistics");
         statistics.sort();
@@ -1466,20 +1733,24 @@ impl TableMetadata {
         self.apply_official_update(None, |builder| Ok(builder.set_location(location)))
     }
 
-    /// Replace the table's UUID, validating the canonical 8-4-4-4-12 shape.
+    /// Replace the table's UUID, read as the crate's [`Uuid`](crate::Uuid)
+    /// reads a spelling: 32 hexadecimal digits or the 36-character hyphenated
+    /// shape, in either case.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the input when it is not hyphenated hex of that
-    /// shape; the stored UUID is unchanged.
+    /// Returns an error naming the input when it is neither spelling; the
+    /// stored UUID is unchanged.
     pub fn assign_uuid(&mut self, uuid: impl Into<SmolStr>) -> Result<()> {
         let uuid = uuid.into();
-        let parsed = uuid::Uuid::parse_str(&uuid).map_err(|_| {
+        let parsed = uuid.parse::<crate::Uuid>().map_err(|_| {
             invalid(format_smolstr!(
-                "expected a UUID shaped 8-4-4-4-12 hex, got {:?}",
+                "expected {}, got {:?}",
+                crate::uuid::UUID_SPELLINGS,
                 crate::text::elide_to(&uuid, 64)
             ))
         })?;
+        let parsed = uuid::Uuid::from_bytes(parsed.into_bytes());
         self.apply_official_update(None, |builder| Ok(builder.assign_uuid(parsed)))
     }
 
@@ -2447,13 +2718,12 @@ fn scalar_by_str<'a>(values: &'a [Scalar], key: &str, expected: &str) -> Option<
 fn official_partition_spec(spec: &PartitionSpec) -> Result<OfficialUnboundPartitionSpec> {
     let mut builder = OfficialUnboundPartitionSpec::builder();
     for field in &spec.fields {
-        let transform = field
-            .transform
-            .to_string()
-            .parse::<OfficialTransform>()
-            .map_err(Error::from_iceberg)?;
         builder = builder
-            .add_partition_field(field.source_id, &field.name, transform)
+            .add_partition_field(
+                field.source_id,
+                &field.name,
+                field.transform.into_official()?,
+            )
             .map_err(Error::from_iceberg)?;
     }
     Ok(builder.build())
@@ -2470,7 +2740,7 @@ fn partition_specs_compatible(left: &PartitionSpec, right: &PartitionSpec) -> bo
 }
 
 fn official_sort_order(order: &SortOrder) -> Result<OfficialSortOrder> {
-    let document = order.clone().into_json()?;
+    let document = super::official::bridge_sort_order(&order.clone().into_json()?)?;
     let bytes = crate::json::into_bytes(&document)?;
     Ok(serde_json::from_slice(&bytes)?)
 }
@@ -2800,21 +3070,66 @@ fn ensure_unique<T: Copy + Eq + std::hash::Hash + fmt::Debug>(
     Ok(())
 }
 
+/// Judge the source of every transform of this crate's own against one
+/// schema.
+///
+/// The official model sees `minutes[n]`, `week` and `quarter` as the
+/// reserved buckets they cross it as, and a bucket binds to sources a period
+/// cannot read - an `int64`, a `utf8` - so its bind proves nothing about
+/// them: [`Transform::result_type`] is the rule, the one every write applies,
+/// and it is applied to every spec and every sort order wherever one is
+/// bound to a schema - a table built, read, or given a new spec or order.
+/// A source the schema does not hold is the official bind's to report.
+fn bridged_sources_bind(
+    fields: impl IntoIterator<Item = (i32, Transform)>,
+    schema: &Field,
+) -> std::result::Result<(), String> {
+    for (source_id, transform) in fields {
+        if !transform.is_bridged() {
+            continue;
+        }
+        let Some(source) = schema.field_by_parquet_field_id(source_id) else {
+            continue;
+        };
+        match transform.result_type(source.dtype()) {
+            Ok(_) => {}
+            Err(Error::Codec { reason, .. }) => {
+                return Err(format!(
+                    "{reason} (source {source_id}, {:?})",
+                    crate::text::elide_to(source.name(), 32)
+                ));
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(())
+}
+
 fn validate_partition_spec_history(specs: &[PartitionSpec], schemas: &[Field]) -> Result<()> {
     for spec in specs {
         spec.validate_shape()?;
-        let document = spec.clone().into_json()?;
-        let official: OfficialUnboundPartitionSpec = official_from_scalar(&document)?;
+        let official = official_partition_spec(spec)?;
         let mut last_error = None;
         let mut matched = false;
         for schema in schemas {
+            let bridged = bridged_sources_bind(
+                spec.fields
+                    .iter()
+                    .map(|field| (field.source_id, field.transform)),
+                schema,
+            );
             let schema = std::sync::Arc::new(official_schema(schema)?);
-            match official.clone().bind(schema) {
+            match official
+                .clone()
+                .bind(schema)
+                .map_err(|error| error.to_string())
+                .and(bridged)
+            {
                 Ok(_) => {
                     matched = true;
                     break;
                 }
-                Err(error) => last_error = Some(error.to_string()),
+                Err(error) => last_error = Some(error),
             }
         }
         if !matched {
@@ -2836,17 +3151,26 @@ fn validate_sort_order_history(orders: &[SortOrder], schemas: &[Field]) -> Resul
         let mut last_error = None;
         let mut matched = false;
         for schema in schemas {
+            let bridged = bridged_sources_bind(
+                order
+                    .fields
+                    .iter()
+                    .map(|field| (field.source_id, field.transform)),
+                schema,
+            );
             let schema = official_schema(schema)?;
             let result = OfficialSortOrder::builder()
                 .with_order_id(official.order_id)
                 .with_fields(official.fields.clone())
-                .build(&schema);
+                .build(&schema)
+                .map_err(|error| error.to_string())
+                .and(bridged);
             match result {
                 Ok(_) => {
                     matched = true;
                     break;
                 }
-                Err(error) => last_error = Some(error.to_string()),
+                Err(error) => last_error = Some(error),
             }
         }
         if !matched {

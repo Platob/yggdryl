@@ -421,3 +421,40 @@ mod text {
         assert!(reader.next().is_none());
     }
 }
+
+#[test]
+fn a_float_capture_reads_every_spelling_the_float_reader_reads() {
+    use arrow_array::Array as _;
+
+    let options = TextOptions::new()
+        .try_with_rowheader(r"^(?<price>[-+]?\d+\.\d+) ")
+        .expect("a float capture");
+    let read = |text: &str| {
+        let source = line(0, "body")
+            .with_captures(vec![Some(TextBytes::from_bytes(text).expect("text"))])
+            .expect("captures");
+        into_arrow_batch([source], &options).map(|batch| {
+            batch
+                .column_by_name("price")
+                .expect("the price column")
+                .as_any()
+                .downcast_ref::<arrow_array::Float64Array>()
+                .expect("a float column")
+                .value(0)
+        })
+    };
+    // The blanks around a reading are not part of it, and a magnitude past
+    // the width is infinite - the reading a float column of text takes - where
+    // this arm used to refuse it.
+    assert_eq!(read("1.5").unwrap(), 1.5);
+    assert_eq!(read(" -2.25 ").unwrap(), -2.25);
+    assert_eq!(read("1e999").unwrap(), f64::INFINITY);
+    assert_eq!(read("-1e999").unwrap(), f64::NEG_INFINITY);
+    for refused in ["abc", "1.5.2", "0x10"] {
+        let error = read(refused).unwrap_err().to_string();
+        assert!(
+            error.contains("expected a value of inferred datatype float64"),
+            "{refused:?}: {error}"
+        );
+    }
+}

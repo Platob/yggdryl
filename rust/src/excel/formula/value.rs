@@ -129,19 +129,23 @@ impl Operand {
             (Self::Error(error), _) | (_, Self::Error(error)) => Some(Err(*error)),
             (Self::Reference(_), _) | (_, Self::Reference(_)) => None,
             (Self::Blank, Self::Blank) => Some(Ok(Equal)),
-            (Self::Number(left), Self::Number(right)) => Some(super::number::compare(*left, *right)),
+            (Self::Number(left), Self::Number(right)) => {
+                Some(super::number::compare(*left, *right))
+            }
             (Self::Blank, Self::Number(right)) => Some(super::number::compare(0.0, *right)),
             (Self::Number(left), Self::Blank) => Some(super::number::compare(*left, 0.0)),
             (Self::Boolean(left), Self::Boolean(right)) => Some(Ok(left.cmp(right))),
             (Self::Blank, Self::Boolean(right)) => Some(Ok(false.cmp(right))),
             (Self::Boolean(left), Self::Blank) => Some(Ok(left.cmp(&false))),
-            (Self::Text(left), Self::Text(right)) => Self::text_order(left.as_str(), right.as_str()).map(Ok),
+            (Self::Text(left), Self::Text(right)) => {
+                Self::text_order(left.as_str(), right.as_str()).map(Ok)
+            }
             (Self::Blank, Self::Text(right)) => Self::text_order("", right.as_str()).map(Ok),
             (Self::Text(left), Self::Blank) => Self::text_order(left.as_str(), "").map(Ok),
             (Self::Number(_), Self::Text(_) | Self::Boolean(_))
-                | (Self::Text(_), Self::Boolean(_)) => Some(Ok(Less)),
+            | (Self::Text(_), Self::Boolean(_)) => Some(Ok(Less)),
             (Self::Text(_) | Self::Boolean(_), Self::Number(_))
-                | (Self::Boolean(_), Self::Text(_)) => Some(Ok(Greater)),
+            | (Self::Boolean(_), Self::Text(_)) => Some(Ok(Greater)),
         }
     }
 
@@ -156,8 +160,11 @@ impl Operand {
         {
             return None;
         }
-        Some(left.bytes().map(|byte| byte.to_ascii_lowercase())
-            .cmp(right.bytes().map(|byte| byte.to_ascii_lowercase())))
+        Some(
+            left.bytes()
+                .map(|byte| byte.to_ascii_lowercase())
+                .cmp(right.bytes().map(|byte| byte.to_ascii_lowercase())),
+        )
     }
 
     pub(crate) fn literal(value: &Literal) -> Self {
@@ -201,10 +208,16 @@ pub(crate) enum Outcome {
     Computed(Operand),
     /// Borrowed constants or a retained element operation, without a value
     /// grid. Scalar-selected results keep their legacy projection boundary.
-    Array { array: ArrayId, implicit: bool },
+    Array {
+        array: ArrayId,
+        implicit: bool,
+    },
     /// A scalar produced by @/SINGLE; names and grouping preserve this
     /// provenance until the next value consumer removes it.
-    Intersection { value: Operand, referenced: bool },
+    Intersection {
+        value: Operand,
+        referenced: bool,
+    },
     Uncomputed(Unevaluated),
 }
 

@@ -37,7 +37,7 @@ pub(crate) mod pattern;
 pub(crate) mod url;
 mod urn;
 
-pub use arn::Arn;
+pub use arn::{Arn, ArnPartition};
 pub use authority::Authority;
 pub use datatype::UriType;
 pub(crate) use datatype::{URL_EXTENSION_NAME, URN_EXTENSION_NAME, casts};
@@ -373,6 +373,21 @@ impl Uri {
             scheme if scheme == &Scheme::FILE && !self.has_authority => self.rooted(),
             _ => Url::from_uri(self.clone()),
         }
+    }
+
+    /// Whether this identifier names something an Amazon S3 Tables table
+    /// bucket keeps: an `s3tables:` location, or an ARN of that service.
+    ///
+    /// A table's ARN names it by an identifier, and the location that ARN
+    /// lowers to ([`Self::locator`]) reads as a namespace instead, so a door
+    /// that opens what an identifier names asks this before it lowers one,
+    /// and hands the identifier itself to the bucket's own reading.
+    #[cfg(feature = "s3tables")]
+    pub(crate) fn names_s3_tables(&self) -> bool {
+        if self.scheme() == &Scheme::ARN {
+            return arn::service_of(self).eq_ignore_ascii_case("s3tables");
+        }
+        self.scheme().is_s3_tables()
     }
 
     /// Answer a relative `file:` identifier as the location it names.
@@ -881,13 +896,18 @@ impl Uri {
     ///
     /// Scheme, authority, query, and fragment are preserved. An absolute
     /// `value` replaces the path; otherwise it extends it, resolving `.` and
-    /// `..`.
+    /// `..`. Below an authority an empty path extends as `/`, as RFC 3986's
+    /// merge does, so `s3://bucket` joined with `a/b` is `s3://bucket/a/b`.
     ///
     /// # Errors
     ///
     /// Returns an error when the joined path is invalid for this URI.
     pub fn joinpath(&self, value: &str) -> Result<Self> {
-        let path = self.path.joinpath(value)?;
+        let path = if self.has_authority && self.path.as_str().is_empty() {
+            UriPath(SmolStr::new_static("/")).joinpath(value)?
+        } else {
+            self.path.joinpath(value)?
+        };
         let mut candidate = self.clone();
         candidate.state_path(path);
         candidate.validate()?;
@@ -941,6 +961,14 @@ impl fmt::Display for Uri {
             write!(formatter, "#{fragment}")?;
         }
         Ok(())
+    }
+}
+
+/// Every identifier is a `Uri`, this one included, so a door taking
+/// `impl AsRef<Uri>` takes all four.
+impl AsRef<Self> for Uri {
+    fn as_ref(&self) -> &Self {
+        self
     }
 }
 

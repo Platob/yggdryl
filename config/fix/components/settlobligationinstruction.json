@@ -146,17 +146,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -197,17 +186,6 @@
         "metadata": {
           "FIX:field": "lastupdatetime",
           "FIX:tag": "779"
-        }
-      },
-      {
-        "name": "nosettldetails",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosettldetails",
-          "FIX:tag": "1158"
         }
       },
       {

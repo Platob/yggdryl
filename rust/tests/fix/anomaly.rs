@@ -39,22 +39,17 @@ fn a_value_that_will_not_type_is_null_in_the_row_and_an_anomaly_beside_it() {
 }
 
 #[test]
-fn a_counter_disagreeing_with_its_group_is_an_anomaly_and_the_group_is_the_row() {
-    // `NoPartyIDs(453)` says two, one occurrence follows: the group holds
-    // one, the counter reads one, and the disagreement is kept.
+fn a_miscounted_group_is_the_occurrences_it_holds_and_no_anomaly() {
+    // `NoPartyIDs(453)` says two, one occurrence follows: the counter frames
+    // the group and states no fact of its own, so the group holds one, its
+    // length is the count, and the wire re-emits that count.
     let held = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|");
-    let anomalies = pairs(&held);
-    assert_eq!(anomalies.len(), 1, "{anomalies:?}");
-    assert_eq!(anomalies[0].0, "nopartyids");
-    assert_eq!(anomalies[0].1, "states 2, the group holds 1");
-    assert_eq!(
-        held.get_by_tag(453).and_then(|value| value.as_i64()),
-        Some(1)
-    );
-
-    // A counter that agrees is no anomaly.
-    let agreed = parsed(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BROKER|447=D|452=1|10=0|");
-    assert!(agreed.anomalies().is_empty());
+    assert!(held.anomalies().is_empty(), "{:?}", pairs(&held));
+    assert!(held.get_by_tag(453).is_none(), "no counter column");
+    let parties = held.by_name("parties").unwrap();
+    assert_eq!(parties.as_sequence().map(<[_]>::len), Some(1));
+    let wire = String::from_utf8(held.into_bytes(b'|')).unwrap();
+    assert!(wire.contains("|453=1|448=BROKER|"), "{wire}");
 }
 
 #[test]
@@ -75,4 +70,60 @@ fn a_settle_keeps_what_the_parse_recorded_and_a_clone_carries_it() {
         vec![FixAnomaly::new("stoppx", before[0].reason())],
         "one refusal, exactly as recorded"
     );
+}
+
+#[test]
+fn every_settle_states_what_it_dropped_once() {
+    use yggdryl::graph::Element;
+    // Two regulatory trade ids of one type: the second is dropped by each
+    // settle's reading of the identifiers, which replaces the last one's.
+    let mut held = parsed(
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|1907=2|1903=UTI-1|1906=0|1903=UTI-2|1906=0|10=0|",
+    );
+    let dropped = |held: &FixMsg| {
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "regulatorytradeids")
+            .count()
+    };
+    assert_eq!(dropped(&held), 1, "{:?}", pairs(&held));
+    held.finalize();
+    held.finalize();
+    assert_eq!(dropped(&held), 1, "settled twice more: {:?}", pairs(&held));
+    held.set(44, yggdryl::Scalar::from("101.5"))
+        .expect("a price the message can state");
+    assert_eq!(dropped(&held), 1, "a write settles: {:?}", pairs(&held));
+    // A write reaching the security identifiers restates their reading,
+    // and the reading of every other identifier still stands once beside it:
+    // a number its check digit does not close is a value, not an anomaly,
+    // and one of the wrong shape is one.
+    held.set(48, yggdryl::Scalar::from("US0378331006"))
+        .expect("a security identifier the message can state");
+    held.set(22, yggdryl::Scalar::from("4"))
+        .expect("its source");
+    assert_eq!(dropped(&held), 1, "{:?}", pairs(&held));
+    assert_eq!(
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "securityid")
+            .count(),
+        0,
+        "{:?}",
+        pairs(&held)
+    );
+    held.finalize();
+    assert_eq!(held.anomalies().len(), 1, "{:?}", pairs(&held));
+    held.set(48, yggdryl::Scalar::from("US037833100"))
+        .expect("a security identifier the message can state");
+    assert_eq!(
+        held.anomalies()
+            .iter()
+            .filter(|anomaly| anomaly.field() == "securityid")
+            .count(),
+        1,
+        "{:?}",
+        pairs(&held)
+    );
+    held.finalize();
+    assert_eq!(held.anomalies().len(), 2, "{:?}", pairs(&held));
 }

@@ -73,6 +73,7 @@ everything it declares.
     cargo test -p yggdryl --all-features --test mime_type
     cargo test -p yggdryl --all-features --test parquet
     cargo test -p yggdryl --all-features --test s3
+    cargo test -p yggdryl --all-features --test s3tables
     cargo test -p yggdryl --all-features --test serie
     cargo test -p yggdryl --all-features --test soap
     cargo test -p yggdryl --all-features --test text
@@ -80,6 +81,7 @@ everything it declares.
     cargo test -p yggdryl --all-features --test txhash
     cargo test -p yggdryl --all-features --test uri
     cargo test -p yggdryl --all-features --test value
+    cargo test -p yggdryl --all-features --test warehouse
     cargo test -p yggdryl --all-features --test xml
     cargo test -p yggdryl --all-features --test xmla
     cargo test -p yggdryl --all-features --test xxhash
@@ -90,6 +92,8 @@ everything it declares.
     cargo test -p yggdryl --all-features --test benchmark_mode  # every benchmark at its smoke corpus
     cargo test -p yggdryl --all-features --test docs_index      # the landing-page example
     cargo test -p yggdryl --all-features --test interop         # the exchanges with an outside implementation
+    cargo test -p yggdryl --all-features --test spill_doors     # the doors that settle under the process spill bound, in a process of their own
+    cargo test -p yggdryl --all-features --test scale_ulbridge  # the capture pipeline on series, table to table, three copies of the capture
     ```
 
 === "Python"
@@ -107,6 +111,15 @@ everything it declares.
     node --test "node/tests/text/*.test.js"      # one source folder
     npm test --prefix node                       # the whole binding, and `tsc --noEmit`
     ```
+
+## The capture path at scale
+
+```bash
+YGGDRYL_SCALE_BYTES=21474836480 cargo test --release -p yggdryl \
+    --test scale_ulbridge --features iceberg -- --ignored --nocapture
+```
+
+`rust/tests/scale_ulbridge.rs` runs the capture pipeline end to end on series, over a ULBridge capture of any size - the 144 lines of `rust/tests/fix/ulbridge.log` repeated, every clock and identifier stepped per copy, written through the crate's own Zstandard encoder into several `.log.zst` files. The folder of files is read as one stream of text rows (`read_serie`) and appended into an Iceberg table (`append_serie`); that table is read back in its order, parsed and walked (`parse_text_serie`, `lifecycle_serie`) and written over a second table (`overwrite_serie`); and that one is read back in its order into books, the complete book of every quarter of an hour written over a third table and the deltas between them, flattened to `marketdata` rows, over a fourth. Every table is created from the schema of the stream written to it, partitioned by `partunix` - `time_bucket('15 minutes', currunix)`, a column the table computes - and sorted by `partunix, currunix, seqnum, currhashcode`. The ordinary pass runs three copies and checks every table row by row: each row in the quarter its instant falls in, a read in the table's order, the identity columns typed `uuid`, a second run of the FIX stage leaving the table as it was, and a run over one window of the text rewriting the partitions that window's rows reach and no other. The scale run asserts that the process's `RssAnon` stays where it stood a quarter of the way in, where the platform states one; it is `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the uncompressed size to generate, so no CI job runs it. `YGGDRYL_SCALE_STAGE` (`lines`, `text`, `parse`, `lifecycle`, `fix`, `books`) ends the path early to put a growth on the stage that owns it, and `YGGDRYL_SCALE_FOLDER` is where the input and the tables are written.
 
 ## The documentation is tested too
 
@@ -190,6 +203,7 @@ A skipped half fails its driver, so a skipped exchange never reads as a pass.
 | `rust/tests/root/<name>.rs` | The file `rust/src/<name>.rs` holds, pinned; a folder's own `mod.rs` is pinned by `mod_.rs` |
 | `rust/tests/support/` | Fixtures several targets declare - a counting allocator, an in-process S3 |
 | `rust/tests/allocations.rs`, `iobase_calls.rs`, `benchmark_mode.rs`, `docs_index.rs`, `interop/` | What is pinned as a cost or an exchange rather than as a file |
+| `rust/tests/spill_doors.rs`, `scale_ulbridge.rs` | What must own its process: the spill doors install the process spill bound before anything reads it, and the scale run measures the process's `RssAnon` while a ULBridge capture streams from a `.log.zst` into an Iceberg table - three copies in the ordinary loop, the scale run `#[ignore]`d and a no-op printing `SKIPPED` unless `YGGDRYL_SCALE_BYTES` names the size to generate |
 | `python/tests/**/test_<name>.py` | The mirror of `python/yggdryl/` and `python/src/`, which share one shape |
 | `node/tests/**/<name>.test.js` | The mirror of `node/src/` and the JavaScript beside it, plus `tsc --noEmit` over the `.types.ts` files |
 | `*/benchmarks/<theme>*` | [Benchmarks](benchmarks.md), which stay grouped by a caller's vocabulary |

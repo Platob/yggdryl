@@ -230,7 +230,7 @@ impl Arn {
     }
 
     /// Return the partition: `aws`, `aws-cn`, `aws-us-gov`, or another AWS
-    /// names.
+    /// names; [`ArnPartition::from_arn`] reads it as one AWS runs.
     pub fn partition(&self) -> &str {
         self.field(0)
     }
@@ -334,6 +334,45 @@ impl Arn {
             .then(|| self.store_location().map(|(_, _, table)| table))
             .flatten()
             .filter(|table| !table.is_empty())
+    }
+
+    /// Return the table bucket and the identifier of the table this ARN
+    /// names, when it is an Amazon S3 Tables table's own ARN:
+    /// `bucket/<name>/table/<id>`, each one segment, and nothing else.
+    ///
+    /// The strict reading beside [`table`](Self::table), which answers
+    /// whatever the resource spells below its bucket the way the location
+    /// the ARN lowers to does. A door that addresses the service by the ARN
+    /// asks this one: the service identifies a table by exactly that shape.
+    #[cfg(feature = "s3tables")]
+    pub(crate) fn identified_table(&self) -> Option<(&str, &str)> {
+        if self.service() != "s3tables" {
+            return None;
+        }
+        let (bucket, below) = self.table_bucket_resource()?;
+        let id = below.strip_prefix("table/")?;
+        (!id.is_empty() && !id.contains('/')).then_some((bucket, id))
+    }
+
+    /// Return the table bucket this ARN names, when it is an Amazon S3
+    /// Tables table bucket's own ARN: `bucket/<name>`, one segment and
+    /// nothing below it.
+    ///
+    /// The strict reading beside [`bucket`](Self::bucket), which answers the
+    /// container of any resource spelling one. A door that addresses the
+    /// service by a table bucket asks this one: the service identifies a
+    /// table bucket by exactly that shape, and a trailing slash or an empty
+    /// identifier below the name is nothing it has.
+    #[cfg(feature = "s3tables")]
+    pub(crate) fn table_bucket(&self) -> Option<&str> {
+        if self.service() != "s3tables" {
+            return None;
+        }
+        // Read off the resource itself: the split every location reads by
+        // folds `bucket/<name>/` into the name, and that slash is a shape the
+        // service has not.
+        let name = self.resource().strip_prefix("bucket/")?;
+        (!name.is_empty() && !name.contains('/')).then_some(name)
     }
 
     /// Return the location this name addresses, as a URL.
@@ -535,12 +574,15 @@ impl Arn {
 
     /// Return the field at `index`, which validation proved is there.
     fn field(&self, index: usize) -> &str {
-        self.0
-            .path()
-            .as_str()
-            .splitn(FIELDS, ':')
-            .nth(index)
-            .unwrap_or("")
+        field_of(self.0.path().as_str(), index)
+    }
+
+    /// Return the table bucket an Amazon S3 Tables resource names and what
+    /// the resource spells below it: `bucket/<name>[/<below>]`.
+    fn table_bucket_resource(&self) -> Option<(&str, &str)> {
+        let below = self.resource().strip_prefix("bucket/")?;
+        let (bucket, below) = below.split_once('/').unwrap_or((below, ""));
+        (!bucket.is_empty()).then_some((bucket, below))
     }
 
     /// Return the scheme, the container, and the name below it this ARN spells.
@@ -559,11 +601,7 @@ impl Arn {
                 (!bucket.is_empty()).then_some((Scheme::S3, bucket, key))
             }
             "s3tables" => {
-                let below = self.resource().strip_prefix("bucket/")?;
-                let (bucket, below) = below.split_once('/').unwrap_or((below, ""));
-                if bucket.is_empty() {
-                    return None;
-                }
+                let (bucket, below) = self.table_bucket_resource()?;
                 let table = below.strip_prefix("table/").unwrap_or(below);
                 Some((Scheme::S3TABLES, bucket, table))
             }
@@ -589,6 +627,224 @@ impl Arn {
         *self = Self::from_uri(candidate)?;
         Ok(())
     }
+}
+
+/// One of the partitions AWS runs: a set of regions with DNS names and ARNs
+/// of its own, named by an ARN's first field.
+///
+/// The table is botocore's `partitions.json`, the one every AWS SDK resolves
+/// endpoints through: each partition's name, the prefix its regions share,
+/// its DNS suffix and its dual-stack one, and the region a global service
+/// answers in. It is what turns a region into a host, so a partition's
+/// suffixes are spelled here once and every client - STS, IAM Identity
+/// Center, the Sign-In service, Amazon S3 - builds its hosts from them.
+///
+/// ```
+/// use yggdryl::{Arn, ArnPartition};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let role = Arn::from_str("arn:aws-cn:iam::123456789012:role/lake-reader")?;
+/// let partition = ArnPartition::from_arn(&role).expect("a partition AWS runs");
+/// assert_eq!(partition, ArnPartition::AwsCn);
+/// assert_eq!(partition.dns_suffix(), "amazonaws.com.cn");
+/// assert_eq!(partition.global_region(), "cn-northwest-1");
+///
+/// // A region is in the partition its prefix names; one nobody claims is in `aws`.
+/// assert_eq!(ArnPartition::from_region("us-gov-west-1"), ArnPartition::AwsUsGov);
+/// assert_eq!(ArnPartition::from_region("eu-west-3"), ArnPartition::Aws);
+/// assert_eq!(
+///     ArnPartition::from_region("cn-north-1").service_host("sts", "cn-north-1", false, true),
+///     "sts.cn-north-1.api.amazonwebservices.com.cn"
+/// );
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ArnPartition {
+    /// `aws`, the commercial regions.
+    Aws,
+    /// `aws-cn`, the regions in China.
+    AwsCn,
+    /// `aws-us-gov`, AWS GovCloud (US).
+    AwsUsGov,
+    /// `aws-iso`, the US ISO regions.
+    AwsIso,
+    /// `aws-iso-b`, the US ISOB regions.
+    AwsIsoB,
+    /// `aws-iso-e`, the EU ISOE regions.
+    AwsIsoE,
+    /// `aws-iso-f`, the US ISOF regions.
+    AwsIsoF,
+    /// `aws-eusc`, the AWS European Sovereign Cloud.
+    AwsEusc,
+}
+
+impl ArnPartition {
+    /// Every partition, in the order botocore's table lists them.
+    pub const ALL: [Self; 8] = [
+        Self::Aws,
+        Self::AwsCn,
+        Self::AwsEusc,
+        Self::AwsIso,
+        Self::AwsIsoB,
+        Self::AwsIsoE,
+        Self::AwsIsoF,
+        Self::AwsUsGov,
+    ];
+
+    /// The partition's name, as an ARN's first field spells it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Aws => "aws",
+            Self::AwsCn => "aws-cn",
+            Self::AwsUsGov => "aws-us-gov",
+            Self::AwsIso => "aws-iso",
+            Self::AwsIsoB => "aws-iso-b",
+            Self::AwsIsoE => "aws-iso-e",
+            Self::AwsIsoF => "aws-iso-f",
+            Self::AwsEusc => "aws-eusc",
+        }
+    }
+
+    /// The prefix every region of the partition starts with; `aws` has none
+    /// of its own, holding every region no other partition claims.
+    const fn region_prefix(self) -> Option<&'static str> {
+        match self {
+            Self::Aws => None,
+            Self::AwsCn => Some("cn-"),
+            Self::AwsUsGov => Some("us-gov-"),
+            Self::AwsIso => Some("us-iso-"),
+            Self::AwsIsoB => Some("us-isob-"),
+            Self::AwsIsoE => Some("eu-isoe-"),
+            Self::AwsIsoF => Some("us-isof-"),
+            Self::AwsEusc => Some("eusc-de-"),
+        }
+    }
+
+    /// The partition `region` is in: the one whose regions share its
+    /// prefix, else `aws`, which is where botocore resolves a region its
+    /// table does not know. Surrounding blanks and case are ignored.
+    pub fn from_region(region: &str) -> Self {
+        let region = region.trim();
+        Self::ALL
+            .into_iter()
+            .find(|partition| {
+                partition.region_prefix().is_some_and(|prefix| {
+                    region
+                        .get(..prefix.len())
+                        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+                })
+            })
+            .unwrap_or(Self::Aws)
+    }
+
+    /// The partition `arn` names, when it names one AWS runs.
+    pub fn from_arn(arn: &Arn) -> Option<Self> {
+        arn.partition().parse().ok()
+    }
+
+    /// The DNS suffix the partition's hosts end with: `amazonaws.com`,
+    /// `amazonaws.com.cn`, `c2s.ic.gov`, ...
+    pub const fn dns_suffix(self) -> &'static str {
+        match self {
+            Self::Aws | Self::AwsUsGov => "amazonaws.com",
+            Self::AwsCn => "amazonaws.com.cn",
+            Self::AwsIso => "c2s.ic.gov",
+            Self::AwsIsoB => "sc2s.sgov.gov",
+            Self::AwsIsoE => "cloud.adc-e.uk",
+            Self::AwsIsoF => "csp.hci.ic.gov",
+            Self::AwsEusc => "amazonaws.eu",
+        }
+    }
+
+    /// The DNS suffix the partition's dual-stack hosts end with: `api.aws`,
+    /// `api.amazonwebservices.com.cn`, ...
+    pub const fn dualstack_dns_suffix(self) -> &'static str {
+        match self {
+            Self::Aws | Self::AwsUsGov => "api.aws",
+            Self::AwsCn => "api.amazonwebservices.com.cn",
+            Self::AwsIso => "api.aws.ic.gov",
+            Self::AwsIsoB => "api.aws.scloud",
+            Self::AwsIsoE => "api.cloud-aws.adc-e.uk",
+            Self::AwsIsoF => "api.aws.hci.ic.gov",
+            Self::AwsEusc => "api.amazonwebservices.eu",
+        }
+    }
+
+    /// The region a global service of the partition answers in, and the one
+    /// a request names when nothing names another: `us-east-1` on `aws`.
+    pub const fn global_region(self) -> &'static str {
+        match self {
+            Self::Aws => "us-east-1",
+            Self::AwsCn => "cn-northwest-1",
+            Self::AwsUsGov => "us-gov-west-1",
+            Self::AwsIso => "us-iso-east-1",
+            Self::AwsIsoB => "us-isob-east-1",
+            Self::AwsIsoE => "eu-isoe-west-1",
+            Self::AwsIsoF => "us-isof-south-1",
+            Self::AwsEusc => "eusc-de-east-1",
+        }
+    }
+
+    /// The host `service` answers at in `region`, in the form the endpoint
+    /// rules of most services share: `{service}.{region}.{suffix}`, the
+    /// service written `{service}-fips` under `fips`, and the dual-stack
+    /// suffix under `dualstack`. A service whose rules spell its hosts
+    /// otherwise - the Sign-In service, Amazon S3's own dual-stack form -
+    /// builds them from [`Self::dns_suffix`] and
+    /// [`Self::dualstack_dns_suffix`] instead.
+    pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String {
+        let service = if fips {
+            format!("{service}-fips")
+        } else {
+            service.to_owned()
+        };
+        let suffix = if dualstack {
+            self.dualstack_dns_suffix()
+        } else {
+            self.dns_suffix()
+        };
+        format!("{service}.{}.{suffix}", region.trim())
+    }
+}
+
+impl FromStr for ArnPartition {
+    type Err = Error;
+
+    /// The partition a name spells, its case ignored.
+    fn from_str(value: &str) -> Result<Self> {
+        let value = value.trim();
+        Self::ALL
+            .into_iter()
+            .find(|partition| partition.as_str().eq_ignore_ascii_case(value))
+            .ok_or_else(|| {
+                parse_error(
+                    "arn",
+                    0,
+                    "expected a partition AWS runs - aws, aws-cn, aws-us-gov, aws-iso, aws-iso-b, aws-iso-e, aws-iso-f or aws-eusc",
+                )
+            })
+    }
+}
+
+impl fmt::Display for ArnPartition {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// The field at `index` of an ARN's path - the five fields as written - and
+/// the empty text where the path holds no such field.
+fn field_of(path: &str, index: usize) -> &str {
+    path.splitn(FIELDS, ':').nth(index).unwrap_or("")
+}
+
+/// The service field of an identifier under the `arn` scheme, as written:
+/// what a door reads to route an ARN before it validates one, so neither
+/// folded nor proven to be there.
+#[cfg(feature = "s3tables")]
+pub(super) fn service_of(arn: &Uri) -> &str {
+    field_of(arn.path().as_str(), 1)
 }
 
 /// Answer `value` unless it is the empty field, which names nothing.

@@ -85,7 +85,9 @@ impl Restore {
     /// A calculated cache receipt is the one inverse that restores a prior
     /// pass instead of scheduling another one.
     fn restores_calculation(&self) -> bool {
-        self.steps.iter().any(|step| matches!(step, Step::Calculation { .. }))
+        self.steps
+            .iter()
+            .any(|step| matches!(step, Step::Calculation { .. }))
     }
 
     /// An estimate of the bytes it holds, which the journal's bound counts.
@@ -577,13 +579,21 @@ pub enum Edit {
         cells: Box<Sheet>,
     },
     /// Create a tabular pivot at `anchor` in an existing worksheet.
-    PivotCreate { spec: PivotSpec, sheet: SmolStr, anchor: CellRef },
+    PivotCreate {
+        spec: PivotSpec,
+        sheet: SmolStr,
+        anchor: CellRef,
+    },
     /// Recompute one editable pivot from its authored source.
     PivotRefresh { sheet: SmolStr, name: SmolStr },
     /// Refresh every pivot in package order as one atomic edit and inverse.
     PivotRefreshAll,
     /// Change one editable pivot specification while retaining its part identity.
-    PivotUpdate { sheet: SmolStr, name: SmolStr, spec: PivotSpec },
+    PivotUpdate {
+        sheet: SmolStr,
+        name: SmolStr,
+        spec: PivotSpec,
+    },
     /// Remove one pivot's output and its last-owner package parts.
     PivotRemove { sheet: SmolStr, name: SmolStr },
     /// Every edit in order, as one: all or none, one undo.
@@ -703,9 +713,12 @@ impl Workbook {
             self.finish_batch(mark.start());
             applied.calc = self.restored_calculation_status();
         } else {
-            let prepared = self.prepare_calculation(super::formula::graph::PassKind::Incremental)
-                .and_then(|report| self.capture_prepared_calculation()
-                    .map(|(restore, touched)| (report, restore, touched)));
+            let prepared = self
+                .prepare_calculation(super::formula::graph::PassKind::Incremental)
+                .and_then(|report| {
+                    self.capture_prepared_calculation()
+                        .map(|(restore, touched)| (report, restore, touched))
+                });
             let (report, restore, calculated_touched) = match prepared {
                 Ok(prepared) => prepared,
                 Err(error) => {
@@ -1224,23 +1237,33 @@ impl Workbook {
                 Ok(applied)
             }
             Edit::Land { destination, cells } => self.land(destination, *cells),
-            Edit::PivotCreate { spec, sheet, anchor } => {
+            Edit::PivotCreate {
+                spec,
+                sheet,
+                anchor,
+            } => {
                 let (range, restore) = self.add_pivot_owned(spec, &sheet, anchor)?;
-                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                let mut result =
+                    Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
                 result.result = range_result(range);
                 Ok(result)
             }
             Edit::PivotRefresh { sheet, name } => {
                 let (range, restore) = self.refresh_pivot_owned(&sheet, &name)?;
-                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                let mut result =
+                    Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
                 result.result = range_result(range);
                 Ok(result)
             }
             Edit::PivotRefreshAll => {
-                let edits = self.pivots()?.iter().map(|pivot| Edit::PivotRefresh {
-                    sheet: SmolStr::new(pivot.host_sheet()),
-                    name: SmolStr::new(pivot.name()),
-                }).collect();
+                let edits = self
+                    .pivots()?
+                    .iter()
+                    .map(|pivot| Edit::PivotRefresh {
+                        sheet: SmolStr::new(pivot.host_sheet()),
+                        name: SmolStr::new(pivot.name()),
+                    })
+                    .collect();
                 self.apply_edit(Edit::Batch(edits), applying)
             }
             Edit::PivotUpdate { sheet, name, spec } => {
@@ -1252,7 +1275,8 @@ impl Workbook {
             }
             Edit::PivotRemove { sheet, name } => {
                 let (range, restore) = self.remove_pivot_owned(&sheet, &name)?;
-                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                let mut result =
+                    Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
                 result.result = range_result(range);
                 Ok(result)
             }
@@ -1370,19 +1394,28 @@ impl Workbook {
                     return Ok(Applied::of(None, Vec::new()));
                 }
                 let touched = if restore.restores_calculation() {
-                    restore.steps.iter().filter_map(|step| match step {
-                        Step::Cells { key, ranges, .. } => self.sheet_by_key(*key).map(|name| {
-                            ranges.iter().copied().map(move |range| (SmolStr::new(name), range))
-                        }),
-                        _ => None,
-                    }).flatten().collect()
-                } else { Vec::new() };
+                    restore
+                        .steps
+                        .iter()
+                        .filter_map(|step| match step {
+                            Step::Cells { key, ranges, .. } => {
+                                self.sheet_by_key(*key).map(|name| {
+                                    ranges
+                                        .iter()
+                                        .copied()
+                                        .map(move |range| (SmolStr::new(name), range))
+                                })
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 let calculation_relevant = restore.calculation_relevant;
                 let inverse = self.restore(*restore)?;
-                let mut applied = Applied::of(
-                    Some(Edit::Restore(Box::new(inverse))),
-                    touched,
-                );
+                let mut applied = Applied::of(Some(Edit::Restore(Box::new(inverse))), touched);
                 applied.calculation_relevant = calculation_relevant;
                 Ok(applied)
             }
@@ -2414,7 +2447,8 @@ impl Edit {
                 anchor: field.need("anchor")?.cell()?,
             },
             "pivotRefresh" => Self::PivotRefresh {
-                sheet: sheet()?, name: SmolStr::new(field.need("name")?.text()?),
+                sheet: sheet()?,
+                name: SmolStr::new(field.need("name")?.text()?),
             },
             "pivotRefreshAll" => Self::PivotRefreshAll,
             "pivotUpdate" => Self::PivotUpdate {
@@ -2423,7 +2457,8 @@ impl Edit {
                 spec: PivotSpec::from_scalar(field.need("spec")?.value)?,
             },
             "pivotRemove" => Self::PivotRemove {
-                sheet: sheet()?, name: SmolStr::new(field.need("name")?.text()?),
+                sheet: sheet()?,
+                name: SmolStr::new(field.need("name")?.text()?),
             },
             "addSheet" => Self::AddSheet {
                 name: field

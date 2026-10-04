@@ -9,6 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::boolean::bool_from_text;
+
 /// The REST API version every request states.
 ///
 /// Azure versions its API by request header rather than by URL, and a stored
@@ -148,7 +150,7 @@ impl AzureOptions {
                 "defaultendpointsprotocol" => protocol = Some(value.to_ascii_lowercase()),
                 "endpointsuffix" => suffix = Some(value.to_owned()),
                 "usedevelopmentstorage" => {
-                    development = matches!(value.to_ascii_lowercase().as_str(), "true" | "1");
+                    development = bool_from_text(value).unwrap_or(false);
                 }
                 _ => {}
             }

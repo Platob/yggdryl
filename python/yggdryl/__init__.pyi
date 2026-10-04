@@ -17,6 +17,7 @@ from . import (
     iceberg as iceberg,
     integer as integer,
     json as json,
+    logging as logging,
     media as media,
     nested as nested,
     temporal as temporal,
@@ -24,6 +25,7 @@ from . import (
     toml as toml,
     txhash as txhash,
     uri as uri,
+    warehouse as warehouse,
     xml as xml,
     xxhash as xxhash,
     yaml as yaml,
@@ -34,6 +36,7 @@ from ._native import (
     AVRO_MAX_SCHEMA_DEPTH as AVRO_MAX_SCHEMA_DEPTH,
     DEFAULT_FETCH_BYTE_SIZE as DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_RECORD_BATCH_ROW_SIZE as DEFAULT_RECORD_BATCH_ROW_SIZE,
+    DEFAULT_SPILL_BYTE_SIZE as DEFAULT_SPILL_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE as DEFAULT_STREAM_BATCH_SIZE,
     HOSTNAME as HOSTNAME,
     IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
@@ -43,15 +46,17 @@ from ._native import (
     DataType as DataType,
     Field as Field,
     FieldPath as FieldPath,
+    IOResult as IOResult,
+    JoinOptions as JoinOptions,
     ProtocolField as ProtocolField,
     PythonMetadata as PythonMetadata,
+    SpillOptions as SpillOptions,
     StringEnum as StringEnum,
     StringParameters as StringParameters,
     Timezone as Timezone,
     UnknownPropertyWarning as UnknownPropertyWarning,
     __version__ as __version__,
     combined as combined,
-    refresh_logging as refresh_logging,
 )
 from .expression import (
     Bound as Bound,
@@ -98,6 +103,20 @@ from .uri import (
     Uri as Uri,
     Url as Url,
     Urn as Urn,
+)
+from .warehouse import (
+    Catalog as Catalog,
+    FolderCatalog as FolderCatalog,
+    FolderNamespace as FolderNamespace,
+    MediaTable as MediaTable,
+    MemoryCatalog as MemoryCatalog,
+    MemoryNamespace as MemoryNamespace,
+    Namespace as Namespace,
+    Namespaces as Namespaces,
+    SystemWarehouse as SystemWarehouse,
+    Table as Table,
+    Tables as Tables,
+    Warehouse as Warehouse,
 )
 from ._classes import (
     field as field,
@@ -230,7 +249,9 @@ from .serie import (
     Serie as Serie,
     SerieField as SerieField,
     SerieReader as SerieReader,
+    SerieReaderWindows as SerieReaderWindows,
     SerieSerie as SerieSerie,
+    WindowSerie as WindowSerie,
     SerieViewField as SerieViewField,
     SerieViewSerie as SerieViewSerie,
     StructSerie as StructSerie,
@@ -335,6 +356,9 @@ from .version import (
 from .identifier import (
     Identifier as Identifier,
     Identifiers as Identifiers,
+)
+from .isin_registry import (
+    IsinRegistry as IsinRegistry,
 )
 
 __all__: list[str]

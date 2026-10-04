@@ -723,8 +723,7 @@ fn function_field(
     let dtype = match function {
         Function::Factorial => {
             let dtype = unwrap_dictionary(&first);
-            if !DataTypeKind::Integer.contains(dtype.id())
-                && !matches!(dtype, DataType::Null) {
+            if !DataTypeKind::Integer.contains(dtype.id()) && !matches!(dtype, DataType::Null) {
                 return Err(typing_error(format_smolstr!(
                     "expected an exact integer for factorial, got {first}"
                 )));
@@ -734,22 +733,33 @@ fn function_field(
         Function::Gcd | Function::Lcm => {
             for field in &fields {
                 let dtype = unwrap_dictionary(field.dtype());
-                if !DataTypeKind::Integer.contains(dtype.id())
-                    && !matches!(dtype, DataType::Null) {
+                if !DataTypeKind::Integer.contains(dtype.id()) && !matches!(dtype, DataType::Null) {
                     return Err(typing_error(format_smolstr!(
-                        "expected exact integers for {}, got {}", function.as_str(), field.dtype()
+                        "expected exact integers for {}, got {}",
+                        function.as_str(),
+                        field.dtype()
                     )));
                 }
             }
             DataType::UInt64
         }
-        Function::Sqrt | Function::Exp | Function::Ln | Function::Log10
-        | Function::Degrees | Function::Radians | Function::Cos | Function::Asin
-        | Function::Sin | Function::Tan | Function::Acos | Function::Atan => {
+        Function::Sqrt
+        | Function::Exp
+        | Function::Ln
+        | Function::Log10
+        | Function::Degrees
+        | Function::Radians
+        | Function::Cos
+        | Function::Asin
+        | Function::Sin
+        | Function::Tan
+        | Function::Acos
+        | Function::Atan => {
             let dtype = unwrap_dictionary(&first);
             if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
                 return Err(typing_error(format_smolstr!(
-                    "expected a number for {}, got {first}", function.as_str()
+                    "expected a number for {}, got {first}",
+                    function.as_str()
                 )));
             }
             DataType::Float64
@@ -759,7 +769,8 @@ fn function_field(
                 let dtype = unwrap_dictionary(field.dtype());
                 if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
                     return Err(typing_error(format_smolstr!(
-                        "expected numbers for {}, got {}", function.as_str(),
+                        "expected numbers for {}, got {}",
+                        function.as_str(),
                         field.dtype()
                     )));
                 }
@@ -829,7 +840,73 @@ fn function_field(
             }
             DataType::Int32
         }
+        Function::Years
+        | Function::Quarters
+        | Function::Months
+        | Function::Weeks
+        | Function::Days
+        | Function::Hours
+        | Function::Minutes => {
+            // A step is a literal, read once here: `minutes(ts, 0)` or a
+            // step a column holds is refused before any row is read.
+            let period = function
+                .epoch_period(
+                    arguments
+                        .iter()
+                        .map(|argument| argument.as_literal().map(super::Literal::value)),
+                )?
+                .ok_or_else(|| {
+                    typing_error(format_smolstr!(
+                        "expected {} to floor to a period",
+                        function.as_str()
+                    ))
+                })?;
+            // A date has no clock, so a sub-day period over one is refused
+            // here rather than answered null for every row.
+            let accepted = match temporal_parts(unwrap_dictionary(&first)) {
+                Some((0, _)) => period.takes_date(),
+                Some((2, _)) => true,
+                _ => false,
+            };
+            if !accepted {
+                return Err(typing_error(format_smolstr!(
+                    "expected {} for {}, got {first}",
+                    if period.takes_date() {
+                        "a date or a timestamp"
+                    } else {
+                        "a timestamp"
+                    },
+                    function.as_str()
+                )));
+            }
+            let dtype = match period {
+                super::eval::EpochPeriod::Day => DataType::date32(),
+                _ => DataType::Int32,
+            };
+            // A period past `int32` answers null, so a source whose count
+            // reaches one types a nullable column even when it is required.
+            let nullable = nullable || !period.fits_int32(unwrap_dictionary(&first));
+            return Ok(named(expression, dtype, nullable));
+        }
         Function::Truncate => first.clone(),
+        Function::TimeBucket => {
+            // The width is a constant, resolved here against `x` once, so a
+            // width finer than its unit or a clock under a date is refused
+            // before any row is read.
+            let width = arguments
+                .first()
+                .and_then(Term::as_literal)
+                .filter(|literal| !literal.is_null())
+                .ok_or_else(|| {
+                    typing_error(format_smolstr!(
+                        "expected the width of time_bucket(width, x) to be a constant, got {}",
+                        arguments[0]
+                    ))
+                })?;
+            let value = fields.get(1).map_or(&DataType::Null, Field::dtype);
+            super::eval::TimeBucket::new(width.value(), value)?;
+            value.clone()
+        }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Unnest => unreachable!("an unnest returned above"),
         Function::Coalesce | Function::IfNull => {
@@ -900,12 +977,27 @@ fn function_field(
     // - the one that runs out of alternatives - can itself be null.
     let nullable = match function {
         Function::Coalesce | Function::IfNull => fields.last().is_none_or(Field::is_nullable),
-        Function::Abs | Function::Sqrt | Function::Pow | Function::Exp
-        | Function::Ln | Function::Log10 | Function::Degrees | Function::Radians
-        | Function::Cos | Function::Asin | Function::Sin | Function::Tan
-        | Function::Acos | Function::Atan | Function::Atan2
-        | Function::Factorial | Function::Gcd | Function::Lcm
-            if fields.iter().any(|field| matches!(unwrap_dictionary(field.dtype()), DataType::Null)) =>
+        Function::Abs
+        | Function::Sqrt
+        | Function::Pow
+        | Function::Exp
+        | Function::Ln
+        | Function::Log10
+        | Function::Degrees
+        | Function::Radians
+        | Function::Cos
+        | Function::Asin
+        | Function::Sin
+        | Function::Tan
+        | Function::Acos
+        | Function::Atan
+        | Function::Atan2
+        | Function::Factorial
+        | Function::Gcd
+        | Function::Lcm
+            if fields
+                .iter()
+                .any(|field| matches!(unwrap_dictionary(field.dtype()), DataType::Null)) =>
         {
             true
         }

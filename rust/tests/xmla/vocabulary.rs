@@ -1345,6 +1345,8 @@ fn a_timeout_reads_as_a_count_of_seconds() {
     assert_eq!(read(" 30\n"), Some(30), "surrounding whitespace is dropped");
     assert_eq!(read("0"), Some(0));
     assert_eq!(read("007"), Some(7));
+    assert_eq!(read("+5"), Some(5), "a sign is the integer reader's");
+    assert_eq!(read("-0"), Some(0), "a signed zero is zero");
     assert_eq!(read("4294967295"), Some(u32::MAX));
     assert_eq!(
         PropertyList::new().with("TIMEOUT", "5").timeout().unwrap(),

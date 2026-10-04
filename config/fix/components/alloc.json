@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "noindividualallocsubqtyattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noindividualallocsubqtyattributes",
-          "FIX:tag": "3099"
-        }
-      },
-      {
         "name": "individualallocsubqtyattributes",
         "dtype": {
           "type": "null"
@@ -179,17 +168,6 @@
         }
       },
       {
-        "name": "noallocregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocregulatorytradeids",
-          "FIX:tag": "1908"
-        }
-      },
-      {
         "name": "allocregulatorytradeids",
         "dtype": {
           "type": "null"
@@ -197,17 +175,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "allocregulatorytradeids"
-        }
-      },
-      {
-        "name": "noalloctrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noalloctrdregtimestamps",
-          "FIX:tag": "3008"
         }
       },
       {
@@ -295,17 +262,6 @@
         "metadata": {
           "FIX:field": "individualalloctype",
           "FIX:tag": "992"
-        }
-      },
-      {
-        "name": "nonestedpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedpartyids",
-          "FIX:tag": "539"
         }
       },
       {
@@ -414,17 +370,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "commissiondata"
-        }
-      },
-      {
-        "name": "noalloccommissions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noalloccommissions",
-          "FIX:tag": "2653"
         }
       },
       {
@@ -570,17 +515,6 @@
         }
       },
       {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
-        }
-      },
-      {
         "name": "miscfees",
         "dtype": {
           "type": "null"
@@ -588,17 +522,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "miscfees"
-        }
-      },
-      {
-        "name": "noclearinginstructions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noclearinginstructions",
-          "FIX:tag": "576"
         }
       },
       {
@@ -707,17 +630,6 @@
         "metadata": {
           "FIX:field": "allocavgpxindicator",
           "FIX:tag": "2769"
-        }
-      },
-      {
-        "name": "notradeallocamts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradeallocamts",
-          "FIX:tag": "1844"
         }
       },
       {

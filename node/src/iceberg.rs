@@ -9,36 +9,46 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Env, Reference, Result,
+    BigInt, Buffer, ClassInstance, Either, Either4, Null, Object, Result, Undefined,
 };
 use napi_derive::napi;
-use yggdryl::holder::Holder;
 use yggdryl::iceberg::{
-    Catalog as CoreCatalog, Compaction as CoreCompaction, DataFile, FormatVersion,
-    IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
-    Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
+    Compaction as CoreCompaction, DataFile, FormatVersion, IcebergCatalog as CoreCatalog,
+    IcebergNamespace as CoreNamespace, IcebergOptions as CoreIcebergOptions,
+    IcebergTable as CoreTable, ManifestContent, ManifestFile, PartitionField as CorePartitionField,
     PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan, SchemaUpdate as CoreSchemaUpdate,
-    Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, WriteStaging,
-    assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
+    Snapshot, SnapshotRef, WriteStaging, assign_field_ids, can_promote, last_column_id,
+    schema_from_json, schema_into_json,
 };
-use yggdryl::media::DEFAULT_ROOT_NAME;
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar, StructType};
+use yggdryl::{
+    Catalog as CoreWarehouseCatalog, Field as CoreField, Handle, IntoObjectPath as _,
+    Namespace as CoreWarehouseNamespace, ObjectValue, Scalar as CoreScalar,
+    Table as CoreWarehouseTable,
+};
 
 use crate::datatype::{DataTypeInput, dtype_from_input};
 use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};
 use crate::field::{JsField, MetadataEntry};
-use crate::iobase::{JsIOBase, LocationInput, folder_from_input};
+use crate::iobase::{
+    JsIOBase, LocationInput, folder_from_input, site_from_input, table_root_from_input,
+};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 use crate::uri::PartitionEntry;
+use crate::warehouse::{
+    JsObjectIterator, JsWarehouseCatalog, JsWarehouseNamespace, JsWarehouseNamespaces,
+    JsWarehouseTable, JsWarehouseTables, ObjectOptions, ObjectOutput, ObjectPathInput, Stated,
+    object_path,
+};
 
-/// A partition spec, or the column names one would be built from.
-pub type PartitionInput<'a> = Either<ClassInstance<'a, JsPartitionSpec>, Vec<String>>;
-
-/// A native root `Field`, a field expression, or the child fields of a row.
-pub type TableSchemaInput<'a> =
-    Either3<ClassInstance<'a, JsField>, String, Vec<ClassInstance<'a, JsField>>>;
+/// What a new table partitions by: a spec, the `PARTITION:by` entries one is
+/// read from, `null` for none, or nothing for the schema's own declaration.
+///
+/// `null` and an omitted argument mean two things here, so neither is folded
+/// into an `Option`.
+pub type PartitionInput<'a> =
+    Either4<ClassInstance<'a, JsPartitionSpec>, Vec<String>, Null, Undefined>;
 
 /// A native `Field` or the field expression naming one.
 pub type FieldInput<'a> = Either<ClassInstance<'a, JsField>, String>;
@@ -67,22 +77,6 @@ fn property_changes(
         Some(Either::B(values)) => values.into_iter().collect(),
     };
     (updates, removes.unwrap_or_default())
-}
-
-/// Read the schema an input names: a root `Field` as it stands, an expression
-/// through the core parser, or bare children assembled under a `row` root.
-fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
-    match value {
-        Either3::A(field) => Ok(field.inner.clone()),
-        Either3::B(text) => CoreField::from_str(&text).map_err(napi_error),
-        Either3::C(children) => {
-            let fields = children.iter().map(|child| child.inner.clone());
-            Ok(StructType::from_fields(fields)
-                .map(CoreDataType::from)
-                .map_err(napi_error)?
-                .required_field(DEFAULT_ROOT_NAME))
-        }
-    }
 }
 
 /// Number a schema the way `Table.create` needs it.
@@ -170,8 +164,6 @@ pub struct IcebergOptionsInput<'env> {
     pub write_parallelism: Option<u32>,
     /// Where a commit stages its files: `off`, or a local folder URL or path.
     pub write_staging: Option<String>,
-    /// After how many data commits an automatic compaction runs.
-    pub compact_after_commits: Option<u32>,
     /// The MIME type for new data files. Table writes encode Parquet and Avro.
     pub data_mime_type: Option<MimeTypeInput<'env>>,
 }
@@ -229,9 +221,6 @@ fn apply_options_input(
         options
             .set_write_staging(WriteStaging::from_str(&staging).map_err(napi_error)?)
             .map_err(napi_error)?;
-    }
-    if let Some(commits) = input.compact_after_commits {
-        options.set_compact_after_commits(commits);
     }
     if let Some(mime_type) = input.data_mime_type {
         options
@@ -469,19 +458,6 @@ impl JsIcebergOptions {
         Ok(())
     }
 
-    /// After how many data commits an automatic compaction runs; `null` - the
-    /// default - never compacts on its own, and 0 reads as off.
-    #[napi(getter)]
-    pub fn compact_after_commits(&self) -> Option<u32> {
-        self.inner.compact_after_commits()
-    }
-
-    /// Set after how many data commits an automatic compaction runs.
-    #[napi(setter)]
-    pub fn set_compact_after_commits(&mut self, commits: u32) {
-        self.inner.set_compact_after_commits(commits);
-    }
-
     /// The MIME type for new data files. Default: `MimeType.PARQUET`.
     ///
     /// Only what a write produces is decided here: a scan decodes each data
@@ -535,9 +511,9 @@ impl JsIcebergOptions {
 /// put back after, whatever the operation did - so per-call options never leak
 /// into the handle's own configuration.
 fn with_call_options<R>(
-    table: &mut CoreTable<Holder>,
+    table: &mut CoreTable<Handle>,
     options: Option<CoreIcebergOptions>,
-    operation: impl FnOnce(&mut CoreTable<Holder>) -> Result<R>,
+    operation: impl FnOnce(&mut CoreTable<Handle>) -> Result<R>,
 ) -> Result<R> {
     let Some(options) = options else {
         return operation(table);
@@ -559,29 +535,81 @@ fn call_options(options: Option<&JsIcebergOptions>) -> Option<CoreIcebergOptions
     options.map(|options| options.inner.clone())
 }
 
-/// Read the format version a number names, defaulting to v2.
-fn format_version(value: Option<u32>) -> Result<FormatVersion> {
-    match value {
-        Some(number) => FormatVersion::from_number(i64::from(number)).map_err(napi_error),
-        None => Ok(FormatVersion::V2),
+/// Read the format version a number names, none when none was given.
+fn format_version(value: Option<u32>) -> Result<Option<FormatVersion>> {
+    value
+        .map(|number| FormatVersion::from_number(i64::from(number)).map_err(napi_error))
+        .transpose()
+}
+
+/// What a table door's `root` names beside the `properties` stated with it:
+/// a handle in hand, as the container it addresses, or the table's location
+/// as it was named, which the core opens by itself under the properties.
+enum TableRoot {
+    /// Boxed: a holder is several times the size of a location.
+    Handle(Box<yggdryl::holder::Holder>),
+    Location(yggdryl::Uri, yggdryl::Properties),
+}
+
+/// Read a table door's `root` and `properties`.
+///
+/// A handle root is reopened as the folder at its location, under the
+/// environment - nothing its builder stated is carried - so properties
+/// beside one have nothing to open and are refused by name rather than
+/// dropped.
+fn table_root(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result<TableRoot> {
+    let properties = crate::warehouse::properties_from_input(properties)?;
+    match table_root_from_input(root)? {
+        Either::A(holder) => match properties.iter().next() {
+            Some((name, _)) => Err(napi_error(format!(
+                "expected no properties beside a handle, which is reopened as the folder at its \
+                 location, got {name:?}; name the table by its location to open it under properties"
+            ))),
+            None => Ok(TableRoot::Handle(Box::new(holder))),
+        },
+        Either::B(location) => Ok(TableRoot::Location(location, properties)),
     }
 }
 
-/// Resolve what a caller partitioned by, defaulting to unpartitioned.
+/// Resolve what a caller partitioned by.
 ///
-/// Column names are the short spelling of the only spec a write can use, so
-/// they build an identity spec against the schema they name columns of.
-fn partition_spec(
-    value: Option<PartitionInput<'_>>,
+/// An array is the `PARTITION:by` entries the schema root would declare - a
+/// bare column an identity partition, `days(ts)`, `minutes(ts, 15)` or
+/// `truncate(name, 4) as prefix` a derived one - declared on a copy of the
+/// root and read into a spec by the core's one rule, which refuses an entry
+/// no spec can hold by naming it. `null` is unpartitioned whatever the schema
+/// declares, and an omitted argument states nothing: it is skipped rather
+/// than defaulted here, so a location root hands the absence to the core,
+/// whose create derives the spec from the schema as it stores it, and a
+/// handle root - whose core door takes a spec - reads the schema's own
+/// declaration through [`declared_spec`].
+fn stated_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<Option<CorePartitionSpec>> {
+    match value {
+        Either4::A(spec) => Ok(Some(spec.inner.clone())),
+        Either4::C(Null) => Ok(Some(CorePartitionSpec::unpartitioned())),
+        Either4::D(()) => Ok(None),
+        Either4::B(entries) => {
+            let mut root = schema.clone();
+            root.as_partition_mut()
+                .set_by_texts(&entries)
+                .map_err(napi_error)?;
+            CorePartitionSpec::from_schema(0, &root)
+                .map(Some)
+                .map_err(napi_error)
+        }
+    }
+}
+
+/// The spec a handle root is created under: the one stated, else the
+/// schema's own `PARTITION:by` declaration - a schema declaring nothing
+/// unpartitioned.
+fn declared_spec(
+    stated: Option<CorePartitionSpec>,
     schema: &CoreField,
 ) -> Result<CorePartitionSpec> {
-    match value {
-        None => Ok(CorePartitionSpec::unpartitioned()),
-        Some(Either::A(spec)) => Ok(spec.inner.clone()),
-        Some(Either::B(columns)) => {
-            let names: Vec<&str> = columns.iter().map(String::as_str).collect();
-            CorePartitionSpec::identity(0, schema, &names).map_err(napi_error)
-        }
+    match stated {
+        Some(spec) => Ok(spec),
+        None => CorePartitionSpec::from_schema(0, schema).map_err(napi_error),
     }
 }
 
@@ -1464,13 +1492,13 @@ impl JsPartitionSpec {
 }
 
 /// An Iceberg table reached entirely through one container handle.
-#[napi(js_name = "Table")]
+#[napi(js_name = "IcebergTable")]
 pub struct JsTable {
-    inner: CoreTable<Holder>,
+    inner: CoreTable<Handle>,
 }
 
 impl JsTable {
-    const fn from_core(inner: CoreTable<Holder>) -> Self {
+    const fn from_core(inner: CoreTable<Handle>) -> Self {
         Self { inner }
     }
 
@@ -1484,59 +1512,167 @@ impl JsTable {
 impl JsTable {
     /// Create a table, writing its first metadata document.
     ///
-    /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the column
-    /// names to partition on, and defaults to unpartitioned. Unnumbered schema
-    /// columns are numbered automatically, so a plain schema works as it is; a
-    /// schema that already carries field identifiers keeps every one of them.
-    #[napi(factory)]
+    /// `root` is the container handle the table lives in, or its location -
+    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - which the core opens by
+    /// itself under `properties`: a folder any backend holds, or
+    /// `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
+    /// Tables table bucket keeps, registered there and committed through
+    /// its control plane, its namespace made on the way where the bucket
+    /// does not hold it. Properties beside a handle are refused: a handle
+    /// root is reopened as the folder at its location, under the
+    /// environment.
+    ///
+    /// `version` omitted is 2 over a handle; over a location it is the
+    /// `format-version` property, else the lowest version that states the
+    /// schema - 3 for a nanosecond timestamp, a variant or an unknown
+    /// column, else 2.
+    ///
+    /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
+    /// `PARTITION:by` entries to partition on: a bare column - `venue` - is an
+    /// identity partition, and an epoch function over a column - `days(ts)`,
+    /// `hours(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)` - or
+    /// `truncate(name, 4)` is a derived one, named by its alias
+    /// (`days(ts) as day`) or `{source}_{function}` (`ts_day`). An entry no
+    /// spec can hold is refused, naming it. Omitted, the schema's own
+    /// `PARTITION:by` declaration is read the same way - a schema declaring
+    /// nothing is unpartitioned - and `null` is unpartitioned whatever the
+    /// schema declares. Unnumbered schema columns are numbered automatically,
+    /// so a plain schema works as it is; a schema that already carries field
+    /// identifiers keeps every one of them.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null"
+    )]
     pub fn create(
         root: LocationInput<'_>,
         schema: &JsField,
-        partition_by: Option<PartitionInput<'_>>,
+        partition_by: PartitionInput<'_>,
         version: Option<u32>,
+        properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
-        let spec = partition_spec(partition_by, &schema)?;
-        CoreTable::create(
-            folder_from_input(root)?,
-            format_version(version)?,
-            schema,
-            spec,
-        )
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version(version)?;
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                CoreTable::create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
+            TableRoot::Location(location, properties) => {
+                CoreTable::create_from_url(&location, &properties, version, schema, spec)
+            }
+        }
         .map(Self::from_core)
         .map_err(napi_error)
     }
 
-    /// Open the table a container handle addresses.
-    #[napi(factory)]
-    pub fn open(root: LocationInput<'_>) -> Result<Self> {
-        CoreTable::open(folder_from_input(root)?)
-            .map(Self::from_core)
-            .map_err(napi_error)
+    /// Open the table `root` names.
+    ///
+    /// A container handle is the folder the table lives in. A location -
+    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - is opened by the core
+    /// under `properties`: a folder any backend holds, or a table an Amazon
+    /// S3 Tables table bucket keeps, named
+    /// `s3tables://<bucket>/<namespace>/<table>` or by its own ARN.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn open(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result<Self> {
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => CoreTable::open(Handle::from(*holder)),
+            TableRoot::Location(location, properties) => {
+                CoreTable::from_url(&location, &properties)
+            }
+        }
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// Like [`create`](Self::create), unnumbered schema columns are numbered
-    /// automatically; an existing table is opened as it is and `schema`
-    /// describes only the table this call would create.
-    #[napi(factory)]
+    /// `root`, `version` and `properties` are read as
+    /// [`create`](Self::create) reads them. Like it, `partitionBy` is a spec,
+    /// the `PARTITION:by` entries one is read from, `null` for none, or -
+    /// omitted - the schema's own declaration, and unnumbered schema columns
+    /// are numbered automatically; an existing table is opened as it is and
+    /// `schema` describes only the table this call would create.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null"
+    )]
     pub fn open_or_create(
         root: LocationInput<'_>,
         schema: &JsField,
-        partition_by: Option<PartitionInput<'_>>,
+        partition_by: PartitionInput<'_>,
         version: Option<u32>,
+        properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
-        let spec = partition_spec(partition_by, &schema)?;
-        CoreTable::open_or_create(
-            folder_from_input(root)?,
-            format_version(version)?,
-            schema,
-            spec,
-        )
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version(version)?;
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                CoreTable::open_or_create(
+                    Handle::from(*holder),
+                    version.unwrap_or(FormatVersion::V2),
+                    schema,
+                    spec,
+                )
+            }
+            TableRoot::Location(location, properties) => {
+                CoreTable::open_or_create_from_url(&location, &properties, version, schema, spec)
+            }
+        }
         .map(Self::from_core)
         .map_err(napi_error)
+    }
+
+    /// The Iceberg table a warehouse `Table` holds, refused by name when its
+    /// implementation is another.
+    #[napi(factory)]
+    pub fn from(table: &JsWarehouseTable) -> Result<Self> {
+        match &table.inner {
+            CoreWarehouseTable::Iceberg(table) => Ok(Self::from_core((**table).clone())),
+            other => Err(napi_error(format!(
+                "expected an Iceberg table, got `{other}` held by another implementation"
+            ))),
+        }
+    }
+
+    /// This table as the warehouse `Table` it is: what a warehouse registers
+    /// and a plan reads.
+    #[napi]
+    pub fn into_table(&self) -> JsWarehouseTable {
+        JsWarehouseTable::from_core(CoreWarehouseTable::from(self.inner.clone()))
+    }
+
+    /// The last part of the path: the table's own name.
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        ObjectValue::name(&self.inner).to_owned()
+    }
+
+    /// The parts, from the catalog's name down to the table's own; a table
+    /// opened by its location alone stands under its folder's name.
+    #[napi(getter)]
+    pub fn path(&self) -> Vec<String> {
+        ObjectValue::path(&self.inner)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    /// Whether both describe the same table: the path, the location, what
+    /// was stated - never what was read.
+    #[napi]
+    pub fn equals(&self, other: &JsTable) -> bool {
+        self.inner == other.inner
     }
 
     /// The folder the table lives in.
@@ -1547,51 +1683,68 @@ impl JsTable {
     /// file system, not the local path its URL happens to spell.
     #[napi(getter)]
     pub fn root(&self) -> Result<JsIOBase> {
-        if let Some(holder) = crate::iobase::fs_folder_holder(self.inner.root()) {
+        let root = self.inner.root().get().map_err(napi_error)?;
+        if let Some(holder) = crate::iobase::fs_folder_holder(root) {
             return Ok(JsIOBase::from_core(holder));
         }
-        JsIOBase::folder_at(&self.location())
+        JsIOBase::folder_at(&self.location()?)
     }
 
     /// The table's base location, as a URI.
     #[napi(getter)]
-    pub fn location(&self) -> String {
-        self.inner.metadata().location().to_owned()
+    pub fn location(&self) -> Result<String> {
+        Ok(self
+            .inner
+            .metadata()
+            .map_err(napi_error)?
+            .location()
+            .to_owned())
     }
 
     /// A stable identifier for the table itself, not for any one version.
     #[napi(getter)]
-    pub fn table_uuid(&self) -> String {
-        self.inner.metadata().table_uuid().to_owned()
+    pub fn table_uuid(&self) -> Result<String> {
+        Ok(self
+            .inner
+            .metadata()
+            .map_err(napi_error)?
+            .table_uuid()
+            .to_owned())
     }
 
     /// Which revision of the specification the metadata is written to.
     #[napi(getter)]
-    pub const fn format_version(&self) -> i32 {
-        self.inner.metadata().format_version().number()
+    pub fn format_version(&self) -> Result<i32> {
+        Ok(self
+            .inner
+            .metadata()
+            .map_err(napi_error)?
+            .format_version()
+            .number())
     }
 
     /// The version number of the current metadata document.
     #[napi(getter)]
-    pub const fn version(&self) -> u32 {
-        self.inner.metadata_version()
+    pub fn version(&self) -> Result<u32> {
+        self.inner.metadata_version().map_err(napi_error)
     }
 
-    /// Free-form table properties.
+    /// The effective properties: the parent's, then the free-form table
+    /// properties the metadata document carries, then what was stated for
+    /// the table, a later entry replacing an earlier one by name.
     #[napi(getter)]
-    pub fn properties(&self) -> HashMap<String, String> {
-        self.inner
-            .metadata()
-            .properties()
+    pub fn properties(&self) -> Result<HashMap<String, String>> {
+        Ok(ObjectValue::properties(&self.inner)
+            .map_err(napi_error)?
             .iter()
-            .map(|(key, value)| (key.to_string(), value.to_string()))
-            .collect()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect())
     }
 
     /// The name of the current metadata document.
     #[napi(getter)]
-    pub fn metadata_file_name(&self) -> String {
-        self.inner.metadata_file_name()
+    pub fn metadata_file_name(&self) -> Result<String> {
+        self.inner.metadata_file_name().map_err(napi_error)
     }
 
     /// The location of the current metadata document, as a URI.
@@ -1614,6 +1767,7 @@ impl JsTable {
     pub fn spec(&self) -> Result<JsPartitionSpec> {
         self.inner
             .metadata()
+            .map_err(napi_error)?
             .default_spec()
             .cloned()
             .map(JsPartitionSpec::from_core)
@@ -1625,31 +1779,39 @@ impl JsTable {
     /// A freshly created or rolled-back table has snapshots but no current one,
     /// and reading it yields no rows rather than failing.
     #[napi(getter)]
-    pub fn current_snapshot(&self) -> Option<JsSnapshot> {
-        self.inner.current_snapshot().map(snapshot_view)
+    pub fn current_snapshot(&self) -> Result<Option<JsSnapshot>> {
+        Ok(self
+            .inner
+            .current_snapshot()
+            .map_err(napi_error)?
+            .map(snapshot_view))
     }
 
     /// Every schema the table has had, oldest first.
     #[napi(getter)]
-    pub fn schemas(&self) -> Vec<JsField> {
-        self.inner
+    pub fn schemas(&self) -> Result<Vec<JsField>> {
+        Ok(self
+            .inner
             .metadata()
+            .map_err(napi_error)?
             .schemas()
             .iter()
             .cloned()
             .map(JsField::from_core)
-            .collect()
+            .collect())
     }
 
     /// Every retained snapshot, oldest first.
     #[napi(getter)]
-    pub fn snapshots(&self) -> Vec<JsSnapshot> {
-        self.inner
+    pub fn snapshots(&self) -> Result<Vec<JsSnapshot>> {
+        Ok(self
+            .inner
             .metadata()
+            .map_err(napi_error)?
             .snapshots()
             .iter()
             .map(snapshot_view)
-            .collect()
+            .collect())
     }
 
     /// Every manifest the current snapshot points at.
@@ -1672,7 +1834,7 @@ impl JsTable {
     #[napi]
     pub fn manifests_at(&self, snapshot_id: SnapshotIdInput) -> Result<Vec<JsManifestFile>> {
         let snapshot_id = snapshot_id_from_input(snapshot_id)?;
-        let metadata = self.inner.metadata();
+        let metadata = self.inner.metadata().map_err(napi_error)?;
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
             let retained: Vec<String> = metadata
                 .snapshots()
@@ -1878,7 +2040,10 @@ impl JsTable {
         })
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` fall in as a new snapshot: every
+    /// row of an unpartitioned table, and of a partitioned one the
+    /// partitions the rows touch - no row replaces nothing there, and
+    /// `overwriteWhere(null, [])` empties it.
     ///
     /// The previous snapshot stays readable; only the current pointer moves.
     /// `options` configures this one write, exactly as on
@@ -2262,7 +2427,7 @@ impl JsTable {
     /// from the metadata the table holds now.
     #[napi(js_name = "_updateSchemaNative", skip_typescript)]
     pub fn update_schema_native(&self) -> Result<JsSchemaUpdate> {
-        CoreSchemaUpdate::from_metadata(self.inner.metadata())
+        CoreSchemaUpdate::from_metadata(self.inner.metadata().map_err(napi_error)?)
             .map(|inner| JsSchemaUpdate { inner })
             .map_err(napi_error)
     }
@@ -2279,10 +2444,11 @@ impl JsTable {
         self.inner.update_schema(&update.inner).map_err(napi_error)
     }
 
-    /// Return where the table lives, so a table prints as its location.
+    /// The dotted path, as the plan grammar spells it and as every
+    /// warehouse object prints.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
-        self.location()
+        self.into_table().js_string()
     }
 }
 
@@ -2381,7 +2547,9 @@ impl JsSchemaUpdate {
         self.inner.rename_column(&path, name);
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at `path`.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own description, which the schema states as its `doc`. An
+    /// empty one clears it.
     #[napi]
     pub fn update_doc(&mut self, path: String, doc: String) {
         self.inner.update_doc(&path, doc);
@@ -2416,135 +2584,134 @@ pub struct ScanPlanCounts {
     pub record_count: i64,
 }
 
-/// A warehouse folder of namespaces of Iceberg tables.
+/// A warehouse folder of namespaces of Iceberg tables: the implementation a
+/// warehouse `Catalog` holds when it is one.
 ///
-/// The catalog is storage and nothing else: a dotted name like `"nyc.taxis"`
-/// names the folder `nyc/taxis` under the warehouse handle, and constructing
-/// one touches nothing at all. There is no service in between, so two catalogs
-/// over the same folder see the same tables.
-#[napi(js_name = "Catalog")]
+/// Namespaces nest to any depth, each a folder; `metadata/catalog.json` and
+/// `metadata/namespace.json` keep the stored properties; a table is a folder
+/// laid out as one. The catalog is a description - constructing one touches
+/// nothing - and every question is asked of the store when it is asked,
+/// through the members every `Catalog` has: `namespaces()`, `tables()`,
+/// `children()`, `get`, `resolve`, `table`, `namespace`, `createNamespace`
+/// and `createTable` here redirect to the same object [`intoCatalog`](Self::into_catalog)
+/// answers.
+#[napi(js_name = "IcebergCatalog")]
 pub struct JsCatalog {
-    inner: CoreCatalog<Holder>,
+    inner: CoreCatalog,
+}
+
+impl JsCatalog {
+    /// The generic catalog this one is, which the shared members answer through.
+    fn generic(&self) -> JsWarehouseCatalog {
+        JsWarehouseCatalog::from_core(CoreWarehouseCatalog::from(self.inner.clone()))
+    }
 }
 
 #[napi]
 impl JsCatalog {
-    /// Describe a catalog over a warehouse folder, touching nothing.
-    ///
-    /// `warehouse` accepts whatever names a location - location text, a native
-    /// `Url` or any other identifier naming one, or a handle - the same inputs
-    /// `Table.create`'s root takes.
+    /// The catalog `name` over the warehouse folder `location` names,
+    /// touching nothing: a handle binds the folder, a location or an
+    /// identifier names what opens on first use. `options.description` and
+    /// `options.properties` are what the catalog states, which its folder
+    /// and every object under it open with.
     #[napi(constructor)]
-    pub fn new(warehouse: LocationInput<'_>) -> Result<Self> {
-        Ok(Self {
-            inner: CoreCatalog::new(folder_from_input(warehouse)?),
-        })
-    }
-
-    /// Open the table a dotted name addresses - the one-call spelling of
-    /// `catalog.tables.get(name)`.
-    #[napi]
-    pub fn table(&self, name: String) -> Result<JsTable> {
-        self.inner
-            .table(&name)
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Append `data` to the named table, creating it on first write.
-    ///
-    /// A table that is not there yet takes its schema from the reader, so a
-    /// caller who only has rows and a name needs nothing else. Returns the
-    /// table so the caller can keep going.
-    #[napi]
-    pub fn append(
-        &self,
+    pub fn new(
         name: String,
-        data: &mut JsBatchReader,
-        options: Option<&JsIcebergOptions>,
-    ) -> Result<JsTable> {
-        self.inner
-            .tables()
-            .append_arrow_reader_with_options(&name, data.take()?, call_options(options))
-            .map(JsTable::from_core)
+        location: LocationInput<'_>,
+        options: Option<ObjectOptions<'_>>,
+    ) -> Result<Self> {
+        let stated = Stated::read(options)?;
+        stated.only("IcebergCatalog", false, false, false)?;
+        let mut inner = match site_from_input(location)? {
+            Either::A(holder) => CoreCatalog::bound(name, holder),
+            Either::B(uri) => CoreCatalog::new(name, uri).map_err(napi_error)?,
+        }
+        .with_properties(stated.properties);
+        if let Some(description) = stated.description {
+            inner = inner.with_description(description);
+        }
+        Ok(Self { inner })
+    }
+
+    /// Create the catalog `name` in the folder `location` names, writing its
+    /// `metadata/catalog.json`; the write is what creates the folder, and a
+    /// folder already holding anything is a conflict.
+    #[napi(factory)]
+    pub fn create(name: String, location: LocationInput<'_>) -> Result<Self> {
+        CoreCatalog::create(name, folder_from_input(location)?)
+            .map(|inner| Self { inner })
             .map_err(napi_error)
     }
 
-    /// Replace the named table's rows with `data`, creating it on first write.
-    ///
-    /// An existing table keeps its previous snapshot readable; only the
-    /// current pointer moves. `options` configures this one write. Returns the
-    /// table so the caller can keep going.
-    #[napi]
-    pub fn overwrite(
-        &self,
-        name: String,
-        data: &mut JsBatchReader,
-        options: Option<&JsIcebergOptions>,
-    ) -> Result<JsTable> {
-        self.inner
-            .tables()
-            .overwrite_arrow_reader_with_options(&name, data.take()?, call_options(options))
-            .map(JsTable::from_core)
+    /// The catalog `name` over the folder `location` names, created when the
+    /// folder is not there yet; a table or a file in its place is refused by
+    /// name.
+    #[napi(factory)]
+    pub fn open_or_create(name: String, location: LocationInput<'_>) -> Result<Self> {
+        CoreCatalog::open_or_create(name, folder_from_input(location)?)
+            .map(|inner| Self { inner })
             .map_err(napi_error)
     }
 
-    /// One namespace as a view: `catalog.namespace('analytics')`.
-    ///
-    /// The view exists whether or not the folder does, exactly as a handle
-    /// describes a location without proof, so asking for one never fails.
+    /// The Iceberg catalog a warehouse `Catalog` holds, refused by name when
+    /// its implementation is another.
+    #[napi(factory)]
+    pub fn from(catalog: &JsWarehouseCatalog) -> Result<Self> {
+        match &catalog.inner {
+            CoreWarehouseCatalog::Iceberg(catalog) => Ok(Self {
+                inner: (**catalog).clone(),
+            }),
+            other => Err(napi_error(format!(
+                "expected an Iceberg catalog, got `{other}` held by another implementation"
+            ))),
+        }
+    }
+
+    /// This catalog as the warehouse `Catalog` it is: what a warehouse
+    /// registers and a plan resolves against.
     #[napi]
-    pub fn namespace(&self, reference: Reference<JsCatalog>, name: String) -> JsNamespace {
-        JsNamespace {
-            catalog: reference,
-            name,
-        }
+    pub fn into_catalog(&self) -> JsWarehouseCatalog {
+        self.generic()
     }
 
-    /// The catalog's namespaces, as a lazy map-like view.
-    ///
-    /// Building the view performs no I/O: `get`, `has`, `names`, and `size`
-    /// each consult storage at the moment they are asked, which is why two
-    /// views over one catalog observe each other's writes and why a view stays
-    /// valid across a creation or a deletion. This is the one collection
-    /// spelling - `catalog.namespaces.get('sales').tables.get('orders')`
-    /// chains all the way to a table.
+    /// The catalog's name, the first part of every path under it.
     #[napi(getter)]
-    pub fn namespaces(&self, reference: Reference<JsCatalog>) -> JsNamespaces {
-        JsNamespaces {
-            catalog: reference,
-            parent: None,
-        }
+    pub fn name(&self) -> String {
+        ObjectValue::name(&self.inner).to_owned()
     }
 
-    /// The catalog's tables, as the same lazy view over dotted names.
-    ///
-    /// `catalog.tables.get('sales.eu.orders')` descends; an un-dotted name
-    /// addresses a table directly under the warehouse root, and the listing
-    /// questions answer exactly those.
+    /// The path: the name alone.
     #[napi(getter)]
-    pub fn tables(&self, reference: Reference<JsCatalog>) -> JsTables {
-        JsTables {
-            catalog: reference,
-            namespace: None,
-        }
-    }
-
-    /// The catalog's own properties, from `metadata/catalog.json`.
-    ///
-    /// Absent means empty - never an error a caller has to catch.
-    #[napi]
-    pub fn properties(&self) -> Result<HashMap<String, String>> {
-        Ok(self
-            .inner
-            .properties()
-            .map_err(napi_error)?
+    pub fn path(&self) -> Vec<String> {
+        ObjectValue::path(&self.inner)
             .iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect())
+            .map(ToString::to_string)
+            .collect()
     }
 
-    /// Set and remove catalog properties as one transactional write.
+    /// What the store says this catalog is, when it says anything.
+    #[napi(getter)]
+    pub fn description(&self) -> Option<String> {
+        ObjectValue::description(&self.inner).map(str::to_owned)
+    }
+
+    /// The warehouse folder's location.
+    #[napi(getter)]
+    pub fn url(&self) -> Option<crate::uri::JsUrl> {
+        ObjectValue::url(&self.inner)
+            .cloned()
+            .map(crate::uri::JsUrl::from_core)
+    }
+
+    /// The effective properties: what `metadata/catalog.json` keeps, then
+    /// what was stated, a later entry replacing an earlier one by name.
+    #[napi(getter)]
+    pub fn properties(&self) -> Result<HashMap<String, String>> {
+        properties_map(&self.inner)
+    }
+
+    /// Set and remove the properties `metadata/catalog.json` keeps, as one
+    /// write.
     ///
     /// `updates` is a mapping of properties to set and `removes` lists the
     /// keys to drop, in that order. Passing neither writes nothing at all.
@@ -2555,453 +2722,324 @@ impl JsCatalog {
         updates: Option<PropertyUpdates>,
         removes: Option<Vec<String>>,
     ) -> Result<()> {
-        let (updates, removes) = property_changes(updates, removes);
-        if updates.is_empty() && removes.is_empty() {
-            return Ok(());
-        }
-        self.inner
-            .update_properties(updates, removes)
-            .map_err(napi_error)
+        update_object_properties(&self.inner, updates, removes)
+    }
+
+    /// How many namespace levels sit under the catalog: none stated, since
+    /// namespaces nest to any depth.
+    #[napi(getter)]
+    pub fn namespace_levels(&self) -> Option<u32> {
+        None
+    }
+
+    /// The namespaces one level down, as the lazy map-like view every
+    /// catalog answers.
+    #[napi]
+    pub fn namespaces(&self) -> JsWarehouseNamespaces {
+        self.generic().namespaces()
+    }
+
+    /// The tables one level down, as the lazy map-like view every catalog
+    /// answers.
+    #[napi]
+    pub fn tables(&self) -> JsWarehouseTables {
+        self.generic().tables()
+    }
+
+    /// Its children, one at a time in the store's order.
+    #[napi]
+    pub fn children(&self) -> JsObjectIterator {
+        self.generic().children()
+    }
+
+    /// The child called `name`, one level down.
+    #[napi]
+    pub fn get(&self, name: String) -> Result<ObjectOutput> {
+        self.generic().get(name)
+    }
+
+    /// The object a path below the catalog names, descending through `get`.
+    #[napi]
+    pub fn resolve(&self, path: ObjectPathInput) -> Result<ObjectOutput> {
+        self.generic().resolve(path)
+    }
+
+    /// The table a path below the catalog names, or its absence.
+    #[napi]
+    pub fn table(&self, path: ObjectPathInput) -> Result<JsWarehouseTable> {
+        self.generic().table(path)
+    }
+
+    /// The namespace a path below the catalog names, or its absence.
+    #[napi]
+    pub fn namespace(&self, path: ObjectPathInput) -> Result<JsWarehouseNamespace> {
+        self.generic().namespace(path)
+    }
+
+    /// Create the namespace `name` under the catalog, writing its
+    /// `metadata/namespace.json` with `properties`.
+    #[napi(
+        ts_args_type = "name: string, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn create_namespace(
+        &self,
+        name: String,
+        properties: Option<napi::bindgen_prelude::Object<'_>>,
+    ) -> Result<JsWarehouseNamespace> {
+        self.generic().create_namespace(name, properties)
+    }
+
+    /// Create the table `name` under the catalog, `field` its row schema,
+    /// numbered where it is not, its partition spec read from the schema's
+    /// own `PARTITION:by` declaration.
+    #[napi(
+        ts_args_type = "name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn create_table(
+        &self,
+        name: String,
+        field: crate::iceberg::FieldInput<'_>,
+        properties: Option<napi::bindgen_prelude::Object<'_>>,
+    ) -> Result<JsWarehouseTable> {
+        self.generic().create_table(name, field, properties)
+    }
+
+    /// Whether both describe the same catalog: the name, the location, what
+    /// was stated.
+    #[napi]
+    pub fn equals(&self, other: &JsCatalog) -> bool {
+        self.inner == other.inner
+    }
+
+    /// The name, as the dotted path of every object under it starts.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        self.generic().js_string()
     }
 }
 
-/// One namespace of a catalog: identity, plus its two collection views.
-///
-/// The namespace holds only its dotted name. Its tables are
-/// [`tables`](Self::tables) and its child namespaces are
-/// [`namespaces`](Self::namespaces), so access chains -
-/// `catalog.namespaces.get('sales').tables.get('orders')` - and every
-/// collection question has exactly one home: a namespace is a resource, and
-/// the map verbs live on its collections, never on it.
-#[napi(js_name = "Namespace")]
+/// One namespace of an Iceberg catalog - a folder under the warehouse, its
+/// `metadata/namespace.json` the stored properties - as the implementation a
+/// warehouse `Namespace` holds when it is one.
+#[napi(js_name = "IcebergNamespace")]
 pub struct JsNamespace {
-    catalog: Reference<JsCatalog>,
-    name: String,
+    inner: CoreNamespace,
+}
+
+impl JsNamespace {
+    /// The generic namespace this one is, which the shared members answer through.
+    fn generic(&self) -> JsWarehouseNamespace {
+        JsWarehouseNamespace::from_core(CoreWarehouseNamespace::from(self.inner.clone()))
+    }
 }
 
 #[napi]
 impl JsNamespace {
-    /// The namespace's dotted name.
+    /// The namespace at `path` - dotted text or parts, its catalog's name
+    /// first - over the folder `location` names, touching nothing: a handle
+    /// binds the folder, a location or an identifier names what opens on
+    /// first use. `options.properties` is what the namespace states.
+    #[napi(constructor)]
+    pub fn new(
+        path: ObjectPathInput,
+        location: LocationInput<'_>,
+        options: Option<ObjectOptions<'_>>,
+    ) -> Result<Self> {
+        let stated = Stated::read(options)?;
+        stated.only("IcebergNamespace", false, false, false)?;
+        if stated.description.is_some() {
+            return Err(napi_error(
+                "expected no `description` option on an IcebergNamespace, got one",
+            ));
+        }
+        let path = object_path(path).map_err(napi_error)?;
+        let inner = match site_from_input(location)? {
+            Either::A(holder) => CoreNamespace::bound(path, holder),
+            Either::B(uri) => CoreNamespace::new(path, uri),
+        }
+        .map_err(napi_error)?
+        .with_properties(stated.properties);
+        Ok(Self { inner })
+    }
+
+    /// The Iceberg namespace a warehouse `Namespace` holds, refused by name
+    /// when its implementation is another.
+    #[napi(factory)]
+    pub fn from(namespace: &JsWarehouseNamespace) -> Result<Self> {
+        match &namespace.inner {
+            CoreWarehouseNamespace::Iceberg(namespace) => Ok(Self {
+                inner: (**namespace).clone(),
+            }),
+            other => Err(napi_error(format!(
+                "expected an Iceberg namespace, got `{other}` held by another implementation"
+            ))),
+        }
+    }
+
+    /// This namespace as the warehouse `Namespace` it is.
+    #[napi]
+    pub fn into_namespace(&self) -> JsWarehouseNamespace {
+        self.generic()
+    }
+
+    /// The last part of the path.
     #[napi(getter)]
     pub fn name(&self) -> String {
-        self.name.clone()
+        ObjectValue::name(&self.inner).to_owned()
     }
 
-    /// This namespace's tables, as a lazy map-like view.
+    /// The parts, from the catalog's name down to this namespace's own.
     #[napi(getter)]
-    pub fn tables(&self, env: Env) -> Result<JsTables> {
-        Ok(JsTables {
-            catalog: self.catalog.clone(env)?,
-            namespace: Some(self.name.clone()),
-        })
-    }
-
-    /// The namespaces one level below this one, as the same view shape the
-    /// catalog itself answers - the cascade that reaches a nested namespace.
-    #[napi(getter)]
-    pub fn namespaces(&self, env: Env) -> Result<JsNamespaces> {
-        Ok(JsNamespaces {
-            catalog: self.catalog.clone(env)?,
-            parent: Some(self.name.clone()),
-        })
-    }
-
-    /// The namespace's properties, from `metadata/namespace.json`.
-    ///
-    /// Absent means empty - a namespace a table write brought into being
-    /// carries no document and answers no properties, and that is not a
-    /// failure.
-    #[napi]
-    pub fn properties(&self) -> Result<HashMap<String, String>> {
-        Ok(self
-            .catalog
-            .inner
-            .namespaces()
-            .get(&self.name)
-            .map_err(napi_error)?
-            .properties()
-            .map_err(napi_error)?
+    pub fn path(&self) -> Vec<String> {
+        ObjectValue::path(&self.inner)
             .iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned()))
-            .collect())
+            .map(ToString::to_string)
+            .collect()
     }
 
-    /// Set and remove namespace properties as one transactional write.
-    ///
-    /// `updates` is a mapping of properties to set and `removes` lists the
-    /// keys to drop, in that order. Passing neither writes nothing at all.
-    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
+    /// The folder's location.
+    #[napi(getter)]
+    pub fn url(&self) -> Option<crate::uri::JsUrl> {
+        ObjectValue::url(&self.inner)
+            .cloned()
+            .map(crate::uri::JsUrl::from_core)
+    }
+
+    /// The effective properties: the parent's, then what
+    /// `metadata/namespace.json` keeps, then what was stated.
+    #[napi(getter)]
+    pub fn properties(&self) -> Result<HashMap<String, String>> {
+        properties_map(&self.inner)
+    }
+
+    /// Set and remove the properties `metadata/namespace.json` keeps, as one
+    /// write; keys under the reserved `ICEBERG:` prefix are refused by name.
     #[napi]
     pub fn update_properties(
         &self,
         updates: Option<PropertyUpdates>,
         removes: Option<Vec<String>>,
     ) -> Result<()> {
-        let (updates, removes) = property_changes(updates, removes);
-        if updates.is_empty() && removes.is_empty() {
-            return Ok(());
-        }
-        self.catalog
-            .inner
-            .namespaces()
-            .get(&self.name)
-            .map_err(napi_error)?
-            .update_properties(updates, removes)
-            .map_err(napi_error)
-    }
-}
-
-/// The namespaces one level below a catalog or a namespace, as a lazy view.
-///
-/// JavaScript has no indexing hook a native class can answer, so the map
-/// questions are spelled out: `get` and `has` for membership, `names` and
-/// `size` for the whole collection, `create` and `openOrCreate` to add one.
-/// None of it is cached - every answer is storage's, asked when the question
-/// is - so a view built before a namespace existed finds it afterwards.
-#[napi(js_name = "Namespaces")]
-pub struct JsNamespaces {
-    catalog: Reference<JsCatalog>,
-    /// The parent namespace's dotted name; `null` is the warehouse root.
-    parent: Option<String>,
-}
-
-impl JsNamespaces {
-    /// The root view, which accepts the dotted spelling this value builds -
-    /// the resolution rule lives in the core collection, not here.
-    fn view(&self) -> CoreNamespaces<'_, Holder> {
-        self.catalog.inner.namespaces()
+        update_object_properties(&self.inner, updates, removes)
     }
 
-    /// Spell one child's full dotted name.
-    fn dotted(&self, name: &str) -> String {
-        match &self.parent {
-            Some(parent) => format!("{parent}.{name}"),
-            None => name.to_owned(),
-        }
-    }
-
-    /// The names one level down, as the core's lazy iterator.
-    fn level(&self) -> Result<CoreNames> {
-        level_of(&self.catalog.inner, self.parent.as_deref(), false)
-    }
-
-    /// Wrap one child namespace's dotted name as the view of it.
-    fn wrap(&self, env: Env, dotted: String) -> Result<JsNamespace> {
-        Ok(JsNamespace {
-            catalog: self.catalog.clone(env)?,
-            name: dotted,
-        })
-    }
-}
-
-/// The names of one level, with an absent parent listing empty.
-fn level_of(
-    catalog: &CoreCatalog<Holder>,
-    parent: Option<&str>,
-    tables: bool,
-) -> Result<CoreNames> {
-    match parent {
-        None if tables => Ok(catalog.tables().iter()),
-        None => Ok(catalog.namespaces().iter()),
-        Some(parent) => match catalog.namespaces().get(parent) {
-            Ok(namespace) if tables => Ok(namespace.tables().iter()),
-            Ok(namespace) => Ok(namespace.namespaces().iter()),
-            // A parent that does not exist lists nothing rather than failing.
-            Err(error) if error.is_absent() => Ok(CoreNames::empty()),
-            Err(error) => Err(napi_error(error)),
-        },
-    }
-}
-
-// Counts cross as JavaScript numbers, exact to 2^53 - the same contract
-// `IOBase.size` already publishes.
-#[allow(clippy::cast_precision_loss)]
-#[napi]
-impl JsNamespaces {
-    /// Open the named namespace.
-    ///
-    /// # Errors
-    ///
-    /// Throws naming the namespace when nothing is there, or when the name
-    /// addresses a table instead - the two ways a chained lookup goes wrong,
-    /// told apart rather than collapsed into "not found".
+    /// The namespaces one level down, as the lazy map-like view.
     #[napi]
-    pub fn get(&self, env: Env, name: String) -> Result<JsNamespace> {
-        let dotted = self
-            .view()
-            .get(&self.dotted(&name))
-            .map_err(napi_error)?
-            .name()
-            .to_owned();
-        self.wrap(env, dotted)
+    pub fn namespaces(&self) -> JsWarehouseNamespaces {
+        self.generic().namespaces()
     }
 
-    /// Return whether the named namespace exists, asked of storage now.
-    ///
-    /// A namespace is a folder that is not a table, so a table's name answers
-    /// `false` here, and so does a location nothing occupies yet.
+    /// The tables one level down, as the lazy map-like view.
     #[napi]
-    pub fn has(&self, name: String) -> Result<bool> {
-        self.view()
-            .contains(&self.dotted(&name))
-            .map_err(napi_error)
+    pub fn tables(&self) -> JsWarehouseTables {
+        self.generic().tables()
     }
 
-    /// The names one level down, lazily - the loader wires `Symbol.iterator`,
-    /// `keys`, `values`, and `entries` over this, so `for...of` walks it.
+    /// Its children, one at a time in the store's order.
     #[napi]
-    pub fn keys(&self) -> Result<JsIcebergNames> {
-        Ok(JsIcebergNames {
-            names: self.level()?,
-        })
+    pub fn children(&self) -> JsObjectIterator {
+        self.generic().children()
     }
 
-    /// The namespaces one level down, as sorted bare names.
+    /// The child called `name`, one level down.
     #[napi]
-    pub fn names(&self) -> Result<Vec<String>> {
-        self.level()?
-            .collect::<yggdryl::Result<Vec<_>>>()
-            .map_err(napi_error)
+    pub fn get(&self, name: String) -> Result<ObjectOutput> {
+        self.generic().get(name)
     }
 
-    /// How many namespaces are one level down, right now.
-    ///
-    /// This drains the level's listing, so it costs the full listing.
+    /// The object a path below the namespace names, descending through `get`.
     #[napi]
-    pub fn size(&self) -> Result<f64> {
-        let mut count = 0_u64;
-        for name in self.level()? {
-            name.map_err(napi_error)?;
-            count += 1;
-        }
-        Ok(count as f64)
+    pub fn resolve(&self, path: ObjectPathInput) -> Result<ObjectOutput> {
+        self.generic().resolve(path)
     }
 
-    /// Create the named namespace, as the folder it is.
-    ///
-    /// # Errors
-    ///
-    /// Throws naming the namespace when one - or a table - is already there;
-    /// [`openOrCreate`](Self::open_or_create) is the spelling that tolerates it.
+    /// The table a path below the namespace names, or its absence.
     #[napi]
-    pub fn create(&self, env: Env, name: String) -> Result<JsNamespace> {
-        let dotted = self
-            .view()
-            .create(&self.dotted(&name))
-            .map_err(napi_error)?
-            .name()
-            .to_owned();
-        self.wrap(env, dotted)
+    pub fn table(&self, path: ObjectPathInput) -> Result<JsWarehouseTable> {
+        self.generic().table(path)
     }
 
-    /// Open the named namespace, creating its folder when absent.
+    /// The namespace a path below this one names, or its absence.
     #[napi]
-    pub fn open_or_create(&self, env: Env, name: String) -> Result<JsNamespace> {
-        let dotted = self
-            .view()
-            .open_or_create(&self.dotted(&name))
-            .map_err(napi_error)?
-            .name()
-            .to_owned();
-        self.wrap(env, dotted)
-    }
-}
-
-/// The names of one collection level, one at a time.
-///
-/// Built by `keys()` on `Namespaces` and `Tables`. It wraps the core names
-/// iterator directly, so nothing is collected on the way across the boundary;
-/// `next()` is the native half of the iteration protocol and the loader wraps
-/// it so `for...of` yields strings. A failure throws at the entry it happened
-/// on, after which the iterator is exhausted.
-#[napi(js_name = "IcebergNames")]
-pub struct JsIcebergNames {
-    names: CoreNames,
-}
-
-#[napi]
-impl JsIcebergNames {
-    /// The next name, or `null` when the level is exhausted.
-    #[napi]
-    pub fn next(&mut self) -> Result<Option<String>> {
-        self.names.next().transpose().map_err(napi_error)
-    }
-}
-
-/// The tables of one namespace - or of the warehouse root - as a lazy view.
-///
-/// The same shape as [`Namespaces`](JsNamespaces), one level down: `get` opens
-/// a [`Table`](JsTable) and the write conveniences that take a name create the
-/// table on first write, from the incoming rows' own schema. At the root,
-/// names may be fully dotted - `catalog.tables.get('sales.eu.orders')`
-/// descends. Every answer comes from storage at call time, so the view is
-/// never stale.
-#[napi(js_name = "Tables")]
-pub struct JsTables {
-    catalog: Reference<JsCatalog>,
-    /// The owning namespace's dotted name; `None` is the warehouse root.
-    namespace: Option<String>,
-}
-
-impl JsTables {
-    /// The root view, which accepts the dotted spelling this value builds.
-    fn view(&self) -> CoreTables<'_, Holder> {
-        self.catalog.inner.tables()
+    pub fn namespace(&self, path: ObjectPathInput) -> Result<JsWarehouseNamespace> {
+        self.generic().namespace(path)
     }
 
-    /// Spell one table's full dotted name under this namespace.
-    fn dotted(&self, name: &str) -> String {
-        match &self.namespace {
-            Some(namespace) => format!("{namespace}.{name}"),
-            None => name.to_owned(),
-        }
-    }
-
-    /// The table names one level down, as the core's lazy iterator.
-    fn level(&self) -> Result<CoreNames> {
-        level_of(&self.catalog.inner, self.namespace.as_deref(), true)
-    }
-}
-
-// Counts cross as JavaScript numbers, exact to 2^53 - the same contract
-// `IOBase.size` already publishes.
-#[allow(clippy::cast_precision_loss)]
-#[napi]
-impl JsTables {
-    /// Open the named table.
-    ///
-    /// # Errors
-    ///
-    /// Throws naming the table when no table is there, and the metadata
-    /// failure when its current document cannot be read.
-    #[napi]
-    pub fn get(&self, name: String) -> Result<JsTable> {
-        self.view()
-            .get(&self.dotted(&name))
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Return whether the named table exists, asked of storage now.
-    #[napi]
-    pub fn has(&self, name: String) -> Result<bool> {
-        self.view()
-            .contains(&self.dotted(&name))
-            .map_err(napi_error)
-    }
-
-    /// The names one level down, lazily - the loader wires `Symbol.iterator`,
-    /// `keys`, `values`, and `entries` over this, so `for...of` walks it.
-    #[napi]
-    pub fn keys(&self) -> Result<JsIcebergNames> {
-        Ok(JsIcebergNames {
-            names: self.level()?,
-        })
-    }
-
-    /// This namespace's tables, as sorted bare names.
-    #[napi]
-    pub fn names(&self) -> Result<Vec<String>> {
-        self.level()?
-            .collect::<yggdryl::Result<Vec<_>>>()
-            .map_err(napi_error)
-    }
-
-    /// How many tables the namespace holds, right now.
-    ///
-    /// This drains the level's listing, so it costs the full listing.
-    #[napi]
-    pub fn size(&self) -> Result<f64> {
-        let mut count = 0_u64;
-        for name in self.level()? {
-            name.map_err(napi_error)?;
-            count += 1;
-        }
-        Ok(count as f64)
-    }
-
-    /// Create the named table, writing its first metadata document.
-    ///
-    /// `schema` is a root `Field`, a field expression, or an array of child
-    /// `Field`s assembled under a root named `row`. Unnumbered columns are
-    /// numbered, and the partition spec is derived from the columns the schema
-    /// itself marks - a schema that marks none produces an unpartitioned table.
-    ///
-    /// # Errors
-    ///
-    /// Throws naming the table when one is already there.
-    #[napi]
-    pub fn create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
-        self.view()
-            .create(&self.dotted(&name), schema_from_input(schema)?)
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Open the named table if it exists, creating it otherwise.
-    ///
-    /// An existing table is opened as it is - `schema` describes only the table
-    /// this call would create.
-    #[napi]
-    pub fn open_or_create(&self, name: String, schema: TableSchemaInput<'_>) -> Result<JsTable> {
-        self.view()
-            .open_or_create(&self.dotted(&name), schema_from_input(schema)?)
-            .map(JsTable::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Append `batches` to the named table, creating it on first write.
-    ///
-    /// A table that is not there yet takes its schema from the rows: partition
-    /// marks riding the Arrow fields' metadata become the spec, so a marked
-    /// schema lays its files out partitioned from the very first append.
-    /// `options` configures this one write. Returns the table so the caller can
-    /// keep going.
-    #[napi]
-    pub fn append(
+    /// Create the namespace `name` under this one, writing its document.
+    #[napi(
+        ts_args_type = "name: string, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn create_namespace(
         &self,
         name: String,
-        batches: &mut JsBatchReader,
-        options: Option<&JsIcebergOptions>,
-    ) -> Result<JsTable> {
-        self.view()
-            .append_arrow_reader_with_options(
-                &self.dotted(&name),
-                batches.take()?,
-                call_options(options),
-            )
-            .map(JsTable::from_core)
-            .map_err(napi_error)
+        properties: Option<napi::bindgen_prelude::Object<'_>>,
+    ) -> Result<JsWarehouseNamespace> {
+        self.generic().create_namespace(name, properties)
     }
 
-    /// Replace the named table's rows with `batches`, creating it on first
-    /// write.
-    ///
-    /// An existing table keeps its previous snapshot readable, which is what
-    /// makes the overwrite reversible. `options` configures this one write.
-    /// Returns the table so the caller can keep going.
-    #[napi]
-    pub fn overwrite(
+    /// Create the table `name` under this namespace, `field` its row schema.
+    #[napi(
+        ts_args_type = "name: string, field: Field | string, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn create_table(
         &self,
         name: String,
-        batches: &mut JsBatchReader,
-        options: Option<&JsIcebergOptions>,
-    ) -> Result<JsTable> {
-        self.view()
-            .overwrite_arrow_reader_with_options(
-                &self.dotted(&name),
-                batches.take()?,
-                call_options(options),
-            )
-            .map(JsTable::from_core)
-            .map_err(napi_error)
+        field: crate::iceberg::FieldInput<'_>,
+        properties: Option<napi::bindgen_prelude::Object<'_>>,
+    ) -> Result<JsWarehouseTable> {
+        self.generic().create_table(name, field, properties)
+    }
+
+    /// Whether both describe the same namespace.
+    #[napi]
+    pub fn equals(&self, other: &JsNamespace) -> bool {
+        self.inner == other.inner
+    }
+
+    /// The dotted path, as the plan grammar spells it.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        self.generic().js_string()
     }
 }
 
-/// Number every column of a schema, so an Iceberg table can carry it.
-///
-/// Returns a copy: a Field is a value here, and numbering one in place would
-/// change a schema another table already holds.
+/// An object's effective properties, as a plain map.
+fn properties_map(object: &dyn ObjectValue) -> Result<HashMap<String, String>> {
+    Ok(object
+        .properties()
+        .map_err(napi_error)?
+        .iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect())
+}
+
+/// Apply property updates and removals to what an object's store keeps; a
+/// call given neither writes nothing.
+fn update_object_properties(
+    object: &dyn ObjectValue,
+    updates: Option<PropertyUpdates>,
+    removes: Option<Vec<String>>,
+) -> Result<()> {
+    let (updates, removes) = property_changes(updates, removes);
+    if updates.is_empty() && removes.is_empty() {
+        return Ok(());
+    }
+    let updates: yggdryl::Properties = updates.into_iter().collect();
+    // The names as the core spells them, which is what the parts intake
+    // answers for parts given as they are.
+    let removes = removes
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<&str>>()
+        .into_object_path()
+        .map_err(napi_error)?;
+    object
+        .update_properties(&updates, &removes)
+        .map_err(napi_error)
+}
+
+/// Number every column of a schema from `start`, so a table can carry it:
+/// the native half of `iceberg.assignFieldIds`.
 #[napi(js_name = "icebergAssignFieldIdsNative", skip_typescript)]
 pub fn iceberg_assign_field_ids(schema: &JsField, start: Option<i32>) -> Result<JsField> {
     let mut schema: CoreField = schema.inner.clone();

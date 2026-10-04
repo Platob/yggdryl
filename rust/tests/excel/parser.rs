@@ -217,6 +217,69 @@ fn a_boolean_cell_reads_one_as_true_and_zero_as_false() {
 }
 
 #[test]
+fn a_boolean_cell_reads_every_spelling_the_boolean_reader_reads() {
+    for (text, expected) in [
+        ("true", true),
+        ("TRUE", true),
+        ("True", true),
+        ("false", false),
+        ("yes", true),
+        ("N", false),
+        (" on ", true),
+        ("Off", false),
+    ] {
+        let book = book(&format!(
+            "<row r=\"1\"><c r=\"A1\" t=\"b\"><v>{text}</v></c></row>"
+        ));
+        let sheet = book.sheet("Sheet1").unwrap();
+        assert_eq!(sheet.scalar(at("A1")), Scalar::from(expected), "{text:?}");
+    }
+}
+
+#[test]
+fn an_empty_boolean_cell_states_nothing_and_a_boolean_no_one_spells_is_refused() {
+    // An empty `<v>` is as absent as an empty numeric cell, not a false.
+    let empty = book("<row r=\"1\"><c r=\"A1\" t=\"b\"><v></v></c></row>");
+    let sheet = empty.sheet("Sheet1").unwrap();
+    assert_eq!(sheet.scalar(at("A1")), Scalar::Null);
+
+    for text in ["2", "maybe", "1.0", "-1"] {
+        let refused = refusal(&worksheet(&format!(
+            "<row r=\"1\"><c r=\"A1\" t=\"b\"><v>{text}</v></c></row>"
+        )));
+        assert!(
+            refused.starts_with("invalid record value at Sheet1!A1: "),
+            "{text}: {refused}"
+        );
+        assert!(
+            refused.contains("in a boolean cell, got"),
+            "{text}: {refused}"
+        );
+    }
+}
+
+#[test]
+fn a_numeric_cell_reads_the_float_literal_and_refuses_what_a_spreadsheet_stores_no_value_for() {
+    let book = book("<row r=\"1\"><c r=\"A1\"><v> 1.5E2 </v></c><c r=\"B1\"><v>.25</v></c></row>");
+    let sheet = book.sheet("Sheet1").unwrap();
+    assert_eq!(sheet.scalar(at("A1")), Scalar::from(150.0));
+    assert_eq!(sheet.scalar(at("B1")), Scalar::from(0.25));
+
+    // The float reader spells infinity and NaN, a numeric cell never does.
+    for text in ["INF", "-inf", "NaN", "1e999"] {
+        let refused = refusal(&worksheet(&format!(
+            "<row r=\"1\"><c r=\"A1\"><v>{text}</v></c></row>"
+        )));
+        assert!(
+            refused.ends_with(&format!(
+                "expected a finite number in a numeric cell, got {text:?}"
+            )),
+            "{text}: {refused}"
+        );
+    }
+}
+
+#[test]
 fn a_d_cell_reads_its_iso_8601_text() {
     let book = book(
         "<row r=\"1\"><c r=\"A1\" t=\"d\"><v>2024-01-02</v></c>\

@@ -644,10 +644,12 @@ pub(crate) mod casts {
                 Err(error) => refused(error.to_string()),
             };
         }
-        // A securities identifier carries its own check, and a column of them
-        // holds the canonical spelling: what a cast lets in is what a read
-        // answers, so the check digit and the case are settled here rather
-        // than on every read of the cell.
+        // A column of securities identifiers holds the canonical spelling -
+        // upper case, the type's shape - which is what `new` admits and
+        // what a read answers; the check digit is a reading (`is_closed`) a
+        // merge ranks by, never the gate, so a masked number lands as the
+        // value it is and the case is settled here rather than on every
+        // read of the cell.
         let canonical = match field.dtype() {
             DataType::Isin => crate::Isin::is_canonical(text),
             DataType::Cusip => crate::Cusip::is_canonical(text),
@@ -698,14 +700,14 @@ pub(crate) mod casts {
 //
 // # Merging two statements
 //
-// [`Cfi::merged`] folds two codes for one instrument position by position,
+// [`Cfi::refined`] folds two codes for one instrument position by position,
 // and only when they agree on what the instrument *is*: same category, same
-// group. A stated attribute fills an unknown one, so `ESXXXX` merged with
-// `ESVUFR` is `ESVUFR`. Two different stated attributes are a conflict, and
-// this crate has one answer for two voices that disagree - ambiguity answers
-// nothing - so that position answers `X` rather than picking a winner. Two
-// different categories or groups are not a merge at all: they are two
-// statements about two different instruments, and the answer is `None`.
+// group, no attribute stated two ways. The code it leads with keeps every
+// letter it states and takes the other's where it states `X`, so `ESXXXX`
+// refined by `ESVUFR` is `ESVUFR`, and an unclassified code yields whole.
+// Two different stated attributes, or two different categories or groups,
+// are two statements about two different instruments, and the answer is
+// `None`: the caller keeps the statement it leads with.
 //
 // # Provenance
 //
@@ -2568,33 +2570,54 @@ mod scalars {
         fn cased(&self, upper: bool) -> Self {
             let text = self.as_str();
             let unchanged = if text.is_ascii() {
-                !text.bytes().any(|byte| if upper { byte.is_ascii_lowercase() } else { byte.is_ascii_uppercase() })
+                !text.bytes().any(|byte| {
+                    if upper {
+                        byte.is_ascii_lowercase()
+                    } else {
+                        byte.is_ascii_uppercase()
+                    }
+                })
             } else {
                 text.chars().all(|character| {
-                    if upper { character.to_uppercase().eq(std::iter::once(character)) }
-                    else { character.to_lowercase().eq(std::iter::once(character)) }
+                    if upper {
+                        character.to_uppercase().eq(std::iter::once(character))
+                    } else {
+                        character.to_lowercase().eq(std::iter::once(character))
+                    }
                 })
             };
-            if unchanged { return self.clone(); }
+            if unchanged {
+                return self.clone();
+            }
             if text.is_ascii() {
                 let mut output = smol_str::SmolStrBuilder::new();
                 for byte in text.bytes() {
-                    output.push(char::from(if upper { byte.to_ascii_uppercase() } else { byte.to_ascii_lowercase() }));
+                    output.push(char::from(if upper {
+                        byte.to_ascii_uppercase()
+                    } else {
+                        byte.to_ascii_lowercase()
+                    }));
                 }
                 Self::from(output.finish())
             } else {
                 // Per-character lowercase loses contextual final sigma. Keep
                 // the standard whole-string mapping for every Unicode change.
-                Self::from(if upper { text.to_uppercase() } else { text.to_lowercase() })
+                Self::from(if upper {
+                    text.to_uppercase()
+                } else {
+                    text.to_lowercase()
+                })
             }
         }
 
         /// Whether a non-ASCII scalar has a Unicode case mapping. Callers
         /// with a narrower case policy can refuse before invoking that mapping.
         pub(crate) fn has_non_ascii_case(&self) -> bool {
-            self.as_str().chars().any(|character| !character.is_ascii()
-                && (!character.to_lowercase().eq(std::iter::once(character))
-                    || !character.to_uppercase().eq(std::iter::once(character))))
+            self.as_str().chars().any(|character| {
+                !character.is_ascii()
+                    && (!character.to_lowercase().eq(std::iter::once(character))
+                        || !character.to_uppercase().eq(std::iter::once(character)))
+            })
         }
 
         /// Map ASCII letters at Unicode letter boundaries, preserving other
@@ -2604,8 +2627,11 @@ mod scalars {
             let text = self.as_str();
             let mut initial = true;
             let mut map = |character: char| {
-                let mapped = if initial { character.to_ascii_uppercase() }
-                    else { character.to_ascii_lowercase() };
+                let mapped = if initial {
+                    character.to_ascii_uppercase()
+                } else {
+                    character.to_ascii_lowercase()
+                };
                 initial = !character.is_alphabetic();
                 mapped
             };
@@ -2613,11 +2639,15 @@ mod scalars {
             let Some((at, first)) = characters.find_map(|(at, character)| {
                 let mapped = map(character);
                 (mapped != character).then_some((at, mapped))
-            }) else { return self.clone(); };
+            }) else {
+                return self.clone();
+            };
             let mut output = smol_str::SmolStrBuilder::new();
             output.push_str(&text[..at]);
             output.push(first);
-            for (_, character) in characters { output.push(map(character)); }
+            for (_, character) in characters {
+                output.push(map(character));
+            }
             Self::from(output.finish())
         }
 

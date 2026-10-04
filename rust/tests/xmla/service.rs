@@ -15,10 +15,10 @@ use yggdryl::media::IORecordOptions;
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::{Envelope, FaultCode, Fragment};
 use yggdryl::xmla::{
-    Answer, Catalog, Command, Content, Discover, Execute, PropertyList, Request, RequestType,
-    Response, Restrictions, Service, ServiceOptions, Session,
+    Answer, Command, Content, Discover, Execute, PropertyList, Request, RequestType, Response,
+    Restrictions, Service, ServiceOptions, Session,
 };
-use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, Scalar, StructType};
+use yggdryl::{DataType, Field, FolderCatalog, IOBase, IOMedia, MimeType, Scalar, StructType};
 
 /// A fresh catalog folder under the temporary directory, named after `label`.
 fn catalog_root(label: &str) -> PathBuf {
@@ -88,7 +88,7 @@ fn service(label: &str) -> Service {
     let root = catalog_root(label);
     seed(&root);
     Service::new(ServiceOptions::new().with_url("http://localhost:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("the catalog holds"))
+        FolderCatalog::bound("market", Holder::folder(&root).expect("the catalog holds"))
             .with_description("the market catalog"),
     )
 }
@@ -428,6 +428,96 @@ fn execute_runs_a_statement_against_a_catalog_table() {
         Execute::statement("select size from market.eu.fills where size is not null"),
     );
     assert_eq!(cells(&dotted).len(), 2);
+}
+
+#[test]
+fn a_join_source_resolves_against_the_catalog_as_from_does() {
+    let service = service("join");
+    // `trades` and the dotted `market.eu.fills` both resolve to the leaves
+    // the catalog holds: the join reads the second through its own location.
+    let response = answer(
+        &service,
+        Execute::statement(
+            "select symbol, price, size_right from trades \
+             join market.eu.fills using (symbol) where price > 150 order by price desc",
+        )
+        .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    let rows = cells(&response);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(cell(&rows[0], "symbol"), &Scalar::from("MSFT"));
+    assert_eq!(cell(&rows[1], "symbol"), &Scalar::from("AAPL"));
+    assert_eq!(cell(&rows[1], "size_right"), &Scalar::from(100_i64));
+    // A join source inside a nested plan resolves the same way.
+    let nested = answer(
+        &service,
+        Execute::statement(
+            "select symbol from trades \
+             semi join (select symbol from eu.fills where size is null) using (symbol)",
+        )
+        .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    let rows = cells(&nested);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(cell(&rows[0], "symbol"), &Scalar::from("MSFT"));
+    // A join source is refused as a `from` is: an unknown table, and a URL
+    // outside every catalog, by name.
+    let unknown = fault(
+        &service,
+        Execute::statement("select * from trades join nowhere using (symbol)")
+            .with_properties(PropertyList::new().with("Catalog", "market")),
+    );
+    assert_eq!(unknown.code(), &FaultCode::Client);
+    assert!(unknown.string().contains("nowhere"), "{}", unknown.string());
+    let outside = fault(
+        &service,
+        Execute::statement("select * from trades join 'file:///etc/passwd' using (symbol)"),
+    );
+    assert!(outside.string().contains("passwd"), "{}", outside.string());
+}
+
+#[test]
+fn a_url_beside_a_served_catalog_is_outside_it() {
+    // A folder whose name only begins with the catalog's is a sibling, not a
+    // child: the catalog holds a URL on a path boundary or not at all.
+    let root = catalog_root("sibling");
+    seed(&root);
+    let service = Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
+        "market",
+        Holder::folder(&root).expect("the catalog holds"),
+    ));
+    let mut sibling = root.clone().into_os_string();
+    sibling.push("-evil");
+    let sibling = PathBuf::from(sibling);
+    let _ = std::fs::remove_dir_all(&sibling);
+    let mut leaf = Holder::folder(&sibling)
+        .expect("the sibling holds")
+        .child_by_path("secrets.arrows")
+        .expect("a child path");
+    let batch = trades_batch();
+    leaf.overwrite_arrow_reader(
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options"),
+    )
+    .expect("the sibling's leaf is written");
+    let url = yggdryl::Url::from_path(sibling.join("secrets.arrows")).expect("a URL");
+    for statement in [
+        format!("select * from '{url}'"),
+        format!("select * from trades join '{url}' using (symbol)"),
+    ] {
+        let outside = fault(
+            &service,
+            Execute::statement(statement.as_str())
+                .with_properties(PropertyList::new().with("Catalog", "market")),
+        );
+        assert!(
+            outside.string().contains("-evil"),
+            "{statement}: {}",
+            outside.string()
+        );
+    }
+    let _ = std::fs::remove_dir_all(&sibling);
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -786,7 +876,7 @@ fn excel_service(label: &str) -> Service {
             .expect("the table is written");
     }
     Service::new(ServiceOptions::new().with_url("http://127.0.0.1:8080/xmla")).with_catalog(
-        Catalog::new("market", Holder::folder(&root).expect("holds")),
+        FolderCatalog::bound("market", Holder::folder(&root).expect("holds")),
     )
 }
 

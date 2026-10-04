@@ -2,7 +2,10 @@
 //!
 //! A table is a folder and nothing else, so this binding takes the handle a
 //! caller already built with [`crate::iobase::PyIOBase`] and hands it to the core
-//! [`Table`]. Rows cross the boundary the way they do everywhere else here -
+//! [`Table`] - or takes the table's location as it was named and hands that
+//! to the core's own location doors, which is how a table an Amazon S3 Tables
+//! table bucket keeps is reached with nothing built first. Rows cross the
+//! boundary the way they do everywhere else here -
 //! as a `pyarrow.RecordBatchReader` over the Arrow C Stream interface - so a
 //! scan is lazy on both sides and a commit copies nothing.
 //!
@@ -12,30 +15,31 @@
 //! them can be constructed from Python, because only a commit writes one.
 
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyTuple, PyType};
+use pyo3::types::{PyBytes, PyDict, PyString, PyTuple, PyType};
 
-use yggdryl::IOBase as _;
 use yggdryl::holder::Holder;
 use yggdryl::iceberg::{
-    Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
-    ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
-    WriteStaging, assign_field_ids, can_promote, last_column_id, schema_from_json,
-    schema_into_json,
+    Compaction, DataFile, FieldSummary, FormatVersion, IcebergCatalog, IcebergNamespace,
+    IcebergOptions, IcebergTable, ManifestContent, ManifestFile, PartitionField, PartitionSpec,
+    ScanPlan, SchemaUpdate, Snapshot, WriteStaging, assign_field_ids, can_promote, last_column_id,
+    schema_from_json, schema_into_json,
 };
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructType};
+use yggdryl::{Catalog, Handle, IOBase as _, Namespace, Table};
+use yggdryl::{Field as CoreField, Scalar};
 
-use crate::datatype::{PyDataType, core_dtype_from_value};
+use crate::datatype::core_dtype_from_value;
 use crate::enums::{PyMimeType, core_mime_type_from_value};
 use crate::field::{PyField, core_field_from_value};
+use crate::graph::ellipsis;
 use crate::iobase::PyIOBase;
 use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
     core_root_field_from_value, string_pairs_from_value,
 };
-use crate::uri::core_url_from_value;
+use crate::uri::{core_uri_from_value, core_url_from_value};
 use crate::value_error;
 
 /// Read one required key from a private pickle state mapping.
@@ -131,18 +135,67 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
     ))
 }
 
+/// The spec a `partition_by` argument states, none when it was omitted
+/// (`...`): `None` unpartitioned, anything else [`spec_from_value`]'s
+/// reading.
+///
+/// An omitted argument is skipped rather than defaulted here: a location
+/// root hands the absence to the core, whose create derives the spec from
+/// the schema as it stores it, and a handle root - whose core door takes a
+/// spec - reads the schema's own declaration through [`declared_spec`].
+fn stated_spec(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Option<PartitionSpec>> {
+    if value.is(value.py().Ellipsis()) {
+        return Ok(None);
+    }
+    if value.is_none() {
+        return Ok(Some(PartitionSpec::unpartitioned()));
+    }
+    spec_from_value(value, schema).map(Some)
+}
+
+/// The spec a handle root is created under: the one stated, else the
+/// schema's own `PARTITION:by` declaration.
+fn declared_spec(stated: Option<PartitionSpec>, schema: &CoreField) -> PyResult<PartitionSpec> {
+    match stated {
+        Some(spec) => Ok(spec),
+        None => PartitionSpec::from_schema(0, schema).map_err(value_error),
+    }
+}
+
 /// Read a core partition spec out of what Python names one with.
 ///
-/// A sequence of column names is the spelling a caller reaches for, and it
-/// means the identity transform over those columns - the only transform that
-/// can place a row without inverting a hash.
+/// A sequence is a `PARTITION:by` declaration, each entry a projection: a
+/// bare column (`symbol`) an identity field, an epoch function over a column
+/// (`days(ts)`, `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`) or
+/// `truncate(name, 4)` a derived one, an `as alias` naming it. The entries
+/// are declared on a copy of the schema root and read by the core's one rule,
+/// [`PartitionSpec::from_schema`], so a refusal names the entry it could not
+/// honour.
 fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
     }
-    let columns = crate::enums::strings_from_iterable(value, "partition_by")?;
-    let borrowed: Vec<&str> = columns.iter().map(String::as_str).collect();
-    PartitionSpec::identity(0, schema, &borrowed).map_err(value_error)
+    if value.is_instance_of::<PyString>() {
+        return Err(PyTypeError::new_err(
+            "partition_by must be a PartitionSpec or an iterable of entries, not one string",
+        ));
+    }
+    // Text crosses as it is, so a malformed entry is refused naming it; a
+    // `Term` or a `(term, alias)` pair crosses as the text it spells.
+    let mut entries = Vec::new();
+    for entry in value.try_iter()? {
+        let entry = entry?;
+        entries.push(match entry.extract::<String>() {
+            Ok(text) => text,
+            Err(_) => crate::expression::projection_from_value(&entry)?.to_string(),
+        });
+    }
+    let mut declared = schema.clone();
+    declared
+        .as_partition_mut()
+        .set_by_texts(entries)
+        .map_err(value_error)?;
+    PartitionSpec::from_schema(0, &declared).map_err(value_error)
 }
 
 /// Project one Iceberg partition value as the Python value it stands for.
@@ -170,34 +223,6 @@ fn bounds_by_id<'py>(py: Python<'py>, bounds: &[(i32, Vec<u8>)]) -> PyResult<Bou
         mapping.set_item(id, pyo3::types::PyBytes::new(py, value))?;
     }
     Ok(mapping)
-}
-
-/// Read a schema root out of what Python describes a table's columns with.
-///
-/// Everything [`PyTable::create`] accepts passes through the same boundary
-/// helper unchanged; a plain iterable of Fields is assembled into a struct
-/// root besides, because a caller building columns one by one holds exactly
-/// that.
-fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
-    // A native `DataType` exports a capsule for Arrow consumers too, but it
-    // is read as the fields it iterates, exactly as it always was.
-    if value.extract::<PyRef<'_, PyField>>().is_ok()
-        || value.extract::<&str>().is_ok()
-        || (!value.is_instance_of::<PyDataType>() && value.hasattr("__arrow_c_schema__")?)
-    {
-        return core_root_field_from_value(value, DEFAULT_ROOT_NAME);
-    }
-    if let Ok(items) = value.try_iter() {
-        let mut fields = Vec::new();
-        for item in items {
-            fields.push(core_field_from_value(&item?)?);
-        }
-        let dtype = StructType::from_fields(fields)
-            .map(CoreDataType::from)
-            .map_err(value_error)?;
-        return Ok(dtype.required_field(DEFAULT_ROOT_NAME));
-    }
-    core_root_field_from_value(value, DEFAULT_ROOT_NAME)
 }
 
 /// Read a schema root the way [`PyTable::create`] needs it: numbered.
@@ -252,8 +277,43 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
     crate::iobase::folder_holder_for(&url)
 }
 
+/// What a table door's `root` names: a handle in hand, taken as the container
+/// it addresses, or the location of the table as the caller named it - text,
+/// a path-like, a `Url`, or any identifier that locates one - which the core
+/// opens by itself under the properties stated beside it.
+enum TableRoot {
+    /// Boxed: a holder is several times the size of a location.
+    Handle(Box<Holder>),
+    Location(yggdryl::Uri, yggdryl::Properties),
+}
+
+/// Read a table door's `root` and the `properties` stated beside it.
+///
+/// A handle root is reopened as the folder at its location, under the
+/// environment - nothing its builder stated is carried - so properties
+/// beside one have nothing to open and are refused by name rather than
+/// dropped. A location
+/// crosses as the identifier it is - never lowered here: a table bucket's
+/// ARN and a table's ARN state what the location they lower to does not.
+fn table_root_from_value(
+    root: &Bound<'_, PyAny>,
+    properties: Option<&Bound<'_, PyDict>>,
+) -> PyResult<TableRoot> {
+    let properties = crate::warehouse::properties_from_args(None, properties)?;
+    if let Ok(handle) = root.extract::<PyRef<'_, PyIOBase>>() {
+        if let Some((name, _)) = properties.iter().next() {
+            return Err(PyValueError::new_err(format!(
+                "expected no properties beside a handle, which is reopened as the folder at its \
+                 location, got {name:?}; name the table by its location to open it under properties"
+            )));
+        }
+        return handle.folder_holder().map(Box::new).map(TableRoot::Handle);
+    }
+    Ok(TableRoot::Location(core_uri_from_value(root)?, properties))
+}
+
 /// The keyword fields accepted by the `IcebergOptions` constructor.
-const ICEBERG_OPTION_FIELDS: [&str; 12] = [
+const ICEBERG_OPTION_FIELDS: [&str; 11] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -264,7 +324,6 @@ const ICEBERG_OPTION_FIELDS: [&str; 12] = [
     "read_parallel_min_file_size",
     "write_parallelism",
     "write_staging",
-    "compact_after_commits",
     "data_mime_type",
 ];
 
@@ -318,7 +377,6 @@ fn set_iceberg_option(
         "write_staging" => options
             .set_write_staging(write_staging_from_value(value)?)
             .map_err(value_error)?,
-        "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
         "data_mime_type" => options
             .set_data_mime_type(core_mime_type_from_value(value)?)
             .map_err(value_error)?,
@@ -408,7 +466,7 @@ fn iceberg_call_options(
 /// then what declares one. The options value carries only that field; the
 /// data-file format stays the table's own `data_mime_type`.
 fn iceberg_batch_reader(
-    table: Option<&Table<Holder>>,
+    table: Option<&IcebergTable<Handle>>,
     value: &Bound<'_, PyAny>,
 ) -> PyResult<yggdryl::arrow::BatchReader> {
     let mut options = yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::PARQUET)
@@ -429,28 +487,14 @@ fn iceberg_batch_reader(
     batch_reader_from_any(value, &options)
 }
 
-/// Read a batch reader for a write that names its table, not a handle.
-///
-/// A table that already exists declares the schema its rows are typed
-/// against; a create-on-write names none yet, and the rows declare it. The
-/// lookup costs one metadata read on a call that is about to write several.
-fn iceberg_named_batch_reader(
-    tables: &yggdryl::iceberg::Tables<'_, Holder>,
-    name: &str,
-    value: &Bound<'_, PyAny>,
-) -> PyResult<yggdryl::arrow::BatchReader> {
-    let stored = tables.get(name).ok();
-    iceberg_batch_reader(stored.as_ref(), value)
-}
-
 /// Run one table operation under per-call options, restoring the handle after.
 ///
 /// The override is shadowed for exactly the length of the call, so per-call
 /// options never leak into the handle's own configuration.
 fn with_call_options<R>(
-    table: &mut Table<Holder>,
+    table: &mut IcebergTable<Handle>,
     options: Option<IcebergOptions>,
-    operation: impl FnOnce(&mut Table<Holder>) -> PyResult<R>,
+    operation: impl FnOnce(&mut IcebergTable<Handle>) -> PyResult<R>,
 ) -> PyResult<R> {
     let Some(options) = options else {
         return operation(table);
@@ -539,9 +583,6 @@ impl PyIcebergOptions {
         }
         if let Some(value) = self.inner.write_staging() {
             state.set_item("write_staging", value.to_string())?;
-        }
-        if let Some(value) = self.inner.compact_after_commits_option() {
-            state.set_item("compact_after_commits", value)?;
         }
         if let Some(value) = self.inner.data_mime_type_option() {
             state.set_item("data_mime_type", value.as_str())?;
@@ -724,20 +765,6 @@ impl PyIcebergOptions {
             .map_err(value_error)
     }
 
-    /// After how many data commits an automatic compaction runs; `None` - the
-    /// default - never compacts on its own, and 0 reads as off.
-    #[getter]
-    fn compact_after_commits(&self) -> Option<u32> {
-        self.inner.compact_after_commits()
-    }
-
-    #[setter]
-    fn set_compact_after_commits(&mut self, commits: u32) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_compact_after_commits(commits);
-        Ok(())
-    }
-
     /// The MIME type used for new data files. Default: `MimeType.PARQUET`.
     ///
     /// Only what a write produces is decided here: a scan decodes each data
@@ -802,275 +829,317 @@ impl PyIcebergOptions {
     }
 }
 
-/// A warehouse folder of namespaces of Iceberg tables.
+/// A warehouse folder of namespaces of Iceberg tables: the `Catalog`
+/// subclass the Iceberg implementation answers.
 ///
-/// The catalog is a description of where tables live, not proof that any do:
-/// constructing one touches nothing, and every operation resolves its dotted
-/// name - `"nyc.taxis"` is the folder `nyc/taxis` - against the warehouse
-/// handle at the moment it runs. Its collections are
-/// [`namespaces`][Self::namespaces] and [`tables`][Self::tables]; the two
-/// dotted entry points - [`table`][Self::table] and
-/// [`namespace`][Self::namespace] - are kept because a dotted identifier is a
-/// real Iceberg spelling and deserves one call.
-#[pyclass(name = "Catalog", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyCatalog {
-    inner: Catalog<Holder>,
+/// Namespaces nest to any depth, each a folder; `metadata/catalog.json` and
+/// `metadata/namespace.json` keep the stored properties; a table is a folder
+/// laid out as one. The catalog is a description: constructing one touches
+/// nothing, and every question - the views, the children, a dotted path - is
+/// asked of the store when it is asked, through the members every `Catalog`
+/// has.
+#[pyclass(
+    name = "IcebergCatalog",
+    module = "yggdryl._native",
+    extends = crate::warehouse::PyCatalog,
+    skip_from_py_object
+)]
+pub(crate) struct PyIcebergCatalog;
+
+/// The catalog `name` over what `warehouse` names, touching nothing.
+fn iceberg_catalog(name: &str, warehouse: &Bound<'_, PyAny>) -> PyResult<IcebergCatalog> {
+    match crate::warehouse::located_from_value(warehouse)? {
+        crate::warehouse::Located::Handle(holder) => Ok(IcebergCatalog::bound(name, *holder)),
+        crate::warehouse::Located::Url(url) => IcebergCatalog::new(name, url).map_err(value_error),
+    }
 }
 
 #[pymethods]
-impl PyCatalog {
-    // A catalog is a live external-resource handle, not a value snapshot.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// Describe a catalog over a warehouse folder, touching nothing.
-    ///
-    /// `warehouse` accepts an [`IOBase`][crate::iobase::PyIOBase] handle or
-    /// anything that names a folder location: a string, a path-like, a
-    /// [`Url`][crate::uri::PyUrl].
+impl PyIcebergCatalog {
+    /// The catalog `name` over the warehouse folder `warehouse` names - an
+    /// `IOBase` handle binds it, a `Url`, a string or a path-like names it -
+    /// touching nothing. `properties` and the keywords are what the catalog
+    /// states, which its folder and every object under it open with.
     #[new]
-    fn new(warehouse: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self {
-            inner: Catalog::new(folder_holder_from_value(warehouse)?),
-        })
-    }
-
-    /// The warehouse folder the catalog resolves names against.
-    #[getter]
-    fn warehouse(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let url = self
-            .inner
-            .warehouse()
-            .url()
-            .ok_or_else(|| PyValueError::new_err("this catalog has no location"))?;
-        crate::iobase::describe(py, crate::iobase::folder_holder_for(url)?)
-    }
-
-    /// Open the table a dotted name addresses - the one-call spelling of
-    /// `catalog.tables[name]`.
-    fn table(&self, name: &str) -> PyResult<PyTable> {
-        self.inner
-            .table(name)
-            .map(PyTable::from_core)
-            .map_err(value_error)
-    }
-
-    /// The namespace a dotted name addresses, as a view.
-    ///
-    /// The view exists whether or not the folder does, exactly as a handle
-    /// describes a location without proof, so asking for one never fails.
-    fn namespace(slf: &Bound<'_, Self>, name: String) -> PyNamespace {
-        PyNamespace {
-            catalog: slf.clone().unbind(),
-            name,
-        }
-    }
-
-    /// Append `data` to the named table, creating it on first write.
-    ///
-    /// A table that is not there yet takes its schema from the rows: partition
-    /// marks riding the Arrow fields' metadata become the spec, so a marked
-    /// schema lays its files out partitioned from the very first append.
-    /// `options` configures this write. Returns the table so the caller can
-    /// keep going.
-    #[pyo3(signature = (name, data, *, options = None, **properties))]
-    fn append(
-        &self,
+    #[pyo3(signature = (name, warehouse, *, description = None, properties = None, **keywords))]
+    fn new(
         name: &str,
-        data: &Bound<'_, PyAny>,
-        options: Option<&Bound<'_, PyAny>>,
-        properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options(options, properties, None)?;
-        let tables = self.inner.tables();
-        let data = iceberg_named_batch_reader(&tables, name, data)?;
-        tables
-            .append_arrow_reader_with_options(name, data, resolved)
-            .map(PyTable::from_core)
-            .map_err(value_error)
+        warehouse: &Bound<'_, PyAny>,
+        description: Option<&str>,
+        properties: Option<&Bound<'_, PyAny>>,
+        keywords: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let mut catalog = iceberg_catalog(name, warehouse)?.with_properties(
+            crate::warehouse::properties_from_args(properties, keywords)?,
+        );
+        if let Some(description) = description {
+            catalog = catalog.with_description(description);
+        }
+        Ok(crate::warehouse::catalog_base(Catalog::from(catalog)).add_subclass(Self))
     }
 
-    /// Replace the named table's rows with `data`, creating it on first write.
-    ///
-    /// An existing table keeps its previous snapshot readable, which is what
-    /// makes the overwrite reversible. `options` configures this write.
-    /// Returns the table so the caller can keep going.
-    #[pyo3(signature = (name, data, *, options = None, **properties))]
-    fn overwrite(
-        &self,
+    /// Create the catalog `name` in `warehouse`, writing its
+    /// `metadata/catalog.json`; the write is what creates the folder, and a
+    /// folder already holding anything is a conflict.
+    #[classmethod]
+    fn create(
+        cls: &Bound<'_, PyType>,
         name: &str,
-        data: &Bound<'_, PyAny>,
-        options: Option<&Bound<'_, PyAny>>,
-        properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options(options, properties, None)?;
-        let tables = self.inner.tables();
-        let data = iceberg_named_batch_reader(&tables, name, data)?;
-        tables
-            .overwrite_arrow_reader_with_options(name, data, resolved)
-            .map(PyTable::from_core)
-            .map_err(value_error)
+        warehouse: &Bound<'_, PyAny>,
+    ) -> PyResult<Py<Self>> {
+        let catalog = IcebergCatalog::create(name, folder_holder_from_value(warehouse)?)
+            .map_err(value_error)?;
+        Py::new(
+            cls.py(),
+            crate::warehouse::catalog_base(Catalog::from(catalog)).add_subclass(Self),
+        )
     }
 
-    /// The catalog's namespaces, as a lazy map-oriented view.
-    ///
-    /// Constructing the view performs no I/O: membership, iteration, and
-    /// length consult storage when asked, and indexing answers a
-    /// [`Namespace`][PyNamespace]. This is the one collection spelling -
-    /// `catalog.namespaces["sales"].tables["orders"]` chains to a table.
-    #[getter]
-    fn namespaces(slf: &Bound<'_, Self>) -> PyNamespaces {
-        PyNamespaces {
-            catalog: slf.clone().unbind(),
-            parent: None,
-        }
-    }
-
-    /// The catalog's tables, as the same lazy view over dotted names.
-    ///
-    /// `catalog.tables["sales.eu.orders"]` descends; an un-dotted name
-    /// addresses a table directly under the warehouse root, and iterating
-    /// lists exactly those.
-    #[getter]
-    fn tables(slf: &Bound<'_, Self>) -> PyTables {
-        PyTables {
-            catalog: slf.clone().unbind(),
-            namespace: None,
-        }
-    }
-
-    /// The catalog's own properties, from `metadata/catalog.json`.
-    ///
-    /// Absent means empty - never an error a caller has to catch.
-    #[getter]
-    fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let properties = PyDict::new(py);
-        for (key, value) in &self.inner.properties().map_err(value_error)? {
-            properties.set_item(key, value)?;
-        }
-        Ok(properties)
-    }
-
-    /// Set and remove catalog properties as one transactional write.
-    ///
-    /// `updates` is a mapping or a sequence of `(key, value)` pairs and
-    /// `removes` an iterable of keys; the updates land first, so a key named
-    /// by both ends up removed. A call given neither writes nothing at all.
-    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
-    #[pyo3(signature = (updates = None, removes = None))]
-    fn update_properties(
-        &self,
-        updates: Option<&Bound<'_, PyAny>>,
-        removes: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<()> {
-        let updates = match updates {
-            Some(value) => string_pairs_from_value(value)?,
-            None => Vec::new(),
-        };
-        let removes = match removes {
-            Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
-            None => Vec::new(),
-        };
-        if updates.is_empty() && removes.is_empty() {
-            return Ok(());
-        }
-        self.inner
-            .update_properties(updates, removes)
-            .map_err(value_error)
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "Catalog({:?})",
-            self.inner
-                .warehouse()
-                .url()
-                .map_or_else(|| "<memory>".to_owned(), ToString::to_string),
+    /// The catalog `name` over `warehouse`, created when the folder is not
+    /// there yet; a table or a file in its place is refused by name.
+    #[classmethod]
+    fn open_or_create(
+        cls: &Bound<'_, PyType>,
+        name: &str,
+        warehouse: &Bound<'_, PyAny>,
+    ) -> PyResult<Py<Self>> {
+        let catalog = IcebergCatalog::open_or_create(name, folder_holder_from_value(warehouse)?)
+            .map_err(value_error)?;
+        Py::new(
+            cls.py(),
+            crate::warehouse::catalog_base(Catalog::from(catalog)).add_subclass(Self),
         )
     }
 }
 
-/// An Iceberg table reached entirely through one container handle.
-#[pyclass(name = "Table", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyTable {
-    inner: Table<Holder>,
+/// One namespace of an Iceberg catalog - a folder under the warehouse, its
+/// `metadata/namespace.json` the stored properties - as the `Namespace`
+/// subclass the Iceberg implementation answers.
+#[pyclass(
+    name = "IcebergNamespace",
+    module = "yggdryl._native",
+    extends = crate::warehouse::PyNamespace,
+    skip_from_py_object
+)]
+pub(crate) struct PyIcebergNamespace;
+
+#[pymethods]
+impl PyIcebergNamespace {
+    /// The namespace at `path` - dotted text or parts, its catalog's name
+    /// first - over the folder `location` names, touching nothing: an
+    /// `IOBase` handle binds the folder, a `Url`, a string or a path-like
+    /// names it. `properties` and the keywords are what the namespace states.
+    #[new]
+    #[pyo3(signature = (path, location, *, properties = None, **keywords))]
+    fn new(
+        path: &Bound<'_, PyAny>,
+        location: &Bound<'_, PyAny>,
+        properties: Option<&Bound<'_, PyAny>>,
+        keywords: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let path = crate::warehouse::object_path_from_value(path)?;
+        let namespace = match crate::warehouse::located_from_value(location)? {
+            crate::warehouse::Located::Handle(holder) => IcebergNamespace::bound(path, *holder),
+            crate::warehouse::Located::Url(url) => IcebergNamespace::new(path, url),
+        }
+        .map_err(value_error)?
+        .with_properties(crate::warehouse::properties_from_args(
+            properties, keywords,
+        )?);
+        Ok(crate::warehouse::namespace_base(Namespace::from(namespace)).add_subclass(Self))
+    }
 }
 
-impl PyTable {
-    fn from_core(inner: Table<Holder>) -> Self {
-        Self { inner }
+/// An Iceberg table reached entirely through one container handle: the
+/// `Table` subclass an Iceberg implementation answers, so every member of a
+/// warehouse table - the path, the properties, the record surface of
+/// `IOBase` - is here beside the table's own.
+#[pyclass(
+    name = "IcebergTable",
+    module = "yggdryl._native",
+    extends = crate::warehouse::PyTable,
+    skip_from_py_object
+)]
+pub(crate) struct PyIcebergTable;
+
+/// The Iceberg table a holder is, when it holds one.
+fn iceberg_of(holder: &Holder) -> PyResult<&IcebergTable<Handle>> {
+    match holder {
+        Holder::Table(table) => match table.as_ref() {
+            Table::Iceberg(table) => Ok(table),
+            other => Err(not_iceberg(other)),
+        },
+        _ => Err(PyValueError::new_err(
+            "expected a handle holding an Iceberg table, got another handle",
+        )),
     }
+}
+
+/// The Iceberg table a holder is, mutably.
+fn iceberg_of_mut(holder: &mut Holder) -> PyResult<&mut IcebergTable<Handle>> {
+    match holder {
+        Holder::Table(table) => match table.as_mut() {
+            Table::Iceberg(table) => Ok(table),
+            other => Err(not_iceberg(other)),
+        },
+        _ => Err(PyValueError::new_err(
+            "expected a handle holding an Iceberg table, got another handle",
+        )),
+    }
+}
+
+fn not_iceberg(table: &Table) -> PyErr {
+    PyValueError::new_err(format!(
+        "expected an Iceberg table, got {table} held by another implementation"
+    ))
+}
+
+/// Borrow the Iceberg table below this object.
+fn held<'a>(slf: &'a PyRef<'_, PyIcebergTable>) -> PyResult<&'a IcebergTable<Handle>> {
+    iceberg_of(slf.as_super().as_super().inner()?)
+}
+
+/// Borrow the Iceberg table below this object, mutably.
+fn held_mut<'a>(
+    slf: &'a mut PyRefMut<'_, PyIcebergTable>,
+) -> PyResult<&'a mut IcebergTable<Handle>> {
+    iceberg_of_mut(slf.as_super().as_super().inner_mut()?)
+}
+
+/// The object an Iceberg table crosses as: the `Table` base over the handle,
+/// then this class.
+fn described_table(py: Python<'_>, table: IcebergTable<Handle>) -> PyResult<Py<PyIcebergTable>> {
+    Py::new(
+        py,
+        crate::warehouse::table_base(Table::from(table)).add_subclass(PyIcebergTable),
+    )
 }
 
 #[pymethods]
-impl PyTable {
-    // A table is a mutable external-resource handle with cached planning state.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
+impl PyIcebergTable {
     /// Create a table, writing its first metadata document.
     ///
-    /// `partition_by` accepts a [`PartitionSpec`] or the column names to
-    /// partition on; the default is unpartitioned. Unnumbered schema columns
+    /// `root` is the container handle the table lives in, or its location -
+    /// a string, a path-like, a `Url`, a `Uri` or an `Arn` - which the core
+    /// opens by itself under `properties`: a folder any backend holds, or
+    /// `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
+    /// Tables table bucket keeps, registered there and committed through
+    /// its control plane, its namespace made on the way where the bucket
+    /// does not hold it.
+    ///
+    /// `partition_by` accepts a [`PartitionSpec`] or the `PARTITION:by`
+    /// entries to partition on - `symbol`, `days(ts)`, `minutes(ts, 15)`,
+    /// `truncate(name, 4) as prefix` - read by the core's one rule; omitted,
+    /// the schema's own declaration is read the same way, and `None` - like a
+    /// schema declaring nothing - is unpartitioned. Unnumbered schema columns
     /// are numbered automatically, so a plain `PyArrow` schema works as it is;
     /// a schema that already carries field identifiers keeps every one of them.
+    ///
+    /// `format_version` omitted is 2 over a handle; over a location it is
+    /// the `format-version` property, else the lowest version that states
+    /// the schema - 3 for a nanosecond timestamp, a variant or an unknown
+    /// column, else 2.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None, **properties))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn create(
-        _cls: &Bound<'_, PyType>,
-        root: &PyIOBase,
+        cls: &Bound<'_, PyType>,
+        root: &Bound<'_, PyAny>,
         schema: &Bound<'_, PyAny>,
-        partition_by: Option<&Bound<'_, PyAny>>,
+        partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<Self>> {
+        let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = match partition_by {
-            Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
-        };
-        let version = match format_version {
-            Some(value) => format_version_from_value(value)?,
-            None => FormatVersion::V2,
-        };
-        Table::create(root.folder_holder()?, version, schema, spec)
-            .map(Self::from_core)
-            .map_err(value_error)
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version.map(format_version_from_value).transpose()?;
+        // Detached: the core writes to storage and, by a location, asks a
+        // service, and a core thread that logs takes the GIL.
+        let py = cls.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                let version = version.unwrap_or(FormatVersion::V2);
+                py.detach(move || {
+                    IcebergTable::create(Handle::from(*holder), version, schema, spec)
+                })
+            }
+            TableRoot::Location(location, properties) => py.detach(move || {
+                IcebergTable::create_from_url(&location, &properties, version, schema, spec)
+            }),
+        }
+        .map_err(value_error)?;
+        described_table(py, table)
     }
 
-    /// Open the table a container handle addresses.
-    #[classmethod]
-    fn open(_cls: &Bound<'_, PyType>, root: &PyIOBase) -> PyResult<Self> {
-        Table::open(root.folder_holder()?)
-            .map(Self::from_core)
-            .map_err(value_error)
+    /// Open the table `root` names: `IcebergTable(root)`, since `open()` is
+    /// the scope every handle has.
+    ///
+    /// A container handle is the folder the table lives in, and its current
+    /// metadata document is read. A location - a string, a path-like, a
+    /// `Url`, a `Uri` or an `Arn` - is opened by the core under
+    /// `properties`: a folder any backend holds, or a table an Amazon S3
+    /// Tables table bucket keeps, named `s3tables://<bucket>/<namespace>/<table>`
+    /// or by its own ARN.
+    #[new]
+    #[pyo3(signature = (root, **properties))]
+    fn new(
+        root: &Bound<'_, PyAny>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        // Detached: the core reads storage and, by a location, asks a
+        // service, and a core thread that logs takes the GIL.
+        let py = root.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                py.detach(move || IcebergTable::open(Handle::from(*holder)))
+            }
+            TableRoot::Location(location, properties) => {
+                py.detach(move || IcebergTable::from_url(&location, &properties))
+            }
+        }
+        .map_err(value_error)?;
+        Ok(crate::warehouse::table_base(Table::from(table)).add_subclass(Self))
     }
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// Like [`Self::create`], unnumbered schema columns are numbered
-    /// automatically; an existing table is opened as it is and `schema`
-    /// describes only the table this call would create.
+    /// `root`, `format_version` and `properties` are read as
+    /// [`Self::create`] reads them. Like it, unnumbered schema columns are
+    /// numbered automatically; an existing table is opened as it is and
+    /// `schema` describes only the table this call would create.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = None, *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None, **properties))]
+    #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn open_or_create(
-        _cls: &Bound<'_, PyType>,
-        root: &PyIOBase,
+        cls: &Bound<'_, PyType>,
+        root: &Bound<'_, PyAny>,
         schema: &Bound<'_, PyAny>,
-        partition_by: Option<&Bound<'_, PyAny>>,
+        partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Py<Self>> {
+        let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = match partition_by {
-            Some(value) => spec_from_value(value, &schema)?,
-            None => PartitionSpec::unpartitioned(),
-        };
-        let version = match format_version {
-            Some(value) => format_version_from_value(value)?,
-            None => FormatVersion::V2,
-        };
-        Table::open_or_create(root.folder_holder()?, version, schema, spec)
-            .map(Self::from_core)
-            .map_err(value_error)
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version.map(format_version_from_value).transpose()?;
+        // Detached, as `create` is.
+        let py = cls.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                let version = version.unwrap_or(FormatVersion::V2);
+                py.detach(move || {
+                    IcebergTable::open_or_create(Handle::from(*holder), version, schema, spec)
+                })
+            }
+            TableRoot::Location(location, properties) => py.detach(move || {
+                IcebergTable::open_or_create_from_url(&location, &properties, version, schema, spec)
+            }),
+        }
+        .map_err(value_error)?;
+        described_table(py, table)
     }
 
     /// The folder the table lives in.
@@ -1080,8 +1149,10 @@ impl PyTable {
     /// a table on a foreign Arrow filesystem must hand back a folder on that
     /// filesystem, not the local path its URL happens to spell.
     #[getter]
-    fn root(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let root = self.inner.root();
+    fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let root = table.root().get().map_err(value_error)?;
         if let Some(holder) = crate::iobase::fs_folder_holder(root) {
             return crate::iobase::describe(py, holder);
         }
@@ -1093,44 +1164,66 @@ impl PyTable {
 
     /// The table's base location, as a URI.
     #[getter]
-    fn location(&self) -> &str {
-        self.inner.metadata().location()
+    fn location(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table.metadata().map_err(value_error)?.location().to_owned())
     }
 
     /// The revision of the specification the metadata is written to.
     #[getter]
-    fn format_version(&self) -> i32 {
-        self.inner.metadata().format_version().number()
+    fn format_version(slf: &Bound<'_, Self>) -> PyResult<i32> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
+            .metadata()
+            .map_err(value_error)?
+            .format_version()
+            .number())
     }
 
     /// The stable identifier of the table itself.
     #[getter]
-    fn table_uuid(&self) -> &str {
-        self.inner.metadata().table_uuid()
+    fn table_uuid(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
+            .metadata()
+            .map_err(value_error)?
+            .table_uuid()
+            .to_owned())
     }
 
     /// The version number of the current metadata document.
     #[getter]
-    fn version(&self) -> u32 {
-        self.inner.metadata_version()
+    fn version(slf: &Bound<'_, Self>) -> PyResult<u32> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table.metadata_version().map_err(value_error)
     }
 
     /// The name of the current metadata document.
     #[getter]
-    fn metadata_file_name(&self) -> String {
-        self.inner.metadata_file_name()
+    fn metadata_file_name(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table.metadata_file_name().map_err(value_error)
     }
 
     /// The location of the current metadata document, as a URI.
     #[getter]
-    fn metadata_location(&self) -> PyResult<String> {
-        self.inner.metadata_location().map_err(value_error)
+    fn metadata_location(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table.metadata_location().map_err(value_error)
     }
 
     /// The schema new data is written against.
     #[getter]
-    fn schema(&self) -> PyResult<PyField> {
-        self.inner
+    fn schema(slf: &Bound<'_, Self>) -> PyResult<PyField> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table
             .schema()
             .cloned()
             .map(PyField::from_inner)
@@ -1139,9 +1232,12 @@ impl PyTable {
 
     /// The partition spec new data is written against.
     #[getter]
-    fn spec(&self) -> PyResult<PyPartitionSpec> {
-        self.inner
+    fn spec(slf: &Bound<'_, Self>) -> PyResult<PyPartitionSpec> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table
             .metadata()
+            .map_err(value_error)?
             .default_spec()
             .cloned()
             .map(PyPartitionSpec::from_core)
@@ -1153,51 +1249,51 @@ impl PyTable {
     /// A table that has been created but never written has none, which is not a
     /// failure: it simply reads as no rows.
     #[getter]
-    fn current_snapshot(&self) -> Option<PySnapshot> {
-        self.inner
+    fn current_snapshot(slf: &Bound<'_, Self>) -> PyResult<Option<PySnapshot>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
             .current_snapshot()
+            .map_err(value_error)?
             .cloned()
-            .map(PySnapshot::from_core)
+            .map(PySnapshot::from_core))
     }
 
     /// Every retained snapshot, oldest first.
     #[getter]
-    fn snapshots(&self) -> Vec<PySnapshot> {
-        self.inner
+    fn snapshots(slf: &Bound<'_, Self>) -> PyResult<Vec<PySnapshot>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
             .metadata()
+            .map_err(value_error)?
             .snapshots()
             .iter()
             .cloned()
             .map(PySnapshot::from_core)
-            .collect()
-    }
-
-    /// The free-form table properties the metadata document carries.
-    #[getter]
-    fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let properties = PyDict::new(py);
-        for (key, value) in self.inner.metadata().properties() {
-            properties.set_item(key.as_str(), value.as_str())?;
-        }
-        Ok(properties)
+            .collect())
     }
 
     /// Every schema the table has had, by identifier.
     #[getter]
-    fn schemas(&self) -> Vec<PyField> {
-        self.inner
+    fn schemas(slf: &Bound<'_, Self>) -> PyResult<Vec<PyField>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
             .metadata()
+            .map_err(value_error)?
             .schemas()
             .iter()
             .cloned()
             .map(PyField::from_inner)
-            .collect()
+            .collect())
     }
 
     /// Every manifest the current snapshot points at.
-    fn manifests(&self) -> PyResult<Vec<PyManifestFile>> {
-        Ok(self
-            .inner
+    fn manifests(slf: &Bound<'_, Self>) -> PyResult<Vec<PyManifestFile>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
             .manifests()
             .map_err(value_error)?
             .into_iter()
@@ -1213,8 +1309,10 @@ impl PyTable {
     /// manifest list that may be gone. An identifier the table no longer
     /// retains is a `ValueError` naming it and the ones it does, the same
     /// failure [`scan_at`](Self::scan_at) reports for the same reason.
-    fn manifests_at(&self, snapshot_id: i64) -> PyResult<Vec<PyManifestFile>> {
-        let metadata = self.inner.metadata();
+    fn manifests_at(slf: &Bound<'_, Self>, snapshot_id: i64) -> PyResult<Vec<PyManifestFile>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let metadata = table.metadata().map_err(value_error)?;
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
             let retained: Vec<String> = metadata
                 .snapshots()
@@ -1226,8 +1324,7 @@ impl PyTable {
                 retained.join(", ")
             ))
         })?;
-        Ok(self
-            .inner
+        Ok(table
             .manifests_at(snapshot)
             .map_err(value_error)?
             .into_iter()
@@ -1237,9 +1334,10 @@ impl PyTable {
 
     /// Every live data file of the current snapshot, with the spec it was
     /// written under.
-    fn data_files(&self) -> PyResult<Vec<(PyDataFile, PyPartitionSpec)>> {
-        Ok(self
-            .inner
+    fn data_files(slf: &Bound<'_, Self>) -> PyResult<Vec<(PyDataFile, PyPartitionSpec)>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        Ok(table
             .data_files()
             .map_err(value_error)?
             .into_iter()
@@ -1262,17 +1360,18 @@ impl PyTable {
     /// `options` configures this scan.
     #[pyo3(signature = (field = None, *, options = None, **properties))]
     fn scan<'py>(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(&mut self.inner, resolved, |table| {
+        let reader = with_call_options(table, resolved, |table| {
             table.scan(field.as_ref()).map_err(value_error)
         })?;
         batch_reader_to_pyarrow(py, reader)
@@ -1290,19 +1389,20 @@ impl PyTable {
     /// they mean on [`scan`](Self::scan).
     #[pyo3(signature = (filters = None, field = None, *, options = None, **properties))]
     fn scan_where<'py>(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         py: Python<'py>,
         filters: Option<&Bound<'_, PyAny>>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(&mut self.inner, resolved, |table| {
+        let reader = with_call_options(table, resolved, |table| {
             table
                 .scan_where(&borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
@@ -1318,7 +1418,7 @@ impl PyTable {
     /// A name the table does not carry is an error naming the refs it does.
     #[pyo3(signature = (name, filters = None, field = None, *, options = None, **properties))]
     fn scan_ref<'py>(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         py: Python<'py>,
         name: &str,
         filters: Option<&Bound<'_, PyAny>>,
@@ -1326,12 +1426,13 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(&mut self.inner, resolved, |table| {
+        let reader = with_call_options(table, resolved, |table| {
             table
                 .scan_ref(name, &borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
@@ -1348,17 +1449,18 @@ impl PyTable {
     /// settle are tested against the rows.
     #[pyo3(signature = (filter, schema = None))]
     fn scan_matching<'py>(
-        &self,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         filter: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
         let filter = crate::expression::filter_from_value(filter)?;
         let field = schema
             .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = self
-            .inner
+        let reader = table
             .scan_matching(filter, field.as_ref())
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
@@ -1370,12 +1472,14 @@ impl PyTable {
     /// `manifests_skipped`, and `record_count`, so "a filtered read touches
     /// only the files the metadata says it must" is a number a caller checks.
     fn plan_matching<'py>(
-        &self,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         filter: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
         let filter = crate::expression::filter_from_value(filter)?;
-        let plan = self.inner.plan_matching(filter).map_err(value_error)?;
+        let plan = table.plan_matching(filter).map_err(value_error)?;
         let answer = pyo3::types::PyDict::new(py);
         answer.set_item("tasks", plan.tasks.len())?;
         answer.set_item("files_skipped", plan.files_skipped())?;
@@ -1391,32 +1495,37 @@ impl PyTable {
     /// configuration.
     #[pyo3(signature = (batches, *, options = None, **properties))]
     fn append(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
-        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
-        with_call_options(&mut self.inner, resolved, |table| {
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
+        let batches = iceberg_batch_reader(Some(&*table), batches)?;
+        with_call_options(table, resolved, |table| {
             table.commit_append(batches).map_err(value_error)
         })
     }
 
-    /// Replace every row with `batches` as a new snapshot.
+    /// Replace the partitions `batches` fall in as a new snapshot: every
+    /// row of an unpartitioned table, and of a partitioned one the
+    /// partitions the rows touch - no row replaces nothing there, and
+    /// `overwrite_where(None, [])` empties it.
     ///
     /// `options` configures this write as it does
     /// [`append`](Self::append).
     #[pyo3(signature = (batches, *, options = None, **properties))]
     fn overwrite(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
-        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
-        with_call_options(&mut self.inner, resolved, |table| {
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
+        let batches = iceberg_batch_reader(Some(&*table), batches)?;
+        with_call_options(table, resolved, |table| {
             table.commit_overwrite(batches).map_err(value_error)
         })
     }
@@ -1434,16 +1543,17 @@ impl PyTable {
     /// and retries with fresh input.
     #[pyo3(signature = (filters, batches, *, options = None, **properties))]
     fn overwrite_where(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
-        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
-        with_call_options(&mut self.inner, resolved, |table| {
+        let batches = iceberg_batch_reader(Some(&*table), batches)?;
+        with_call_options(table, resolved, |table| {
             table
                 .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
                 .map_err(value_error)
@@ -1466,17 +1576,18 @@ impl PyTable {
     /// storing a silently wrapped one.
     #[pyo3(signature = (batches, merge_by, *, safe = true, options = None, **properties))]
     fn merge(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         batches: &Bound<'_, PyAny>,
         merge_by: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let keys = crate::expression::selector_from_value(merge_by)?;
-        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
-        with_call_options(&mut self.inner, resolved, |table| {
+        let batches = iceberg_batch_reader(Some(&*table), batches)?;
+        with_call_options(table, resolved, |table| {
             table
                 .commit_merge(batches, &keys, safe)
                 .map_err(value_error)
@@ -1493,7 +1604,7 @@ impl PyTable {
     /// [`merge`](Self::merge).
     #[pyo3(signature = (filters, batches, merge_by, *, safe = true, options = None, **properties))]
     fn merge_where(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
         merge_by: &Bound<'_, PyAny>,
@@ -1501,11 +1612,12 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let keys = crate::expression::selector_from_value(merge_by)?;
-        let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
-        with_call_options(&mut self.inner, resolved, |table| {
+        let batches = iceberg_batch_reader(Some(&*table), batches)?;
+        with_call_options(table, resolved, |table| {
             table
                 .commit_merge_where(&borrowed_pairs(&pairs), batches, &keys, safe)
                 .map_err(value_error)
@@ -1519,25 +1631,28 @@ impl PyTable {
     /// override lives on this handle alone - it is never written to the
     /// table; [`update_properties`](Self::update_properties) is what stores a
     /// setting on the table itself.
-    fn set_options(&mut self, options: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner
-            .set_options(core_iceberg_options_from_value(options)?);
+    fn set_options(mut slf: PyRefMut<'_, Self>, options: &Bound<'_, PyAny>) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
+        table.set_options(core_iceberg_options_from_value(options)?);
         Ok(())
     }
 
     /// Resolve this table's effective options, field by field: the explicit
     /// override, then the table property of the same name, then the default.
-    fn options(&self) -> PyResult<PyIcebergOptions> {
-        self.inner
+    fn options(slf: &Bound<'_, Self>) -> PyResult<PyIcebergOptions> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table
             .options()
             .map(PyIcebergOptions::from_core)
             .map_err(value_error)
     }
 
     /// Add a schema, make it current, and write a new metadata document.
-    fn evolve_schema(&mut self, schema: &Bound<'_, PyAny>) -> PyResult<i32> {
+    fn evolve_schema(mut slf: PyRefMut<'_, Self>, schema: &Bound<'_, PyAny>) -> PyResult<i32> {
+        let table = held_mut(&mut slf)?;
         let schema = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
-        self.inner.evolve_schema(schema).map_err(value_error)
+        table.evolve_schema(schema).map_err(value_error)
     }
 
     /// Read one retained snapshot's rows: time travel as an ordinary scan.
@@ -1549,7 +1664,7 @@ impl PyTable {
     /// keeps the columns it names, exactly as `scan` does.
     #[pyo3(signature = (snapshot_id, filters = None, schema = None, *, options = None, **properties))]
     fn scan_at<'py>(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         py: Python<'py>,
         snapshot_id: i64,
         filters: Option<&Bound<'_, PyAny>>,
@@ -1557,12 +1672,13 @@ impl PyTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let resolved = iceberg_call_options(options, properties, self.inner.explicit_options())?;
+        let table = held_mut(&mut slf)?;
+        let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = schema
             .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(&mut self.inner, resolved, |table| {
+        let reader = with_call_options(table, resolved, |table| {
             table
                 .scan_at(snapshot_id, &borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
@@ -1579,12 +1695,11 @@ impl PyTable {
     /// takes, so a caller can assert on the pruning before paying for the
     /// read.
     #[pyo3(signature = (filters = None))]
-    fn plan(&self, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
+    fn plan(slf: &Bound<'_, Self>, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let plan = self
-            .inner
-            .plan(&borrowed_pairs(&pairs))
-            .map_err(value_error)?;
+        let plan = table.plan(&borrowed_pairs(&pairs)).map_err(value_error)?;
         PyScanPlan::from_core(&plan).map_err(value_error)
     }
 
@@ -1596,13 +1711,14 @@ impl PyTable {
     /// the numbers the present reports.
     #[pyo3(signature = (snapshot_id, filters = None))]
     fn plan_at(
-        &self,
+        slf: &Bound<'_, Self>,
         snapshot_id: i64,
         filters: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyScanPlan> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let plan = self
-            .inner
+        let plan = table
             .plan_at(snapshot_id, &borrowed_pairs(&pairs))
             .map_err(value_error)?;
         PyScanPlan::from_core(&plan).map_err(value_error)
@@ -1614,25 +1730,24 @@ impl PyTable {
     /// commit's parent is always the current snapshot - so a branch is read
     /// with [`scan_ref`](Self::scan_ref) and moved with
     /// [`fast_forward`](Self::fast_forward).
-    fn create_branch(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
-        self.inner
-            .create_branch(name, snapshot_id)
-            .map_err(value_error)
+    fn create_branch(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
+        table.create_branch(name, snapshot_id).map_err(value_error)
     }
 
     /// Create a tag at one retained snapshot, as one metadata commit.
-    fn create_tag(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
-        self.inner
-            .create_tag(name, snapshot_id)
-            .map_err(value_error)
+    fn create_tag(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
+        table.create_tag(name, snapshot_id).map_err(value_error)
     }
 
     /// Remove one branch or tag, as one metadata commit.
     ///
     /// A name the table does not have is an error rather than an empty
     /// commit.
-    fn remove_ref(&mut self, name: &str) -> PyResult<()> {
-        self.inner
+    fn remove_ref(mut slf: PyRefMut<'_, Self>, name: &str) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
+        table
             .remove_snapshot_ref(name)
             .map(|_| ())
             .map_err(value_error)
@@ -1644,8 +1759,9 @@ impl PyTable {
     /// parent identifiers, so a fast-forward can never lose history: it is the
     /// one way a branch other than `main` moves, since a commit's parent is
     /// always the current snapshot.
-    fn fast_forward(&mut self, name: &str, snapshot_id: i64) -> PyResult<()> {
-        self.inner
+    fn fast_forward(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
+        table
             .fast_forward_branch(name, snapshot_id)
             .map_err(value_error)
     }
@@ -1657,13 +1773,14 @@ impl PyTable {
     /// Statistics metadata is removed, while physical files remain.
     #[pyo3(signature = (older_than_ms = None, retain_last = None, snapshot_ids = None))]
     fn expire_snapshots(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         older_than_ms: Option<i64>,
         retain_last: Option<usize>,
         snapshot_ids: Option<Vec<i64>>,
     ) -> PyResult<Vec<i64>> {
+        let table = held_mut(&mut slf)?;
         let snapshot_ids = snapshot_ids.unwrap_or_default();
-        self.inner
+        table
             .expire_snapshots(older_than_ms, retain_last, &snapshot_ids)
             .map_err(value_error)
     }
@@ -1672,8 +1789,10 @@ impl PyTable {
     ///
     /// The `main` branch follows the current snapshot, so a table that has
     /// been written to always answers for it.
-    fn snapshot_by_ref(&self, name: &str) -> PyResult<PySnapshot> {
-        self.inner
+    fn snapshot_by_ref(slf: &Bound<'_, Self>, name: &str) -> PyResult<PySnapshot> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table
             .snapshot_by_ref(name)
             .cloned()
             .map(PySnapshot::from_core)
@@ -1686,8 +1805,10 @@ impl PyTable {
     /// to the schema root's `ICEBERG:` protocol property of the same name and
     /// then to Iceberg's own 512 MiB default.
     #[getter]
-    fn target_file_size(&self) -> PyResult<u64> {
-        self.inner.target_file_size_bytes().map_err(value_error)
+    fn target_file_size(slf: &Bound<'_, Self>) -> PyResult<u64> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        table.target_file_size_bytes().map_err(value_error)
     }
 
     /// Merge the current snapshot's undersized data files, partition by
@@ -1695,8 +1816,9 @@ impl PyTable {
     ///
     /// A table with nothing to compact is left exactly as it is: no snapshot
     /// is committed and the returned [`PyCompaction`] is all zeros.
-    fn compact(&mut self) -> PyResult<PyCompaction> {
-        self.inner
+    fn compact(mut slf: PyRefMut<'_, Self>) -> PyResult<PyCompaction> {
+        let table = held_mut(&mut slf)?;
+        table
             .compact()
             .map(PyCompaction::from_core)
             .map_err(value_error)
@@ -1706,8 +1828,10 @@ impl PyTable {
     ///
     /// The columns are `made_current_at`, `snapshot_id`, `parent_id`, and
     /// `is_current_ancestor`, the names `PyIceberg`'s `history` table uses.
-    fn inspect_history<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.inspect_history().map_err(value_error)?;
+    fn inspect_history<'py>(slf: &Bound<'_, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let reader = table.inspect_history().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -1715,8 +1839,13 @@ impl PyTable {
     ///
     /// The columns are `committed_at`, `snapshot_id`, `parent_id`,
     /// `operation`, `manifest_list`, and the free-form `summary` map.
-    fn inspect_snapshots<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.inspect_snapshots().map_err(value_error)?;
+    fn inspect_snapshots<'py>(
+        slf: &Bound<'_, Self>,
+        py: Python<'py>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let reader = table.inspect_snapshots().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -1724,8 +1853,10 @@ impl PyTable {
     ///
     /// The columns are `file_path`, `file_format`, `spec_id`, the rendered
     /// `partition` chain, `record_count`, and `file_size_in_bytes`.
-    fn inspect_files<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.inspect_files().map_err(value_error)?;
+    fn inspect_files<'py>(slf: &Bound<'_, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let reader = table.inspect_files().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -1736,10 +1867,11 @@ impl PyTable {
     /// by both ends up removed. A call given neither commits nothing at all.
     #[pyo3(signature = (updates = None, removes = None))]
     fn update_properties(
-        &mut self,
+        mut slf: PyRefMut<'_, Self>,
         updates: Option<&Bound<'_, PyAny>>,
         removes: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
+        let table = held_mut(&mut slf)?;
         let updates = match updates {
             Some(value) => string_pairs_from_value(value)?,
             None => Vec::new(),
@@ -1751,7 +1883,7 @@ impl PyTable {
         if updates.is_empty() && removes.is_empty() {
             return Ok(());
         }
-        self.inner
+        table
             .commit_metadata_changes(|metadata| {
                 for (key, value) in &updates {
                     metadata.set_property(key.as_str(), value.as_str())?;
@@ -1771,21 +1903,27 @@ impl PyTable {
     /// metadata document. `with table.update_schema() as update:` commits on a
     /// clean exit and discards on an exception.
     fn update_schema(slf: &Bound<'_, Self>) -> PyResult<PySchemaUpdate> {
-        let update =
-            SchemaUpdate::from_metadata(slf.borrow().inner.metadata()).map_err(value_error)?;
+        let update = {
+            let borrowed = slf.borrow();
+            let metadata = held(&borrowed)?.metadata().map_err(value_error)?;
+            SchemaUpdate::from_metadata(metadata).map_err(value_error)?
+        };
         Ok(PySchemaUpdate {
             table: slf.clone().unbind(),
             update: Some(update),
         })
     }
 
-    fn __repr__(&self) -> String {
-        format!(
-            "Table({:?}, format_version={}, version={})",
-            self.inner.metadata().location(),
-            self.inner.metadata().format_version().number(),
-            self.inner.metadata_version(),
-        )
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let slf = slf.borrow();
+        let table = held(&slf)?;
+        let metadata = table.metadata().map_err(value_error)?;
+        Ok(format!(
+            "IcebergTable({:?}, format_version={}, version={})",
+            metadata.location(),
+            metadata.format_version().number(),
+            table.metadata_version().map_err(value_error)?,
+        ))
     }
 }
 
@@ -1801,7 +1939,7 @@ impl PyTable {
 #[pyclass(name = "SchemaUpdate", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PySchemaUpdate {
     /// The table the update was started from and commits back to.
-    table: Py<PyTable>,
+    table: Py<PyIcebergTable>,
     /// The core recording; `None` once the update committed or was discarded.
     update: Option<SchemaUpdate>,
 }
@@ -1858,8 +1996,9 @@ impl PySchemaUpdate {
         Ok(slf)
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at
-    /// `path`.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own description, which the schema states as its `doc`. An
+    /// empty one clears it.
     fn update_doc<'py>(
         mut slf: PyRefMut<'py, Self>,
         path: &str,
@@ -1907,10 +2046,8 @@ impl PySchemaUpdate {
     /// identifier. The update is spent either way.
     fn commit(&mut self, py: Python<'_>) -> PyResult<i32> {
         let update = self.update.take().ok_or_else(spent_schema_update)?;
-        self.table
-            .bind(py)
-            .borrow_mut()
-            .inner
+        let mut table = self.table.bind(py).borrow_mut();
+        held_mut(&mut table)?
             .update_schema(&update)
             .map_err(value_error)
     }
@@ -3149,611 +3286,5 @@ impl PyDataFile {
 
     fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
         self.clone()
-    }
-}
-
-/// One namespace of a catalog: identity, plus its two collection views.
-///
-/// The namespace holds only its dotted name. Its tables are
-/// [`tables`][Self::tables] and its child namespaces are
-/// [`namespaces`][Self::namespaces], so access chains -
-/// `catalog.namespaces["sales"].tables["orders"]` - and every collection
-/// operation has exactly one home.
-#[pyclass(name = "Namespace", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyNamespace {
-    catalog: Py<PyCatalog>,
-    name: String,
-}
-
-#[pymethods]
-impl PyNamespace {
-    // This is a live view through a catalog, not a detached namespace value.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// The namespace's dotted name.
-    #[getter]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// This namespace's tables, as a lazy map-oriented view.
-    #[getter]
-    fn tables(&self, py: Python<'_>) -> PyTables {
-        PyTables {
-            catalog: self.catalog.clone_ref(py),
-            namespace: Some(self.name.clone()),
-        }
-    }
-
-    /// The namespaces one level below this one, as the same view shape the
-    /// catalog itself answers - the cascade that reaches a nested namespace.
-    #[getter]
-    fn namespaces(&self, py: Python<'_>) -> PyNamespaces {
-        PyNamespaces {
-            catalog: self.catalog.clone_ref(py),
-            parent: Some(self.name.clone()),
-        }
-    }
-
-    /// The namespace's properties, from `metadata/namespace.json`.
-    ///
-    /// Absent means empty - a namespace a table write brought into being
-    /// carries no document and answers no properties, and that is not a
-    /// failure.
-    #[getter]
-    fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let catalog = self.catalog.borrow(py);
-        let namespace = catalog
-            .inner
-            .namespaces()
-            .get(&self.name)
-            .map_err(value_error)?;
-        let properties = PyDict::new(py);
-        for (key, value) in &namespace.properties().map_err(value_error)? {
-            properties.set_item(key, value)?;
-        }
-        Ok(properties)
-    }
-
-    /// Set and remove namespace properties as one transactional write.
-    ///
-    /// `updates` is a mapping or a sequence of `(key, value)` pairs and
-    /// `removes` an iterable of keys; the updates land first, so a key named
-    /// by both ends up removed. A call given neither writes nothing at all.
-    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
-    #[pyo3(signature = (updates = None, removes = None))]
-    fn update_properties(
-        &self,
-        py: Python<'_>,
-        updates: Option<&Bound<'_, PyAny>>,
-        removes: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<()> {
-        let updates = match updates {
-            Some(value) => string_pairs_from_value(value)?,
-            None => Vec::new(),
-        };
-        let removes = match removes {
-            Some(value) => crate::enums::strings_from_iterable(value, "removes")?,
-            None => Vec::new(),
-        };
-        if updates.is_empty() && removes.is_empty() {
-            return Ok(());
-        }
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespaces()
-            .get(&self.name)
-            .map_err(value_error)?
-            .update_properties(updates, removes)
-            .map_err(value_error)
-    }
-
-    fn __repr__(&self) -> String {
-        format!("Namespace({:?})", self.name)
-    }
-}
-
-/// The namespaces one level below a catalog or a namespace, as a lazy view.
-///
-/// The view materializes nothing up front: membership, iteration, and length
-/// consult storage when asked, and indexing answers a
-/// [`Namespace`][PyNamespace] - a missing name is a `KeyError` naming the
-/// namespace. Two views over the same catalog observe each other's writes,
-/// and a view stays valid across creation and deletion because every answer
-/// comes from storage at call time.
-#[pyclass(name = "Namespaces", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyNamespaces {
-    catalog: Py<PyCatalog>,
-    /// The parent namespace's dotted name; `None` is the warehouse root.
-    parent: Option<String>,
-}
-
-impl PyNamespaces {
-    /// Spell one child's full dotted name.
-    fn dotted(&self, name: &str) -> String {
-        match &self.parent {
-            Some(parent) => format!("{parent}.{name}"),
-            None => name.to_owned(),
-        }
-    }
-
-    /// Wrap one namespace name as the view of it.
-    fn namespace(&self, py: Python<'_>, name: &str) -> PyNamespace {
-        PyNamespace {
-            catalog: self.catalog.clone_ref(py),
-            name: self.dotted(name),
-        }
-    }
-
-    /// The names one level down, as the core's lazy iterator.
-    ///
-    /// A parent that does not exist lists nothing rather than failing, per
-    /// the level's own listing contract.
-    fn level(&self, py: Python<'_>, tables: bool) -> PyResult<yggdryl::iceberg::Names> {
-        let catalog = self.catalog.borrow(py);
-        match &self.parent {
-            None => Ok(catalog.inner.namespaces().iter()),
-            Some(parent) => match catalog.inner.namespaces().get(parent) {
-                Ok(namespace) if tables => Ok(namespace.tables().iter()),
-                Ok(namespace) => Ok(namespace.namespaces().iter()),
-                Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
-                Err(error) => Err(value_error(error)),
-            },
-        }
-    }
-}
-
-#[pymethods]
-impl PyNamespaces {
-    // Collection answers depend on storage at the moment they are requested.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// `namespaces["sales"]` answers the namespace; a missing one is a
-    /// `KeyError` carrying the native message.
-    ///
-    /// The lookup is the act, per the existence contract: the typed absence
-    /// the core raises becomes the `KeyError` - the mapping protocol's type,
-    /// the boundary's unchanged text - and nothing probes first.
-    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
-        let dotted = self.dotted(name);
-        let catalog = self.catalog.borrow(py);
-        match catalog.inner.namespaces().get(&dotted) {
-            Ok(_) => {
-                drop(catalog);
-                Ok(self.namespace(py, name))
-            }
-            Err(error) if error.is_absent() => Err(PyKeyError::new_err(error.to_string())),
-            Err(error) => Err(value_error(error)),
-        }
-    }
-
-    /// `"sales" in namespaces` asks storage whether the namespace exists.
-    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
-        let dotted = self.dotted(name);
-        let catalog = self.catalog.borrow(py);
-        catalog
-            .inner
-            .namespaces()
-            .contains(&dotted)
-            .map_err(value_error)
-    }
-
-    /// Iterating the view yields the bare namespace names, sorted, lazily.
-    fn __iter__(&self, py: Python<'_>) -> PyResult<PyNames> {
-        Ok(PyNames {
-            names: self.level(py, false)?,
-        })
-    }
-
-    /// How many namespaces are one level down, right now.
-    ///
-    /// This drains the level's listing, so it costs the full listing - never
-    /// assume it is free on a wide warehouse.
-    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
-        let mut count = 0;
-        for name in self.level(py, false)? {
-            name.map_err(value_error)?;
-            count += 1;
-        }
-        Ok(count)
-    }
-
-    /// The names, as `dict.keys` answers them - the same lazy iterator.
-    fn keys(&self, py: Python<'_>) -> PyResult<PyNames> {
-        self.__iter__(py)
-    }
-
-    /// The namespaces themselves, in key order, lazily - each one wrapped as
-    /// `__next__` reaches its name.
-    fn values(&self, py: Python<'_>) -> PyResult<PyNamespaceIterator> {
-        Ok(PyNamespaceIterator {
-            catalog: self.catalog.clone_ref(py),
-            parent: self.parent.clone(),
-            names: self.level(py, false)?,
-            kind: ViewIteratorKind::Values,
-        })
-    }
-
-    /// `(name, namespace)` pairs, in key order, as lazily as `values`.
-    fn items(&self, py: Python<'_>) -> PyResult<PyNamespaceIterator> {
-        Ok(PyNamespaceIterator {
-            catalog: self.catalog.clone_ref(py),
-            parent: self.parent.clone(),
-            names: self.level(py, false)?,
-            kind: ViewIteratorKind::Items,
-        })
-    }
-
-    /// Create the named namespace; one already there is an error.
-    fn create(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
-        let dotted = self.dotted(name);
-        {
-            let catalog = self.catalog.borrow(py);
-            catalog
-                .inner
-                .namespaces()
-                .create(&dotted)
-                .map(|_| ())
-                .map_err(value_error)?;
-        }
-        Ok(self.namespace(py, name))
-    }
-
-    /// Open the named namespace, creating its folder when absent.
-    fn open_or_create(&self, py: Python<'_>, name: &str) -> PyResult<PyNamespace> {
-        let dotted = self.dotted(name);
-        {
-            let catalog = self.catalog.borrow(py);
-            catalog
-                .inner
-                .namespaces()
-                .open_or_create(&dotted)
-                .map(|_| ())
-                .map_err(value_error)?;
-        }
-        Ok(self.namespace(py, name))
-    }
-
-    fn __repr__(&self) -> String {
-        match &self.parent {
-            Some(parent) => format!("Namespaces({parent:?})"),
-            None => "Namespaces()".to_owned(),
-        }
-    }
-}
-
-/// The lazy iterator every collection view walks.
-///
-/// It wraps the core names iterator directly, so nothing is collected on the
-/// way across the boundary and a failure raises at the entry it happened on,
-/// after which the iterator is exhausted. Removal is deliberately absent
-/// everywhere in the hierarchy - the storage contract's `remove` deletes a
-/// leaf or an empty container, and dropping a table is maintenance work, not
-/// a `del` - so there is no `__delitem__` to pair this with.
-#[pyclass(name = "IcebergNames", module = "yggdryl._native")]
-pub(crate) struct PyNames {
-    names: yggdryl::iceberg::Names,
-}
-
-#[pymethods]
-impl PyNames {
-    // Consumption changes iterator state.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self) -> PyResult<Option<String>> {
-        self.names.next().transpose().map_err(value_error)
-    }
-}
-
-#[derive(Clone, Copy)]
-enum ViewIteratorKind {
-    Values,
-    Items,
-}
-
-/// Lazy iterator behind `Namespaces.values()` and `Namespaces.items()`.
-///
-/// It walks the same core names iterator as `keys()` and wraps each name as
-/// its [`Namespace`][PyNamespace] view only when `__next__` reaches it, so
-/// taking one value from a level of many classifies one entry.
-#[pyclass(name = "IcebergNamespaceIterator", module = "yggdryl._native")]
-pub(crate) struct PyNamespaceIterator {
-    catalog: Py<PyCatalog>,
-    /// The parent namespace's dotted name; `None` is the warehouse root.
-    parent: Option<String>,
-    names: yggdryl::iceberg::Names,
-    kind: ViewIteratorKind,
-}
-
-#[pymethods]
-impl PyNamespaceIterator {
-    // Consumption changes iterator state.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        let Some(name) = self.names.next().transpose().map_err(value_error)? else {
-            return Ok(None);
-        };
-        let namespace = PyNamespace {
-            catalog: self.catalog.clone_ref(py),
-            name: match &self.parent {
-                Some(parent) => format!("{parent}.{name}"),
-                None => name.clone(),
-            },
-        };
-        Ok(Some(match self.kind {
-            ViewIteratorKind::Values => namespace.into_pyobject(py)?.into_any().unbind(),
-            ViewIteratorKind::Items => (name, namespace).into_pyobject(py)?.into_any().unbind(),
-        }))
-    }
-}
-
-/// Lazy iterator behind `Tables.values()` and `Tables.items()`.
-///
-/// It walks the same core names iterator as `keys()` and opens each table
-/// only when `__next__` reaches its name, so taking one value from a
-/// namespace of many opens one table.
-#[pyclass(name = "IcebergTableIterator", module = "yggdryl._native")]
-pub(crate) struct PyTableIterator {
-    catalog: Py<PyCatalog>,
-    /// The owning namespace's dotted name; `None` is the warehouse root.
-    namespace: Option<String>,
-    names: yggdryl::iceberg::Names,
-    kind: ViewIteratorKind,
-}
-
-#[pymethods]
-impl PyTableIterator {
-    // Consumption changes iterator state.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        let Some(name) = self.names.next().transpose().map_err(value_error)? else {
-            return Ok(None);
-        };
-        let dotted = match &self.namespace {
-            Some(namespace) => format!("{namespace}.{name}"),
-            None => name.clone(),
-        };
-        let catalog = self.catalog.borrow(py);
-        let table = match catalog.inner.tables().get(&dotted) {
-            Ok(table) => PyTable::from_core(table),
-            // A name the listing yielded that has vanished since is the same
-            // absence indexing reports: the mapping protocol's KeyError, the
-            // boundary's unchanged text.
-            Err(error) if error.is_absent() => {
-                return Err(PyKeyError::new_err(error.to_string()));
-            }
-            Err(error) => return Err(value_error(error)),
-        };
-        drop(catalog);
-        Ok(Some(match self.kind {
-            ViewIteratorKind::Values => table.into_pyobject(py)?.into_any().unbind(),
-            ViewIteratorKind::Items => (name, table).into_pyobject(py)?.into_any().unbind(),
-        }))
-    }
-}
-
-/// The tables of one namespace - or of the warehouse root - as a lazy view.
-///
-/// The same shape as [`Namespaces`][PyNamespaces], one level down: indexing
-/// opens a [`Table`][PyTable] - a missing name is a `KeyError` naming the
-/// table - and the write conveniences that take a name create the table on
-/// first write, from the incoming rows' own schema. At the root, names may be
-/// fully dotted - `catalog.tables["sales.eu.orders"]` descends. Every answer
-/// comes from storage at call time, so the view is never stale.
-#[pyclass(name = "Tables", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyTables {
-    catalog: Py<PyCatalog>,
-    /// The owning namespace's dotted name; `None` is the warehouse root.
-    namespace: Option<String>,
-}
-
-impl PyTables {
-    /// Spell one table's full dotted name under this namespace.
-    fn dotted(&self, name: &str) -> String {
-        match &self.namespace {
-            Some(namespace) => format!("{namespace}.{name}"),
-            None => name.to_owned(),
-        }
-    }
-
-    /// Run one operation over the root tables view, which accepts the dotted
-    /// spelling this value builds - the resolution rule lives in the core
-    /// collection, not here.
-    fn with_core<R>(
-        &self,
-        py: Python<'_>,
-        operation: impl FnOnce(yggdryl::iceberg::Tables<'_, Holder>) -> R,
-    ) -> R {
-        let catalog = self.catalog.borrow(py);
-        operation(catalog.inner.tables())
-    }
-
-    /// The table names one level down, as the core's lazy iterator.
-    fn level(&self, py: Python<'_>) -> PyResult<yggdryl::iceberg::Names> {
-        let catalog = self.catalog.borrow(py);
-        match &self.namespace {
-            None => Ok(catalog.inner.tables().iter()),
-            Some(parent) => match catalog.inner.namespaces().get(parent) {
-                Ok(namespace) => Ok(namespace.tables().iter()),
-                // A namespace that does not exist lists nothing rather than
-                // failing.
-                Err(error) if error.is_absent() => Ok(yggdryl::iceberg::Names::empty()),
-                Err(error) => Err(value_error(error)),
-            },
-        }
-    }
-}
-
-#[pymethods]
-impl PyTables {
-    // Collection answers depend on storage at the moment they are requested.
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    /// `tables["orders"]` opens the table; a missing one is a `KeyError`
-    /// carrying the native message.
-    ///
-    /// The lookup is the act: the typed absence the core raises becomes the
-    /// `KeyError` - the mapping protocol's type, the boundary's unchanged
-    /// text - and the locate that found the table already opened it.
-    fn __getitem__(&self, py: Python<'_>, name: &str) -> PyResult<PyTable> {
-        let dotted = self.dotted(name);
-        match self.with_core(py, |view| view.get(&dotted)) {
-            Ok(table) => Ok(PyTable::from_core(table)),
-            Err(error) if error.is_absent() => Err(PyKeyError::new_err(error.to_string())),
-            Err(error) => Err(value_error(error)),
-        }
-    }
-
-    /// `"orders" in tables` asks storage whether the table exists.
-    fn __contains__(&self, py: Python<'_>, name: &str) -> PyResult<bool> {
-        let dotted = self.dotted(name);
-        self.with_core(py, |view| view.contains(&dotted))
-            .map_err(value_error)
-    }
-
-    /// Iterating the view yields the bare table names, sorted, lazily.
-    fn __iter__(&self, py: Python<'_>) -> PyResult<PyNames> {
-        Ok(PyNames {
-            names: self.level(py)?,
-        })
-    }
-
-    /// How many tables the namespace holds, right now.
-    ///
-    /// This drains the level's listing, so it costs the full listing - never
-    /// assume it is free on a wide namespace.
-    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
-        let mut count = 0;
-        for name in self.level(py)? {
-            name.map_err(value_error)?;
-            count += 1;
-        }
-        Ok(count)
-    }
-
-    /// The names, as `dict.keys` answers them - the same lazy iterator.
-    fn keys(&self, py: Python<'_>) -> PyResult<PyNames> {
-        self.__iter__(py)
-    }
-
-    /// The tables themselves, in key order, lazily - each one opened only
-    /// when `__next__` reaches its name.
-    fn values(&self, py: Python<'_>) -> PyResult<PyTableIterator> {
-        Ok(PyTableIterator {
-            catalog: self.catalog.clone_ref(py),
-            namespace: self.namespace.clone(),
-            names: self.level(py)?,
-            kind: ViewIteratorKind::Values,
-        })
-    }
-
-    /// `(name, table)` pairs, in key order, as lazily as `values`.
-    fn items(&self, py: Python<'_>) -> PyResult<PyTableIterator> {
-        Ok(PyTableIterator {
-            catalog: self.catalog.clone_ref(py),
-            namespace: self.namespace.clone(),
-            names: self.level(py)?,
-            kind: ViewIteratorKind::Items,
-        })
-    }
-
-    /// Create the named table, writing its first metadata document.
-    ///
-    /// Unnumbered schema fields are numbered, and the partition spec is
-    /// derived from the columns the schema itself marks.
-    fn create(&self, py: Python<'_>, name: &str, schema: &Bound<'_, PyAny>) -> PyResult<PyTable> {
-        let schema = catalog_schema_from_value(schema)?;
-        let dotted = self.dotted(name);
-        self.with_core(py, |view| view.create(&dotted, schema))
-            .map(PyTable::from_core)
-            .map_err(value_error)
-    }
-
-    /// Open the named table, creating it with `schema` when absent.
-    fn open_or_create(
-        &self,
-        py: Python<'_>,
-        name: &str,
-        schema: &Bound<'_, PyAny>,
-    ) -> PyResult<PyTable> {
-        let schema = catalog_schema_from_value(schema)?;
-        let dotted = self.dotted(name);
-        self.with_core(py, |view| view.open_or_create(&dotted, schema))
-            .map(PyTable::from_core)
-            .map_err(value_error)
-    }
-
-    /// Append `data` to the named table, creating it on first write.
-    ///
-    /// `options` configures this write. Returns the table so the caller can
-    /// keep going.
-    #[pyo3(signature = (name, data, *, options = None, **properties))]
-    fn append(
-        &self,
-        py: Python<'_>,
-        name: &str,
-        data: &Bound<'_, PyAny>,
-        options: Option<&Bound<'_, PyAny>>,
-        properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options(options, properties, None)?;
-        let dotted = self.dotted(name);
-        let data = self.with_core(py, |view| iceberg_named_batch_reader(&view, &dotted, data))?;
-        self.with_core(py, |view| {
-            view.append_arrow_reader_with_options(&dotted, data, resolved)
-        })
-        .map(PyTable::from_core)
-        .map_err(value_error)
-    }
-
-    /// Replace the named table's rows with `data`, creating it on first write.
-    ///
-    /// `options` configures this write. Returns the table so the caller can
-    /// keep going.
-    #[pyo3(signature = (name, data, *, options = None, **properties))]
-    fn overwrite(
-        &self,
-        py: Python<'_>,
-        name: &str,
-        data: &Bound<'_, PyAny>,
-        options: Option<&Bound<'_, PyAny>>,
-        properties: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<PyTable> {
-        let resolved = iceberg_call_options(options, properties, None)?;
-        let dotted = self.dotted(name);
-        let data = self.with_core(py, |view| iceberg_named_batch_reader(&view, &dotted, data))?;
-        self.with_core(py, |view| {
-            view.overwrite_arrow_reader_with_options(&dotted, data, resolved)
-        })
-        .map(PyTable::from_core)
-        .map_err(value_error)
-    }
-
-    fn __repr__(&self) -> String {
-        match &self.namespace {
-            Some(namespace) => format!("Tables({namespace:?})"),
-            None => "Tables()".to_owned(),
-        }
     }
 }

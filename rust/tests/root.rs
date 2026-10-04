@@ -41,6 +41,8 @@ mod code;
 mod codec;
 #[path = "root/compatibility.rs"]
 mod compatibility;
+#[path = "root/country.rs"]
+mod country;
 #[path = "root/cusip.rs"]
 mod cusip;
 #[path = "root/datatype.rs"]
@@ -87,6 +89,8 @@ mod gzip;
 mod hostname;
 #[path = "root/identifier.rs"]
 mod identifier;
+#[path = "root/idkey.rs"]
+mod idkey;
 #[path = "root/idsource.rs"]
 mod idsource;
 #[path = "root/idtype.rs"]
@@ -107,8 +111,14 @@ mod iokind;
 mod iomedia;
 #[path = "root/iomode.rs"]
 mod iomode;
+#[path = "root/ioresult.rs"]
+mod ioresult;
 #[path = "root/isin.rs"]
 mod isin;
+#[path = "root/isin_registry.rs"]
+mod isin_registry;
+#[path = "root/join.rs"]
+mod join;
 #[path = "root/lib.rs"]
 mod lib;
 #[path = "root/limit.rs"]
@@ -157,8 +167,14 @@ mod sedol;
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
+#[path = "root/serie_source.rs"]
+mod serie_source;
 #[path = "root/side.rs"]
 mod side;
+#[path = "root/sort_options.rs"]
+mod sort_options;
+#[path = "root/spill.rs"]
+mod spill;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]
@@ -193,9 +209,8 @@ mod variant;
 mod version;
 #[path = "root/vocabulary.rs"]
 mod vocabulary;
-#[cfg(feature = "internals")]
-#[path = "root/warning.rs"]
-mod warning;
+#[path = "root/window_serie.rs"]
+mod window_serie;
 #[path = "root/wkb.rs"]
 mod wkb;
 #[path = "root/zlib.rs"]

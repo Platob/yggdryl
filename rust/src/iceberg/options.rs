@@ -4,10 +4,10 @@
 //! first:
 //!
 //! 1. an **explicit option** set on the value itself - or stored on a table
-//!    with [`Table::set_options`](super::Table::set_options);
+//!    with [`IcebergTable::set_options`](super::IcebergTable::set_options);
 //! 2. the **table property** of the same name, falling back to the schema
 //!    root's `ICEBERG:`-prefixed protocol property, exactly as
-//!    [`Table::target_file_size_bytes`](super::Table::target_file_size_bytes) has always
+//!    [`IcebergTable::target_file_size_bytes`](super::IcebergTable::target_file_size_bytes) has always
 //!    resolved its one key;
 //! 3. the documented **default**.
 //!
@@ -21,6 +21,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::is_iceberg_mime_type;
 use super::metadata::TableMetadata;
+use crate::integer::integer_from_text_as;
 use crate::{Error, MimeType, Result, Url};
 
 /// Where a commit writes its files before they reach the table.
@@ -115,7 +116,7 @@ impl std::fmt::Display for WriteStaging {
 ///
 /// The value records only what was set on it; every getter answers with the
 /// field's documented default when nothing was. [`Self::from_metadata`] reads
-/// the property layer of one table, and [`Table::options`](super::Table::options)
+/// the property layer of one table, and [`IcebergTable::options`](super::IcebergTable::options)
 /// resolves all three layers at once.
 ///
 /// ```
@@ -156,8 +157,6 @@ pub struct IcebergOptions {
     write_parallelism: Option<usize>,
     /// Where a commit stages its files before they reach the table, when set.
     write_staging: Option<WriteStaging>,
-    /// After how many data commits an automatic compaction runs, when set.
-    compact_after_commits: Option<u32>,
     /// The MIME type new data files are written with, when set.
     data_mime_type: Option<MimeType>,
 }
@@ -181,8 +180,6 @@ impl IcebergOptions {
     pub const COMMIT_TOTAL_TIMEOUT_MS_KEY: &'static str =
         OfficialTableProperties::PROPERTY_COMMIT_TOTAL_RETRY_TIME_MS;
 
-    /// The table property naming the automatic compaction cadence.
-    pub const COMPACT_AFTER_COMMITS_KEY: &'static str = "write.auto-compact.commit-interval";
     /// The property naming the size a data file aims for, in bytes.
     pub const TARGET_FILE_SIZE_KEY: &'static str =
         OfficialTableProperties::PROPERTY_WRITE_TARGET_FILE_SIZE_BYTES;
@@ -292,23 +289,6 @@ impl IcebergOptions {
         self.commit_total_timeout_ms
     }
 
-    /// Return the automatic compaction cadence, when one is set.
-    ///
-    /// `Some(n)` compacts after every `n` data commits, so small appends fold
-    /// into files near the target size without any commit paying for a full
-    /// rewrite: a well-paced cadence keeps commits neither so frequent that
-    /// every write rewrites files nor so rare that a scan reads hundreds of
-    /// undersized ones. `None` - the default - never compacts on its own, and
-    /// `Some(0)` reads as off rather than as after-every-commit.
-    pub fn compact_after_commits(&self) -> Option<u32> {
-        self.compact_after_commits.filter(|cadence| *cadence > 0)
-    }
-
-    /// Return the explicit compaction cadence, preserving `Some(0)`.
-    pub const fn compact_after_commits_option(&self) -> Option<u32> {
-        self.compact_after_commits
-    }
-
     /// Return the size a data file aims for, in bytes. Default: 512 MiB.
     pub fn target_file_size_bytes(&self) -> u64 {
         self.target_file_size_bytes
@@ -363,7 +343,10 @@ impl IcebergOptions {
     /// table that reads with four threads writes with four unless told
     /// otherwise. A value of 1 writes the groups one after another on the
     /// calling thread. Whatever the value, a commit's manifest lists the
-    /// files in partition-group order, never in completion order.
+    /// files in partition-group order, never in completion order. This is
+    /// the table's own layer: a write stating
+    /// [`num_threads`](crate::media::IORecordOptions::num_threads) on its
+    /// record options runs on that count instead, for that write alone.
     pub fn write_parallelism(&self) -> usize {
         self.write_parallelism
             .unwrap_or_else(|| self.read_parallelism())
@@ -381,7 +364,7 @@ impl IcebergOptions {
     /// root is remote - an object store, a foreign filesystem - and
     /// [`WriteStaging::Off`] when it is local, where a staging file would be
     /// a second copy of a file already on the same disk.
-    /// [`Table::write_staging`](super::Table::write_staging) answers the
+    /// [`IcebergTable::write_staging`](super::IcebergTable::write_staging) answers the
     /// resolved value for one table.
     pub const fn write_staging(&self) -> Option<&WriteStaging> {
         self.write_staging.as_ref()
@@ -486,18 +469,6 @@ impl IcebergOptions {
     /// Set the largest retry wait in milliseconds.
     pub fn set_commit_max_backoff_ms(&mut self, wait_ms: u64) {
         self.commit_max_backoff_ms = Some(wait_ms);
-    }
-
-    /// Set the automatic compaction cadence; zero turns it off.
-    pub fn set_compact_after_commits(&mut self, commits: u32) {
-        self.compact_after_commits = Some(commits);
-    }
-
-    /// Return these options compacting after every `commits` data commits.
-    #[must_use]
-    pub fn with_compact_after_commits(mut self, commits: u32) -> Self {
-        self.set_compact_after_commits(commits);
-        self
     }
 
     /// Set the largest retry wait in milliseconds, persistently.
@@ -683,7 +654,6 @@ impl IcebergOptions {
             )?,
             write_parallelism: write_parallelism_layer(explicit, metadata)?,
             write_staging: write_staging_layer(explicit, metadata)?,
-            compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
             data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
     }
@@ -804,21 +774,8 @@ fn data_mime_type_layer(
         metadata,
         IcebergOptions::DATA_MIME_TYPE_KEY,
         "a data MIME type of parquet, avro, orc, or puffin",
+        |text| text.parse().ok(),
         is_iceberg_mime_type,
-    )
-}
-
-/// The one resolver for [`IcebergOptions::COMPACT_AFTER_COMMITS_KEY`].
-fn compact_after_commits_layer(
-    explicit: Option<&IcebergOptions>,
-    metadata: &TableMetadata,
-) -> Result<Option<u32>> {
-    layered(
-        explicit.and_then(|options| options.compact_after_commits),
-        metadata,
-        IcebergOptions::COMPACT_AFTER_COMMITS_KEY,
-        "a whole number of commits",
-        |_| true,
     )
 }
 
@@ -832,6 +789,7 @@ fn commit_retries_layer(
         metadata,
         IcebergOptions::COMMIT_RETRIES_KEY,
         "a whole number of retries",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -846,6 +804,7 @@ fn commit_min_backoff_layer(
         metadata,
         IcebergOptions::COMMIT_MIN_BACKOFF_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -860,6 +819,7 @@ fn commit_max_backoff_layer(
         metadata,
         IcebergOptions::COMMIT_MAX_BACKOFF_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -874,6 +834,7 @@ fn commit_total_timeout_layer(
         metadata,
         IcebergOptions::COMMIT_TOTAL_TIMEOUT_MS_KEY,
         "a whole number of milliseconds",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -888,6 +849,7 @@ fn target_file_size_layer(
         metadata,
         IcebergOptions::TARGET_FILE_SIZE_KEY,
         "a positive byte count",
+        integer_from_text_as,
         |bytes| *bytes > 0,
     )
 }
@@ -902,6 +864,7 @@ fn read_parallelism_layer(
         metadata,
         IcebergOptions::READ_PARALLELISM_KEY,
         "a positive reader-thread count",
+        integer_from_text_as,
         |threads| *threads >= 1,
     )
 }
@@ -916,6 +879,7 @@ fn write_parallelism_layer(
         metadata,
         IcebergOptions::WRITE_PARALLELISM_KEY,
         "a positive writer-thread count",
+        integer_from_text_as,
         |threads| *threads >= 1,
     )
 }
@@ -930,6 +894,7 @@ fn write_staging_layer(
         metadata,
         IcebergOptions::WRITE_STAGING_KEY,
         "off or a local folder",
+        |text| text.parse().ok(),
         |staging| staging.folder().is_none_or(Url::is_local),
     )
 }
@@ -944,6 +909,7 @@ fn read_parallel_min_files_layer(
         metadata,
         IcebergOptions::READ_PARALLEL_MIN_FILES_KEY,
         "a whole number of files",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -958,6 +924,7 @@ fn read_parallel_min_file_size_layer(
         metadata,
         IcebergOptions::READ_PARALLEL_MIN_FILE_SIZE_KEY,
         "a whole number of bytes",
+        integer_from_text_as,
         |_| true,
     )
 }
@@ -967,18 +934,23 @@ fn read_parallel_min_file_size_layer(
 /// An explicit value wins without reading the property at all, which is what
 /// lets a caller shadow a stored value that does not parse. `None` means
 /// neither layer spoke, and the getter's default answers.
-fn layered<T: std::str::FromStr>(
+///
+/// `read` is the reader of the type the key holds - a count's is the one
+/// integer reader, a MIME type's its own - so no key keeps a text parse of
+/// its own.
+fn layered<T>(
     explicit: Option<T>,
     metadata: &TableMetadata,
     key: &'static str,
     expected: &str,
+    read: impl Fn(&str) -> Option<T>,
     accept: impl Fn(&T) -> bool,
 ) -> Result<Option<T>> {
     if explicit.is_some() {
         return Ok(explicit);
     }
     match stored(metadata, key)? {
-        Some((key, text)) => parsed(key, text, expected, accept).map(Some),
+        Some((key, text)) => parsed(key, text, expected, read, accept).map(Some),
         None => Ok(None),
     }
 }
@@ -1008,14 +980,15 @@ fn stored<'metadata>(
 }
 
 /// Parse one configured value, or say why the text is not one.
-fn parsed<T: std::str::FromStr>(
+fn parsed<T>(
     key: SmolStr,
     text: &str,
     expected: &str,
+    read: impl Fn(&str) -> Option<T>,
     accept: impl Fn(&T) -> bool,
 ) -> Result<T> {
-    match text.parse::<T>() {
-        Ok(value) if accept(&value) => Ok(value),
+    match read(text) {
+        Some(value) if accept(&value) => Ok(value),
         _ => Err(Error::InvalidMetadataValue {
             key,
             reason: format_smolstr!("expected {expected}, got {text:?}"),

@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nolegprovisionpartysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisionpartysubids",
-          "FIX:tag": "40537"
-        }
-      },
-      {
         "name": "legprovisionpartysubids",
         "dtype": {
           "type": "null"

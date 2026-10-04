@@ -118,6 +118,39 @@ mod captures {
     }
 
     #[test]
+    fn a_capture_is_boolean_when_its_literals_print_one_whatever_the_case() {
+        // The vocabulary a CSV column is typed boolean by: `true` and `false`,
+        // the case and the surrounding blanks not part of the spelling.
+        for pattern in [
+            r"(?<f>true|false)",
+            r"(?<f>TRUE|FALSE)",
+            r"(?<f>True|False)",
+            r"(?<f>true|False)",
+            r"(?<f>True)",
+            r"(?<f> true| false)",
+        ] {
+            let dtype = DataType::from_regex(pattern, true).unwrap();
+            assert_eq!(
+                dtype.field("f").unwrap().dtype(),
+                &DataType::Boolean,
+                "{pattern}"
+            );
+        }
+        // Inference reads what a value prints, not what a flag could be read
+        // from: the wider spellings stay text, and `1|0` is an integer.
+        for (pattern, expected) in [
+            (r"(?<f>yes|no)", DataType::utf8()),
+            (r"(?<f>t|f)", DataType::utf8()),
+            (r"(?<f>1|0)", DataType::Int64),
+            (r"(?<f>true|maybe)", DataType::utf8()),
+            (r"(?i)(?<f>true|false)", DataType::utf8()),
+        ] {
+            let dtype = DataType::from_regex(pattern, true).unwrap();
+            assert_eq!(dtype.field("f").unwrap().dtype(), &expected, "{pattern}");
+        }
+    }
+
+    #[test]
     fn disabling_autotype_keeps_every_capture_utf8() {
         let dtype = DataType::from_regex(r"(?<id>\d+)-(?<flag>true|false)", false).unwrap();
         assert!(

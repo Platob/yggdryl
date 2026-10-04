@@ -14,17 +14,6 @@
         }
       },
       {
-        "name": "notradingsessionrules",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notradingsessionrules",
-          "FIX:tag": "1309"
-        }
-      },
-      {
         "name": "tradingsessionrulesgrp",
         "dtype": {
           "type": "null"
@@ -32,17 +21,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "tradingsessionrulesgrp"
-        }
-      },
-      {
-        "name": "nonestedinstrattrib",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nonestedinstrattrib",
-          "FIX:tag": "1312"
         }
       },
       {

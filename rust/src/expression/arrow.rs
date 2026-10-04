@@ -45,7 +45,7 @@ use arrow_ord::cmp;
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Fields, SchemaRef};
 
 use super::bind::{Bound, Kind, Node, StepKind};
-use super::eval::{Row, keep_elements};
+use super::eval::{Row, TimeBucket, keep_elements};
 use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
@@ -548,9 +548,44 @@ pub(crate) fn struct_rows<'array>(
 
 /// One value per row of a [`StructRows::batch`], laid out at the struct's
 /// own positions by its scatter: null at every null row.
+///
+/// Arrow's take reads a dense union at a null index as its first member's
+/// first value, which need not exist; a dense union has no validity of its
+/// own to say the row is absent anyway. A row the scatter leaves null is an
+/// absent record's, whose children Arrow leaves unspecified, so a column
+/// holding a dense union takes the first row there instead - or, with no
+/// row to take, is laid out null.
 pub(crate) fn scattered(values: &dyn Array, scatter: &UInt32Array) -> crate::Result<ArrayRef> {
+    if scatter.null_count() > 0 && takes_a_dense_union(values.data_type()) {
+        if values.is_empty() {
+            return Ok(arrow_array::new_null_array(
+                values.data_type(),
+                scatter.len(),
+            ));
+        }
+        let filled: UInt32Array = scatter
+            .iter()
+            .map(|index| Some(index.unwrap_or(0)))
+            .collect();
+        return arrow_select::take::take(values, &filled, None)
+            .map_err(|error| crate::Error::from(Error::Arrow(error)));
+    }
     arrow_select::take::take(values, scatter, None)
         .map_err(|error| crate::Error::from(Error::Arrow(error)))
+}
+
+/// Whether a take of `dtype` with a null index reaches a dense union: the
+/// union itself, or one a struct child or a fixed-size serie's item holds,
+/// which Arrow takes at the same null index.
+fn takes_a_dense_union(dtype: &ArrowDataType) -> bool {
+    match dtype {
+        ArrowDataType::Union(_, arrow_schema::UnionMode::Dense) => true,
+        ArrowDataType::Struct(fields) => fields
+            .iter()
+            .any(|field| takes_a_dense_union(field.data_type())),
+        ArrowDataType::FixedSizeList(item, _) => takes_a_dense_union(item.data_type()),
+        _ => false,
+    }
 }
 
 /// Evaluate one resolved node over one batch.
@@ -676,12 +711,81 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             Ok(Vector::Column(answered.require_arrow_array()?))
         }
         Kind::Serie(items) => serie_of(node, items, context),
+        Kind::Function(super::Function::TimeBucket, arguments) => {
+            time_bucket(node, arguments, context)
+        }
         // Arithmetic, the string functions, and the struct and map
         // constructors have no kernel available here, so they take the row
         // evaluator. It is the same code the scalar tier runs, which is why
         // the two cannot disagree about them.
         _ => fallback(node, context),
     }
+}
+
+/// `time_bucket(width, x)` over `x`'s count buffer in one pass.
+///
+/// The width is read and resolved once per batch; each present count is
+/// floored where it lies through [`TimeBucket::floor`], absent ones are not
+/// read, and the column keeps `x`'s datatype, zone included. A layout that
+/// is not the plain count array of `x`'s unit - a dictionary - takes the
+/// row walk, which answers the same values.
+fn time_bucket(node: &Node, arguments: &[Node], context: &Context<'_>) -> Result<Vector> {
+    use arrow_array::types::{
+        Date32Type, Date64Type, TimestampMicrosecondType, TimestampMillisecondType,
+        TimestampNanosecondType, TimestampSecondType,
+    };
+    use arrow_schema::TimeUnit as ArrowUnit;
+
+    let [width, value] = arguments else {
+        return fallback(node, context);
+    };
+    let bucket = TimeBucket::new(&width.eval(&Row::new(None))?, value.field.dtype())?;
+    let array = evaluate(value, context)?.into_column(context.batch.num_rows())?;
+    let floored = match (array.data_type(), bucket.unit()) {
+        (ArrowDataType::Date32, crate::TimeUnit::Day) => bucketed::<Date32Type>(&array, bucket),
+        (ArrowDataType::Date64, crate::TimeUnit::Millisecond) => {
+            bucketed::<Date64Type>(&array, bucket)
+        }
+        (ArrowDataType::Timestamp(ArrowUnit::Second, _), crate::TimeUnit::Second) => {
+            bucketed::<TimestampSecondType>(&array, bucket)
+        }
+        (ArrowDataType::Timestamp(ArrowUnit::Millisecond, _), crate::TimeUnit::Millisecond) => {
+            bucketed::<TimestampMillisecondType>(&array, bucket)
+        }
+        (ArrowDataType::Timestamp(ArrowUnit::Microsecond, _), crate::TimeUnit::Microsecond) => {
+            bucketed::<TimestampMicrosecondType>(&array, bucket)
+        }
+        (ArrowDataType::Timestamp(ArrowUnit::Nanosecond, _), crate::TimeUnit::Nanosecond) => {
+            bucketed::<TimestampNanosecondType>(&array, bucket)
+        }
+        _ => return fallback(node, context),
+    }?;
+    Ok(Vector::Column(floored))
+}
+
+/// One count array floored bucket by bucket, its datatype - a timestamp's
+/// zone - carried over.
+fn bucketed<T>(array: &ArrayRef, bucket: TimeBucket) -> Result<ArrayRef>
+where
+    T: arrow_array::ArrowPrimitiveType,
+    T::Native: Into<i64> + TryFrom<i64>,
+{
+    let answered = array
+        .as_primitive::<T>()
+        .try_unary::<_, T, ArrowError>(|count| {
+            let count: i64 = count.into();
+            bucket
+                .floor(count)
+                .and_then(|floored| T::Native::try_from(floored).ok())
+                .ok_or_else(|| {
+                    ArrowError::ComputeError(format!(
+                        "expected time_bucket(width, x) to start the bucket of count {count} \
+                         at a count {} holds",
+                        array.data_type()
+                    ))
+                })
+        })?;
+    Ok(Arc::new(answered.with_data_type(array.data_type().clone())))
 }
 
 /// A serie built from its elements in every row, through one `interleave`.
@@ -739,10 +843,10 @@ fn segment_array(
     if let Some(name) = segment.as_name()
         && let Some(held) = array.as_any().downcast_ref::<StructArray>()
     {
-        let position = held
-            .fields()
-            .iter()
-            .position(|child| child.name().eq_ignore_ascii_case(name));
+        let position = child_position(
+            held.fields().iter().map(|child| child.name().as_str()),
+            name,
+        );
         if let Some(position) = position {
             let child = Arc::clone(&held.columns()[position]);
             // A child of a null struct is null, whatever its own buffer
@@ -795,6 +899,22 @@ fn segment_array(
         values.push(segment.apply_scalar(field, &column.scalar(row)?)?);
     }
     Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?)
+}
+
+/// The position of the record child a named step reaches among `names`: the
+/// first that equals `name` ignoring ASCII case.
+///
+/// The one fold a record step resolves by - the typing of a path
+/// ([`FieldSegment::apply_field`]), its kernel here, and the key plan's
+/// reading of which cells lie in the landed record
+/// ([`Bound::lies_where`]) - so the three cannot reach different children.
+pub(crate) fn child_position<'n>(
+    names: impl IntoIterator<Item = &'n str>,
+    name: &str,
+) -> Option<usize> {
+    names
+        .into_iter()
+        .position(|held| held.eq_ignore_ascii_case(name))
 }
 
 /// One key of every map, through one `take` over the map's values.

@@ -993,7 +993,7 @@ mod avro {
                 .unwrap();
             assert!(!media.opened());
             media.open().unwrap();
-            media.options_mut().set_commit_row_size(Some(1));
+            media.options_mut().set_commit_batch_num(Some(1));
 
             let (_, appended) = batch();
             let append_options = media.record_options().unwrap();
@@ -1053,7 +1053,7 @@ mod avro {
                 )
                 .unwrap();
             media.open().unwrap();
-            media.options_mut().set_commit_row_size(Some(1));
+            media.options_mut().set_commit_batch_num(Some(1));
             let (_, incoming) = batch();
 
             let options = media.record_options().unwrap();

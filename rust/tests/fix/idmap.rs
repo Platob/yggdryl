@@ -3,7 +3,7 @@
 //! operation carries it, and the `Parties` role stating it.
 
 use yggdryl::fix::{FixIdMapKind, FixIdSource};
-use yggdryl::{DataType, Field, FixRegistry, IdType};
+use yggdryl::{DataType, Field, FixRegistry, IdKey, IdType};
 
 fn order() -> Field {
     let mut order = DataType::utf8().nullable_field("orderid");
@@ -111,6 +111,40 @@ fn a_hand_edited_document_is_refused_where_it_stops() {
     }
 }
 
+/// A hand-edited word that is not what its key holds is refused naming the
+/// key, what it should be and the word it holds - a role that is no
+/// `PartyRole(452)` code as the writer refuses it.
+#[test]
+fn a_hand_edited_word_that_is_not_what_its_key_holds_is_refused_naming_the_key() {
+    for (stored, expected) in [
+        (
+            r#"[{"map":"identifiers","key":"executingtrader","role":"a role"}]"#,
+            r#"expected "role" to be a PartyRole code, got "a role""#,
+        ),
+        (
+            r#"[{"map":"trades","key":"orderid"}]"#,
+            r#"expected "map" to be an identifier map, got "trades""#,
+        ),
+        (
+            r#"[{"map":"identifiers","key":"isinnumber"}]"#,
+            r#"expected "key" to be the folded word of an identifier type, got "isinnumber""#,
+        ),
+    ] {
+        let mut field = DataType::utf8().nullable_field("partyid");
+        field.as_fix_mut().set_tag(448).expect("a tag");
+        field
+            .insert_metadata("FIX:idmap", stored)
+            .expect("inert text");
+        let refused = field
+            .as_fix()
+            .idmap()
+            .find_map(Result::err)
+            .expect("refused")
+            .to_string();
+        assert!(refused.contains(expected), "{stored}: {refused}");
+    }
+}
+
 #[test]
 fn a_registry_takes_a_role_on_partyid_alone() {
     let mut registry = FixRegistry::new();
@@ -211,42 +245,41 @@ fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
         .expect("one order");
     let parties = message.get_partyids();
     assert_eq!(
-        parties.get_from(&IdSource::Proprietary, &IdType::ExecutingTrader),
+        parties.get_from(&IdKey::new(IdSource::Proprietary, IdType::ExecutingTrader)),
         Some("TRADER1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Proprietary, &IdType::CustomerAccount),
+        parties.get_from(&IdKey::new(IdSource::Proprietary, IdType::CustomerAccount)),
         Some("ACC-9")
     );
     // A role's name is its type whatever its length.
     assert_eq!(
-        parties.get_from(
-            &IdSource::Base,
-            &"competentauthoritytransactionvenue"
+        parties.get_from(&IdKey::base(
+            "competentauthoritytransactionvenue"
                 .parse::<IdType>()
                 .unwrap()
-        ),
+        )),
         Some("CA-1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Base, &"partyrole999".parse::<IdType>().unwrap()),
+        parties.get_from(&IdKey::base("partyrole999".parse::<IdType>().unwrap())),
         Some("X-1")
     );
     assert_eq!(
-        parties.get_from(&IdSource::Base, &IdType::Party),
+        parties.get_from(&IdKey::base(IdType::Party)),
         Some("NOROLE")
     );
     let identifiers = message.get_identifiers();
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::RegTradeId),
+        identifiers.get_from(&IdKey::base(IdType::RegTradeId)),
         Some("UTI-1")
     );
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::Tvtic),
+        identifiers.get_from(&IdKey::base(IdType::Tvtic)),
         Some("TVT-1")
     );
     assert_eq!(
-        identifiers.get_from(&IdSource::Fix, &IdType::ClOrdId),
+        identifiers.get_from(&IdKey::base(IdType::ClOrdId)),
         Some("C1")
     );
 
@@ -254,7 +287,7 @@ fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
     // holds none of, a held one stays, and the wire is kept as sent.
     let mut written = message.clone();
     let party = |src: IdSource, kind: IdType, value: &str| {
-        Identifier::new(src, kind, value).expect("a party")
+        Identifier::new(IdKey::new(src, kind), value).expect("a party")
     };
     assert!(
         written
@@ -297,5 +330,83 @@ fn partyids_are_typed_by_role_and_regulatory_trade_ids_are_identifiers() {
         order.get_crosscode().starts_with("10:1:"),
         "{}",
         order.get_crosscode()
+    );
+}
+
+/// A name a message type declares under `FIX:identifiers` is read at the end
+/// of a key on that type alone: an order cancel reject's `OMS_ListID` is its
+/// `oms:listid`, captured off the row's `metadata` into `fixentries` under
+/// `0:omslistid`; on a new order single, which declares no `listid`, the key
+/// names nothing and stays in `metadata` as it arrived.
+#[test]
+fn a_declared_name_is_read_on_its_message_type_alone_and_captured_off_the_row() {
+    use yggdryl::graph::Operation;
+
+    let registry = super::committed_registry();
+    let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+    let cell = |row: &yggdryl::Scalar, name: &str| -> Vec<(String, String)> {
+        row.as_sequence().expect("a row")[schema.index_of(name).expect(name)]
+            .as_mapping()
+            .map(|held| {
+                held.iter()
+                    .map(|(key, value)| {
+                        (
+                            key.as_str().expect("a text key").to_owned(),
+                            value.as_str().expect("a text value").to_owned(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let reject = codec
+        .parse_fix_line(b"8=FIX.4.4|35=9|11=C1|41=C0|37=O1|39=8|434=1|OMS_ListID=L1|10=0|")
+        .expect("a readable line");
+    assert_eq!(
+        reject.get_identifiers().get_from(&IdKey::new(
+            "oms".parse().unwrap(),
+            "listid".parse().unwrap()
+        )),
+        Some("L1")
+    );
+    let row = reject.into_row(&schema).expect("a row");
+    assert!(
+        cell(&row, "metadata").is_empty(),
+        "{:?}",
+        cell(&row, "metadata")
+    );
+    assert!(
+        cell(&row, "fixentries").contains(&("0:omslistid".to_owned(), "L1".to_owned())),
+        "{:?}",
+        cell(&row, "fixentries")
+    );
+    let again =
+        yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row).expect("again");
+    assert_eq!(again.get_identifiers(), reject.get_identifiers());
+    assert_eq!(again.into_row(&schema).expect("a row again"), row);
+
+    let order = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=C1|OMS_ListID=L1|10=0|")
+        .expect("a readable line");
+    assert!(
+        !order
+            .get_identifiers()
+            .contains_kind(&"listid".parse().unwrap()),
+        "{}",
+        order.get_identifiers()
+    );
+    let row = order.into_row(&schema).expect("a row");
+    assert_eq!(
+        cell(&row, "metadata"),
+        [("omslistid".to_owned(), "L1".to_owned())]
+    );
+    assert!(
+        cell(&row, "fixentries")
+            .iter()
+            .all(|(key, _)| !key.starts_with("0:")),
+        "{:?}",
+        cell(&row, "fixentries")
     );
 }

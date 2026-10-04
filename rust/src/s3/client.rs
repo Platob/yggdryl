@@ -17,7 +17,7 @@
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 
 use base64::Engine as _;
@@ -28,9 +28,10 @@ use super::encryption::Encryption;
 use super::options::S3Options;
 use super::provider::Provider;
 use super::request::Request;
-use crate::auth::{is_true, variable};
+use crate::auth::variable;
 use crate::aws::sigv4::{self, Signer};
 use crate::aws::{Credentials, Session};
+use crate::boolean::bool_from_text;
 use crate::http::retry::{
     self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter, is_resumable, is_retryable_transport,
 };
@@ -145,6 +146,12 @@ struct Endpoint {
     /// Whether the account is a path segment ahead of the container, which is
     /// how the Azure emulators address one.
     account_in_path: bool,
+    /// The path a gateway mounts Amazon S3 below, as sent - empty, or
+    /// `/gateway/s3` with no trailing `/` - which every request path is put
+    /// under, as botocore puts it. Only the AWS dialect keeps one: an Azure
+    /// emulator's path is the account `account_in_path` adds, and Google's
+    /// requests name their whole path.
+    prefix: String,
 }
 
 impl Endpoint {
@@ -186,7 +193,11 @@ impl Endpoint {
         if path.is_empty() {
             path.push('/');
         }
-        path
+        if self.prefix.is_empty() {
+            path
+        } else {
+            format!("{}{path}", self.prefix)
+        }
     }
 }
 
@@ -227,9 +238,6 @@ pub(super) struct Client {
     /// Who the AWS requests sign as: the caller's session, narrowed by what
     /// the options said explicitly.
     session: Session,
-    /// The signer for the current credential set and region, rebuilt when
-    /// either changes.
-    signer: Mutex<Option<(Credentials, String, Arc<Signer>)>>,
     /// The bearer token Google's dialect authorizes with, obtained on the first
     /// request that needs one and refreshed shortly before it lapses.
     tokens: super::google::token::TokenCache,
@@ -299,7 +307,6 @@ impl Client {
             scheme: url.scheme().clone(),
             region: RwLock::new(region),
             session,
-            signer: Mutex::new(None),
             tokens: super::google::token::TokenCache::new(
                 options.google(),
                 options.anonymous(),
@@ -397,12 +404,15 @@ impl Client {
     }
 
     /// The knobs the profile states for S3 that the caller left unset: the
-    /// `s3` table's `payload_signing_enabled`, and `max_attempts`.
+    /// `s3` table's `payload_signing_enabled`, and `max_attempts`. A flag the
+    /// table does not spell is no statement, so the default stands.
     fn under_profile(mut options: S3Options, session: &Session) -> S3Options {
         if options.aws().payload_signing().is_none()
-            && let Some(signing) = session
-                .profile()
-                .and_then(|profile| profile.s3("payload_signing_enabled").map(is_true))
+            && let Some(signing) = session.profile().and_then(|profile| {
+                profile
+                    .s3("payload_signing_enabled")
+                    .and_then(bool_from_text)
+            })
         {
             let aws = options.aws().clone().with_payload_signing(signing);
             options = options.with_aws(aws);
@@ -445,7 +455,10 @@ impl Client {
     ///
     /// The order is the same for every store - an explicit endpoint, then the
     /// URL's own, then the environment, then the store's published host - and
-    /// only the last two steps know which store this is.
+    /// only the last two steps know which store this is. The environment is
+    /// asked only when neither of the first two answers, so a refusal it
+    /// holds - a profile naming a `[services]` section nobody wrote - is no
+    /// refusal of a client that named its endpoint.
     fn endpoint_of(
         provider: Provider,
         url: &Url,
@@ -459,12 +472,22 @@ impl Client {
         // is the location a caller handed over rather than a default.
         let explicit = options.endpoint().map(str::to_owned);
         let from_url = url.store_endpoint().map(str::to_owned);
-        let ambient = Self::ambient_endpoint(provider, options, session);
         let account = Self::azure_account(provider, url, options, handed);
-        let named = explicit.or(from_url).or(ambient);
-        let (scheme, host, port) = match named {
+        let named = match explicit.or(from_url) {
+            Some(named) => Some(named),
+            None => Self::ambient_endpoint(provider, options, session)?,
+        };
+        let (scheme, host, port, path) = match named {
             Some(endpoint) => Self::split_endpoint(&endpoint)?,
-            None => Self::published_host(provider, url, options, session, account.as_deref())?,
+            None => {
+                let (scheme, host, port) =
+                    Self::published_host(provider, url, options, session, account.as_deref())?;
+                (scheme, host, port, String::new())
+            }
+        };
+        let prefix = match provider {
+            Provider::Aws => path,
+            Provider::Google | Provider::Azure => String::new(),
         };
         let lowered = host.to_ascii_lowercase();
         let path_style = match provider {
@@ -481,7 +504,7 @@ impl Client {
                     .or_else(|| {
                         session
                             .variable("AWS_S3_FORCE_PATH_STYLE")
-                            .map(|value| is_true(&value))
+                            .and_then(|value| bool_from_text(&value))
                     })
                     .or_else(|| {
                         match session
@@ -518,17 +541,22 @@ impl Client {
             path_style,
             account,
             account_in_path,
+            prefix,
         })
     }
 
     /// The endpoint the environment and a store's own files name, and the
     /// one stated on the session or the Azure options where the options
     /// consult no environment.
+    ///
+    /// # Errors
+    ///
+    /// What the session refuses of the configured S3 endpoint.
     fn ambient_endpoint(
         provider: Provider,
         options: &S3Options,
         session: &Session,
-    ) -> Option<String> {
+    ) -> Result<Option<String>> {
         let from_environment = match provider {
             // `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, the profile's
             // `[services]` entry, then its `endpoint_url`: the session's
@@ -555,7 +583,7 @@ impl Client {
             }
             Provider::Google | Provider::Azure => None,
         };
-        from_environment.or_else(|| options.azure().endpoint().map(str::to_owned))
+        Ok(from_environment.or_else(|| options.azure().endpoint().map(str::to_owned)))
     }
 
     /// The host the store publishes, when nothing named another.
@@ -576,16 +604,12 @@ impl Client {
                 let table = |key: &str| {
                     profile
                         .as_ref()
-                        .and_then(|profile| profile.s3(key).map(is_true))
+                        .and_then(|profile| profile.s3(key).and_then(bool_from_text))
                         .unwrap_or(false)
                 };
                 let fips = session.use_fips_endpoint();
                 let dualstack = session.use_dualstack_endpoint() || table("use_dualstack_endpoint");
-                let suffix = if region.starts_with("cn-") {
-                    "amazonaws.com.cn"
-                } else {
-                    "amazonaws.com"
-                };
+                let suffix = crate::ArnPartition::from_region(&region).dns_suffix();
                 match (table("use_accelerate_endpoint"), fips, dualstack) {
                     (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
                     (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
@@ -615,45 +639,48 @@ impl Client {
         Ok(("https".to_owned(), host, None))
     }
 
-    /// Split `https://host:port` into its parts, defaulting the scheme.
-    fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
-        let (scheme, rest) = match endpoint.split_once("://") {
-            Some((scheme, rest)) => (scheme.to_ascii_lowercase(), rest),
-            None => ("https".to_owned(), endpoint),
+    /// Split `https://host:port/path` into its parts, defaulting the scheme.
+    ///
+    /// The endpoint is read once, as the URL it is: a bare `host` or
+    /// `host:port` is reached over `https`, a port is the decimal number the
+    /// URL grammar spells, and an IPv6 literal keeps its brackets. User
+    /// information and a query are no part of where the store is. The path is
+    /// answered as written, its trailing `/` dropped - the prefix a gateway
+    /// mounts Amazon S3 below, or the account an Azure emulator is named by -
+    /// and never reaches the host a request is addressed and signed to.
+    fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>, String)> {
+        let refuse = |reason: &str| {
+            Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected a host and an optional port in the S3 endpoint {endpoint:?}: {reason}"
+                ),
+            ))
         };
-        let rest = rest.trim_end_matches('/');
-        // An IPv6 literal's own colons belong to the address, so the port is
-        // whatever follows the closing bracket - and elsewhere, whatever
-        // follows the last colon of a host that has no colons of its own.
-        let after_host = if rest.starts_with('[') {
-            rest.find(']').map(|close| close + 1)
+        let named = if endpoint.contains("://") {
+            endpoint.to_owned()
         } else {
-            (rest.matches(':').count() == 1)
-                .then(|| rest.rfind(':'))
-                .flatten()
+            format!("https://{endpoint}")
         };
-        let (host, port) = match after_host {
-            Some(split) if rest[split..].starts_with(':') => {
-                let port = &rest[split + 1..];
-                let port = port.parse::<u16>().map_err(|_| {
-                    Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!(
-                            "expected a port number in the S3 endpoint {endpoint:?}, got {port:?}"
-                        ),
-                    ))
-                })?;
-                (rest[..split].to_owned(), Some(port))
-            }
-            _ => (rest.to_owned(), None),
+        let url = Url::from_str(&named).map_err(|error| refuse(&error.to_string()))?;
+        let authority = url.authority();
+        let port = authority.port();
+        let host_port = authority.host_port();
+        let host = match port {
+            Some(_) => host_port
+                .rsplit_once(':')
+                .map_or(host_port, |(host, _)| host),
+            None => host_port,
         };
         if host.is_empty() {
-            return Err(Error::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("expected a host in the S3 endpoint {endpoint:?}, got none"),
-            )));
+            return Err(refuse("got no host"));
         }
-        Ok((scheme, host, port))
+        Ok((
+            url.scheme().as_str().to_owned(),
+            host.to_owned(),
+            port,
+            url.path().as_str().trim_end_matches('/').to_owned(),
+        ))
     }
 
     /// The signing region the URL, the options and the session name.
@@ -712,31 +739,13 @@ impl Client {
             .unwrap_or_else(|_| DEFAULT_REGION.to_owned())
     }
 
-    /// The signer for the current credentials and region.
+    /// The signer for the current credentials and region: the session's,
+    /// which keeps one per credential set, region and service.
     ///
     /// `None` when the client is anonymous, which is a valid way to reach a
     /// public bucket rather than a failure.
     fn signer(&self, now: SystemTime) -> Result<Option<Arc<Signer>>> {
-        let Some(credentials) = self.session.credentials(now)? else {
-            return Ok(None);
-        };
-        let region = self.region();
-        let mut slot = self.signer.lock().map_err(|_| poisoned())?;
-        if let Some((signed, signed_region, signer)) = slot.as_ref() {
-            // The whole set, not the key alone: a refreshed session can keep
-            // its access key id and change its secret or its token.
-            if *signed == credentials && *signed_region == region {
-                return Ok(Some(signer.clone()));
-            }
-        }
-        let signer = Arc::new(Signer::new(
-            credentials.access_key_id(),
-            credentials.secret_access_key(),
-            credentials.session_token().map(str::to_owned),
-            &region,
-        ));
-        *slot = Some((credentials, region, signer.clone()));
-        Ok(Some(signer))
+        self.session.signer("s3", &self.region(), now)
     }
 
     /// Wait before the next attempt: what the store asked for, else a draw
@@ -818,7 +827,7 @@ impl Client {
                 self.adopt_region(region)?;
                 continue;
             }
-            if self.refresh_on_expiry(&answer, &mut refreshed)? {
+            if self.refresh_on_expiry(request, &headers, &answer, &mut refreshed)? {
                 continue;
             }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -830,38 +839,51 @@ impl Client {
         }
     }
 
-    /// Whether a refusal says the credential set the request was signed with
-    /// has lapsed - a session the store knows expired before the session
-    /// thought it would - in which case the chain is walked again and the
-    /// request signed once more, once.
-    fn refresh_on_expiry(&self, answer: &Answer, refreshed: &mut bool) -> Result<bool> {
+    /// Whether a refusal says the keys that signed the attempt are no longer
+    /// accepted - a set the store knows lapsed before the session thought it
+    /// would, a key it does not recognize - in which case the session is told,
+    /// and the request is signed once more, once, when the session now
+    /// answers another set: the same set would be refused the same way.
+    ///
+    /// The key is read off the attempt's own `Authorization` header rather
+    /// than the client's shared signer, which another request may already
+    /// have refilled with a fresh set. A `HEAD` answers its refusal with no
+    /// body, so a lapsed temporary set reads as a bare `400` or `403`: the
+    /// session reads its sources again without holding anything against the
+    /// key, which may be fine, and the request goes again only if they now
+    /// answer another set. When nothing answers, the session's refusal -
+    /// every source and why - is the error rather than the store's.
+    fn refresh_on_expiry(
+        &self,
+        request: &Request<'_>,
+        sent: &[(String, String)],
+        answer: &Answer,
+        refreshed: &mut bool,
+    ) -> Result<bool> {
         if *refreshed
             || !matches!(self.provider, Provider::Aws)
             || !matches!(answer.status, 400 | 403)
         {
             return Ok(false);
         }
-        let Some(code) = super::xml::parse_error(&answer.body).map(|error| error.code) else {
+        let Some(signed) = header_value(sent, "authorization").and_then(sigv4::signed_access_key)
+        else {
             return Ok(false);
         };
-        if !matches!(
-            code.as_str(),
-            "ExpiredToken" | "ExpiredTokenException" | "InvalidToken" | "TokenRefreshRequired"
-        ) {
+        let code = super::xml::parse_error(&answer.body).map(|error| error.code);
+        let bodyless = request.method == "HEAD"
+            && answer.body.is_empty()
+            && header_value(sent, "x-amz-security-token").is_some();
+        if code.is_none() && !bodyless {
             return Ok(false);
         }
-        *refreshed = true;
-        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
-        // Only the set this request was signed with is forgotten: another
-        // client on the same session may already hold a fresh one.
-        match signer.as_ref() {
-            Some((signed, _, _)) => {
-                self.session.invalidate_if(signed.access_key_id());
-            }
-            None => self.session.invalidate(),
-        }
-        *signer = None;
-        Ok(true)
+        let another = self
+            .session
+            .answers_another(signed, code.as_deref(), SystemTime::now())?;
+        // A refusal that is not sent again ends the request, so the one
+        // chance is spent only when it is taken.
+        *refreshed = another;
+        Ok(another)
     }
 
     /// The wire target and the headers one attempt goes out with.
@@ -1021,8 +1043,8 @@ impl Client {
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let (target, headers) = self.prepare(request, None, SystemTime::now())?;
-            let opened = self.open_stream(request, &target, &headers);
+            let (target, sent) = self.prepare(request, None, SystemTime::now())?;
+            let opened = self.open_stream(request, &target, &sent);
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -1060,7 +1082,7 @@ impl Client {
                     self.adopt_region(region)?;
                     continue;
                 }
-                if self.refresh_on_expiry(&answer, &mut refreshed)? {
+                if self.refresh_on_expiry(request, &sent, &answer, &mut refreshed)? {
                     continue;
                 }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
@@ -1113,14 +1135,11 @@ impl Client {
         Ok((status, headers, Box::new(reader)))
     }
 
-    /// Sign for `region` from here on, dropping the signer bound to the old one.
+    /// Sign for `region` from here on: the session's signers are kept by
+    /// region, so the next request takes that region's.
     fn adopt_region(&self, region: String) -> Result<()> {
-        {
-            let mut current = self.region.write().map_err(|_| poisoned())?;
-            *current = region;
-        }
-        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
-        *signer = None;
+        let mut current = self.region.write().map_err(|_| poisoned())?;
+        *current = region;
         Ok(())
     }
 
@@ -2348,6 +2367,14 @@ fn too_many_parts() -> Error {
     ))
 }
 
+/// The value of the header `name` among `headers`, its case ignored.
+fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(held, _)| held.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
 /// The host and the path-with-query of a whole URL.
 ///
 /// A store that hands a location back states the host it is to be reached at,
@@ -2679,6 +2706,7 @@ pub mod internals {
                 path_style,
                 account: account.map(str::to_owned),
                 account_in_path,
+                prefix: String::new(),
             })
         }
 
@@ -2717,6 +2745,12 @@ pub mod internals {
             &self.0.endpoint.scheme
         }
 
+        /// Whether a write signs its body's real hash: what the options or
+        /// the profile state, else only over plain HTTP.
+        pub fn signs_payload(&self) -> bool {
+            self.0.options.signs_payload(&self.0.endpoint.scheme)
+        }
+
         /// The `Host` header a request against `container` carries.
         pub fn host_header(&self, container: &str) -> String {
             self.0.endpoint.host_header(container)
@@ -2742,12 +2776,12 @@ pub mod internals {
             super::Client::url_credentials(url)
         }
 
-        /// The scheme, host and port one endpoint spelling splits into.
+        /// The scheme, host, port and path one endpoint spelling splits into.
         ///
         /// # Errors
         ///
         /// Returns a refusal when the endpoint names a port that is not one.
-        pub fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
+        pub fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>, String)> {
             super::Client::split_endpoint(endpoint)
         }
 

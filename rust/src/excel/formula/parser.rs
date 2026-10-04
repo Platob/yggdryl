@@ -68,12 +68,31 @@ pub(crate) enum EvaluationPolicy<'a> {
 /// and absent IF arguments remain distinct; no branch expression is copied.
 #[derive(Clone, Copy)]
 pub(crate) enum Selection<'a> {
-    If { test: Option<Id>, yes: Option<Id>, no: Option<Option<Id>> },
-    Error { value: Option<Id>, fallback: Option<Id>, na_only: bool },
-    Choose { index: Option<Id>, choices: &'a [Option<Id>] },
-    Ifs { pairs: &'a [Option<Id>] },
-    Switch { expression: Option<Id>, pairs: &'a [Option<Id>], fallback: Option<Option<Id>> },
-    Xlookup { args: &'a [Option<Id>] },
+    If {
+        test: Option<Id>,
+        yes: Option<Id>,
+        no: Option<Option<Id>>,
+    },
+    Error {
+        value: Option<Id>,
+        fallback: Option<Id>,
+        na_only: bool,
+    },
+    Choose {
+        index: Option<Id>,
+        choices: &'a [Option<Id>],
+    },
+    Ifs {
+        pairs: &'a [Option<Id>],
+    },
+    Switch {
+        expression: Option<Id>,
+        pairs: &'a [Option<Id>],
+        fallback: Option<Option<Id>>,
+    },
+    Xlookup {
+        args: &'a [Option<Id>],
+    },
 }
 
 impl Selection<'_> {
@@ -81,19 +100,33 @@ impl Selection<'_> {
     /// dependency; result/default expressions are admitted only when chosen.
     pub(crate) fn visit_inputs_reverse(self, mut visit: impl FnMut(Id, ReferenceUse)) {
         match self {
-            Self::If { test, .. } => test.into_iter().for_each(|id| visit(id, ReferenceUse::Scalar)),
-            Self::Error { value, .. } => value.into_iter().for_each(|id| visit(id, ReferenceUse::Scalar)),
-            Self::Choose { index, .. } => index.into_iter().for_each(|id| visit(id, ReferenceUse::Scalar)),
+            Self::If { test, .. } => test
+                .into_iter()
+                .for_each(|id| visit(id, ReferenceUse::Scalar)),
+            Self::Error { value, .. } => value
+                .into_iter()
+                .for_each(|id| visit(id, ReferenceUse::Scalar)),
+            Self::Choose { index, .. } => index
+                .into_iter()
+                .for_each(|id| visit(id, ReferenceUse::Scalar)),
             Self::Ifs { pairs } => {
                 for pair in pairs.chunks_exact(2).rev() {
-                    if let Some(test) = pair[0] { visit(test, ReferenceUse::Scalar); }
+                    if let Some(test) = pair[0] {
+                        visit(test, ReferenceUse::Scalar);
+                    }
                 }
             }
-            Self::Switch { expression, pairs, .. } => {
+            Self::Switch {
+                expression, pairs, ..
+            } => {
                 for pair in pairs.chunks_exact(2).rev() {
-                    if let Some(key) = pair[0] { visit(key, ReferenceUse::Scalar); }
+                    if let Some(key) = pair[0] {
+                        visit(key, ReferenceUse::Scalar);
+                    }
                 }
-                if let Some(expression) = expression { visit(expression, ReferenceUse::Scalar); }
+                if let Some(expression) = expression {
+                    visit(expression, ReferenceUse::Scalar);
+                }
             }
             Self::Xlookup { args } => {
                 for index in [5, 4, 2, 1, 0] {
@@ -131,7 +164,12 @@ pub(crate) enum Children<'a> {
     Call(&'a [Option<Id>], ReferenceUse),
     /// Mixed argument roles share one traversal. A dynamic result registers
     /// its returned reference only when consumed by the caller.
-    MixedCall { args: &'a [Option<Id>], prefix: &'static [ReferenceUse], rest: &'static [ReferenceUse], dynamic: bool },
+    MixedCall {
+        args: &'a [Option<Id>],
+        prefix: &'static [ReferenceUse],
+        rest: &'static [ReferenceUse],
+        dynamic: bool,
+    },
 }
 
 impl Children<'_> {
@@ -140,8 +178,7 @@ impl Children<'_> {
     pub(crate) fn reference_use(&self, inherited: ReferenceUse) -> ReferenceUse {
         match self {
             Self::One(_, value) => value.unwrap_or(inherited),
-            Self::Intersection(_) if inherited == ReferenceUse::Geometry =>
-                ReferenceUse::Geometry,
+            Self::Intersection(_) if inherited == ReferenceUse::Geometry => ReferenceUse::Geometry,
             Self::Intersection(_) | Self::Two(_, _) => ReferenceUse::Scalar,
             Self::GeometryPair(_, _) => ReferenceUse::Geometry,
             Self::Call(_, value) => *value,
@@ -159,10 +196,19 @@ impl Children<'_> {
         inherited: ReferenceUse,
         mut visit: impl FnMut(Id, ReferenceUse),
     ) {
-        if let Self::MixedCall { args, prefix, rest, .. } = self {
+        if let Self::MixedCall {
+            args, prefix, rest, ..
+        } = self
+        {
             for (index, child) in args.iter().enumerate().rev() {
                 if let Some(child) = child {
-                    visit(*child, prefix.get(index).copied().unwrap_or_else(|| rest[(index - prefix.len()) % rest.len()]));
+                    visit(
+                        *child,
+                        prefix
+                            .get(index)
+                            .copied()
+                            .unwrap_or_else(|| rest[(index - prefix.len()) % rest.len()]),
+                    );
                 }
             }
             return;
@@ -192,217 +238,403 @@ impl Node {
         match self {
             Self::Literal(_) | Self::Reference(_) | Self::Array(_) => EvaluationPolicy::Leaf,
             Self::Group(child) => EvaluationPolicy::Strict(Children::One(*child, None)),
-            Self::Unary { op: UnaryOp::ImplicitIntersection, value } => {
-                EvaluationPolicy::Strict(Children::Intersection(*value))
-            }
+            Self::Unary {
+                op: UnaryOp::ImplicitIntersection,
+                value,
+            } => EvaluationPolicy::Strict(Children::Intersection(*value)),
             Self::Percent(child) | Self::Unary { value: child, .. } => {
                 EvaluationPolicy::Strict(Children::One(*child, Some(ReferenceUse::Scalar)))
             }
-            Self::Binary { op: BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union, left, right } => {
-                EvaluationPolicy::Strict(Children::GeometryPair(*left, *right))
-            }
+            Self::Binary {
+                op: BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union,
+                left,
+                right,
+            } => EvaluationPolicy::Strict(Children::GeometryPair(*left, *right)),
             Self::Binary { op, left, right }
-                if op.comparison().is_some() || matches!(
-                    *op,
-                    BinaryOp::Add
-                        | BinaryOp::Subtract
-                        | BinaryOp::Multiply
-                        | BinaryOp::Divide
-                        | BinaryOp::Power
-                        | BinaryOp::Concat
-                ) =>
+                if op.comparison().is_some()
+                    || matches!(
+                        *op,
+                        BinaryOp::Add
+                            | BinaryOp::Subtract
+                            | BinaryOp::Multiply
+                            | BinaryOp::Divide
+                            | BinaryOp::Power
+                            | BinaryOp::Concat
+                    ) =>
             {
                 EvaluationPolicy::Strict(Children::Two(*left, *right))
             }
-            Self::Call { function: Some(Function::If), args }
-                if (2..=3).contains(&args.len()) =>
-            {
-                EvaluationPolicy::Select(Selection::If {
-                    test: args[0], yes: args[1], no: args.get(2).copied(),
-                })
-            }
-            Self::Call { function: Some(function @ (Function::Iferror | Function::Ifna)), args }
-                if args.len() == 2 =>
-            {
-                EvaluationPolicy::Select(Selection::Error {
-                    value: args[0], fallback: args[1], na_only: *function == Function::Ifna,
-                })
-            }
-            Self::Call { function: Some(Function::Choose), args } if args.len() >= 2 => {
-                EvaluationPolicy::Select(Selection::Choose { index: args[0], choices: &args[1..] })
-            }
-            Self::Call { function: Some(Function::Ifs), args } => {
-                EvaluationPolicy::Select(Selection::Ifs { pairs: args })
-            }
-            Self::Call { function: Some(Function::Switch), args } => {
+            Self::Call {
+                function: Some(Function::If),
+                args,
+            } if (2..=3).contains(&args.len()) => EvaluationPolicy::Select(Selection::If {
+                test: args[0],
+                yes: args[1],
+                no: args.get(2).copied(),
+            }),
+            Self::Call {
+                function: Some(function @ (Function::Iferror | Function::Ifna)),
+                args,
+            } if args.len() == 2 => EvaluationPolicy::Select(Selection::Error {
+                value: args[0],
+                fallback: args[1],
+                na_only: *function == Function::Ifna,
+            }),
+            Self::Call {
+                function: Some(Function::Choose),
+                args,
+            } if args.len() >= 2 => EvaluationPolicy::Select(Selection::Choose {
+                index: args[0],
+                choices: &args[1..],
+            }),
+            Self::Call {
+                function: Some(Function::Ifs),
+                args,
+            } => EvaluationPolicy::Select(Selection::Ifs { pairs: args }),
+            Self::Call {
+                function: Some(Function::Switch),
+                args,
+            } => {
                 let tail = &args[1..];
                 let paired = tail.len() / 2 * 2;
                 EvaluationPolicy::Select(Selection::Switch {
-                    expression: args[0], pairs: &tail[..paired], fallback: tail.get(paired).copied(),
+                    expression: args[0],
+                    pairs: &tail[..paired],
+                    fallback: tail.get(paired).copied(),
                 })
-            }
-            Self::Call { function: Some(Function::Match), args } if (2..=3).contains(&args.len())
-                && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall { args,
-                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Vlookup), args } if (3..=4).contains(&args.len())
-                && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall { args,
-                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Hlookup), args } if (3..=4).contains(&args.len())
-                && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall { args,
-                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Lookup), args } if args.len() == 3
-                && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall { args,
-                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry, ReferenceUse::Geometry],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Xlookup), args }
-                if (3..=6).contains(&args.len()) && args[..3].iter().all(Option::is_some) => {
-                EvaluationPolicy::Select(Selection::Xlookup { args })
-            }
-            Self::Call { function: Some(Function::Indirect), args } if (1..=2).contains(&args.len())
-                && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall { args, prefix: &[],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Index | Function::Offset), args } => {
-                EvaluationPolicy::Strict(Children::MixedCall { args, prefix: &[ReferenceUse::Geometry],
-                    rest: &[ReferenceUse::Scalar], dynamic: true })
-            }
-            Self::Call { function: Some(Function::Large | Function::Small
-                | Function::Percentile | Function::PercentileDotInc
-                | Function::Quartile | Function::QuartileDotInc), args } => {
-                if args.iter().all(Option::is_some) {
-                    EvaluationPolicy::Strict(Children::MixedCall { args,
-                        prefix: &[ReferenceUse::Range], rest: &[ReferenceUse::Scalar], dynamic: false })
-                } else { EvaluationPolicy::Held }
-            }
-            Self::Call { function: Some(Function::Rank | Function::RankDotEq), args } => {
-                if args.iter().all(Option::is_some) {
-                    EvaluationPolicy::Strict(Children::MixedCall { args,
-                        prefix: &[ReferenceUse::Scalar, ReferenceUse::Range],
-                        rest: &[ReferenceUse::Scalar], dynamic: false })
-                } else { EvaluationPolicy::Held }
             }
             Self::Call {
-                function: Some(Function::Countif | Function::Sumif | Function::Averageif), args,
-            } if args.iter().all(Option::is_some) => {
+                function: Some(Function::Match),
+                args,
+            } if (2..=3).contains(&args.len()) && args.iter().all(Option::is_some) => {
                 EvaluationPolicy::Strict(Children::MixedCall {
-                    args, prefix: &[], rest: &[ReferenceUse::SingleRange, ReferenceUse::Scalar,
-                        ReferenceUse::SingleRange], dynamic: false,
-                })
-            }
-            Self::Call { function: Some(Function::Countifs), args }
-                if args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall {
-                    args, prefix: &[], rest: &[ReferenceUse::SingleRange, ReferenceUse::Scalar],
-                    dynamic: false,
-                })
-            }
-            Self::Call { function: Some(Function::Sumifs | Function::Averageifs
-                | Function::Maxifs | Function::Minifs), args }
-                if args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall {
-                    args, prefix: &[ReferenceUse::SingleRange],
-                    rest: &[ReferenceUse::SingleRange, ReferenceUse::Scalar], dynamic: false,
-                })
-            }
-            Self::Call { function: Some(Function::Subtotal), args }
-                if args.len() >= 2 && args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::MixedCall {
-                    args, prefix: &[ReferenceUse::Scalar], rest: &[ReferenceUse::Geometry],
+                    args,
+                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
+                    rest: &[ReferenceUse::Scalar],
                     dynamic: true,
                 })
             }
-            Self::Call { function: Some(Function::Countblank), args }
-                if args.len() == 1 && args[0].is_some() => {
-                EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::SingleRange))
-            }
-            Self::Call { function: Some(Function::Sumproduct), args }
-                if args.iter().all(Option::is_some) => {
-                EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::SingleRange))
-            }
-            Self::Call { function: Some(Function::Pv | Function::Fv | Function::Pmt), args } => {
-                EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::Scalar))
-            }
-            Self::Call { function: Some(Function::Npv), args } => {
+            Self::Call {
+                function: Some(Function::Vlookup),
+                args,
+            } if (3..=4).contains(&args.len()) && args.iter().all(Option::is_some) => {
                 EvaluationPolicy::Strict(Children::MixedCall {
-                    args, prefix: &[ReferenceUse::Scalar], rest: &[ReferenceUse::Range], dynamic: false,
+                    args,
+                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
+                    rest: &[ReferenceUse::Scalar],
+                    dynamic: true,
                 })
             }
-            Self::Call { function: Some(Function::Textjoin), args } => {
+            Self::Call {
+                function: Some(Function::Hlookup),
+                args,
+            } if (3..=4).contains(&args.len()) && args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[ReferenceUse::Scalar, ReferenceUse::Geometry],
+                    rest: &[ReferenceUse::Scalar],
+                    dynamic: true,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Lookup),
+                args,
+            } if args.len() == 3 && args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[
+                        ReferenceUse::Scalar,
+                        ReferenceUse::Geometry,
+                        ReferenceUse::Geometry,
+                    ],
+                    rest: &[ReferenceUse::Scalar],
+                    dynamic: true,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Xlookup),
+                args,
+            } if (3..=6).contains(&args.len()) && args[..3].iter().all(Option::is_some) => {
+                EvaluationPolicy::Select(Selection::Xlookup { args })
+            }
+            Self::Call {
+                function: Some(Function::Indirect),
+                args,
+            } if (1..=2).contains(&args.len()) && args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[],
+                    rest: &[ReferenceUse::Scalar],
+                    dynamic: true,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Index | Function::Offset),
+                args,
+            } => EvaluationPolicy::Strict(Children::MixedCall {
+                args,
+                prefix: &[ReferenceUse::Geometry],
+                rest: &[ReferenceUse::Scalar],
+                dynamic: true,
+            }),
+            Self::Call {
+                function:
+                    Some(
+                        Function::Large
+                        | Function::Small
+                        | Function::Percentile
+                        | Function::PercentileDotInc
+                        | Function::Quartile
+                        | Function::QuartileDotInc,
+                    ),
+                args,
+            } => {
                 if args.iter().all(Option::is_some) {
                     EvaluationPolicy::Strict(Children::MixedCall {
-                        args, prefix: &[ReferenceUse::Scalar, ReferenceUse::Scalar], rest: &[ReferenceUse::SingleRange], dynamic: false,
+                        args,
+                        prefix: &[ReferenceUse::Range],
+                        rest: &[ReferenceUse::Scalar],
+                        dynamic: false,
                     })
-                } else { EvaluationPolicy::Held }
+                } else {
+                    EvaluationPolicy::Held
+                }
+            }
+            Self::Call {
+                function: Some(Function::Rank | Function::RankDotEq),
+                args,
+            } => {
+                if args.iter().all(Option::is_some) {
+                    EvaluationPolicy::Strict(Children::MixedCall {
+                        args,
+                        prefix: &[ReferenceUse::Scalar, ReferenceUse::Range],
+                        rest: &[ReferenceUse::Scalar],
+                        dynamic: false,
+                    })
+                } else {
+                    EvaluationPolicy::Held
+                }
+            }
+            Self::Call {
+                function: Some(Function::Countif | Function::Sumif | Function::Averageif),
+                args,
+            } if args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[],
+                    rest: &[
+                        ReferenceUse::SingleRange,
+                        ReferenceUse::Scalar,
+                        ReferenceUse::SingleRange,
+                    ],
+                    dynamic: false,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Countifs),
+                args,
+            } if args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[],
+                    rest: &[ReferenceUse::SingleRange, ReferenceUse::Scalar],
+                    dynamic: false,
+                })
+            }
+            Self::Call {
+                function:
+                    Some(
+                        Function::Sumifs
+                        | Function::Averageifs
+                        | Function::Maxifs
+                        | Function::Minifs,
+                    ),
+                args,
+            } if args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[ReferenceUse::SingleRange],
+                    rest: &[ReferenceUse::SingleRange, ReferenceUse::Scalar],
+                    dynamic: false,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Subtotal),
+                args,
+            } if args.len() >= 2 && args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::MixedCall {
+                    args,
+                    prefix: &[ReferenceUse::Scalar],
+                    rest: &[ReferenceUse::Geometry],
+                    dynamic: true,
+                })
+            }
+            Self::Call {
+                function: Some(Function::Countblank),
+                args,
+            } if args.len() == 1 && args[0].is_some() => {
+                EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::SingleRange))
+            }
+            Self::Call {
+                function: Some(Function::Sumproduct),
+                args,
+            } if args.iter().all(Option::is_some) => {
+                EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::SingleRange))
+            }
+            Self::Call {
+                function: Some(Function::Pv | Function::Fv | Function::Pmt),
+                args,
+            } => EvaluationPolicy::Strict(Children::Call(args.as_ref(), ReferenceUse::Scalar)),
+            Self::Call {
+                function: Some(Function::Npv),
+                args,
+            } => EvaluationPolicy::Strict(Children::MixedCall {
+                args,
+                prefix: &[ReferenceUse::Scalar],
+                rest: &[ReferenceUse::Range],
+                dynamic: false,
+            }),
+            Self::Call {
+                function: Some(Function::Textjoin),
+                args,
+            } => {
+                if args.iter().all(Option::is_some) {
+                    EvaluationPolicy::Strict(Children::MixedCall {
+                        args,
+                        prefix: &[ReferenceUse::Scalar, ReferenceUse::Scalar],
+                        rest: &[ReferenceUse::SingleRange],
+                        dynamic: false,
+                    })
+                } else {
+                    EvaluationPolicy::Held
+                }
             }
             Self::Call {
                 function: Some(function),
                 args,
             } => {
                 let (shape, usage) = match *function {
-                    Function::Len | Function::Abs | Function::Sqrt | Function::Fact | Function::Not
-                    | Function::Exp | Function::Ln | Function::Log10
-                    | Function::Degrees | Function::Radians | Function::Cos | Function::Asin
-                    | Function::Sin | Function::Tan | Function::Acos | Function::Atan
-                    | Function::Sign | Function::Int
-                    | Function::ErrorDotType | Function::Isblank | Function::Iserr
-                    | Function::Iserror | Function::Iseven | Function::Islogical
-                    | Function::Isna | Function::Isnontext | Function::Isnumber
-                    | Function::Isodd | Function::Istext | Function::N =>
-                        (args.len() == 1, ReferenceUse::Scalar),
-                    Function::Year | Function::Month | Function::Day =>
-                        (args.len() == 1, ReferenceUse::Scalar),
-                    Function::Weekday | Function::Log => ((1..=2).contains(&args.len()), ReferenceUse::Scalar),
+                    Function::Len
+                    | Function::Abs
+                    | Function::Sqrt
+                    | Function::Fact
+                    | Function::Not
+                    | Function::Exp
+                    | Function::Ln
+                    | Function::Log10
+                    | Function::Degrees
+                    | Function::Radians
+                    | Function::Cos
+                    | Function::Asin
+                    | Function::Sin
+                    | Function::Tan
+                    | Function::Acos
+                    | Function::Atan
+                    | Function::Sign
+                    | Function::Int
+                    | Function::ErrorDotType
+                    | Function::Isblank
+                    | Function::Iserr
+                    | Function::Iserror
+                    | Function::Iseven
+                    | Function::Islogical
+                    | Function::Isna
+                    | Function::Isnontext
+                    | Function::Isnumber
+                    | Function::Isodd
+                    | Function::Istext
+                    | Function::N => (args.len() == 1, ReferenceUse::Scalar),
+                    Function::Year | Function::Month | Function::Day => {
+                        (args.len() == 1, ReferenceUse::Scalar)
+                    }
+                    Function::Weekday | Function::Log => {
+                        ((1..=2).contains(&args.len()), ReferenceUse::Scalar)
+                    }
                     Function::Days => (args.len() == 2, ReferenceUse::Scalar),
-                    Function::Date | Function::Time =>
-                        (args.len() == 3, ReferenceUse::Scalar),
-                    Function::Edate | Function::Eomonth =>
-                        (args.len() == 2, ReferenceUse::Scalar),
-                    Function::Hour | Function::Minute | Function::Second
-                    | Function::Datevalue | Function::Timevalue =>
-                        (args.len() == 1, ReferenceUse::Scalar),
-                    Function::T | Function::Clean | Function::Trim | Function::Left
-                    | Function::Right | Function::Mid | Function::Exact | Function::Rept
-                    | Function::Lower | Function::Upper | Function::Search | Function::Char | Function::Code | Function::Proper | Function::Value | Function::Text | Function::Substitute | Function::Find | Function::Replace => (true, ReferenceUse::Scalar),
+                    Function::Date | Function::Time => (args.len() == 3, ReferenceUse::Scalar),
+                    Function::Edate | Function::Eomonth => (args.len() == 2, ReferenceUse::Scalar),
+                    Function::Hour
+                    | Function::Minute
+                    | Function::Second
+                    | Function::Datevalue
+                    | Function::Timevalue => (args.len() == 1, ReferenceUse::Scalar),
+                    Function::T
+                    | Function::Clean
+                    | Function::Trim
+                    | Function::Left
+                    | Function::Right
+                    | Function::Mid
+                    | Function::Exact
+                    | Function::Rept
+                    | Function::Lower
+                    | Function::Upper
+                    | Function::Search
+                    | Function::Char
+                    | Function::Code
+                    | Function::Proper
+                    | Function::Value
+                    | Function::Text
+                    | Function::Substitute
+                    | Function::Find
+                    | Function::Replace => (true, ReferenceUse::Scalar),
                     Function::Concat => (true, ReferenceUse::SingleRange),
                     Function::Concatenate => (true, ReferenceUse::Scalar),
                     Function::Address => ((2..=5).contains(&args.len()), ReferenceUse::Scalar),
                     Function::Isref => (args.len() == 1, ReferenceUse::Geometry),
-                    Function::Row | Function::Column | Function::Rows | Function::Columns =>
-                        (true, ReferenceUse::Geometry),
+                    Function::Row | Function::Column | Function::Rows | Function::Columns => {
+                        (true, ReferenceUse::Geometry)
+                    }
                     Function::Trunc => ((1..=2).contains(&args.len()), ReferenceUse::Scalar),
-                    Function::True | Function::False | Function::Na | Function::Pi
-                    | Function::Now | Function::Today | Function::Rand =>
-                        (args.is_empty(), ReferenceUse::Scalar),
-                    Function::Even | Function::Odd =>
-                        (args.len() == 1, ReferenceUse::Scalar),
-                    Function::CeilingDotMath | Function::FloorDotMath =>
-                        ((1..=3).contains(&args.len()), ReferenceUse::Scalar),
-                    Function::Round | Function::Roundup | Function::Rounddown
+                    Function::True
+                    | Function::False
+                    | Function::Na
+                    | Function::Pi
+                    | Function::Now
+                    | Function::Today
+                    | Function::Rand => (args.is_empty(), ReferenceUse::Scalar),
+                    Function::Even | Function::Odd => (args.len() == 1, ReferenceUse::Scalar),
+                    Function::CeilingDotMath | Function::FloorDotMath => {
+                        ((1..=3).contains(&args.len()), ReferenceUse::Scalar)
+                    }
+                    Function::Round
+                    | Function::Roundup
+                    | Function::Rounddown
                     | Function::Atan2
-                    | Function::Quotient | Function::Ceiling | Function::Floor | Function::Mround
-                    | Function::Mod | Function::Power | Function::Randbetween =>
-                        (args.len() == 2, ReferenceUse::Scalar),
-                    Function::Var | Function::Varp | Function::VarDotS | Function::VarDotP
-                    | Function::Stdev | Function::Stdevp | Function::StdevDotS | Function::StdevDotP
-                    | Function::Sum | Function::Count | Function::Counta | Function::Min | Function::Max
-                    | Function::And | Function::Or | Function::Xor =>
-                        (true, ReferenceUse::Range),
-                    Function::Gcd | Function::Lcm | Function::Average | Function::Averagea | Function::Mina
-                    | Function::Maxa | Function::Product | Function::Median
-                    | Function::Mode | Function::ModeDotSngl =>
-                        ((1..=255).contains(&args.len()), ReferenceUse::Range),
+                    | Function::Quotient
+                    | Function::Ceiling
+                    | Function::Floor
+                    | Function::Mround
+                    | Function::Mod
+                    | Function::Power
+                    | Function::Randbetween => (args.len() == 2, ReferenceUse::Scalar),
+                    Function::Var
+                    | Function::Varp
+                    | Function::VarDotS
+                    | Function::VarDotP
+                    | Function::Stdev
+                    | Function::Stdevp
+                    | Function::StdevDotS
+                    | Function::StdevDotP
+                    | Function::Sum
+                    | Function::Count
+                    | Function::Counta
+                    | Function::Min
+                    | Function::Max
+                    | Function::And
+                    | Function::Or
+                    | Function::Xor => (true, ReferenceUse::Range),
+                    Function::Gcd
+                    | Function::Lcm
+                    | Function::Average
+                    | Function::Averagea
+                    | Function::Mina
+                    | Function::Maxa
+                    | Function::Product
+                    | Function::Median
+                    | Function::Mode
+                    | Function::ModeDotSngl => {
+                        ((1..=255).contains(&args.len()), ReferenceUse::Range)
+                    }
                     _ => (false, ReferenceUse::Scalar),
                 };
                 if shape && args.iter().all(Option::is_some) {
@@ -411,10 +643,9 @@ impl Node {
                     EvaluationPolicy::Held
                 }
             }
-            Self::Held(_)
-            | Self::Binary { .. }
-            | Self::Spill(_)
-            | Self::Call { .. } => EvaluationPolicy::Held,
+            Self::Held(_) | Self::Binary { .. } | Self::Spill(_) | Self::Call { .. } => {
+                EvaluationPolicy::Held
+            }
         }
     }
 }
@@ -648,8 +879,15 @@ impl Parser {
         if let Some(next) = self.peek() {
             return Err(self.trailing(next));
         }
-        let has_subtotal = self.nodes.iter().any(|node| matches!(node,
-            Node::Call { function: Some(Function::Subtotal), .. }));
+        let has_subtotal = self.nodes.iter().any(|node| {
+            matches!(
+                node,
+                Node::Call {
+                    function: Some(Function::Subtotal),
+                    ..
+                }
+            )
+        });
         Ok(Expr {
             nodes: self.nodes.into_boxed_slice(),
             root,
@@ -904,21 +1142,44 @@ impl Parser {
     /// array arithmetic is still distinct from legacy scalar intersection;
     /// hold that unrepresented mode before it can admit false dependencies.
     fn array_expression_argument(&self, mut id: Id) -> bool {
-        while let Node::Group(child) = &self.nodes[id] { id = *child; }
-        if matches!(&self.nodes[id], Node::Binary {
-            op: BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union, ..
-        }) { return false; }
-        if matches!(&self.nodes[id], Node::Spill(_)) { return true; }
-        if !matches!(&self.nodes[id], Node::Binary { .. } | Node::Unary { .. }
-            | Node::Percent(_)) { return false; }
+        while let Node::Group(child) = &self.nodes[id] {
+            id = *child;
+        }
+        if matches!(
+            &self.nodes[id],
+            Node::Binary {
+                op: BinaryOp::Range | BinaryOp::Intersection | BinaryOp::Union,
+                ..
+            }
+        ) {
+            return false;
+        }
+        if matches!(&self.nodes[id], Node::Spill(_)) {
+            return true;
+        }
+        if !matches!(
+            &self.nodes[id],
+            Node::Binary { .. } | Node::Unary { .. } | Node::Percent(_)
+        ) {
+            return false;
+        }
         let mut pending = vec![id];
         while let Some(node) = pending.pop() {
             match &self.nodes[node] {
-                Node::Reference(reference) if matches!(reference.target,
-                    Target::Area { .. } | Target::Rows { .. } | Target::Columns { .. }
-                    | Target::Name(_)) => return true,
-                Node::Group(child) | Node::Percent(child) | Node::Spill(child) =>
-                    pending.push(*child),
+                Node::Reference(reference)
+                    if matches!(
+                        reference.target,
+                        Target::Area { .. }
+                            | Target::Rows { .. }
+                            | Target::Columns { .. }
+                            | Target::Name(_)
+                    ) =>
+                {
+                    return true;
+                }
+                Node::Group(child) | Node::Percent(child) | Node::Spill(child) => {
+                    pending.push(*child)
+                }
                 Node::Unary { value, .. } => pending.push(*value),
                 Node::Binary { left, right, .. } => {
                     pending.push(*right);
@@ -956,7 +1217,11 @@ impl Parser {
             }
         }
         if function == Some(Function::Sumproduct)
-            && args.iter().flatten().any(|id| self.array_expression_argument(*id)) {
+            && args
+                .iter()
+                .flatten()
+                .any(|id| self.array_expression_argument(*id))
+        {
             return Ok(self.push(Node::Held(Held::ArrayExpression)));
         }
         Ok(self.push(Node::Call {

@@ -33,6 +33,7 @@ use crate::field::{JsField, MetadataEntry};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
+use crate::warehouse::JsWarehouse;
 
 // ---------------------------------------------------------------------------
 // Reading JavaScript values as the core's
@@ -148,58 +149,6 @@ pub(crate) fn expression_from_input(value: ExpressionInput<'_>) -> Result<CoreEx
 /// Read one target from the text a location is spelled as.
 fn target_from_text(text: &str) -> Result<CoreTarget> {
     CoreTarget::parse(text).map_err(napi_error)
-}
-
-/// Read one ordering key spelled as the grammar spells it: a term, then an
-/// optional `asc` or `desc`, then an optional `nulls first` or `nulls last`.
-fn ordering_from_text(text: &str) -> Result<CoreOrdering> {
-    let plan: CorePlan = format!("order by {text}").parse().map_err(napi_error)?;
-    let mut keys = plan.ordering().to_vec();
-    match keys.len() {
-        1 => Ok(keys.swap_remove(0)),
-        _ => Err(Error::from_reason(format!(
-            "expected one ordering key, got {text:?}"
-        ))),
-    }
-}
-
-/// Read a write verb in any spelling the grammar reads.
-fn verb_from_text(value: &str) -> Result<CoreVerb> {
-    let spelling = value
-        .split_whitespace()
-        .map(str::to_ascii_lowercase)
-        .collect::<Vec<_>>()
-        .join(" ");
-    Ok(match spelling.as_str() {
-        "insert" | "insert into" | "append" | "append into" | "append to" => CoreVerb::Insert,
-        "insert overwrite"
-        | "insert overwrite into"
-        | "overwrite"
-        | "overwrite into"
-        | "replace"
-        | "replace into" => CoreVerb::Overwrite,
-        "upsert" | "upsert into" | "merge" | "merge into" => CoreVerb::Upsert,
-        "delete" | "delete from" => CoreVerb::Delete,
-        _ => {
-            return Err(Error::from_reason(format!(
-                "unknown write verb {value:?}; expected \"insert into\", \"insert overwrite\", \
-                 \"upsert into\", \"delete from\", or one of their aliases"
-            )));
-        }
-    })
-}
-
-/// Read one comparison from the grammar's own spelling of it.
-fn comparison_from_text(value: &str) -> Result<CoreComparison> {
-    CoreComparison::ALL
-        .into_iter()
-        .find(|comparison| comparison.as_str().eq_ignore_ascii_case(value))
-        .ok_or_else(|| {
-            Error::from_reason(format!(
-                "unknown comparison {value:?}; expected one of {}",
-                CoreComparison::ALL.map(CoreComparison::as_str).join(", ")
-            ))
-        })
 }
 
 /// Read a native Record of late-bound values once before binding.
@@ -509,7 +458,7 @@ impl JsTerm {
         comparison: String,
         other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
     ) -> Result<Self> {
-        let comparison = comparison_from_text(&comparison)?;
+        let comparison: CoreComparison = comparison.parse().map_err(napi_error)?;
         Ok(Self::from_core(
             self.inner
                 .clone()
@@ -1892,7 +1841,7 @@ impl JsPlan {
             >,
         >,
     ) -> Result<Self> {
-        let mut write = CoreWrite::new(verb_from_text(&verb)?);
+        let mut write = CoreWrite::new(verb.parse::<CoreVerb>().map_err(napi_error)?);
         if let Some(target) = target {
             write = write.into(target_from_text(&target)?);
         }
@@ -1945,7 +1894,7 @@ impl JsPlan {
     pub fn with_ordering(&self, keys: Vec<String>) -> Result<Self> {
         let keys = keys
             .iter()
-            .map(|key| ordering_from_text(key))
+            .map(|key| key.parse::<CoreOrdering>().map_err(napi_error))
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_core(self.inner.clone().order_by(keys)))
     }
@@ -2056,6 +2005,17 @@ impl JsPlan {
     #[napi]
     pub fn execute(&self) -> Result<JsBatchReader> {
         let reader = self.inner.execute().map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, self.inner.root_name()))
+    }
+
+    /// `execute`, its locations resolved against `warehouse` instead of the
+    /// process's own `SystemWarehouse`.
+    #[napi(js_name = "executeIn")]
+    pub fn execute_in(&self, warehouse: &JsWarehouse) -> Result<JsBatchReader> {
+        let reader = self
+            .inner
+            .execute_in(warehouse.core())
+            .map_err(napi_error)?;
         Ok(JsBatchReader::from_core(reader, self.inner.root_name()))
     }
 

@@ -25,17 +25,6 @@
         }
       },
       {
-        "name": "norequestingpartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestingpartyids",
-          "FIX:tag": "1657"
-        }
-      },
-      {
         "name": "requestingpartyids",
         "dtype": {
           "type": "null"
@@ -43,17 +32,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "requestingpartyids"
-        }
-      },
-      {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
         }
       },
       {
@@ -67,17 +45,6 @@
         }
       },
       {
-        "name": "norequestedpartyroles",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norequestedpartyroles",
-          "FIX:tag": "1508"
-        }
-      },
-      {
         "name": "requestedpartyroles",
         "dtype": {
           "type": "null"
@@ -85,17 +52,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "requestedpartyroles"
-        }
-      },
-      {
-        "name": "nopartyrelationships",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyrelationships",
-          "FIX:tag": "1514"
         }
       },
       {

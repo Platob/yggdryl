@@ -14,7 +14,8 @@ use yggdryl::{DataType, Scalar, Side as CoreSide};
 
 use super::decimal_scalar;
 use super::market_data::{PyMarketData, event_market_of, market_data_of};
-use super::operation::{PyBookRef, PyExecutionEvent};
+use super::operation::PyBookRef;
+use crate::expression::filter_from_value;
 use crate::scalar::{PyScalar, from_py};
 use crate::{Failed, Pulled, python_failure, value_error};
 
@@ -34,8 +35,8 @@ fn side_of(value: &Bound<'_, PyAny>) -> PyResult<CoreSide> {
 }
 
 /// One coherent view of a market at one exact nanosecond instant: the live
-/// entries of both sides, the deltas applied since the book before it, the
-/// executions at that instant and each side's price levels. Immutable:
+/// entries of both sides and each side's price levels on a complete book,
+/// the deltas applied since the book before it on every book. Immutable:
 /// `with_operations` and every verb answer a new book.
 #[pyclass(
     name = "BookEvent",
@@ -58,15 +59,38 @@ impl PyBookEvent {
 graph_methods!(PyBookEvent, "BookEvent"; [
     element_getters, event_getters, market_getters, kind_getters, common_verbs, event_verbs
 ]; {
-    /// An empty book for `symbol` at `currunix` nanoseconds since the epoch.
+    /// An empty book of the ticker `symbol` at `currunix` nanoseconds since
+    /// the epoch, keyed by that ticker; an empty `symbol` keys the book
+    /// `XX0000000000`, the ISIN that states none, and states no ticker.
     #[new]
     fn new(currunix: i64, symbol: &str) -> Self {
         Self::from_core(CoreBookEvent::new(currunix, symbol))
     }
 
-    /// Every entry alive on the book, each a `MarketData`: the bid side's,
-    /// best price first and every entry stating no price last, then the ask
-    /// side's the same way.
+    /// An empty book keyed `key` at `currunix` nanoseconds since the epoch:
+    /// `key` is its crosscode - an instrument's ISIN, a ticker, or
+    /// `XX0000000000` - and the book states neither a ticker nor an ISIN.
+    /// The empty base a code's first book, stating its deltas alone,
+    /// rebuilds over with `with_previous`.
+    #[staticmethod]
+    fn keyed(currunix: i64, key: &str) -> Self {
+        Self::from_core(CoreBookEvent::keyed(currunix, key))
+    }
+
+    /// Whether the book holds its sides - every entry alive on it - rather
+    /// than only the deltas it applied since the book before it: a book a
+    /// caller builds, one a walk emits at a snapshot tick, and one rebuilt
+    /// by `with_previous` are complete.
+    #[getter]
+    fn is_complete(&self) -> bool {
+        self.inner.is_complete()
+    }
+
+    /// Every entry alive on the book, each once and a `MarketData`: the bid
+    /// side's, best price first and every entry stating no price last, then
+    /// the ask side's the same way but those resting on the bid too - a
+    /// two-sided quote is one entry, listed with the bids. Empty on a book
+    /// stating its deltas alone.
     #[getter]
     fn alive(&self) -> Vec<PyMarketData> {
         self.inner
@@ -76,9 +100,23 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The deltas applied since the book before this one, each a
-    /// `MarketData`: the bid side's in the order they were applied, then the
-    /// ask side's.
+    /// The entries alive on the side `side` takes, each a `MarketData`,
+    /// best price first and every entry stating no price last - a two-sided
+    /// quote on both sides. Empty for a side that is neither a bid nor an
+    /// ask, or on a book stating its deltas alone.
+    fn alive_on(&self, side: &Bound<'_, PyAny>) -> PyResult<Vec<PyMarketData>> {
+        Ok(self
+            .inner
+            .alive_on(side_of(side)?)
+            .cloned()
+            .map(PyMarketData::from_core)
+            .collect())
+    }
+
+    /// The orders and quotes applied since the book before this one, each a
+    /// `MarketData`, in the order applied across both sides: what a book
+    /// stating its deltas alone states, and what `with_previous` replays
+    /// over the book before it.
     #[getter]
     fn deltas(&self) -> Vec<PyMarketData> {
         self.inner
@@ -88,23 +126,12 @@ graph_methods!(PyBookEvent, "BookEvent"; [
             .collect()
     }
 
-    /// The executions at this book's instant.
-    #[getter]
-    fn executions(&self) -> Vec<PyExecutionEvent> {
-        self.inner
-            .executions()
-            .iter()
-            .cloned()
-            .map(PyExecutionEvent::from_core)
-            .collect()
-    }
-
     /// One limit per level of the side `side` takes - a bid side reads the
     /// bid, an ask side the ask - best first and the unpriced limit last:
     /// each the struct `Scalar` of its `price` (`None` on the unpriced
     /// limit), the exact `quantity` resting there, the `uuids` of the
     /// entries resting there and whether the level is `tradable`. Empty for
-    /// a side that is neither.
+    /// a side that is neither, and on a book stating its deltas alone.
     fn limits(&self, side: &Bound<'_, PyAny>) -> PyResult<Vec<PyScalar>> {
         Ok(self
             .inner
@@ -256,10 +283,21 @@ pub(crate) struct PyBookIterator {
 impl PyBookIterator {
     /// Opens a book walk over `items` - any leaf or `MarketData`, sorted by
     /// their own event order; `snapshot_millis == 0` disables grid
-    /// snapshots.
+    /// snapshots, so a book is emitted whole only at a full refresh.
+    ///
+    /// The walk folds orders, quotes and snapshot controls and prunes every
+    /// other input where it is pulled. `filter` - a `Filter`, a `Term`, an
+    /// `Expression` or the text of a predicate over the `marketdata` row -
+    /// narrows it further, bound once here; it never admits an execution or
+    /// a trade. `None` keeps every booked input.
     #[new]
-    #[pyo3(signature = (items, snapshot_millis=0))]
-    fn new(items: &Bound<'_, PyAny>, snapshot_millis: u64) -> PyResult<Self> {
+    #[pyo3(signature = (items, snapshot_millis=0, filter=None))]
+    fn new(
+        items: &Bound<'_, PyAny>,
+        snapshot_millis: u64,
+        filter: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let filter = filter.map(filter_from_value).transpose()?;
         let pulled = Pulled::new(items, market_data_of)?;
         let failed = pulled.failed.clone();
         // The core stage takes a typed error, not a `PyErr`, so a Python
@@ -279,7 +317,10 @@ impl PyBookIterator {
                     .map(|error| Err(python_failure(error)))
             })))
         };
-        let inner = CoreBookIterator::new(source, snapshot_millis).map_err(value_error)?;
+        let mut inner = CoreBookIterator::new(source, snapshot_millis).map_err(value_error)?;
+        if let Some(filter) = filter {
+            inner = inner.with_filter(filter).map_err(value_error)?;
+        }
         Ok(Self {
             inner: Mutex::new(inner),
             failed,

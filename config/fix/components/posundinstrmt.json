@@ -47,17 +47,6 @@
         }
       },
       {
-        "name": "nounderlyingamounts",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingamounts",
-          "FIX:tag": "984"
-        }
-      },
-      {
         "name": "underlyingamount",
         "dtype": {
           "type": "null"

@@ -7,9 +7,10 @@
 //! tree: one entry per field the message states, each carrying the tag the
 //! dictionary resolved - `0` for a key no dictionary explains - the
 //! canonical name, and the value as the wire spells it. A repeating group
-//! is one entry under its counter, its value the count, and each occurrence
-//! is an entry under it with no value of its own and the occurrence's
-//! members nested beneath; a component is an entry with no value and its
+//! is one entry filed under its counter's tag, its value the group's length,
+//! because the count is never a field of its own; each occurrence is an
+//! entry under it with no value of its own and the occurrence's members
+//! nested beneath, and a component is an entry with no value and its
 //! members beneath. So a consumer walks one shape whatever the message
 //! carried, and a wire re-emits from it in pre-order: an entry with a value
 //! is one pair, an entry without one is the pairs under it.
@@ -214,19 +215,8 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
             let nanos = count.checked_mul(nanos_per(unit)?)?;
             Some(fix_date(nanos.div_euclid(NANOS_PER_DAY)))
         }
-        // A decimal writes the number it is rather than the scale it is
-        // stored at: this crate keeps a price and a quantity exact, at
-        // `decimal128(38, 18)`, and a wire that spelled `12.5` as
-        // `12.500000000000000000` would be stating the storage.
-        Scalar::Decimal(held) => Some(smol_str::format_smolstr!("{held}")),
-        Scalar::BigDecimal(held) => Some(smol_str::format_smolstr!("{held}")),
-        Scalar::Decimal32(_)
-        | Scalar::Decimal64(_)
-        | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => {
-            crate::Decimal::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
-        }
-        // Every other number and duration writes its leaf's own canonical text.
+        // Every other number and duration writes its leaf's own canonical
+        // text - a decimal the number it is, never the scale it is stored at.
         other => other
             .leaf_display()
             .map(|held| smol_str::format_smolstr!("{held}")),

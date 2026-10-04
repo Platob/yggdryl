@@ -24,17 +24,6 @@
         }
       },
       {
-        "name": "nolegratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegratesources",
-          "FIX:tag": "3116"
-        }
-      },
-      {
         "name": "legratesources",
         "dtype": {
           "type": "null"

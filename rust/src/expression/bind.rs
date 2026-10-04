@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::arrow::ColumnCast;
+use super::arrow::{ColumnCast, child_position};
 use super::eval::{Row, convert};
 use super::path::FieldSegment;
 use super::typing::{column_index, common_type};
@@ -251,7 +251,8 @@ impl Node {
         found
     }
 
-    fn collect_columns(&self, found: &mut Vec<usize>) {
+    /// Push every column index this node reads onto `found`, as met.
+    pub(crate) fn collect_columns(&self, found: &mut Vec<usize>) {
         if let Kind::Column(index) = self.kind {
             found.push(index);
         }
@@ -337,6 +338,39 @@ impl Bound {
         &self.node
     }
 
+    /// Where the cell this term publishes as `published` already lies in a
+    /// landed record: the position of the column it reads, then of the
+    /// record child each step names - `None` for a cell it computes.
+    ///
+    /// A term lies when it is a column, or a path from one whose every step
+    /// names a child of a record - resolved by the one fold every record
+    /// step takes, [`child_position`] - and `published` takes the cell as it
+    /// stands ([`published_as`]). A step into a map, a union, a dictionary
+    /// or a serie, a predicate, a declared cast and a `not null` over a cell
+    /// that may be absent all compute.
+    pub(crate) fn lies_where(&self, published: &Field) -> Option<Box<[usize]>> {
+        let (column, steps) = match &self.node.kind {
+            Kind::Column(index) => (*index, &[][..]),
+            Kind::Path(base, steps) => (base.as_column()?, steps.as_slice()),
+            _ => return None,
+        };
+        let mut positions = Vec::with_capacity(1 + steps.len());
+        positions.push(column);
+        let mut field = self.schema.get_field(column)?;
+        for step in steps {
+            let (StepKind::Segment(segment), DataType::Struct(children)) =
+                (&step.kind, field.dtype())
+            else {
+                return None;
+            };
+            let children = children.as_fields();
+            let position = child_position(children.iter().map(Field::name), segment.as_name()?)?;
+            positions.push(position);
+            field = children.get(position)?;
+        }
+        published_as(published, &self.node.field).then(|| positions.into_boxed_slice())
+    }
+
     /// Evaluate this term for one row.
     ///
     /// The row is a [`crate::serie::Run`] of column values in
@@ -362,6 +396,13 @@ impl Bound {
     pub fn matches(&self, row: &Scalar) -> Result<bool> {
         Ok(self.eval(row)?.as_bool().unwrap_or(false))
     }
+}
+
+/// Whether a cell landed as `landed` is, as it stands, the cell published as
+/// `published`: the same datatype, so no declared cast, and no absence the
+/// published field refuses.
+pub(crate) fn published_as(published: &Field, landed: &Field) -> bool {
+    published.dtype() == landed.dtype() && (published.is_nullable() || !landed.is_nullable())
 }
 
 /// One row's column values: lent by a run, built once by a column, and a
@@ -730,10 +771,21 @@ impl Binder<'_> {
                 let mut lowered = Vec::with_capacity(arguments.len());
                 let unified = match function {
                     Function::Coalesce | Function::IfNull => Some(field.dtype().clone()),
-                    Function::Sqrt | Function::Factorial | Function::Pow | Function::Exp | Function::Ln
-                    | Function::Log10 | Function::Degrees | Function::Radians
-                    | Function::Cos | Function::Asin | Function::Sin | Function::Tan
-                    | Function::Acos | Function::Atan | Function::Atan2 => Some(DataType::Float64),
+                    Function::Sqrt
+                    | Function::Factorial
+                    | Function::Pow
+                    | Function::Exp
+                    | Function::Ln
+                    | Function::Log10
+                    | Function::Degrees
+                    | Function::Radians
+                    | Function::Cos
+                    | Function::Asin
+                    | Function::Sin
+                    | Function::Tan
+                    | Function::Acos
+                    | Function::Atan
+                    | Function::Atan2 => Some(DataType::Float64),
                     _ => None,
                 };
                 for argument in arguments.iter() {

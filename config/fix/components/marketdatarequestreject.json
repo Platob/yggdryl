@@ -25,17 +25,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -54,17 +43,6 @@
         "metadata": {
           "FIX:field": "mdreqrejreason",
           "FIX:tag": "281"
-        }
-      },
-      {
-        "name": "noaltmdsource",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noaltmdsource",
-          "FIX:tag": "816"
         }
       },
       {

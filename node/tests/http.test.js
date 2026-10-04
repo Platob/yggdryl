@@ -187,6 +187,15 @@ test('refusals name what they refuse before anything goes out', () => {
   assert.equal(session.stats.requests, 0)
 })
 
+test('netrc is an HttpOptions property the core reads', () => {
+  // A boolean by key, or its text in `options`; anything else is refused by
+  // the core, naming the property.
+  assert.ok(new http.Session(undefined, { netrc: false }))
+  assert.ok(new http.Session(undefined, { options: { netrc: 'no' } }))
+  assert.throws(() => new http.Session(undefined, { netrc: 'sometimes' }), /netrc/)
+  assert.throws(() => new http.Session(undefined, { options: { netrc: 'sometimes' } }), /netrc/)
+})
+
 test('get sends params and headers and reads json, text and content', () => {
   const session = new http.Session(origin + '/', {
     headers: { 'X-Default': 'session' },
@@ -667,11 +676,14 @@ test('trace writes each exchange as a message/http document', (t) => {
 
   // Completed a moment after the client reads the last byte, on the
   // connection's own thread, so a reader polls for it rather than reading
-  // at once.
+  // at once - and polls for the answer's bytes, not its file: the file is
+  // created empty when the exchange opens and the answer appended as it
+  // goes out.
   const requestFile = path.join(root, '0000-request.http')
   const responseFile = path.join(root, '0000-response.http')
+  const written = (file) => fs.existsSync(file) && fs.statSync(file).size > 0
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && !(fs.existsSync(requestFile) && fs.existsSync(responseFile))) {
+  while (Date.now() < deadline && !(written(requestFile) && written(responseFile))) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
   }
   assert.match(fs.readFileSync(requestFile, 'utf8'), /^GET \/fixed HTTP\/1\.1\r\n/)

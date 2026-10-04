@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nounderlyingstreamcommodityaltids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamcommodityaltids",
-          "FIX:tag": "41990"
-        }
-      },
-      {
         "name": "underlyingstreamcommodityaltids",
         "dtype": {
           "type": "null"
@@ -110,17 +99,6 @@
         "metadata": {
           "FIX:field": "underlyingstreamcommoditydeliverypricingregion",
           "FIX:tag": "42589"
-        }
-      },
-      {
-        "name": "nounderlyingstreamassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamassetattributes",
-          "FIX:tag": "41800"
         }
       },
       {
@@ -211,17 +189,6 @@
         }
       },
       {
-        "name": "nounderlyingstreamcommoditydatasources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamcommoditydatasources",
-          "FIX:tag": "41993"
-        }
-      },
-      {
         "name": "underlyingstreamcommoditydatasources",
         "dtype": {
           "type": "null"
@@ -287,17 +254,6 @@
         }
       },
       {
-        "name": "nounderlyingstreamcommoditysettlbusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamcommoditysettlbusinesscenters",
-          "FIX:tag": "41962"
-        }
-      },
-      {
         "name": "underlyingstreamcommoditysettlbusinesscenters",
         "dtype": {
           "type": "null"
@@ -360,17 +316,6 @@
         "metadata": {
           "FIX:field": "underlyingstreamcommoditysettldaytype",
           "FIX:tag": "41987"
-        }
-      },
-      {
-        "name": "nounderlyingstreamcommoditysettlperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingstreamcommoditysettlperiods",
-          "FIX:tag": "42002"
         }
       },
       {

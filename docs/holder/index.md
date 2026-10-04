@@ -26,11 +26,22 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 Holder::local(path) -> Result<Holder>          // LocalPath: the role is decided later
 Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
-Holder::from_url(&Url, properties)             // the scheme picks the backend
+Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
 holder.open() -> Result<()>                    // into_media, then open; keeps schema and footer caches
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
 ```
+
+`Holder::from_url` is the one door every backend is behind. It takes a `Url` or any identifier that locates one (`impl AsRef<Uri>`: a relative path, a URN, an ARN), reads it once and opens it under the properties:
+
+| Location | Held as |
+| --- | --- |
+| `file:` | a `LocalPath`, its role decided when an operation needs it; with a fragment, a member of a [ZIP archive](#zip) |
+| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location, under the `s3` feature and the store's own properties |
+| `http:`, `https:` | the [HTTP](#http) request that reads and writes the resource, under the `http` feature and the `HttpOptions` properties |
+| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, under the `s3tables` feature: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
+
+`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. An identifier that names no location, and a scheme no backend of the build holds, are refused by name.
 
 === "Rust"
 
@@ -86,6 +97,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
+| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what `Holder::from_url` answers for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |
@@ -108,6 +120,7 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
 | `trades.log` | `Text(LocalPath)` |
 | `trades.json`, `trades` | `LocalPath` |
 | `trades.parquet.gz` | `LocalPath`: Parquet compresses internally, so the writer refuses the name |
+| `trades.xlsx.gz` | `LocalPath`: a workbook is deflated inside, so the Excel doors refuse the name |
 | `logs/` | `LocalPath`: a folder names no encoding, so its records are found beneath it |
 | `logs/*.log.gz` | `Text(LocalPath)`: a pattern's suffix names each leaf's encoding, and each leaf takes off its own coding, so none goes over the stream of them |
 | `lake/**/*.parquet` | `Parquet(LocalPath)`, reading the `.parquet` leaves the pattern matches as one table |
@@ -419,9 +432,9 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 ### Addresses
 
-`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://<host>/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
+`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://localhost/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
 
-No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is this machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell. A buffer and a location on a filesystem that answers in this process name it. A local file names none: `file:///path` is this machine by RFC 8089, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment (`AWS_ENDPOINT_URL_S3`, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
+No host is ever made up. A local file names none: `file:///path` is this machine by RFC 8089 on every platform, so no host is added to a file URL that did not state one, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A buffer and a location on a filesystem that answers in this process name `localhost`, the one name the crate writes for this machine. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is the machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell; intake reads it as this machine, and no URL the crate writes names it. A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment and files (the session's [configured endpoint](#where-each-service-is-reached) for Amazon S3, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
 
 === "Rust"
 
@@ -441,7 +454,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     // this machine.
     let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
     assert_eq!(buffer.uri().unwrap().scheme().as_str(), "mem");
-    assert_eq!(buffer.url().unwrap().hostname(), Some(yggdryl::HOSTNAME.as_str()));
+    assert_eq!(buffer.url().unwrap().hostname(), Some("localhost"));
     // A local file names no host: `file:///...` is this machine.
     assert_eq!(IOBase::url(&folder).unwrap().hostname(), None);
     ```
@@ -462,11 +475,9 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
 
     # A buffer is addressed by its identity rather than by a place, on this
     # machine; a local file names no host.
-    from yggdryl import HOSTNAME
-
     buffer = IOBase.from_bytes(b"symbol\n")
     assert buffer.uri.scheme == "mem"
-    assert buffer.url.hostname == HOSTNAME
+    assert buffer.url.hostname == "localhost"
     assert handle.url.hostname is None
     ```
 
@@ -477,7 +488,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
-    const { HOSTNAME, IOBase } = require('yggdryl')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-uri-'))
     fs.writeFileSync(path.join(root, 'ticks.csv'), 'symbol\n')
@@ -486,7 +497,7 @@ No host is ever made up. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `H
     assert.equal(handle.uri.toString(), handle.url.toString())
     assert.equal(handle.uri.scheme, 'file')
     assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).uri.scheme, 'mem')
-    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).url.hostname, HOSTNAME)
+    assert.equal(IOBase.fromBytes(Buffer.from('symbol\n')).url.hostname, 'localhost')
     assert.equal(handle.url.hostname, null)
     ```
 
@@ -739,7 +750,7 @@ Rust asks `is_container`, `is_leaf`, `is_known`; the bindings `exists`, `is_dir`
     assert.equal(cursor.tell(), 3)
     ```
 
-A container streams its leaves. A folder, a location ending in `/` and a glob such as `logs/*.log` yield the bytes of every leaf beneath them - recursively under a folder, what the pattern matches under a glob, containers left out, and so is every private name, one starting with a dot such as `.venv` or `.config`, with the whole tree beneath it - one after another in the backend's listing order, each leaf's content coding taken off, so a `.gz` leaf contributes its text. `position` counts across the leaves, `read_all_bytes` and `read_range_bytes` read the same stream, and each leaf is opened only when the stream reaches it; the listing starts when the stream is built. Nothing separates two leaves, so a line-oriented reader reads them as objects instead: [plain text](../media/index.md#plain-text) and every record read go leaf by leaf. A container still holds no positional bytes - `pread`, and so a cursor's `read`, reads nothing and `size` is zero - and a digest, a copy or a coding transfer refuses it with `NotAtomic`, because a listing order is the backend's, not the value's. A `codec` property stated over a container spelling composes nothing, since each leaf takes off the coding its own name declares.
+A container streams its leaves. A folder, a location ending in `/` and a glob such as `logs/*.log` yield the bytes of every leaf beneath them - recursively under a folder, what the pattern matches under a glob, containers left out, and so is every private name, one starting with a dot such as `.venv` or `.config`, with the whole tree beneath it - one after another in the backend's listing order, each leaf's content coding taken off, so a `.gz` leaf contributes its text. `position` counts across the leaves, `read_all_bytes` and `read_range_bytes` read the same stream, and each leaf is opened only when the stream reaches it; the listing starts when the stream is built. Nothing separates two leaves, so a line-oriented reader reads them as objects instead: [plain text](../media/text.md) and every record read go leaf by leaf. A container still holds no positional bytes - `pread`, and so a cursor's `read`, reads nothing and `size` is zero - and a digest, a copy or a coding transfer refuses it with `NotAtomic`, because a listing order is the backend's, not the value's. A `codec` property stated over a container spelling composes nothing, since each leaf takes off the coding its own name declares.
 
 === "Rust"
 
@@ -1211,17 +1222,17 @@ A handle works without `open`; opening moves materialization to a known point an
 | --- | --- |
 | [`Buffer`](#buffer) | nothing; `opened` stays `false` |
 | [`LocalFile`](#local) | descriptor and memory mapping |
-| [`Coded`](../media/index.md#compression) | the decoded value |
-| [IPC](../media/index.md#arrow-ipc) | schema and dimensions |
-| [Parquet](../media/index.md#parquet) | the footer |
-| [Avro](../media/index.md#avro) | header and block metadata |
-| [Text](../media/index.md#plain-text) | resolved field, coding plan, dimensions |
+| [`Coded`](../media/compression.md) | the decoded value |
+| [IPC](../media/ipc.md) | schema and dimensions |
+| [Parquet](../media/parquet.md) | the footer |
+| [Avro](../media/avro.md) | header and block metadata |
+| [Text](../media/text.md) | resolved field, coding plan, dimensions |
 
 ### Clear and remove
 
 `clear` empties and keeps the resource; `remove` deletes it without a probe, treats absence as success, and refuses a container with children unless `recursive`. A wrapping handle removes what it wraps, cache included.
 
-| Call | Leaf | Container | [Iceberg](../media/index.md#iceberg) `Table` |
+| Call | Leaf | Container | [Iceberg](../media/iceberg.md) `IcebergTable` |
 | --- | --- | --- | --- |
 | `clear` | size `0` | loses every child recursively | one snapshot with no data files; schema, properties, history stay |
 | `remove` | deleted | deleted; refused while children remain, unless `recursive` | the whole location, metadata and data files |
@@ -1382,7 +1393,7 @@ cargo bench --bench coding -- io_pstream
 
 ## Values
 
-Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing.
+Whole-value conveniences derive from `pread`/`pwrite`. The bindings spell them `read_bytes`/`read_text` and `write_bytes`/`write_text`; `read_range_bytes` and `append_bytes` keep the core name. `append_bytes`, like `write_all_bytes`, is a complete operation: it ends with a flush and publishes on return, on every backend - a remote object written, a memory-mapped `LocalFile`'s growth slack trimmed - with no `flush`/`close` left to the caller. Bare `pwrite` is the one call that stages without publishing. A log written through a handle is one such append per publish, so a handler over a remote store holds records back to a capacity ([Logging: Handlers](../logging.md#handlers)).
 
 ```text
 fn read_all_bytes(&self) -> Result<Vec<u8>>
@@ -1503,7 +1514,7 @@ Both stream [`pstream_bytes`](#streams-and-cursors) and retain one bounded chunk
 
 ### Structured values
 
-The media type selects JSON, YAML, TOML or XML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. The codecs are on the [Media](../media/index.md#json) page.
+The media type selects JSON, YAML, TOML or XML and any outer gzip, zlib or zstd; a `field` directs parsing, and without one the natural value is inferred. Rust reads a struct row as `Scalar::Serie`; Python and JavaScript restore field names, and `cls=Scalar` / `{ scalar: true }` return the core value. Each codec has its page under Media: [JSON](../media/json.md), [YAML](../media/yaml.md), [TOML](../media/toml.md), [XML](../media/xml.md).
 
 === "Rust"
 
@@ -1608,16 +1619,22 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
 
-    overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>   // the one required hook
-    append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
-    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>       // needs merge_by
+    overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>   // the one required hook
+    append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>
+    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by
 
-    overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
-    overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<()>
+    overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<IOResult>
+    overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<IOResult>
 
-    write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
-    write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
-    write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
+    write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
+    write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
+    write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
+
+    read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
+    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
+    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<IOResult>
+
+    IOResult { read_rows, written_rows, skipped_rows }   // what the write did, in rows
     ```
 
 === "Python"
@@ -1625,12 +1642,17 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     ```text
     read_arrow_reader(*, options=None) -> pyarrow.RecordBatchReader
     read_records(cls=None, *, options=None) -> Iterator[dict | dataclass]
-    overwrite|append|merge_arrow_reader(reader, *, options=None) -> None
-    overwrite|append|merge_arrow_table(table, *, options=None) -> None
-    overwrite|append|merge_arrow_batch(batch, *, options=None) -> None
-    overwrite|append|merge_records(records, *, options=None) -> None
-    write_arrow_reader|table|batch(value, mode, *, options=None) -> None
-    write_records(records, mode, *, options=None) -> None
+    overwrite|append|merge_arrow_reader(reader, *, options=None) -> IOResult
+    overwrite|append|merge_arrow_table(table, *, options=None) -> IOResult
+    overwrite|append|merge_arrow_batch(batch, *, options=None) -> IOResult
+    overwrite|append|merge_records(records, *, options=None) -> IOResult
+    write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
+    write_records(records, mode, *, options=None) -> IOResult
+    read_serie(*, options=None) -> SerieReader
+    write_serie(value, mode="overwrite", *, options=None) -> IOResult
+    overwrite|append|merge_serie(value, *, options=None) -> IOResult
+
+    IOResult.read_rows, .written_rows, .skipped_rows   # what the write did, in rows
     ```
 
 === "JavaScript"
@@ -1638,15 +1660,20 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     ```text
     readArrowReader(options?) -> BatchReader
     readRecords(cls?, options?) -> Iterable<object>
-    overwrite|append|mergeArrowReader(reader, options?) -> void
-    overwrite|append|mergeArrowTable(table, options?) -> void
-    overwrite|append|mergeArrowBatch(batch, options?) -> void
-    overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
-    writeArrowReader|Table|Batch(value, mode, options?) -> void
-    writeRecords(records, mode, options?) -> void | Promise<void>
+    overwrite|append|mergeArrowReader(reader, options?) -> IOResult
+    overwrite|append|mergeArrowTable(table, options?) -> IOResult
+    overwrite|append|mergeArrowBatch(batch, options?) -> IOResult
+    overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
+    writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
+    writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
+    readSerie(options?) -> SerieReader
+    writeSerie(value, mode?, options?) -> IOResult
+    overwrite|append|mergeSerie(value, options?) -> IOResult
+
+    IOResult.readRows, .writtenRows, .skippedRows   // what the write did, in rows
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_arrow` / `write_arrow` answer and take a [`SerieReader`](../types/serie.md#a-handle-reads-and-writes-it-whatever-it-holds) whatever the handle holds.
+Default append and merge shape once and delegate to `overwrite_arrow_reader`, and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -1834,7 +1861,7 @@ fs.rmSync(root, { recursive: true, force: true })
 
 ### Column pushdown
 
-The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/index.md#parquet) skips the column chunks, [Arrow IPC](../media/index.md#arrow-ipc) skips decode and allocation.
+The options' field selects and casts in one pass; `select` narrows by name. [Parquet](../media/parquet.md) skips the column chunks, [Arrow IPC](../media/ipc.md) skips decode and allocation.
 
 === "Rust"
 
@@ -2137,7 +2164,7 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Append and merge
 
-Overwrite replaces, append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
+Overwrite replaces - a leaf whole, a partitioned folder or table only the partitions its rows reach and the ones its `where` pins, every other partition's leaves kept, so an overwrite with no row touches nothing outside that scope - append keeps the stored rows, merge updates matching `merge_by` keys and adds the rest. A folder holds each commit's rows split by partition under the process spill bound and writes every leaf it reaches once. Keys use Arrow's row format: null matches null and the last arrival wins. Merge holds only the stored side in memory.
 
 === "Rust"
 
@@ -2270,15 +2297,132 @@ Overwrite replaces, append keeps the stored rows, merge updates matching `merge_
 
 ### Commit cadence
 
-`commit_row_size` is the one publication boundary of a streamed write, applied after shaping.
+`commit_batch_num` is the one publication boundary of a streamed write, applied after shaping. It counts whole batches - a batch is one the shaped stream yields, cut by `batch_row_size` and `batch_byte_size` where a row adapter built it, never by the cadence - and an empty batch counts for nothing.
 
-| `commit_row_size` | publication |
+| `commit_batch_num` | publication |
 | --- | --- |
-| unset | once, when the source ends |
-| `N > 0` | every complete group of `N` rows, then the remainder; a committed prefix survives a later failure |
+| unset | the destination's own cadence: a leaf, a plain folder and an Iceberg table once, when the source ends - the table holding every partition's rows under the process spill bound until then, so an overwrite of any length is one atomic snapshot |
+| `N > 0` | every `N` batches, then the remainder |
 | `0` | rejected before any input is pulled |
 
-A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/index.md#iceberg).
+Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
+
+A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
+
+### Write results
+
+Every write answers an `IOResult`: what it did, in rows, with no read of the destination. It is counted once, where the write is shaped, so every door, shape and medium answers it the same way.
+
+| Count | Is |
+| --- | --- |
+| `read_rows` | the rows the write pulled from its source |
+| `written_rows` | the rows the destination took - for a merge, every incoming row, whether it updated a stored row or added one |
+| `skipped_rows` | the rows read and not written: the ones the options' `filter` kept out, and the part of the batch a [limit](#limits) fell in |
+
+A limit stops pulling, so the rows past it were never read and count nowhere. A write cut into several [commits](#commit-cadence) answers their sum, a source with no row answers the empty result, and the result says nothing of what an overwrite or a merge replaced - `row_size` answers what the destination holds. A resumable write session answers it from `finish`. Results add, compare, hash and print (`read 5 rows, wrote 4, skipped 1`).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, IOResult, MimeType, Scalar, StructType};
+
+    let field = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+    ])?)
+    .required_field("row");
+    let row = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let options = handle.record_options()?.with_field(field);
+
+    let written = handle.overwrite_records(
+        [row(1, "XNAS"), row(2, "XNYS"), row(3, "XLON")],
+        &options,
+    )?;
+    assert_eq!(written, IOResult::new(3, 3));
+
+    // A filter keeps rows out of the write: read, not written, skipped.
+    let kept = handle.append_records(
+        [row(4, "XNAS"), row(5, "XPAR")],
+        &options.clone().with_filter("venue = 'XNAS'")?,
+    )?;
+    assert_eq!((kept.read_rows, kept.written_rows, kept.skipped_rows), (2, 1, 1));
+    assert_eq!(handle.row_size()?, 4);
+
+    // A source with no row is the empty result.
+    assert!(handle.append_records(Vec::<Scalar>::new(), &options)?.is_empty());
+    assert_eq!((written + kept).to_string(), "read 5 rows, wrote 4, skipped 1");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, IOResult
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+
+    written = handle.overwrite_records(
+        [
+            {"id": 1, "venue": "XNAS"},
+            {"id": 2, "venue": "XNYS"},
+            {"id": 3, "venue": "XLON"},
+        ]
+    )
+    assert written == IOResult(3, 3)
+
+    # A filter keeps rows out of the write: read, not written, skipped.
+    kept = handle.append_records(
+        [{"id": 4, "venue": "XNAS"}, {"id": 5, "venue": "XPAR"}],
+        filter="venue = 'XNAS'",
+    )
+    assert (kept.read_rows, kept.written_rows, kept.skipped_rows) == (2, 1, 1)
+    assert handle.row_size() == 4
+
+    # A source with no row is the empty result; no row states no field, so
+    # the stored one is declared.
+    assert handle.append_records([], field=handle.read_arrow_field()).is_empty()
+    assert str(written + kept) == "read 5 rows, wrote 4, skipped 1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, IOResult } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.arrows'))
+
+    const written = handle.overwriteRecords([
+      { id: 1n, venue: 'XNAS' },
+      { id: 2n, venue: 'XNYS' },
+      { id: 3n, venue: 'XLON' },
+    ])
+    assert.ok(written.equals(new IOResult(3, 3)))
+
+    // A filter keeps rows out of the write: read, not written, skipped.
+    const kept = handle.appendRecords(
+      [{ id: 4n, venue: 'XNAS' }, { id: 5n, venue: 'XPAR' }],
+      { filter: "venue = 'XNAS'" },
+    )
+    assert.deepEqual([kept.readRows, kept.writtenRows, kept.skippedRows], [2, 1, 1])
+    assert.equal(handle.rowSize(), 4)
+
+    // A source with no row is the empty result; no row states no field, so
+    // the stored one is declared.
+    assert.ok(handle.appendRecords([], { field: handle.readArrowField() }).isEmpty())
+    assert.equal(String(written.add(kept)), 'read 5 rows, wrote 4, skipped 1')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ### Absent and unknown
 
@@ -2377,7 +2521,7 @@ memory.overwrite_arrow_table(pa.table({"symbol": ["AAPL"]}))
 assert memory.scan_arrow().to_table().num_rows == 1
 ```
 
-Plain-text records use the same methods; [Plain text](../media/index.md#plain-text) owns their schema.
+Plain-text records use the same methods; [Plain text](../media/text.md) owns their schema.
 
 ### Records performance
 
@@ -2766,7 +2910,7 @@ let _ = std::fs::remove_dir_all(&root);
 
 ### Derived partition columns
 
-A column can also be computed from another column of the same rows. The [`PARTITION:`](../types/protocol.md) view declares it: `PARTITION:sources` names the field it reads, `PARTITION:transform` the [expression](../expression/grammar.md) function, identity when absent. `apply_arrow_batch` on the Struct root fills a declared column that is absent or all null and leaves one carrying values alone.
+A column can also be computed from another column of the same rows. The struct's [`PARTITION:by`](../types/protocol.md#partition-columns) declares it - `years(event)`, `truncate(name, 4) as prefix` - and `with_partition_by` materializes each derived entry as a marked column carrying its term as a [transform](../types/protocol.md) declaration, so the folder spells it in its paths exactly as it spells an identity column. `apply_arrow_batch` on the root's transform view fills a declared column that is absent or all null and leaves one carrying values alone. A write only casts, so the rows carry the column before a partitioned write cuts them by their directories: a derived column they do not carry is refused by path where required and lands null where nullable.
 
 === "Rust"
 
@@ -2774,14 +2918,12 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
-    use yggdryl::expression::Function;
     use yggdryl::{DataType, StructType};
 
-    let mut year = DataType::Int32.nullable_field("year");
-    year.as_partition_mut().set_sources(["event"])?;
-    year.as_partition_mut().set_transform(Function::Year)?;
-    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
-        .required_field("row");
+    let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?)
+        .required_field("row")
+        .with_partition_by(["year(event) as year".parse()?])?;
+    assert_eq!(root.partition_field_names().collect::<Vec<_>>(), ["year"]);
 
     let batch = RecordBatch::try_from_iter([(
         "event",
@@ -2799,9 +2941,10 @@ A column can also be computed from another column of the same rows. The [`PARTIT
     // The declaration is one term, which is also what a predicate over the
     // same value binds against.
     assert_eq!(
-        root.field_at(1)?.as_partition().term()?.map(|read| read.to_string()),
+        root.field_at(1)?.as_transform().term()?.map(|read| read.to_string()),
         Some("year(event)".to_owned()),
     );
+    assert_eq!(root.get_metadata("PARTITION:by"), Some(r#"["year(event) as year"]"#));
     ```
 
 === "Python"
@@ -2811,24 +2954,46 @@ A column can also be computed from another column of the same rows. The [`PARTIT
 
     from yggdryl import DataType, Field
 
-    year = Field("year", "int32", nullable=True)
-    year.partition.sources = ["event"]
-    year.partition.transform = "dayofmonth"
-
-    # A dialect alias resolves on the way in, so one name is stored.
-    assert year.partition.transform == "day"
-
     root = Field(
-        "row",
-        DataType.from_fields([Field("event", "date32", nullable=False), year]),
-        nullable=False,
-    )
-    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+        "row", DataType.from_fields([Field("event", "date32", nullable=False)]), nullable=False
+    ).with_partition_by(["year(event) as year"])
+    assert root.partition_field_names == ["year"]
 
-    filled = root.partition.apply_arrow_batch(batch)
+    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+    filled = root.transform.apply_arrow_batch(batch)
 
     assert filled.column_names == ["event", "year"]
-    assert filled.column("year").to_pylist() == [1, 1]
+    assert filled.column("year").to_pylist() == [2024, 2025]
+
+    # The declaration is one term, which is also what a predicate over the
+    # same value binds against.
+    assert str(root.dtype["year"].transform.term) == "year(event)"
+    assert root.metadata["PARTITION:by"] == '["year(event) as year"]'
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { DataType, Field, Selector } = require('yggdryl')
+
+    const root = new Field('row', DataType.fromFields([new Field('event', 'date32', false)]), false)
+      .withPartitionBy(['year(event) as year'])
+    assert.deepEqual(root.partitionFieldNames(), ['year'])
+
+    // The declaration is one term, which is also what a predicate over the
+    // same value binds against.
+    assert.equal(root.dtype.getFieldByPath('year').transform.term.toString(), 'year(event)')
+    assert.equal(root.get('PARTITION:by'), '["year(event) as year"]')
+
+    // The root's selector computes the derived column from the rows.
+    const batch = new arrow.Table({
+      event: arrow.vectorFromArray([new Date('2024-01-01'), new Date('2025-01-01')], new arrow.DateDay()),
+    }).batches[0]
+    const filled = Selector.fromField(root).applyArrowBatch(batch)
+    assert.deepEqual(filled.schema.fields.map((field) => field.name), ['event', 'year'])
+    assert.deepEqual([...filled.getChild('year')], [2024, 2025])
     ```
 
 ## Call counts
@@ -3484,7 +3649,7 @@ A reader takes a handle, not a path, so one function runs over a file, a `Buffer
 
 `yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam; `from_fs` binds a filesystem and an opaque path, which is never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally. `MemoryFileSystem` and `LocalFileSystem` ship as references; Python binds `pyarrow.fs`, JavaScript a synchronous handler protocol.
 
-A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and [`HOSTNAME`](#addresses) for every filesystem answering in this process (`memory://<host>/bucket/x`, a handler's `fs://<host>/...`).
+A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and `localhost` for every other filesystem, which is taken to answer in this process (`memory://localhost/bucket/x`, a handler's `fs://localhost/...`).
 
 ```text
 trait FileSystem: Send + Sync {
@@ -3864,7 +4029,7 @@ The request count is the contract, asserted by tests.
 | the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
-A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/index.md#iceberg) scan reads each data file with one `GET`.
+A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`.
 
 | Iceberg operation | requests |
 | --- | ---: |
@@ -3921,7 +4086,7 @@ assert_eq!(azure.key(), "part.parquet");
 
 ### Configuration
 
-Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins. The variables the AWS tools read for themselves - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest - are not swept: they are the [session's](#aws-identity), read with the precedence those tools give them.
+Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins. The variables the AWS tools read for themselves - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest, in any case - are not swept: they are the [session's](#aws-identity), read with the precedence those tools give them. Nor is any endpoint, under any prefix - a store's, STS's (`sts_endpoint`, `role_sts_endpoint`) or the instance metadata service's (`ec2_metadata_service_endpoint`, `metadata_service_endpoint`, `ec2_metadata_endpoint`): where a store is, the environment says through that store's own reader alone - the session's [configured endpoint](#where-each-service-is-reached) for Amazon S3, `STORAGE_EMULATOR_HOST` for Google, `AZURE_STORAGE_BLOB_ENDPOINT` for Azure - below an endpoint the options state and the one the URL names, and where STS and the metadata service are, through the session's `AWS_ENDPOINT_URL_STS` and `AWS_EC2_METADATA_SERVICE_ENDPOINT`. A swept endpoint would be a stated one, over `AWS_ENDPOINT_URL_<SERVICE>` and the profile and past the ignore flag, so `AWS_ENDPOINT`, `AWS_S3_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT` and `YGGDRYL_METADATA_SERVICE_ENDPOINT` address nothing, and an Azure variable never addresses an `s3://` location. Stated as a property (`sts_endpoint=...`), each is the endpoint it names.
 
 ```rust
 use yggdryl::s3::{Credentials, S3Options};
@@ -3953,8 +4118,8 @@ assert_eq!(
 );
 
 // A deployment that spells its configuration its own way gets every knob -
-// `TRADING_ENDPOINT`, `TRADING_SSE_TYPE`, `TRADING_ROLE_ARN` - rather than the
-// handful someone remembered to wire up.
+// `TRADING_REGION`, `TRADING_SSE_TYPE`, `TRADING_ROLE_ARN` - rather than the
+// handful someone remembered to wire up; an endpoint no prefix sweeps.
 let options = S3Options::default().with_environment_prefix("TRADING_");
 assert_eq!(options.environment_prefixes().len(), 5);
 
@@ -4033,24 +4198,49 @@ Names match loosely - case, `-`, `_` and `.` are one, and a store or tool prefix
 | | identity | `tenant_id`, `client_id`, `client_secret`, `federated_token_file`, `managed_identity` |
 | | blob, endpoint | `blob_type` (`block`, `append`, `page`), `access_tier`, `encryption_scope`, `api_version`, `data_lake`, `authority_host` |
 
-Sizes may carry a unit (`8MiB`, `32 MB`); durations are seconds.
+Sizes, durations, counts and flags read as an HTTP session's do ([Durations, counts, sizes and flags](#durations-counts-sizes-and-flags)): `8MiB`, `32 MB`, `30`, `250ms`, `yes`.
 
 ### AWS identity
 
 Who the process is to AWS - the profile, the region, the endpoint a service is reached at, and the credential set every request signs with - is one `Session` in `yggdryl::aws`, resolved the way the AWS tools resolve it and shared by every handle built on it. `S3Options::with_session` hands one over; an explicit credential pair or `with_anonymous` on the options still wins, and `with_environment(false)` seals it. Behind the `aws` feature, which `s3` implies.
+
+!!! note "Rust only"
+    Python and Node expose no `Session`. An S3 handle there takes the same knobs by name through its `options` properties (`profile`, `role_arn`, `credential_process`, ... in the table above), walks the same chain, and logs the walk under the same logger names ([What a walk logs](#what-a-walk-logs)).
 
 ```text
 Session::new()                                   // states nothing; resolves lazily, once, and caches
   .with_profile(name).with_region(region)        // else AWS_DEFAULT_PROFILE, AWS_PROFILE, AWS_REGION, the profile's own
   .with_credentials(keys).with_anonymous(true)   // an explicit set, or none
   .with_assumed_role(role).with_sso(sso)         // a role or a sign-in, as a profile would state one
+  .with_credential_process(command)              // a process, as a profile's credential_process would state one
   .with_sso_login(prompt).with_mfa_prompt(ask)   // how a person is asked, when one is needed
   .with_variables(pairs).with_environment(false) // another environment, or none at all
+  .with_directory(path)                          // another ~/.aws; with_config_text, with_credentials_text state the files' text
 session.credentials(now) -> Result<Option<Credentials>>   // the chain, walked once, refreshed in time
-session.profile() / region() / endpoint_url("s3") / sts_endpoint(region) / login()
+session.credential_source() -> Option<&'static str>       // which source answered: "environment", "login", ...
+session.invalidate() / invalidate_if(key_id)              // a store refused the set: forget it, read the files again
+session.profile() / region() / login()
+session.endpoint_url("s3")? / sts_endpoint(region)?    // where a service is reached, or a named refusal
 ```
 
-The chain is botocore's, in botocore's order: an explicit set; an explicit role, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; the environment (`AWS_ACCESS_KEY_ID`, with `AWS_CREDENTIAL_EXPIRATION` and `AWS_ACCOUNT_ID`); a profile that assumes a role through `source_profile`, `credential_source` or a web identity token; IAM Identity Center through the sign-in `aws sso login` cached; the credentials file; a `credential_process`; the configuration file; the legacy boto files; the container endpoint; the instance metadata service. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each. A temporary set is replaced fifteen minutes before it lapses, a refresh that fails keeps the set in hand until it has actually lapsed, and a store answering `ExpiredToken` makes the client walk the chain once more before it gives up. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache` in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
+The chain is botocore's, in botocore's order, with the console sign-in `aws login` files where botocore has it. The last column is the name `credential_source`, the log and a refusal call a source by.
+
+| # | source | read from | named |
+| --- | --- | --- | --- |
+| 1 | an explicit set, role, sign-in or process | `with_credentials` or a pair in the options or the URL; `with_assumed_role`, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; `with_sso`; `with_credential_process` | `explicit credentials`, `assumed role`, `sso`, `credential process` |
+| 2 | the environment | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or `AWS_SECURITY_TOKEN`), `AWS_CREDENTIAL_EXPIRATION`, `AWS_ACCOUNT_ID`; skipped when the session states a profile | `environment` |
+| 3 | a profile's role | `role_arn` with `source_profile`, `credential_source` or `web_identity_token_file` | `assumed role` |
+| 4 | web identity | `AWS_ROLE_ARN` with `AWS_WEB_IDENTITY_TOKEN_FILE`, and `AWS_ROLE_SESSION_NAME` | `web identity` |
+| 5 | IAM Identity Center | the profile's `sso_session`, or its `sso_*` keys, through the token `aws sso login` cached | `sso` |
+| 6 | the credentials file | `aws_access_key_id`, `aws_secret_access_key` and `aws_session_token` of the profile | `shared credentials file` |
+| 7 | the console sign-in | the profile's `login_session`, through the sign-in `aws login` cached ([below](#the-console-sign-in)) | `login` |
+| 8 | a `credential_process` | the profile's command | `credential process` |
+| 9 | the configuration file | the same three keys in the profile's section of `~/.aws/config` | `config file` |
+| 10 | the legacy boto files | `AWS_CREDENTIAL_FILE`, `BOTO_CONFIG`, `/etc/boto.cfg`, `~/.boto` | `boto config` |
+| 11 | the container endpoint | `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `container` |
+| 12 | the instance metadata service | IMDSv2; IMDSv1 when the service issues no token, unless `ec2_metadata_v1_disabled` | `instance metadata` |
+
+A profile that names a role means that role: when the exchange fails its own keys are not a fallback, so rows 5 to 9 are not asked. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each that failed and each that was not there. A temporary set is replaced fifteen minutes before it lapses (a console sign-in's, which lasts fifteen minutes, five minutes before), a refresh that fails keeps the set in hand until it has actually lapsed, and an unsigned answer is held five minutes and a failure thirty seconds, rather than costing every request a walk of every source. A role or a sign-in with no region stated is traded in its ARN partition's global region - `cn-northwest-1` for an `aws-cn` role - and the STS, IAM Identity Center, Sign-In and S3 hosts are built on the region's [`ArnPartition`](../uri/arn.md#partitions) suffixes. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache`, and a console sign-in to `~/.aws/login/cache`, in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
 
 ```rust
 use yggdryl::aws::{AssumedRole, Credentials, Session};
@@ -4069,7 +4259,7 @@ assert_eq!(
     session.assumed_role().and_then(AssumedRole::session_name),
     Some("power-desk")
 );
-assert_eq!(session.sts_endpoint("eu-west-3"), "https://sts.eu-west-3.amazonaws.com");
+assert_eq!(session.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
 
 // The options carry it, and every handle built on them shares its answers.
 let options = S3Options::default().with_session(session.clone());
@@ -4113,10 +4303,10 @@ let session = Session::new()
     ])
     .with_directory("/nonexistent/.aws");
 assert_eq!(session.region().as_deref(), Some("ap-southeast-1"));
-assert_eq!(session.endpoint_url("s3").as_deref(), Some("http://localhost:9000"));
-assert_eq!(session.endpoint_url("sts"), None);
+assert_eq!(session.endpoint_url("s3")?.as_deref(), Some("http://localhost:9000"));
+assert_eq!(session.endpoint_url("sts")?, None);
 assert_eq!(
-    session.sts_endpoint("ap-southeast-1"),
+    session.sts_endpoint("ap-southeast-1")?,
     "https://sts-fips.ap-southeast-1.amazonaws.com"
 );
 ```
@@ -4142,6 +4332,356 @@ let part = s3::file_with(
 )?;
 let _ = part.read_range_bytes(0, 8)?;
 ```
+
+#### Where each service is reached
+
+Every AWS endpoint the crate calls is the session's `endpoint_url(service)` - botocore's configured endpoint, in botocore's order - else the host the region's [partition](../uri/arn.md#partitions) publishes.
+
+| # | source | |
+| --- | --- | --- |
+| 1 | `with_service_endpoint_url(service, url)`, then `with_endpoint_url(url)` | stated: never ignored |
+| 2 | `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL` | configured |
+| 3 | the `endpoint_url` of the service's entry in the `[services <name>]` section the profile's `services` names, then the profile's own `endpoint_url` | configured |
+| 4 | the published host: under `use_fips_endpoint` and `use_dualstack_endpoint` for Amazon S3, STS, S3 Tables and Sign-In; with both off, whatever they say, for the IAM Identity Center portal and OIDC; STS's global host for the older regions under `sts_regional_endpoints = legacy` | |
+
+| service the crate calls | variable | `[services]` key | published host |
+| --- | --- | --- | --- |
+| Amazon S3, every request of an `s3://` handle | `AWS_ENDPOINT_URL_S3` | `s3` | `s3.{region}.{suffix}`, and its FIPS, dual-stack and accelerate forms |
+| STS: `AssumeRole`, `AssumeRoleWithWebIdentity` | `AWS_ENDPOINT_URL_STS` | `sts` | `sts.{region}.{suffix}`, and its FIPS and dual-stack forms |
+| IAM Identity Center portal: `GetRoleCredentials` | `AWS_ENDPOINT_URL_SSO` | `sso` | `portal.sso.{region}.{suffix}`, FIPS and dual-stack off |
+| IAM Identity Center OIDC: a refresh, a device sign-in | `AWS_ENDPOINT_URL_SSO_OIDC` | `sso_oidc` | `oidc.{region}.{suffix}`, FIPS and dual-stack off |
+| AWS Sign-In: an `aws login` refresh | `AWS_ENDPOINT_URL_SIGNIN` | `signin` | `{region}.signin.aws.amazon.com`, and its FIPS and dual-stack forms |
+| Amazon S3 Tables: every request of `S3Tables` and of the `S3TablesCatalog` over it ([Iceberg](../media/iceberg.md#iceberg-on-amazon-s3-tables)) | `AWS_ENDPOINT_URL_S3TABLES` | `s3tables` | `s3tables.{region}.{suffix}`, and its FIPS and dual-stack forms; an endpoint the client states (`try_with_endpoint_url`, the catalog's `s3tables.endpoint`) over all of it |
+
+- **The variable is named after the service id**, as botocore names it - upper case, a space or a hyphen as `_`, so `SSO OIDC` is `AWS_ENDPOINT_URL_SSO_OIDC` - never after the endpoint prefix (`oidc`) or the signing name.
+- **The ignore flag switches 2 and 3 off, never 1.** `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, else the profile's `ignore_configured_endpoint_urls`, is read - as `AWS_USE_FIPS_ENDPOINT` and `AWS_USE_DUALSTACK_ENDPOINT` are, and their profile keys - through the crate's one [boolean table](#durations-counts-sizes-and-flags): `true`, `1`, `yes`, `on` and the rest of it are true, which is wider than botocore's `true` alone, so `=1` ignores the configured endpoints here and not there. A blank or whitespace-only variable is unset, as every variable is in this crate, so the profile's flag is read next, where botocore stops at it as false.
+- **A blank or whitespace-only variable or value is no source; one that names no endpoint is refused.** `AWS_ENDPOINT_URL_S3=/` is refused naming the variable, as botocore refuses it, rather than ending at the published host.
+- **A profile naming a `[services]` section nobody wrote is refused**, naming the profile and the section, once a lookup reaches step 3 - a misspelt `services = locl`, an empty section, a `services =` naming none - rather than leaving the published host a typo would. A lookup that ends before step 3 never reaches it.
+- **A configured endpoint's path is kept; a trailing `/` is dropped.** An STS exchange is sent to and signed over the path, and every Amazon S3 request is sent under it - `AWS_ENDPOINT_URL_S3=http://gateway:9000/s3/` reads `s3://trades/a` at `/s3/trades/a` - and both drop a query and user information the endpoint carries. S3 Tables sends every request under the path too, and refuses an endpoint carrying a query, a fragment or user information. The portal, OIDC and Sign-In requests append their operation's path (`/token`, `/federation/credentials`, `/v1/token`) to the endpoint as written. Every one is used whatever `use_fips_endpoint` and `use_dualstack_endpoint` say: the switches choose among the published hosts, as botocore turns both off beside a given endpoint.
+- **An S3 handle ranks it below what names the store itself**: an endpoint its options state, then the one its URL names (`s3://localhost:9000/trades/a`, `s3://trades.s3.eu-west-3.amazonaws.com/a`), then the configured one ([Configuration](#configuration)).
+- **The instance metadata service and the container endpoint are no services**: `AWS_EC2_METADATA_SERVICE_ENDPOINT` and `AWS_CONTAINER_CREDENTIALS_FULL_URI` move them, never `AWS_ENDPOINT_URL`.
+
+```rust
+use yggdryl::aws::Session;
+
+// The environment and the files a session is handed, in place of the
+// machine's own: each service is reached where its own variable says, else
+// where the generic one says.
+let session = Session::new()
+    .with_variables([
+        ("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/"),
+        ("AWS_ENDPOINT_URL", "http://localhost:4566"),
+    ])
+    .with_directory("/nonexistent/.aws")
+    .with_config_text(
+        "[default]\nservices = local\n\n[services local]\nsts =\n  endpoint_url = http://localhost:4600\n",
+    );
+assert_eq!(session.endpoint_url("sso-oidc")?.as_deref(), Some("http://localhost:4566/oidc"));
+assert_eq!(session.endpoint_url("sso")?.as_deref(), Some("http://localhost:4566"));
+assert_eq!(session.sts_endpoint("eu-west-3")?, "http://localhost:4566");
+
+// The generic variable gone, the profile's `[services]` entry answers STS.
+let filed = session.with_variables([("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/")]);
+assert_eq!(filed.sts_endpoint("eu-west-3")?, "http://localhost:4600");
+assert_eq!(filed.endpoint_url("s3")?, None);
+
+// Configured endpoints ignored: what was stated still stands.
+let ignoring = filed.with_variables([("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")]);
+assert_eq!(ignoring.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
+let stated = ignoring.with_service_endpoint_url("sts", "http://localhost:4700");
+assert_eq!(stated.sts_endpoint("eu-west-3")?, "http://localhost:4700");
+
+// A section nobody wrote is a refusal, never the published host.
+let misspelt = filed
+    .with_variables::<&str, &str>([])
+    .with_config_text("[default]\nservices = locl\n");
+assert!(misspelt.sts_endpoint("eu-west-3").is_err());
+```
+
+#### The shared files
+
+`~/.aws/config` and `~/.aws/credentials` - or the files `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `with_config_file`, `with_credentials_file` and `with_directory` name - are read once, and read again whenever either moved on disk (its length or modification time): at every walk, after any refusal a store gave (`invalidate`, `invalidate_if`), and while an unsigned or failed answer is held. A set dumped anew into `~/.aws/credentials` is picked up by a running process at its next request, with no restart.
+
+- An expiry written beside a set is read under `aws_credential_expiration`, `x_security_token_expires` (saml2aws, gimme-aws-creds), `aws_session_expiration` (yawsso), `aws_expiration` (aws-azure-login) or `expiration` (aws-mfa), in the credentials file or in the configuration file's keys - as ISO 8601 with `Z` or an offset, blanks around it and the AWS CLI's trailing `UTC` taken off where the expiry enters, then read by [`DateTime64::from_text`](../types/temporal/datetime.md#reading-text) with a spelling that names no zone taken as UTC. A dumped set is refreshed from the file fifteen minutes before it lapses; two expiries that disagree, or one nothing reads, is a named refusal.
+- Pasted values read as meant: one pair of matching quotes and a `#` or `;` comment after a blank come off a credential value; a line written as the shell block the IAM Identity Center portal prints (`export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...`, PowerShell `$Env:AWS_...="..."`) reads as the key it sets; a section header followed by a comment (`[default]   # dumped 12:30`) is that section, as Python's `configparser` reads it.
+- Half a set - a key id without its secret, a secret or a token without a key id - is a named refusal, not a silently skipped source. A `role_arn` that is not an ARN is that profile's refusal.
+- A file written with a byte-order mark - UTF-8, UTF-16LE or UTF-16BE, as PowerShell writes - reads in its charset. A file that is there and cannot be read is a named failure (`shared files: the credentials file ... could not be read`), never an absent profile.
+- On Windows a `credential_process` line is split as the Microsoft C runtime splits a command line - a backslash is literal unless it runs up to a double quote, and double quotes group - so `C:\Tools\vault.exe export dev` runs `C:\Tools\vault.exe`; elsewhere it is split into POSIX words.
+
+#### A set a store refused
+
+A set a source answers is passed over by name, and the sources after it are asked, when it has lapsed - its expiry is before the machine's clock, and the refusal names both instants - or when a store refused its key. An explicit `with_credentials` set is what the caller said and is never passed over.
+
+| code a store answers | what it says of the key | passed over |
+| --- | --- | --- |
+| `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired` | the set lapsed | for good |
+| `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` | the store does not know the key; IAM answers a new key that way while it propagates | 30 seconds, or until the shared files move |
+
+The S3 client, refused with one of those codes, tells the session about the key that signed that very request - not whatever set the client holds by then - and signs the request once more only when the session now answers another set. A `HEAD` refused with a temporary set and no body, which is how S3 answers one, reads the files again without holding anything against the key. When nothing else answers, the refusal names every source, the key masked as its first and last four characters, and the way out:
+
+```text
+no AWS credentials could be obtained: shared credentials file: its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z, and this machine's clock reads <now>: write a fresh set under [default] in <path>, or sign in again; nothing configured in: environment, container, instance metadata (disabled)
+```
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// A sealed session over a directory of its own: the variables are the whole
+// environment, and the metadata service is off.
+let directory = std::env::temp_dir().join(format!("yggdryl-docs-aws-dump-{}", std::process::id()));
+std::fs::create_dir_all(&directory)?;
+let credentials = directory.join("credentials");
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory(directory.clone());
+
+// A set a tool dumped whose written expiry has passed is passed over by name,
+// its key masked, with the way out; no secret is in the refusal.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = wJalrXUtnFEMI\n\
+     aws_session_token = FwoGZXIvYXdzEXAMPLE\nx_security_token_expires = 2000-01-01T00:00:00Z\n",
+)?;
+let refusal = session.credentials(SystemTime::now()).unwrap_err().to_string();
+assert!(refusal.contains("ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"), "{refusal}");
+assert!(refusal.contains("write a fresh set under [default]"), "{refusal}");
+assert!(!refusal.contains("wJalrXUtnFEMI"), "{refusal}");
+
+// The same process at its next request, with no restart: the file moved, so
+// the files are read again and the set dumped anew answers.
+std::fs::write(
+    &credentials,
+    "[default]\naws_access_key_id = ASIAIOSFODNN7FRESHDUMP\naws_secret_access_key = fresh\n\
+     aws_session_token = fresh-token\n",
+)?;
+let keys = session.credentials(SystemTime::now())?.expect("the set dumped anew");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7FRESHDUMP");
+assert_eq!(session.credential_source(), Some("shared credentials file"));
+std::fs::remove_dir_all(&directory)?;
+```
+
+#### The console sign-in
+
+`aws login` (AWS CLI 2.32 and later) signs a developer in with the identity they use in the AWS Management Console. A profile names the sign-in with `login_session`, the session's ARN, and the sign-in is filed under `~/.aws/login/cache` - or the directory `AWS_LOGIN_CACHE_DIRECTORY` names - in `<sha256 of the session ARN>.json`.
+
+| | |
+| --- | --- |
+| Document | a set that lasts fifteen minutes (`accessToken`), the refresh token that obtains the next, the P-256 `dpopKey` that token is bound to, and the `clientId`; every field a refresh does not replace is written back as it was read |
+| Used | the cached set while more than five minutes of it remain |
+| Refreshed | otherwise, or at once when a store refused the set: one unsigned `POST` to `https://{region}.signin.aws.amazon.com/v1/token` - the partition's own Sign-In host outside `aws` - an OAuth 2.0 `refresh_token` grant carrying an ES256 DPoP proof ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) signed by that key, so a refresh token copied off the machine is worth nothing without it. A throttle, a server failure or a transport failure is tried again, up to three attempts, each with a proof of its own |
+| Filed | the new set and the rotated refresh token replace the document atomically - a private sibling, synced, renamed over it - so the AWS CLI and this crate share one sign-in |
+| Region and host | the session's region, else the session ARN's partition's global region; `use_fips_endpoint` and `use_dualstack_endpoint` pick the FIPS and dual-stack hosts of the region's partition; a stated `signin` endpoint (`AWS_ENDPOINT_URL_SIGNIN`, a `[services]` entry) replaces the host |
+| Refused | naming the session, the cause and `aws login --profile <name>`; a set that still stands is kept when only its refresh failed, and no secret is rendered |
+
+```rust
+use std::time::SystemTime;
+
+use yggdryl::aws::Session;
+
+// What `aws login` filed for the session `arn:aws:iam::0123456789012:user/Admin`:
+// a set that stands, the refresh token, and the key it is bound to. The file is
+// named by the SHA-256 of the ARN.
+let cache = std::env::temp_dir().join(format!("yggdryl-docs-aws-login-{}", std::process::id()));
+std::fs::create_dir_all(&cache)?;
+std::fs::write(
+    cache.join("36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json"),
+    r#"{
+  "accessToken": {
+    "accessKeyId": "ASIAIOSFODNN7CONSOLE",
+    "secretAccessKey": "console-secret",
+    "sessionToken": "console-token",
+    "accountId": "012345678901",
+    "expiresAt": "2999-01-01T00:00:00Z"
+  },
+  "tokenType": "aws_sigv4",
+  "refreshToken": "console-refresh-token",
+  "clientId": "arn:aws:signin:::devtools/same-device",
+  "dpopKey": "the PEM key aws login filed"
+}"#,
+)?;
+
+// The profile names the sign-in; a set with more than five minutes left is
+// answered from the cache alone, with no request.
+let session = Session::new()
+    .with_variables([
+        ("AWS_LOGIN_CACHE_DIRECTORY", cache.to_str().expect("a UTF-8 path")),
+        ("AWS_EC2_METADATA_DISABLED", "true"),
+    ])
+    .with_directory("/nonexistent/.aws")
+    .with_config_text(
+        "[profile console]\nregion = eu-west-3\nlogin_session = arn:aws:iam::0123456789012:user/Admin\n",
+    )
+    .with_profile("console");
+let keys = session.credentials(SystemTime::now())?.expect("the console sign-in");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7CONSOLE");
+assert_eq!(keys.account_id(), Some("012345678901"));
+assert_eq!(session.credential_source(), Some("login"));
+std::fs::remove_dir_all(&cache)?;
+```
+
+#### How the identity services are reached
+
+Every identity call - STS, IAM Identity Center, the Sign-In service, the container endpoint, the instance metadata service - goes out through the crate's own [HTTP client](#http), one session per `Session`, so its rules are the ones stated there and nothing keeps a loop of its own:
+
+| Concern | Rule |
+| --- | --- |
+| Retries | a `5xx`, a `429` or a transport failure, for a request that does no harm twice, up to three attempts under the client's backoff; STS's throttle stated in a `400` body (`Throttling`, `RequestLimitExceeded`, `IDPCommunicationError`) is read and retried too. A refresh-token grant at IAM Identity Center is sent once, because the grant may rotate the token |
+| Redirects, cookies, `.netrc` | none followed, none kept, none read: a credential header never reaches another host |
+| Trust | the session's `ca_bundle` alone when one is named; a bundle that cannot be read is every identity request's refusal, never a fall back to the platform's roots |
+| Proxy | the process's, for a session reading the process environment; the container endpoint and the instance metadata service are reached directly whatever a proxy variable says |
+| The instance metadata service | each attempt bounded by `metadata_service_timeout` (one second), `metadata_service_num_attempts` attempts; nothing answering - refused, unreachable, silent - is not an instance, and the source is absent rather than failed |
+
+#### What a walk logs
+
+Every walk is logged through the crate's [logging](../logging.md) tree under `yggdryl.aws.session`, and a console sign-in's refresh under `yggdryl.aws.login`. A key id is logged as its first and last four characters; no secret, session token or refresh token is.
+
+| level | record |
+| --- | --- |
+| `DEBUG` | each source asked: `AWS credentials: nothing configured in <source>`, or `AWS credentials: <source>: <why it could not answer>`; a console sign-in refreshed |
+| `INFO` | the source that answered: `AWS credentials from <source>: key ASIA...ABCD, lapsing at <instant>` |
+| `WARNING` | a set passed over, naming its source, the key and why; an answer found only after sources were passed over; a console sign-in kept in hand because its refresh failed, or refreshed and not filed |
+
+Rust: raise that logger to switch the walk on.
+
+```{ .rust .no_run }
+use yggdryl::logging::{self, BasicConfig, Level};
+
+// The terminal line on standard error from INFO up, and this walk from DEBUG.
+logging::basic_config(BasicConfig::new().with_level(Level::INFO))?;
+logging::get_logger("yggdryl.aws.session").set_level(Level::DEBUG);
+```
+
+The same logger is `logging.getLogger("yggdryl.aws.session")` in Python and `require('yggdryl').logging.getLogger('yggdryl.aws.session')` in Node, which the walk of an S3 handle there writes to.
+
+```rust
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use yggdryl::IOBase;
+use yggdryl::aws::Session;
+use yggdryl::holder::Buffer;
+use yggdryl::logging::{self, FileHandler, Formatter, Handler, Level};
+
+// A handler on the walk's logger, written to a buffer here.
+logging::install()?;
+let logger = logging::get_logger("yggdryl.aws.session");
+logger.set_level(Level::DEBUG);
+logger.set_propagating(false);
+let file = Arc::new(FileHandler::new(Buffer::new()));
+file.set_formatter(Formatter::from_str("%(levelname)s %(message)s")?);
+let handler: Arc<dyn Handler> = file.clone();
+logger.add_handler(handler.clone());
+
+// The credentials file holds a set that lapsed, the configuration file one
+// that stands: the first is passed over, the second answers.
+let session = Session::new()
+    .with_variables([("AWS_EC2_METADATA_DISABLED", "true")])
+    .with_directory("/nonexistent/.aws")
+    .with_credentials_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7EXAMPLE\naws_secret_access_key = SECRET-LAPSED\n\
+         x_security_token_expires = 2000-01-01T00:00:00Z\n",
+    )
+    .with_config_text(
+        "[default]\naws_access_key_id = ASIAIOSFODNN7STANDING\naws_secret_access_key = SECRET-STANDING\n",
+    );
+let keys = session.credentials(SystemTime::now())?.expect("the configuration file's set");
+assert_eq!(keys.access_key_id(), "ASIAIOSFODNN7STANDING");
+
+let text = String::from_utf8(file.io().read_all_bytes()?)?;
+assert!(text.contains("DEBUG AWS credentials: nothing configured in environment"), "{text}");
+assert!(
+    text.contains(
+        "WARNING passing over the AWS credential set shared credentials file answered: \
+         its key ASIA...MPLE lapsed at 2000-01-01T00:00:00Z"
+    ),
+    "{text}"
+);
+assert!(text.contains("INFO AWS credentials from config file: key ASIA...DING"), "{text}");
+assert!(!text.contains("SECRET-"), "{text}");
+
+assert!(logger.remove_handler(&handler));
+logger.set_level(Level::NOTSET);
+logger.set_propagating(true);
+file.close()?;
+```
+
+#### Signing other services
+
+A request the [HTTP client](#http) sends to any AWS service is signed by the same `Session`: `Request::with_sigv4(&session, service, region)` signs every attempt with Signature Version 4, `Session::service_endpoint(service, region)` says where the service is, and `Session::with_properties` reads who signs out of a property map. A catalog client - an Iceberg REST endpoint, Amazon S3 Tables - needs nothing else of AWS.
+
+!!! note "Rust only"
+    Python and Node sign S3 requests through their handles; neither exposes `with_sigv4`, `service_endpoint` or `Session::with_properties`.
+
+| Door | Contract |
+| --- | --- |
+| `Request::with_sigv4(&session, service, region)` | `service` is the SigV4 signing name (`s3tables`, `execute-api`, `glue`). Each attempt asks the session for its set, so a refreshed one signs the next attempt, and signs what is sent: the hop's method, the `Host` with the port the URL names, the path as it is on the wire, the query, the `content-type`, `content-md5` and `x-amz-*` headers, and the SHA-256 of the body. Adds `x-amz-date`, `x-amz-content-sha256`, `x-amz-security-token` for a temporary set, and `authorization` |
+| `Session::service_endpoint(service, region)` | `endpoint_url(service)` - stated, then `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL`, the profile's `[services]` entry and `endpoint_url` ([Where each service is reached](#where-each-service-is-reached)) - else `https://{service}[-fips].{region}.{suffix}` from the region's [partition](../uri/arn.md), FIPS and dual-stack as the session says; refused as `endpoint_url` refuses. `service` is both the service id the configured endpoint is looked up by and the endpoint prefix the host is built from, so the door fits a service whose two agree - `s3tables`, `sts`, `glue`; one whose names differ (SSO OIDC's prefix is `oidc`) asks `endpoint_url` by its service id and builds its own host. Neither is always the signing name |
+| `Session::with_properties(pairs)`, `Session::from_properties(pairs)` | the one reader of AWS identity properties: `region`; `access_key_id`, `secret_access_key`, `session_token`; `anonymous`; `profile`; a role (`role_arn`, `role_session_name`, `external_id`, `role_duration`, `sts_region`, `sts_endpoint`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file`); a sign-in (`sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session`); `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle`; `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`; the `ec2_metadata_*` and `metadata_service_*` knobs. Case, `-`, `_` and `.` are alike, and a leading `aws_` or `client.` is dropped, so `AWS_REGION` and PyIceberg's `client.region` are `region` |
+
+- **The canonical URI follows the service.** S3's family (`s3`, `s3express`, `s3-object-lambda`, `s3-outposts`) signs the path as sent. Every other service signs it with empty and dot segments removed and every segment percent-encoded once more, as botocore does: a path carrying `%1F` or an encoded ARN signs as `%251F` and `%253A`. The signer is pinned against vectors botocore computed.
+- **`x-amz-content-sha256` is always sent and signed**, which S3 requires and every other service accepts as one more signed header.
+- **No credential source answering is a refusal**, ``SigV4 for `<service>` asked, no credential source answered``, never an unsigned request; a session whose sources failed refuses naming each.
+- **A streamed body** (`send_reader`) cannot be hashed: it is refused for a service outside the S3 family, and declared `UNSIGNED-PAYLOAD` inside it.
+- **A refused key is mended once.** A `400` or `403` naming `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`, `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId` or `UnrecognizedClientException` - in `x-amzn-ErrorType`, a JSON `__type` or `code`, or an XML `<Code>` - is told to the session, and the request goes out once more, whatever its method, when the session then answers another key: the same set would be refused the same way. A redirect to another origin is neither signed nor sent again.
+- **Never read here:** a bare `token`, which is a catalog's own bearer token, and `s3.*`, which is the object store's reader's (`S3Options::with_properties` hands its identity names to this reader).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::aws::Session;
+    use yggdryl::http::{Method, Response, Server, Status};
+
+    // A catalog's properties, in PyIceberg's names; most are nobody's identity.
+    let session = Session::new().with_environment(false).with_properties([
+        ("warehouse", "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"),
+        ("client.region", "eu-west-3"),
+        ("client.access-key-id", "AKIDEXAMPLE"),
+        ("client.secret-access-key", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
+    ])?;
+    let region = session.region().expect("the stated region");
+    assert_eq!(
+        session.service_endpoint("s3tables", &region)?,
+        "https://s3tables.eu-west-3.amazonaws.com"
+    );
+
+    // Stand in for the service on loopback and send it a signed request.
+    let server = Server::bind("127.0.0.1:0")?;
+    server.respond(
+        Some(Method::Get),
+        "/iceberg/v1/config",
+        Response::new(Status::OK).with_body("{}"),
+    );
+    let url = server.url_of("/iceberg/v1/config")?.to_string();
+    let response = yggdryl::http::Session::new()
+        .get(&url)?
+        .with_sigv4(&session, "s3tables", &region)
+        .send()?;
+    assert_eq!(response.status(), Status::OK);
+
+    let sent = &server.requests()[0];
+    let authorization = sent.headers.get("authorization").expect("a signature");
+    assert!(authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
+    assert!(authorization.contains(
+        "/eu-west-3/s3tables/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, "
+    ));
+    server.shutdown()?;
+    ```
+
+=== "Python"
+
+    ```python
+    # Rust only: no binding reaches Request.with_sigv4 or aws.Session.
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    // Rust only: no binding reaches Request.withSigv4 or aws.Session.
+    ```
+
+#### Google and Azure
 
 Google's shape is the same idea on `GoogleOptions`: whatever the credential chain answers signs one call to `iamcredentials`, and the token that call returns is what reaches the store; Azure's is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
 
@@ -4603,7 +5143,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 
 ### Pages
 
-`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` on a structured resource whose first page paginates is that walk, reading the first page once. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
+`request.pages()` walks a paginated resource, one `GET` and one `Response` per page, and `Pages::into_arrow_reader(field, batch_row_size)` lays the rows out as one Arrow batch per page under one root - `field` when given, else the record the first page's rows infer. `read_arrow_reader` and `read_serie` on a structured resource whose first page paginates are that walk, reading the first page once; Python's `Pages.read_serie(field=None)` answers the walk as a `SerieReader`, one record column per page. The rows are at the declared `records` path, else a top-level sequence, else the first of `data`, `items`, `results`, `records`, `value`, `rows`, `entries`, `elements`, `content`, `hits.hits`, else the largest top-level sequence.
 
 `Pagination` says how the next page is found; `Auto`, the default, tries in order:
 
@@ -4614,7 +5154,7 @@ assert_eq!(requests[1].headers.get("if-range"), stream.headers().get("etag"));
 | 3 | a URL, absolute or relative, at `next`, `next_url`, `nextUrl`, `next_page_url`, `nextLink`, `@odata.nextLink`, `links.next`, `links.next.href`, `_links.next.href`, `paging.next`, `meta.next`, `pagination.next` |
 | 4 | a cursor at `next_cursor`, `nextCursor`, `next_page_token`, `nextPageToken`, `cursor`, `after`, `meta.cursor`, `pagination.cursor`, sent back under the parameter the request already carries among `cursor`, `after`, `page_token`, `pageToken`, `next_cursor`, else `cursor` |
 
-The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL equal to the current one or already visited, `page_limit` pages, or a page answering `400` or more, which is yielded and ends it. The explicit spellings are `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` and `page:<parameter>:<start>`. A failed page request is retried under the session's policy and resumed from that page's own request, never from the first.
+The walk ends at a `has_more`/`hasMore` of `false` - a boolean, or text the [boolean table](../types/numeric/boolean.md#the-one-text-reader) reads as false (`"false"`, `"no"`, `"0"`) - an empty page, a next URL equal to the current one or already visited, `page_limit` pages, or a page answering `400` or more, which is yielded and ends it. The explicit spellings are `none`, `link`, `header:<name>`, `url:<path>`, `cursor:<path>:<parameter>`, `offset:<parameter>:<size>` and `page:<parameter>:<start>`. A failed page request is retried under the session's policy and resumed from that page's own request, never from the first.
 
 === "Rust"
 
@@ -4679,19 +5219,31 @@ The walk ends at a `has_more`/`hasMore` of `false`, an empty page, a next URL eq
 
 | property | default | reads |
 | --- | --- | --- |
-| `timeout`, `connect_timeout` | 120 s, 10 s | seconds, decimal allowed, `s` or `ms` suffix |
-| `max_attempts`, `max_redirects`, `follow_redirects` | 3, 10, true | the retry and redirect budget |
-| `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for |
-| `max_body_size` | 256 MiB | what `send` holds in memory; `KiB`, `MiB`, `GiB` suffixes |
+| `timeout`, `connect_timeout` | 120 s, 10 s | a duration ([below](#durations-counts-sizes-and-flags)) |
+| `max_attempts`, `max_redirects`, `follow_redirects` | 3, 10, true | the retry and redirect budget: two counts and a flag |
+| `max_pause` | 30 s | the longest a `Retry-After` or a rate limit is waited for, a duration |
+| `max_body_size` | 256 MiB | what `send` holds in memory, a byte size |
 | `accept_encoding` | `gzip, deflate, zstd` | the codings asked for |
 | `concurrency` | the cores, at most 8 | the threads `send_all` sends on |
 | `pagination`, `records`, `page_limit` | `auto`, detected, none | the page walk |
 | `bearer_token`, `basic_auth` | none | a credential; `basic_auth` is `user:password` |
 | `header.<name>`, `headers.<name>` | none | one default header |
 | `http_version` | `auto` | `auto`, `1.1`, `2` or `3` ([HTTP/2 and HTTP/3](#http2-and-http3)) |
-| `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest |
+| `netrc` | follows `read_environment` | whether a request naming no credential takes its host's `.netrc` entry; a flag |
+| `base_url`, `user_agent`, `proxy`, `ca_bundle`, `cookies`, `read_environment`, `stream_batch_size` | none, `yggdryl/<version>`, the environment's, the environment's, true, true, 64 KiB | the rest; `cookies` and `read_environment` are flags, `stream_batch_size` a count |
 
-With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do: the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
+#### Durations, counts, sizes and flags
+
+Every property reads its text through the one reader of the type it holds - the readers an [object store's](#configuration) properties and an AWS profile's `duration_seconds` go through too - and a value one does not read is refused naming the property, what it expected and the text: `timeout: expected seconds, with an optional fraction and an optional s, ms, us, ns or d unit, got "5m"`.
+
+| Type | Reads | Refuses |
+| --- | --- | --- |
+| duration | a non-negative number of seconds, a fraction or an exponent allowed, then an optional unit with blanks allowed between: `s`, `ms`, `us`, `ns` or `d`, or a long spelling of one (`sec`, `seconds`, `millis`, `micros`, `nanos`, `days`); `30`, `1.5`, `250ms`, `1e3`, `1d` | a negative or non-finite length; `m`, `min` and `h`, because a minute and a month share `m` and nothing picks between them |
+| count | a whole number, an optional sign, the surrounding blanks not part of it | a fraction, a unit, a value the option's width cannot hold |
+| byte size | a whole count, then an optional suffix in any case, blanks allowed between: `b`; `k`, `kb`, `kib`; `m`, `mb`, `mib`; `g`, `gb`, `gib` - each a power of 1024, the decimal spellings as every configuration file means them | a fraction, an exponent, a negative count, a count the suffix multiplies past 64 bits |
+| flag | the [boolean table](../types/numeric/boolean.md#the-one-text-reader): `true`/`false`, `yes`/`no`, `y`/`n`, `on`/`off`, `1`/`0` and their prefixes, in any case | anything else, `expected true/false, yes/no, y/n, on/off or 1/0` |
+
+With `read_environment` on, an unset certificate bundle comes from the environment (`SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), and an unset proxy is read for every request, as curl and `requests` read it: a host `no_proxy` names goes direct; else `https_proxy` carries an `https` URL and `http_proxy` an `http` one, then `all_proxy` either - each lower case first, then upper case, except that under CGI (`REQUEST_METHOD` set) upper-case `HTTP_PROXY` is not read, because a server sets it from its request's `Proxy` header (httpoxy). A proxy is `http://` or `https://`; a SOCKS one, named or read, is refused by name rather than gone past. A `no_proxy` entry is a host covering every host under it on a label boundary (`example.com` never covers `badexample.com`), an IP address or CIDR network, either with `:port` to match that port alone, or `*`. Because the environment is read per request, a process that sets or clears a proxy after its first request is followed at its next one; the proxies a value names are parsed once while the values stay the same. A named `proxy` wins over all of it. A request that names no credential - none on the request, the session or the URL - takes its host's `.netrc` entry as a `Basic` credential, as curl and `requests` do, unless the `netrc` option says otherwise (it follows `read_environment` until stated): the file `NETRC` names, else `.netrc`, then `_netrc`, in the home directory; a `machine` entry for the host, else `default`. The file is parsed once per version of it, so an edit is read at the next request, and a redirect to another host takes that host's entry.
 
 ```rust
 use yggdryl::holder::Holder;
@@ -4855,7 +5407,7 @@ A server behind a reverse proxy sees the proxy's connection, not the client's: t
 
 [`with_trusted_proxies`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_trusted_proxies) names the peers - IP addresses or CIDR networks, `10.0.0.5`, `10.0.0.0/8`, `::1`, `fd00::/8`, an IPv4-mapped IPv6 peer matched as the IPv4 address it maps and a mapped network's bits counting the 96 of the mapping, so `::ffff:10.0.0.0/104` is `10.0.0.0/8` - whose forwarded fields are believed; none are by default, because any client can write those fields, so a request from any other peer is taken as it arrived and cannot state a host or a scheme of its own choosing. A proxy sets some forwarded fields and passes the rest through as the client wrote them, so even a trusted peer is believed only for the fields [`with_forwarded_headers`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_forwarded_headers) names, each a [`ForwardedHeader`](https://docs.rs/yggdryl/latest/yggdryl/http/enum.ForwardedHeader.html): name one only when the proxy sets or overwrites it on every request. An `X-Forwarded-Prefix`, once named, goes on the public path before this server's own prefix. [`with_path_prefix`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.ServerOptions.html#method.with_path_prefix) is the path a proxy leaves in front of the routed one - `/olap` when the proxy forwards `/olap/xmla` to a server routing `/xmla` - stripped before routing and carried back on the URLs the server states; a request outside the prefix is routed as it is, so the routes answer with and without it, and a recorded request keeps `path` as routed and `target` as sent. Every recorded request also names its `peer` - the connection's address, the proxy's behind one - and its `client`, the address a trusted proxy forwarded, else the peer's.
 
-Two more things a proxy sends that a server on its own never sees. A `GET` or `HEAD` of a routed path with one trailing slash added - `/olap/xmla/` for a route `/olap/xmla`, which a proxy's `location /olap/` or a client's habit produces - is a `308` whose `Location` is relative, `../xmla`, the query kept, so it is right under any prefix; a `POST` to that path is served by the route and never redirected, because a client posting a body may not follow a redirect with it, and a method the bare path does not route is `405` there as it would be without the slash. And a proxy that speaks HTTP/1.0 upstream - nginx does unless `proxy_http_version 1.1` is set - is answered without chunking: a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs is written close-delimited, `Connection: close` and neither `Transfer-Encoding` nor `Content-Length`, and a held body carries its length as it always did; it works, and costs a connection per request. What it cannot do is say a written body ended short: a writer that fails part way ends the body at the close, which an HTTP/1.0 peer reads as whole, where over HTTP/1.1 the missing last chunk tells it the transfer was cut. What a proxy in front of the XML for Analysis provider is configured with, nginx, Caddy, IIS or a cloud load balancer, is spelled out [there](../media/index.md#behind-a-reverse-proxy).
+Two more things a proxy sends that a server on its own never sees. A `GET` or `HEAD` of a routed path with one trailing slash added - `/olap/xmla/` for a route `/olap/xmla`, which a proxy's `location /olap/` or a client's habit produces - is a `308` whose `Location` is relative, `../xmla`, the query kept, so it is right under any prefix; a `POST` to that path is served by the route and never redirected, because a client posting a body may not follow a redirect with it, and a method the bare path does not route is `405` there as it would be without the slash. And a proxy that speaks HTTP/1.0 upstream - nginx does unless `proxy_http_version 1.1` is set - is answered without chunking: a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs is written close-delimited, `Connection: close` and neither `Transfer-Encoding` nor `Content-Length`, and a held body carries its length as it always did; it works, and costs a connection per request. What it cannot do is say a written body ended short: a writer that fails part way ends the body at the close, which an HTTP/1.0 peer reads as whole, where over HTTP/1.1 the missing last chunk tells it the transfer was cut. What a proxy in front of the XML for Analysis provider is configured with, nginx, Caddy, IIS or a cloud load balancer, is spelled out [there](../media/xmla.md#behind-a-reverse-proxy).
 
 === "Rust"
 
@@ -5103,7 +5655,21 @@ A request through a proxy speaks HTTP/1.1 whatever was asked. An origin QUIC can
 
 ### Retries, redirects and failures
 
-A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idempotent method (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`): a `POST` or `PATCH` the server may have acted on is sent once and its answer handed back. A transport failure is retried for an idempotent method, and for any method when no connection took the request (the name did not resolve, or every address refused or timed out while connecting). Retries draw a full-jitter backoff from the client's token budget of 500 (`StatsSnapshot::retry_tokens`) - shared by every host the client reaches, so a client's retry load stays bounded whatever fails - and a `Retry-After`, in delta seconds or as an HTTP-date, is waited out up to `max_pause`; a longer one ends the retries and hands the answer back. A pooled connection is probed before it is reused, and up to 64 idle connections per host are kept, so a parallel walk to one host reconnects nothing. Redirects are followed up to `max_redirects`: a `303`, and a `301` or `302` answering a `POST`, become a `GET` without the body; `307` and `308` keep both; to another origin no credential goes along - `Authorization`, `Proxy-Authorization`, the header a credential names, a `Cookie` the caller stated, what a `with_attempt_headers` hook would make - while the jar's own cookies for that origin do; each hop is one request and stays in `Response::history`. `Set-Cookie` lands in the session's jar and rides every later matching request (RFC 6265 domain and path matching, expiry); a `Domain` naming a public suffix (`com`, `co.uk`, `github.io`, by the Public Suffix List) is refused, so no origin sets a cookie its neighbours receive.
+
+A request states what the client cannot know of it, each on the `Request` and each read by the same retry rules:
+
+| `Request` | Says | Default |
+| --- | --- | --- |
+| `with_idempotent(bool)` | whether a second send does no harm: a `POST` its service documents idempotent - an OAuth refresh within its validity, a poll - is retried as a `GET` is; `false` keeps a `GET` from going twice | the method's |
+| `with_attempt_headers(f)` | headers made at the top of every attempt from the `Attempt` as it is about to go out - its number, the hop's method and URL, the headers already on it, the body's bytes (none for a body streamed by `send_reader`) - a proof or a signature that must be fresh each time and cover what is sent; an error it returns is the request's, never retried; a redirect hop to another origin does not call it, so nothing it makes is sent there. [`with_sigv4`](#signing-other-services) is built on it | none |
+| `with_max_attempts(n)` | this request's attempts; every retry still draws on the client's one budget | the client's `max_attempts` |
+| `with_connect_timeout(d)` | the bound on opening this request's connection | the pool's |
+| `with_deadline(d)` | one bound on a whole attempt - connect, send, head and body together | none; `with_timeout` bounds each phase |
+| `with_retry_on(rule)` | whether an answer whose status says nothing is worth another attempt: for an idempotent request the client reads at most 64 KiB of a failing body and asks `rule(status, headers, body)`; an answer not retried is handed back whole | never |
+| `with_direct(true)` | reach the server itself, past any proxy the options or the environment name | the proxy rules |
+
+Rust only; the bindings send through the same rules with the method's own idempotency. A `PUT`, `POST` or `PATCH` with no body states `Content-Length: 0`.
 
 - A `404` read is emptiness and a `404` `DELETE` is success; `401` and `403` are refusals.
 - A refusing status is `Error::Remote` naming the method, the status, the reason, the body's first line and the URL; `raise_for_status` answers the same for a `Response` in hand.
@@ -5114,7 +5680,7 @@ A `408`, `425`, `429`, `500`, `502`, `503` or `504` is retried only for an idemp
 
 ### HTTP performance
 
-The `http_bytes` and `http_session` groups measure, against the crate's own `Server` on loopback, a whole read, an 8 KiB footer read, a streamed drain, one small JSON `POST` answered and parsed, a walk of 64 pages and a 256-request `send_all` fan-out; built with `http2` (and `http3`), the `http_versions` group sends one small `GET`, the whole 4 MiB resource and the fan-out over HTTP/1.1, HTTP/2 and HTTP/3 side by side. The request counts they rest on are the table above; a loopback round trip exaggerates fixed cost, so what the timings establish is that no per-request cost is hiding. No Criterion table is published yet: it is regenerated by a release run on the reference host.
+The `http_bytes` and `http_session` groups measure, against the crate's own `Server` on loopback, a whole read, an 8 KiB footer read, a streamed drain, one small JSON `POST` answered and parsed, one small `GET` sent plain and again under a per-attempt header hook and a retry rule (`get_plain`, `get_with_request_knobs`: what a request's own knobs cost when nothing is retried), a walk of 64 pages and a 256-request `send_all` fan-out; built with `http2` (and `http3`), the `http_versions` group sends one small `GET`, the whole 4 MiB resource and the fan-out over HTTP/1.1, HTTP/2 and HTTP/3 side by side. The request counts they rest on are the table above; a loopback round trip exaggerates fixed cost, so what the timings establish is that no per-request cost is hiding. No Criterion table is published yet: it is regenerated by a release run on the reference host.
 
 ```bash
 cargo bench -p yggdryl --bench holder --features http3 -- http_ --noplot

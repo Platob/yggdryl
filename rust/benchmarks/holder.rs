@@ -21,6 +21,8 @@ mod fs;
 mod http;
 #[path = "holder/listing.rs"]
 mod listing;
+#[path = "holder/warehouse.rs"]
+mod warehouse;
 // The object stores against `object_store` on one in-process store. The
 // backend is a non-default feature, so the group compiles in only when it is.
 #[cfg(feature = "s3")]
@@ -76,6 +78,7 @@ criterion_group!(
     s3::bytes::byte_benchmarks,
     s3::listing::listing_benchmarks,
     s3::records::record_benchmarks,
+    warehouse::warehouse_benchmarks,
     zip::zip_benchmarks,
 );
 criterion_main!(holder);

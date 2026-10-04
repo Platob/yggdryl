@@ -3,7 +3,6 @@
 
 use std::io::Write;
 
-use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, Result, Scalar, Serie, TimeUnit};
@@ -606,11 +605,7 @@ fn write_display<W: Write>(writer: &mut W, value: impl std::fmt::Display) -> Res
 }
 
 fn write_base64<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
-    writer.write_all(
-        base64::engine::general_purpose::STANDARD
-            .encode(bytes)
-            .as_bytes(),
-    )?;
+    writer.write_all(crate::bytes::into_base64(bytes).as_bytes())?;
     Ok(())
 }
 
@@ -974,7 +969,7 @@ fn shaped_at(value: Scalar, field: &Field, position: Position) -> Scalar {
                 return value;
             };
             // The id crossed as digits, like every number in a document.
-            let id = digits(type_id).and_then(|id| i8::try_from(id).ok());
+            let id = crate::integer::integer_from_scalar_as::<i8>(type_id);
             let branch = id.and_then(|id| {
                 fields
                     .iter()
@@ -1056,8 +1051,8 @@ fn shaped_sequence(value: Scalar, item: &Field, position: Position) -> Scalar {
 }
 
 /// Trim the text a non-text leaf reads, empty text being absence; the
-/// components of an interval, which no value contract reads as text, are the
-/// numbers their digits spell.
+/// components of an interval, which no value contract reads as text, are read
+/// by the integer reader.
 fn shaped_leaf(value: Scalar, dtype: &DataType) -> Scalar {
     if matches!(
         dtype,
@@ -1075,8 +1070,10 @@ fn shaped_leaf(value: Scalar, dtype: &DataType) -> Scalar {
             let trimmed = text.as_str().trim_matches([' ', '\t', '\r', '\n']);
             if trimmed.is_empty() {
                 Scalar::Null
-            } else if let (DataType::Interval(_), Ok(count)) = (dtype, trimmed.parse::<i64>()) {
-                Scalar::from(count)
+            } else if matches!(dtype, DataType::Interval(_))
+                && let Some(count) = crate::integer::integer_from_text(trimmed)
+            {
+                count
             } else if trimmed.len() == text.as_str().len() {
                 Scalar::from(text.as_str())
             } else {
@@ -1096,13 +1093,6 @@ fn shaped_leaf(value: Scalar, dtype: &DataType) -> Scalar {
         ),
         other => other,
     }
-}
-
-/// A number a document spells: an integer, or the digits of one.
-fn digits(value: &Scalar) -> Option<i128> {
-    value
-        .as_i128()
-        .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
 }
 
 /// Restate a row's natural value in the shape XML can write.

@@ -1,6 +1,7 @@
 //! `rust/src/media/structured.rs`: what a structured text document carries
 //! into a record column, and back out.
 
+use yggdryl::SerieSource;
 use yggdryl::holder::Buffer;
 use yggdryl::{
     ArrowCastOptions, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Serie, SerieReader,
@@ -84,11 +85,11 @@ fn every_structured_format_round_trips_arrow_rows() {
     ] {
         let mut target = handle(name);
         target
-            .write_arrow(quotes(), IOMode::Overwrite, None)
+            .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
 
         let read = target
-            .read_arrow(Some(&options_declaring(&quote_root())))
+            .read_serie(Some(&options_declaring(&quote_root())))
             .unwrap_or_else(|error| panic!("{name} reads: {error}"));
         let column = the_one_column(read, name);
         assert_eq!(column.len(), 2, "{name}");
@@ -153,11 +154,11 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
         for (source, value, root, rows) in sources() {
             let mut target = handle(&format!("sourced.{format}"));
             target
-                .write_arrow(value, IOMode::Overwrite, None)
+                .write_serie(SerieSource::from(value), IOMode::Overwrite, None)
                 .unwrap_or_else(|error| panic!("{source} writes to {format}: {error}"));
 
             let read = target
-                .read_arrow(Some(&options_declaring(&root)))
+                .read_serie(Some(&options_declaring(&root)))
                 .unwrap_or_else(|error| panic!("{source} reads from {format}: {error}"));
             let column = the_one_column(read, &format!("{source} in {format}"));
             let width = rows
@@ -175,7 +176,7 @@ fn every_stream_lands_as_the_same_rows_in_every_structured_format() {
 fn rows_are_written_with_the_names_their_field_declares() {
     let mut target = handle("quotes.jsonl");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text = String::from_utf8(target.read_all_bytes().expect("the bytes read"))
@@ -208,7 +209,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
     ]);
 
     let value = source
-        .read_arrow(Some(&options_declaring(&widened)))
+        .read_serie(Some(&options_declaring(&widened)))
         .expect("the declared root types the document");
     assert_eq!(value.field(), &widened);
     let column = the_one_column(value, "the document");
@@ -229,7 +230,7 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
         .write_all_bytes(br#"[{"symbol": "AAPL", "size": 100}]"#)
         .expect("the bytes write");
 
-    let value = source.read_arrow(None).expect("the document proves a root");
+    let value = source.read_serie(None).expect("the document proves a root");
     let column = the_one_column(value, "the document");
     assert_eq!(column.children().len(), 2);
     assert_eq!(column.len(), 1);
@@ -239,13 +240,13 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
 fn a_document_read_without_a_root_orders_the_columns_the_way_a_record_does() {
     let mut target = handle("quotes.jsonl");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     // Nothing is declared, so the root is what the document proves - and a
     // document names its values rather than ordering them, which is why the
     // inferred columns are sorted and not the declaration's order.
-    let read = target.read_arrow(None).expect("the document proves a root");
+    let read = target.read_serie(None).expect("the document proves a root");
     let names: Vec<&str> = read
         .field()
         .dtype()
@@ -272,7 +273,7 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
         .expect("the bytes write");
 
     let value = source
-        .read_arrow(Some(&options_declaring(&quote_root())))
+        .read_serie(Some(&options_declaring(&quote_root())))
         .expect("one document is one row");
     assert_eq!(the_one_column(value, "the document").len(), 1);
 }
@@ -281,7 +282,7 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
 fn a_toml_table_travels_under_the_roots_own_name() {
     let mut target = handle("quotes.toml");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text =
@@ -296,7 +297,7 @@ fn a_toml_table_travels_under_the_roots_own_name() {
 fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     let mut target = handle("quotes.xml");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text =
@@ -317,8 +318,10 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     let mut empty = handle("empty.xml");
     let none = Serie::from_scalars(quote_root(), Vec::<Scalar>::new()).expect("no rows");
     empty
-        .write_arrow(
-            SerieReader::from_serie(none).expect("a record column is one stream"),
+        .write_serie(
+            SerieSource::from(
+                SerieReader::from_serie(none).expect("a record column is one stream"),
+            ),
             IOMode::Overwrite,
             None,
         )
@@ -328,7 +331,7 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
         b"<data></data>"
     );
     let read = empty
-        .read_arrow(Some(&options_declaring(&quote_root())))
+        .read_serie(Some(&options_declaring(&quote_root())))
         .expect("no rows read");
     assert_eq!(the_one_column(read, "no rows").len(), 0);
 
@@ -338,7 +341,7 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
         .write_all_bytes(b"<row><symbol>AAPL</symbol><size>100</size></row>")
         .expect("the bytes write");
     let read = single
-        .read_arrow(Some(&options_declaring(&quote_root())))
+        .read_serie(Some(&options_declaring(&quote_root())))
         .expect("one row reads");
     assert_eq!(
         Scalar::from(the_one_column(read, "one row")),
@@ -346,7 +349,7 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
     );
 
     // Without a field the columns are the text the document proves.
-    let read = target.read_arrow(None).expect("the document proves a root");
+    let read = target.read_serie(None).expect("the document proves a root");
     let column = the_one_column(read, "the document");
     assert_eq!(column.len(), 2);
     assert_eq!(
@@ -362,7 +365,7 @@ fn an_xml_document_holds_one_row_element_per_row_under_the_data_element() {
 fn a_document_is_written_whole_so_only_an_overwrite_applies() {
     let mut target = handle("quotes.json");
     let refused = target
-        .write_arrow(quotes(), IOMode::Append, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
         .expect_err("a document has no append");
     assert!(refused.to_string().contains("overwrite"), "{refused}");
 }
@@ -371,13 +374,13 @@ fn a_document_is_written_whole_so_only_an_overwrite_applies() {
 fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
     let mut target = handle("quotes.yaml");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
     let published = target.read_all_bytes().expect("the bytes read");
     assert!(!published.is_empty());
 
     let refused = target
-        .write_arrow(quotes(), IOMode::Append, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Append, None)
         .expect_err("a document has no append");
     assert!(refused.to_string().contains("append"), "{refused}");
 
@@ -390,14 +393,14 @@ fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
 fn a_compressed_document_reads_and_writes_through_its_coding() {
     let mut target = handle("quotes.jsonl.gz");
     target
-        .write_arrow(quotes(), IOMode::Overwrite, None)
+        .write_serie(SerieSource::from(quotes()), IOMode::Overwrite, None)
         .expect("the rows write");
 
     // The bytes on the handle are gzip, not JSON Lines.
     let bytes = target.read_all_bytes().expect("the bytes read");
     assert_eq!(&bytes[..2], &[0x1F, 0x8B]);
     let read = target
-        .read_arrow(Some(&options_declaring(&quote_root())))
+        .read_serie(Some(&options_declaring(&quote_root())))
         .expect("the coding is transparent");
     assert_eq!(the_one_column(read, "the document").len(), 2);
 }
@@ -446,15 +449,17 @@ fn nested_children_keep_their_values_in_every_document_that_carries_them() {
             .expect("the rows materialize");
         let mut target = handle(name);
         target
-            .write_arrow(
-                SerieReader::from_serie(nested).expect("a record column is one stream"),
+            .write_serie(
+                SerieSource::from(
+                    SerieReader::from_serie(nested).expect("a record column is one stream"),
+                ),
                 IOMode::Overwrite,
                 None,
             )
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
 
         let read = target
-            .read_arrow(Some(&options_declaring(&nested_root)))
+            .read_serie(Some(&options_declaring(&nested_root)))
             .unwrap_or_else(|error| panic!("{name} reads: {error}"));
         assert_eq!(
             Scalar::from(the_one_column(read, name)),
@@ -479,7 +484,7 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     ]);
 
     // Without a field, the one child name the root repeats is the row.
-    let read = source.read_arrow(None).expect("the document proves a root");
+    let read = source.read_serie(None).expect("the document proves a root");
     assert_eq!(
         Scalar::from(the_one_column(read, "the repeated child")),
         natural_rows
@@ -494,14 +499,14 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     .expect("the root datatype is valid")
     .required_field("quote");
     let read = source
-        .read_arrow(Some(&options_declaring(&quote)))
+        .read_serie(Some(&options_declaring(&quote)))
         .expect("the rows read under their name");
     assert_eq!(
         Scalar::from(the_one_column(read, "typed rows")),
         Scalar::from_sequence(quote_rows())
     );
     let outcome = source
-        .read_arrow(Some(&options_declaring(&quote_root())))
+        .read_serie(Some(&options_declaring(&quote_root())))
         .map_err(|error| error.to_string())
         .and_then(|reader| {
             reader
@@ -516,7 +521,7 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     let mut one = handle("one.xml");
     one.write_all_bytes(b"<quotes><quote><symbol>AAPL</symbol><size>100</size></quote></quotes>")
         .expect("the bytes write");
-    let read = one.read_arrow(None).expect("one row reads");
+    let read = one.read_serie(None).expect("one row reads");
     assert_eq!(
         Scalar::from(the_one_column(read, "one child")),
         Scalar::from_sequence([Scalar::from_sequence([
@@ -527,7 +532,7 @@ fn xml_rows_are_the_children_named_after_the_root_field_or_the_one_child_name_a_
     let mut leaf = handle("leaf.xml");
     leaf.write_all_bytes(b"<quotes><n>1</n></quotes>")
         .expect("the bytes write");
-    let read = leaf.read_arrow(None).expect("the root reads");
+    let read = leaf.read_serie(None).expect("the root reads");
     assert_eq!(
         Scalar::from(the_one_column(read, "a leaf child")),
         Scalar::from_sequence([Scalar::from_sequence([Scalar::from("1")])])
@@ -560,8 +565,10 @@ fn a_nested_sequence_column_travels_under_its_items_name_in_xml() {
     let column = Serie::from_scalars(root.clone(), rows.clone()).expect("the rows materialize");
     let mut target = handle("matrix.xml");
     target
-        .write_arrow(
-            SerieReader::from_serie(column).expect("a record column is one stream"),
+        .write_serie(
+            SerieSource::from(
+                SerieReader::from_serie(column).expect("a record column is one stream"),
+            ),
             IOMode::Overwrite,
             None,
         )
@@ -574,7 +581,7 @@ fn a_nested_sequence_column_travels_under_its_items_name_in_xml() {
          an empty one an element with an empty body, an empty text item the same"
     );
     let read = target
-        .read_arrow(Some(&options_declaring(&root)))
+        .read_serie(Some(&options_declaring(&root)))
         .expect("the rows read");
     assert_eq!(
         Scalar::from(the_one_column(read, "the matrix")),

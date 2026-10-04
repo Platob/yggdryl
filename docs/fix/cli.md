@@ -19,7 +19,7 @@
 | Enums | A named [code set](registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds: `--codes` on a field names one, `codesets write --codes '<json>'` states its members, and the set is stated before a field names it |
 | Direction rules | Tag 385's `FIX:directions` metadata; `--directions` accepts its canonical JSON document |
 | Identifiers | A component's direct scalar members; repeat `--identifiers` for names, aliases or decimal tags, resolved by the native setter into member order |
-| Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
+| Output | Plain stable text when redirected; colour where the core's [colour rule](../logging.md#colour) says - a colour terminal, off under `NO_COLOR` or `TERM=dumb`, brought into a pipe by `FORCE_COLOR` or `CLICOLOR_FORCE` - and box drawing and the spinner only on a terminal it colours, so a forced colour never writes frames or box characters into a pipe |
 | Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
 
 ## Use
@@ -61,7 +61,7 @@ maturin build --manifest-path python/Cargo.toml --out dist
 | Namespace | Serves | Page |
 | --- | --- | --- |
 | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively | this page |
-| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/index.md#provider) |
+| `xmla` | `yggdryl xmla serve`: folders of record media as XML for Analysis catalogs over HTTP | [Provider](../media/xmla.md#provider) |
 | `market` | `yggdryl market serve`: tables of market data as the book display - bid and ask candles, books and audits over HTTP - each `--capture` folding a FIX bridge log into the first table before it serves | [Book display](../graph/serve.md) |
 
 ## Three category command trees
@@ -163,14 +163,17 @@ yggdryl fix --root scratch/catalog fields delete 453
 
 `ingest PATH...` folds one or more Ullink `CBlock`s into all three categories; `sync DIR` folds another dictionary folder. Both fold, and the fold itself decides what stands: a declaration the dictionary already holds otherwise is passed over and named rather than overwritten, and everything else arrives or merges. `ingest` takes `--dialect NAME`, the name stamped into `FIX:branches` on every field, group, component and message a file produces, standard tags included, because membership means "this dictionary speaks it"; `sync` takes no `--dialect` at all, because a folder's fields already carry the membership they were written with.
 
-A path to `ingest` is a `.cfb` file or a glob pattern. A quoted glob - `'cblocks/*.cfb'`, `'cblocks/**/*.cfb'` - is walked by the core itself: `*` stays inside one name, `**` spans folders, and a private entry is never matched. An unquoted one is expanded by the shell before the command ever sees it. Either way every matched file parses side by side, on every core, and folds into one staged dictionary in ascending URL order, resolved and committed once - so `cblocks/*.cfb`, `cblocks/**/*.cfb` and the shell's own expansion of either all answer the same dictionary. A path matching nothing, or naming a folder, is refused. Without `--dialect` each file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); with it, every matched file folds under that one name instead. Where two files type one tag two ways, the first-sorting file's declaration is held: the later file's folds under it, counted as restated, where it states another precision of the held datatype - a CBlock's `float` against a `decimal128`, its `string` against a `ccy` - and is passed over and named with its own URL where it contradicts it, a `boolean` against an `int32`.
+A path to `ingest` is a `.cfb` file, a folder or a glob pattern, handed to the core as the location it is. A folder folds the `.cfb` files directly inside it, the suffix in any case; a file folds whatever it is named. A quoted glob - `'cblocks/*.cfb'`, `'cblocks/**/*.cfb'` - is walked by the core itself: `*` stays inside one name, `**` spans folders, and a private entry is never matched. An unquoted one is expanded by the shell before the command ever sees it. Either way every file parses side by side, on every core, and folds into one staged dictionary in ascending URL order, resolved and committed once - so `cblocks/`, `cblocks/*.cfb` and the shell's own expansion of the glob all answer the same dictionary. A path naming nothing is refused, and so is a run whose paths hold no file at all. Without `--dialect` each file's own stem names its dialect (`MSFIX44.cfb` stamps `msfix44`); with it, every file folds under that one name instead. Where two files type one tag two ways, the first-sorting file's declaration is held: the later file's folds under it, counted as restated, where it states another precision of the held datatype - a CBlock's `float` against a `decimal128`, its `string` against a `ccy` - and is passed over and named with its own URL where it contradicts it, a `boolean` against an `int32`.
 
 ```bash
 yggdryl fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
 yggdryl fix --root scratch/catalog ingest 'cblocks/*.cfb'
 yggdryl fix --root scratch/catalog ingest 'cblocks/**/*.cfb' --annotate
 yggdryl fix --root scratch/catalog ingest cblocks/a.cfb cblocks/b.cfb
+yggdryl fix --root scratch/catalog ingest cblocks/
 ```
+
+One file is one mutation: a file that cannot be read, is not a well-formed CBlock, or whose fold refuses rather than passing a declaration over is left out and named, contributing nothing, while every other file still folds and commits. A path naming nothing is refused, and so is a run whose paths hold no `.cfb` file at all; a location beside others that holds none is named in a reader warning, and a run whose every file is left out exits nonzero once each is named, committing nothing.
 
 `sync` folds a folder holding another dictionary; a `.cfb`, or any location that is not a folder, is refused naming `yggdryl fix ingest` and the role the location turned out to be.
 
@@ -178,7 +181,7 @@ yggdryl fix --root scratch/catalog ingest cblocks/a.cfb cblocks/b.cfb
 yggdryl fix --root scratch/catalog sync ../desk/config/fix
 ```
 
-A run that folds something prints, in order: what the fold did, what the reader warned about while reading the files, what the fold passed over, then what the commit wrote - the commit compares every document with the one it would replace and writes only those whose bytes moved.
+A run that folds something prints, in order: what the fold did, what the reader warned about while reading the files, what the fold passed over, which files it left out, then what the commit wrote - the commit compares every document with the one it would replace and writes only those whose bytes moved.
 
 ```text
 ✓ 2 file(s): 5 added, 3 merged (1 restated), 1 passed over 340ms
@@ -189,14 +192,14 @@ A run that folds something prints, in order: what the fold did, what the reader 
 ✓ committed: 8 written, 0 unchanged, 0 removed
 ```
 
-`(N restated)` counts the merged fields whose file declared another precision of the stored datatype, and prints only when there are some. A line under the reader's warnings is the core's own sentence: the byte, the line and column it falls on, what was expected and what the file said, the element quoted as the file spells it, then, after the semicolon, what the reader did instead - here the tag is kept, typed string - prefixed by the file's name and the dialect the file was read for, each where the reader has one. The reader's and the passed-over lines print only when there is something to say, and the commit line only when the fold changed the store - folding nothing but what the dictionary already declares leaves them all silent. Under `--annotate` (or `GITHUB_ACTIONS`) each prints as a workflow warning instead of a `·` line - `fix reader` for what the reader warned about, `fix passed over` for what the fold passed over - `%`, `\r` and `\n` escaped so a reason spanning a document reads as one line:
+`(N restated)` counts the merged fields whose file declared another precision of the stored datatype, and prints only when there are some; `, N file(s) left out` closes the first line only when a file was left out, and `! N file(s) left out: each contributed nothing, and every other file still folded` then heads one `·` line per file - its name, then the refusal it was left out over. A line under the reader's warnings is the core's own sentence: the byte, the line and column it falls on, what was expected and what the file said, the element quoted as the file spells it, then, after the semicolon, what the reader did instead - here the tag is kept, typed string - prefixed by the file's name and the dialect the file was read for, each where the reader has one. The reader's and the passed-over lines print only when there is something to say, and the commit line only when the fold changed the store - folding nothing but what the dictionary already declares leaves them all silent. Under `--annotate` (or `GITHUB_ACTIONS`) each prints as a workflow warning instead of a `·` line - `fix reader` for what the reader warned about, `fix passed over` for what the fold passed over, `fix left out` for a file left out (`::warning title=fix left out::<url>: <reason>`) - `%`, `\r` and `\n` escaped so a reason spanning a document reads as one line:
 
 ```text
 ::warning title=fix reader::venue.cfb [venue] invalid cfb expression at byte 204: line 4, column 65: expected one of the CBlock types (string, char, integer, float, boolean, utc-date, utc-timestamp, utc-time-only) or a datatype name, got "widget" in "<vocabulary-tag name=\"9850\" alt=\"StartTime\" type=\"widget\">"; the tag is typed string, which every FIX datatype is on the wire
 ::warning title=fix passed over::file:///desk/cblocks/venue.cfb: invalid record value at masscancelrejectreason: expected the datatype boolean stored for masscancelrejectreason (532), got int32
 ```
 
-`sync` counts its one folder as a `dictionary(s)` rather than a `file(s)`: `✓ 1 dictionary(s): 5 added, 3 merged, 0 passed over 12ms`. Membership never decides how a tag or a name resolves; the version a CBlock's root declares is read past, and a capture is read at the version its own rows or lines state. Every fold is staged and adopted whole - a file that will not parse, or a source whose own catalog does not validate, leaves the dictionary exactly as it was - and native [storage](store.md) handles the resulting documents.
+`sync` counts its one folder as a `dictionary(s)` rather than a `file(s)`: `✓ 1 dictionary(s): 5 added, 3 merged, 0 passed over 12ms`. Membership never decides how a tag or a name resolves; the version a CBlock's root declares is read past, and a capture is read at the version its own rows or lines state. Every fold is staged and committed once: `ingest` leaves out by name a file it cannot read, parse or fold while every other file folds, `sync` leaves the dictionary exactly as it was when its source's own catalog does not validate, and native [storage](store.md) handles the resulting documents.
 
 ## Schema, check, and diff
 
@@ -231,9 +234,9 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
 - `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
 - `ingest` always folds, whatever it is pointed at: a declaration the dictionary already holds otherwise is passed over and named, and the rest still arrives or merges, so running it again over an unchanged file leaves the store as it was.
-- A coarser datatype folds under the held one and is counted restated rather than passed over: unbounded text, which every FIX datatype is on the wire, beside anything, any number beside any other, an integer beside an enum, one byte layout beside another, a date beside a datetime whatever the zone, one time width beside another. Only a contradiction - a flag against a number, a time of day against a timestamp, two codes - is passed over.
-- What a file states in a way the reader cannot keep - a type word nothing reads, an attribute that will not split, a constraint naming a tag the file never declared - is named with its line and column and what the reader did instead, and the rest of the file still folds; a charset the file cannot be read in is transcribed or read as UTF-8, named the same way. Only a file that is not well-formed XML, or stops with an element open, refuses the `ingest`, naming the file.
-- An `ingest` path matching nothing, or naming a folder, is refused before anything folds; a `sync` location that is not a folder - a `.cfb` among them, and one that does not exist yet reads as `unknown` - is refused the same way, naming `yggdryl fix ingest`.
+- A coarser datatype folds under the held one and is counted restated rather than passed over: unbounded text, which every FIX datatype is on the wire, beside anything, any number beside any other, an integer beside an enum, one byte layout beside another, a date beside a datetime whatever the zone, one time width beside another. Only a contradiction - a flag against a number, a time of day against an instant, two codes - is passed over. A field a file counts a repeating group by is the one datatype a fold changes: held as unbounded text, a float or another integer width, it is retyped `int32` with a warning, whichever file sorts first.
+- What a file states in a way the reader cannot keep - a type word nothing reads, an attribute that will not split, a constraint naming a tag the file never declared - is named with its line and column and what the reader did instead, and the rest of the file still folds; a charset the file cannot be read in is transcribed or read as UTF-8, named the same way. A file that is not well-formed XML, or stops with an element open, is left out and named, and every other file still folds.
+- An `ingest` path naming nothing is refused before anything folds, and a run whose paths - files, folders, globs - hold no file at all is refused before anything commits; a `sync` location that is not a folder - a `.cfb` among them, and one that does not exist yet reads as `unknown` - is refused before anything folds, naming `yggdryl fix ingest`.
 - A `--dialect` that is empty or carries a comma is refused before a byte of `ingest` folds; without one, each file's own stem names its dialect where the stem reads as a name - opening with an ASCII letter and carrying no comma, its percent escapes decoded, so `Morgan Stanley.cfb` stamps `morgan stanley` - and stamps nothing where it does not. `sync` takes no `--dialect`: its folder's fields already carry the membership they were written with.
 - Two fields may hold one tag under two names; the bare tag answers the first holder, the store writes the holder first so it survives a reload, a listing filtered on that tag shows both, deleting the holder leaves the other alone on the tag, and neither learns the other's name.
 - A field named by nothing but its tag - a CBlock tag that neither an `alt` of its own nor a binding names - is unnamed: another file's field on that tag folds into it, and the first file naming the tag names it, so the members of both read one field.
@@ -241,7 +244,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
 - A malformed code document on `codesets write`, invalid direction rules, unresolved references, a dialect name that cannot be a membership, a set name no store could file, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
-- Interactive mode requires a terminal; piped one-shot commands emit plain text.
+- Interactive mode requires a terminal; piped one-shot commands emit plain text, coloured only when `FORCE_COLOR` or `CLICOLOR_FORCE` asks.
 
 ## Commands
 

@@ -79,9 +79,9 @@ pub mod layout;
 pub mod media;
 pub mod names;
 pub mod options;
-pub mod pivot;
 pub mod package;
 pub(crate) mod parser;
+pub mod pivot;
 pub(crate) mod reader;
 pub(crate) mod records;
 pub(crate) mod regions;
@@ -107,15 +107,20 @@ pub use entry::Entry;
 pub use fill::FillMode;
 pub use find::{FindOptions, FindScope, Within};
 pub use format::{FormatCode, Rendered};
-pub use formula::{Clock, Formula, FunctionDescriptor, MAX_FORMULA_LENGTH, MAX_FORMULA_NESTING, Recalculation};
+pub use formula::aggregate::Aggregate;
+pub use formula::{
+    Clock, Formula, FunctionDescriptor, MAX_FORMULA_LENGTH, MAX_FORMULA_NESTING, Recalculation,
+};
 pub use journal::{DEFAULT_JOURNAL_BYTES, DEFAULT_JOURNAL_ENTRIES, Journal};
 pub use layout::{DEFAULT_COLUMN_WIDTH, DEFAULT_ROW_HEIGHT, Frozen};
 pub use media::{Excel, overwrite_arrow_reader, read_batch_reader, read_field, regions};
 pub(crate) use media::{row_size, stated_field};
 pub use names::DefinedName;
 pub use options::{ExcelOptions, ExcelSelection};
-pub use formula::aggregate::Aggregate;
-pub use pivot::{AxisField, ItemOrder, PivotFieldInfo, PivotOrigin, PivotSource, PivotSpec, PivotTable, ValueField};
+pub use pivot::{
+    AxisField, ItemOrder, PivotFieldInfo, PivotOrigin, PivotSource, PivotSpec, PivotTable,
+    ValueField,
+};
 pub use regions::{ExcelRegion, ExcelRegionKind};
 pub use sheet::{CellMut, Direction, MAX_SHEET_NAME, Row, Sheet, SheetState, validate_sheet_name};
 pub use style::{
@@ -143,3 +148,24 @@ pub const STRICT_RELATIONSHIPS_NAMESPACE: &str =
 
 /// The sheet a write creates when the options name none.
 pub const DEFAULT_SHEET_NAME: &str = "Sheet1";
+
+/// Refuse a handle whose media type declares a content coding.
+///
+/// A workbook is a ZIP package deflated inside, so `trades.xlsx.gz` names a
+/// file no spreadsheet opens: every door that reads or writes the package
+/// refuses the name before a byte crosses, as Parquet's do, and the holder
+/// leaves the coding undecoded so the refusal is the answer a caller gets.
+pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crate::Result<()> {
+    let codec = handle.codec();
+    if codec.is_identity() {
+        return Ok(());
+    }
+    Err(crate::Error::Codec {
+        format: "xlsx",
+        position: 0,
+        reason: smol_str::format_smolstr!(
+            "expected an uncompressed xlsx handle, got {codec} coding; a workbook is a ZIP \
+             package deflated inside, so drop the {codec} coding from its name"
+        ),
+    })
+}

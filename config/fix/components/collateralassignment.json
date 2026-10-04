@@ -91,17 +91,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -178,17 +167,6 @@
         }
       },
       {
-        "name": "noexecs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noexecs",
-          "FIX:tag": "124"
-        }
-      },
-      {
         "name": "execcollgrp",
         "dtype": {
           "type": "null"
@@ -196,17 +174,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "execcollgrp"
-        }
-      },
-      {
-        "name": "notrades",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrades",
-          "FIX:tag": "897"
         }
       },
       {
@@ -295,17 +262,6 @@
         }
       },
       {
-        "name": "nolegs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegs",
-          "FIX:tag": "555"
-        }
-      },
-      {
         "name": "instrmtleggrp",
         "dtype": {
           "type": "null"
@@ -313,17 +269,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrmtleggrp"
-        }
-      },
-      {
-        "name": "nounderlyings",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyings",
-          "FIX:tag": "711"
         }
       },
       {
@@ -370,17 +315,6 @@
         }
       },
       {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
-        }
-      },
-      {
         "name": "trdregtimestamps",
         "dtype": {
           "type": "null"
@@ -399,17 +333,6 @@
         "metadata": {
           "FIX:field": "side",
           "FIX:tag": "54"
-        }
-      },
-      {
-        "name": "nomiscfees",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomiscfees",
-          "FIX:tag": "136"
         }
       },
       {
@@ -496,17 +419,6 @@
         "nullable": true,
         "metadata": {
           "FIX:component": "spreadorbenchmarkcurvedata"
-        }
-      },
-      {
-        "name": "nostipulations",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostipulations",
-          "FIX:tag": "232"
         }
       },
       {

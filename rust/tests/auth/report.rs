@@ -4,7 +4,7 @@ use yggdryl::internals::auth_report::Report;
 
 #[test]
 fn nothing_failed_is_no_refusal() {
-    let mut report = Report::new("AWS credentials");
+    let mut report = Report::new("AWS credentials", "auth::report::tests");
     report.absent("environment");
     report.absent("container");
     assert!(
@@ -18,7 +18,7 @@ fn nothing_failed_is_no_refusal() {
 
 #[test]
 fn a_failure_is_a_refusal_naming_every_source() {
-    let mut report = Report::new("AWS credentials");
+    let mut report = Report::new("AWS credentials", "auth::report::tests");
     report.absent("environment");
     report.failed("sso", "the sign-in lapsed");
     report.failed("credential process", "exit status 1");

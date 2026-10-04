@@ -18,8 +18,8 @@ use crate::IOBase;
 use crate::arrow::BatchReader;
 use crate::graph::Event;
 use crate::media::IORecordOptions;
-use crate::temporal as iso;
-use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
+use crate::value::TemporalValue;
+use crate::{Charset, Codec, DataType, DateTime64, Error, Result, Scalar, Timezone, Url};
 
 use super::leading::LeadingFragment;
 use super::line::LineSource;
@@ -1075,7 +1075,7 @@ impl TextLines {
     /// Each line states, as its `prevunix`, the instant the line this read
     /// cut before it was dated by: none for the first line, or after an
     /// undated one, and the same precedence for a `prevunix` capture. No
-    /// `prevuuid` is stated, so no line's identity moves.
+    /// `prevuuid` is stated: a line follows no line.
     fn convert(&mut self, row: RawRow) -> Result<TextLine> {
         let mut line =
             TextLine::from_cut(row.index, row.body, Arc::clone(&self.options), row.header)?;
@@ -1114,20 +1114,11 @@ pub(crate) fn parse_capture(
     };
     match dtype {
         crate::string_dtypes!() => Ok(Scalar::from(value)),
-        DataType::Boolean => value
-            .parse::<bool>()
-            .map(Scalar::from)
-            .map_err(|_| invalid()),
-        DataType::Int64 => value
-            .parse::<i64>()
-            .map(Scalar::from)
-            .map_err(|_| invalid()),
-        DataType::Float64 => value
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(Scalar::from)
+        DataType::Boolean => crate::boolean::boolean_from_text(value).ok_or_else(invalid),
+        DataType::Int64 => crate::integer::integer_from_text(value)
+            .and_then(|count| dtype.scalar(count).ok())
             .ok_or_else(invalid),
+        DataType::Float64 => crate::floating::float_from_text(value).ok_or_else(invalid),
         DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }
@@ -1135,16 +1126,13 @@ pub(crate) fn parse_capture(
             unit,
             timezone: zone,
         } if !zone.is_naive() => {
-            // A reading that names its own offset is the crate's; a naive one
-            // is autotyping's own rule, a wall clock in the column's zone.
-            if let Ok(instant) = Scalar::from_temporal_text(dtype, value) {
-                return Ok(instant);
-            }
-            let (local, source) = iso::parse_datetime(value).map_err(|_| invalid())?;
-            let count =
-                zoned_count(local, source, timezone.unwrap_or(zone)).map_err(|_| invalid())?;
-            let count = rescale(count, source, *unit).ok_or_else(invalid)?;
-            Scalar::datetime64(count, *unit, *zone).map_err(|_| invalid())
+            // A reading that names its own offset is that instant; a naive one
+            // is autotyping's own rule, a wall clock in the column's zone. The
+            // count is the column's unit exactly, and its zone the column's.
+            let read = DateTime64::from_text(value, *timezone.unwrap_or(zone))
+                .and_then(|read| read.with_unit(*unit))
+                .map_err(|_| invalid())?;
+            Scalar::datetime64(read.count(), *unit, *zone).map_err(|_| invalid())
         }
         DataType::DateTime64 { .. } => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
@@ -1152,42 +1140,6 @@ pub(crate) fn parse_capture(
         _ => Err(format_smolstr!(
             "autotype produced unsupported datatype {dtype}"
         )),
-    }
-}
-
-fn zoned_count(local: i64, unit: TimeUnit, zone: &Timezone) -> Result<i64> {
-    let per = iso::per_second(unit).ok_or_else(|| Error::InvalidRecord {
-        path: SmolStr::new_static("$.timezone"),
-        reason: SmolStr::new_static("timestamp unit has no fixed second width"),
-    })?;
-    let seconds = local.div_euclid(per);
-    let fraction = local.rem_euclid(per);
-    (*zone)
-        .into_utc(seconds)?
-        .checked_mul(per)
-        .and_then(|seconds| seconds.checked_add(fraction))
-        .ok_or_else(|| Error::InvalidRecord {
-            path: SmolStr::new_static("$.timezone"),
-            reason: SmolStr::new_static("zoned timestamp is out of range"),
-        })
-}
-
-fn rescale(count: i64, source: TimeUnit, target: TimeUnit) -> Option<i64> {
-    let source = nanos(source)?;
-    let target = nanos(target)?;
-    let nanos = i128::from(count).checked_mul(source)?;
-    (nanos % target == 0)
-        .then(|| i64::try_from(nanos / target).ok())
-        .flatten()
-}
-
-const fn nanos(unit: TimeUnit) -> Option<i128> {
-    match unit {
-        TimeUnit::Second => Some(1_000_000_000),
-        TimeUnit::Millisecond => Some(1_000_000),
-        TimeUnit::Microsecond => Some(1_000),
-        TimeUnit::Nanosecond => Some(1),
-        _ => None,
     }
 }
 

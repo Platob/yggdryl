@@ -13,7 +13,7 @@
 //! | `Instrument.Symbol` | a path |
 //! | `PartyID[0]`, `PartyID[1]` | one field, two occurrences, in order |
 //! | `Parties[0].PartyID` | which group, which occurrence, which member |
-//! | `NoPartyIDs[0].PartyID` | a wire counter resolving the same group |
+//! | `NoPartyIDs[0].PartyID` | the group's counter, naming the same group |
 //! | `VenueOwnThing` | an unknown name, kept |
 //! | `#NoPartyIDs[0]` | a spelling a reader left marked, at the top of a row: one child under its own name, its packed value its value |
 //! | `""`, `"   "` | dropped |
@@ -37,8 +37,8 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
+use crate::logging::warning::warned;
 use crate::text::TextBytes;
-use crate::warning::warned;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 
 /// What a key resolved to, before any field is built.
@@ -78,14 +78,6 @@ struct Composition<'source> {
     write: super::msg::Write,
     disagreed: bool,
     invalid_utf8: bool,
-}
-
-impl Known<'_> {
-    /// A key the dictionary holds nothing under.
-    const NONE: Self = Self {
-        field: None,
-        group: None,
-    };
 }
 
 /// The level a key the dictionary does not name resolves against.
@@ -230,7 +222,8 @@ struct Slot {
     /// Whether this slot is a repeating group, whatever it has been given.
     ///
     /// A group whose counter arrived and whose members did not is still a
-    /// group, and the empty serie is what says the count was not met.
+    /// group, and the empty serie is what states it empty: the group's
+    /// length is its count.
     group: bool,
     /// The group members, when this slot is a repeating group.
     ///
@@ -624,6 +617,11 @@ pub(super) fn fill_field<'registry>(
         .or_else(|| registry.get_field_by_name(key));
     let field = named?;
     let tag = field.as_fix().tag().ok().flatten()?;
+    // A counter is no field a row fills: the group it counts is its list,
+    // whose length is the count.
+    if !field.dtype().is_nested() && registry.is_counter_tag(tag) {
+        return None;
+    }
     Some((field, tag))
 }
 
@@ -758,8 +756,8 @@ pub(super) struct Builder<'registry> {
     failure: Option<Error>,
     composed: Vec<Composed>,
     /// What this build could not read as it stands - a value that would not
-    /// type, a counter disagreeing with its group - in arrival order, kept
-    /// on the message beside the row.
+    /// type, an alias stating another value - in arrival order, kept on the
+    /// message beside the row.
     anomalies: Vec<super::FixAnomaly>,
 }
 
@@ -851,13 +849,20 @@ impl<'registry> Builder<'registry> {
                 .and_then(super::field::parse_tag)
                 .and_then(|tag| Some((tag, self.numeric_plan(tag)?)));
             self.arrival = pair.arrived();
-            self.push(key, value);
-            if let Some((tag, plan)) = group {
+            let Some((tag, plan)) = group else {
+                self.push(key, value);
+                continue;
+            };
+            // A counter frames the group it heads and is no value of its
+            // own: the group's length is the count. The frame moves on, so
+            // every group still open closes, and the members that follow
+            // are read into the group's slot.
+            self.open.clear();
+            self.record(tag);
+            {
                 let value = self.read_numeric_group(plan, pairs, &mut cursor, &absent);
-                // Not `known`: the group is addressed by the counter's tag
-                // on the wire but does not carry it - the counter's own column
-                // does. Indexing both under one tag makes `by_tag` answer with
-                // whichever the binary search lands on.
+                // Not `known`: the group is reached by its name, and the
+                // counter tag it is filed under is no child's tag.
                 let slot = self.slot_for(plan.field().clone(), tag, false);
                 slot.field = plan.field().clone();
                 // A counter the frame states twice at one level appends to what
@@ -924,7 +929,14 @@ impl<'registry> Builder<'registry> {
             let Some(tag) = super::field::parse_tag(key) else {
                 break;
             };
-            let Some(column) = plan.tag_index(tag) else {
+            // A nested group arrives as its counter, which opens it in the
+            // occurrence and holds no value: the members that follow are
+            // what it holds, and its length is the count.
+            let nested = plan.nested(tag);
+            let Some(column) = nested
+                .map(|(column, _)| column)
+                .or_else(|| plan.tag_index(tag))
+            else {
                 break;
             };
             if plan.delimiter() == Some(tag)
@@ -933,12 +945,15 @@ impl<'registry> Builder<'registry> {
                 rows.push(plan.row(values));
             }
             let values = current.get_or_insert_with(|| vec![Scalar::Null; plan.columns_len()]);
-            let text = String::from_utf8_lossy(raw);
-            values[column] = self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
+            if nested.is_none() {
+                let text = String::from_utf8_lossy(raw);
+                values[column] =
+                    self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
+            }
             self.arrival = pair.arrived();
             self.record(tag);
             *cursor += 1;
-            if let Some((column, nested)) = plan.nested(tag) {
+            if let Some((column, nested)) = nested {
                 values[column] = self.read_numeric_group(nested, pairs, cursor, absent);
             }
         }
@@ -1035,9 +1050,16 @@ impl<'registry> Builder<'registry> {
         // A key arriving still marked `#` is one the reader left so - kept
         // whole beside a bare twin that took the structure, or a twice-marked
         // key's bare - and is one flat child under its own name, so
-        // `#NOPARTYIDS[0]` never writes over the count `#NOPARTYIDS` stated
-        // beside it. A member a rendered occurrence carries marked is a
-        // member like any other, and nests as its key says.
+        // `#NOPARTYIDS[0]` stays the packed occurrence it is. A marked count
+        // is dropped: the group it counts is its list, whose length is the
+        // count. A member a rendered occurrence carries marked is a member
+        // like any other, and nests as its key says.
+        if let Some(stem) = key_text.strip_prefix('#')
+            && !stem.contains(['.', '['])
+            && self.counter_from(&self.known(stem)).is_some()
+        {
+            return;
+        }
         let located = if key_text.starts_with('#') {
             Key {
                 text: key_text,
@@ -1399,15 +1421,12 @@ impl<'registry> Builder<'registry> {
     /// One flat child, appended in arrival order.
     fn push_flat(&mut self, key: &str, text: &str, raw: &[u8]) {
         // A flat key naming a repeating group is that group's counter: it
-        // opens the group slot the members land in, and the number that
-        // arrived stays in the counter's own child beside it. The group's
-        // length and the stated count are two readings of one line, compared
-        // on demand through `anomalies()`.
+        // opens the group slot the members land in and is no value of its
+        // own, because the group's length is the count.
         //
         // A tag reaches the dictionary once, and which half it is in decides
         // the rest: the counter and the scalar readings are the same probe
         // filtered two ways, and a numeric key is most of every frame.
-        let mut located = Known::NONE;
         let (field, tag, source) = if let Some(parsed) = super::field::parse_tag(key) {
             // A tag an open group declares is that group's member, placed in
             // the occurrence the frame's order implies; any other tag closes
@@ -1421,7 +1440,7 @@ impl<'registry> Builder<'registry> {
             // A nested row cannot partly replace a group the enclosing frame
             // already stated. Keep the open-group cursor only to consume its
             // numeric members; `push_grouped` sees the shadowed root and
-            // leaves both the frame's counter and its occurrences untouched.
+            // leaves the frame's occurrences untouched.
             if let Some(group) = self
                 .outer
                 .and_then(|_| self.numeric_group(parsed))
@@ -1437,28 +1456,31 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             // The tag's first holder, the same probe `push_pairs` reads under.
-            match self.by_tag(parsed) {
+            let found = self.by_tag(parsed);
+            if let Some(found) = found.filter(|found| found.dtype().is_nested()) {
+                let tag = self.registry.identity_of(found).map_or(0, |(tag, _)| tag);
+                if self.shadowed(found.name()) {
+                    self.overshadow(found.name());
+                }
+                self.record(tag);
+                self.open_group(found, tag, true);
+                return;
+            }
+            // A counter opens the group it heads, empty until a member
+            // arrives - one stating nothing opens nothing - and the slot is
+            // not `known`, because the group is reached by its name and the
+            // counter tag is no child's tag.
+            if let Some(group) = self.numeric_group(parsed) {
+                if raw.is_empty() {
+                    return;
+                }
+                self.record(parsed);
+                self.open_group(group, parsed, false);
+                return;
+            }
+            match found {
                 Some(found) => {
                     let tag = self.registry.identity_of(found).map_or(0, |(tag, _)| tag);
-                    if found.dtype().is_nested() {
-                        if self.shadowed(found.name()) {
-                            self.overshadow(found.name());
-                        }
-                        self.record(tag);
-                        let members = declared_members(found);
-                        let name = SmolStr::new(found.name());
-                        let slot = self.slot_for(stated(found), tag, true);
-                        slot.group = true;
-                        let base = slot.occurrences.len();
-                        self.open.push(OpenGroup {
-                            name,
-                            members,
-                            occurrence: None,
-                            base,
-                            seen: Vec::new(),
-                        });
-                        return;
-                    }
                     (stated(found), tag, Some(found))
                 }
                 None => (
@@ -1468,7 +1490,18 @@ impl<'registry> Builder<'registry> {
                 ),
             }
         } else {
-            located = self.known(key);
+            let located = self.known(key);
+            // A counter's name opens the group it heads, as its tag does,
+            // and states no value of its own - `Parties=2` is the same
+            // statement - so no field is built for it.
+            if let Some((group, counter)) = self.counter_from(&located) {
+                if raw.is_empty() || self.shadowed(group.name()) {
+                    return;
+                }
+                self.record(counter);
+                self.slot_for(group, counter, false).group = true;
+                return;
+            }
             self.field_from(key, located.field, self.scope())
         };
         // A key that reaches a field by one of its `FIX:names` rather than
@@ -1501,14 +1534,11 @@ impl<'registry> Builder<'registry> {
             self.slot_for(own, 0, false).values.push(Scalar::from(text));
             return;
         }
-        let counter = self.counter_from(&located);
-        if counter
-            .as_ref()
-            .is_some_and(|(group, _)| self.shadowed(group.name()))
-        {
-            return;
-        }
-        if self.shadowed(field.name()) {
+        // A row nested in a data field restating the classification folds
+        // into the line's, as a second statement of the line does, and
+        // replaces it only where the two contradict each other.
+        let classification = tag == super::cfi::CFICODE_TAG;
+        if !classification && self.shadowed(field.name()) {
             self.overshadow(field.name());
         }
         if raw.is_empty()
@@ -1521,6 +1551,20 @@ impl<'registry> Builder<'registry> {
         }
         let value = self.typed_root(&field, source, tag, raw, text);
         let known = source.is_some();
+        // A second statement of the classification - a bridge's
+        // `DETAILEDCFICODE` beside `CFICode(461)`, or 461 repeated - is
+        // folded into the one the slot holds where the two describe one
+        // instrument, and states nothing more; two that contradict each
+        // other stay under the rule below.
+        if classification {
+            if self.fold_cficode(&field, known, alias.as_ref(), &value) {
+                self.record(unresolved(0));
+                return;
+            }
+            if self.shadowed(field.name()) {
+                self.overshadow(field.name());
+            }
+        }
         // Which spelling stands: the canonical name or the tag over any
         // alias, the earlier alias in `FIX:names` over a later one, and two
         // arrivals of one spelling both, as a repeated tag stays two. What
@@ -1628,14 +1672,61 @@ impl<'registry> Builder<'registry> {
                 }
             }
         }
-        // The counter's child is built first, so the count keeps the column
-        // its own field names; the group it heads is opened after it, empty
-        // until a member arrives - located, indexed or numbered.
-        if let Some((group, counter)) = counter {
-            // Not `known`, for the reason the numeric path states: the
-            // counter holds the tag, the group it heads does not.
-            self.slot_for(group, counter, false).group = true;
-        }
+    }
+
+    /// Folds `value`, a second statement of `CFICode(461)` under `alias` or
+    /// its own name, into the one statement its slot holds, through
+    /// [`super::cfi::merged_statement`]: the spelling that leads by the
+    /// alias rule - the canonical name or the tag over a name, the earlier
+    /// name over a later one, the first arrival over a repeat - keeps its
+    /// letters and fills its `X` from the other, which agrees with it and
+    /// states nothing more. Whether it folded; a slot holding no one value,
+    /// or two codes that contradict each other, does not.
+    fn fold_cficode(
+        &mut self,
+        field: &Field,
+        known: bool,
+        alias: Option<&(SmolStr, usize)>,
+        value: &Scalar,
+    ) -> bool {
+        let slot = self.slot_for(field.clone(), super::cfi::CFICODE_TAG, known);
+        let SlotValues::One(held) = &slot.values else {
+            return false;
+        };
+        let leads = match &slot.filler {
+            Some((_, rank)) => alias.is_none_or(|(_, newer)| newer < rank),
+            None => false,
+        };
+        let (lead, other) = if leads { (value, held) } else { (held, value) };
+        let Some(refined) = super::cfi::merged_statement(lead, other) else {
+            return false;
+        };
+        let lost = if leads {
+            std::mem::replace(&mut slot.filler, alias.cloned())
+        } else {
+            alias.cloned()
+        };
+        slot.values = SlotValues::One(refined);
+        slot.agreeing.extend(lost.map(|(spelling, _)| spelling));
+        true
+    }
+
+    /// Opens `group` in a numeric frame under `tag`: its slot stated a group,
+    /// empty until a member arrives, and its members read into it in the
+    /// order the frame states them, after what the slot already holds.
+    fn open_group(&mut self, group: &'registry Field, tag: i32, known: bool) {
+        let members = declared_members(group);
+        let name = SmolStr::new(group.name());
+        let slot = self.slot_for(stated(group), tag, known);
+        slot.group = true;
+        let base = slot.occurrences.len();
+        self.open.push(OpenGroup {
+            name,
+            members,
+            occurrence: None,
+            base,
+            seen: Vec::new(),
+        });
     }
 
     /// The repeating group a flat key names, when it names one.
@@ -1724,7 +1815,7 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             self.record(0);
-            let slot = self.slot_for(field, tag, true);
+            let slot = self.slot_for(field, tag, false);
             slot.group = true;
             slot.values.set(occurrence, Scalar::from(text));
             return;
@@ -1767,7 +1858,7 @@ impl<'registry> Builder<'registry> {
         }
         let located = self.known(group);
         let answer = match self.counter_from(&located) {
-            Some((field, tag)) => (field, tag, true),
+            Some((field, tag)) => (field, tag, false),
             None => match located.group {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
@@ -2033,13 +2124,12 @@ impl<'registry> Builder<'registry> {
     /// after namespace composition, never while the payload is still built.
     pub(super) fn finish(self, name: &str) -> Result<Built> {
         let Self {
-            registry,
             beginstring,
             version,
             mut slots,
             failure,
             composed,
-            mut anomalies,
+            anomalies,
             ..
         } = self;
         if let Some(error) = failure {
@@ -2098,49 +2188,6 @@ impl<'registry> Builder<'registry> {
             let (field, value) = slot.into_child()?;
             fields.push(field);
             values.push(value);
-        }
-        // A group's counter counts the occurrences the group holds, once
-        // they are merged: a bridge stating six restated parties beside two
-        // bare ones counts eight. Each field's tag and counter are read once
-        // for both sides of that match.
-        let facts: Vec<(Option<i32>, Option<i32>)> = fields
-            .iter()
-            .map(|field| super::schema::tag_and_counter(registry, field))
-            .collect();
-        for (index, (_, counter)) in facts.iter().enumerate() {
-            let Some(counter) = *counter else {
-                continue;
-            };
-            let Some(held) = values[index].as_sequence().map(<[Scalar]>::len) else {
-                continue;
-            };
-            if let Some(at) = facts
-                .iter()
-                .zip(&fields)
-                .position(|((tag, counts), field)| {
-                    *tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
-                })
-            {
-                let count = i32::try_from(held).unwrap_or(i32::MAX);
-                // The number that arrived and the occurrences the group
-                // holds are two readings of one line: where they disagree,
-                // the group's is the row's and the disagreement is kept.
-                if let Some(stated) = values[at]
-                    .as_i64()
-                    .filter(|stated| *stated != i64::from(count))
-                {
-                    let detail = format!("states {stated}, the group holds {held}");
-                    warned!(
-                        "FIX group counter restated: it disagrees with the occurrences the group holds",
-                        fields[at].name(),
-                        "{detail}"
-                    );
-                    anomalies.push(super::FixAnomaly::new(fields[at].name(), detail));
-                }
-                if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
-                    values[at] = value;
-                }
-            }
         }
         tags.sort_unstable();
         // Every child is the dictionary's own field, a field built for a key
@@ -2305,8 +2352,8 @@ impl Slot {
     /// This slot as one child field and its value.
     fn into_child(self) -> Result<(Field, Scalar)> {
         // A group whose counter arrived and whose members did not is a group
-        // holding nothing, not a scalar: the empty serie is what lets the
-        // count it stated be compared with what the row actually holds.
+        // holding nothing, not a scalar: the empty serie is the group stated
+        // empty, `NoPartyIDs(453)=0`, its length the count.
         if self.group && self.occurrences.is_empty() {
             if matches!(&self.values, SlotValues::Empty) {
                 let value = Scalar::from_sequence(Vec::new());
@@ -2456,147 +2503,39 @@ fn serie_of(field: &Field, item: Field) -> Field {
     )
 }
 
-/// The day a FIX temporal that states no date is read on.
-///
-/// `TZTimeOnly` is a time of day and an offset, so the instant it names needs
-/// a day and the specification supplies none. The epoch day is the one choice
-/// that costs nothing: the count is the time of day itself, in the unit the
-/// column declares, and two readings still subtract.
-const EPOCH_DAY: &str = "1970-01-01";
-
 /// The value one FIX wire spelling states, where FIX spells it its own way.
 ///
-/// A boolean is `Y` or `N`. A temporal is a run of digits, and the crate's own
-/// ISO reader takes the shape of one as it stands - `20260821-10:30:00.123456`
-/// and the bare `20260821` are both readings there - so what is supplied here
-/// is only what FIX leaves out of the reading: the zone a UTC column carries,
-/// the date a `TZTimeOnly` omits, the seconds an `HH:MM` stops before, and the
-/// decimal point a bridge writing one long digit run never writes. Those are
-/// facts about FIX rather than about the datatype, so they are stated here and
-/// the generic value contract learns none of them.
+/// A boolean is not one: `Y`, `N` and a bridge's `yes` or `no` are spellings
+/// the generic value contract reads, as a column cast does. A datetime is,
+/// and the codec parses none of it: every datetime field is read by
+/// [`DateTime64::from_fix_text`](crate::DateTime64), the datetime's own
+/// reader, which takes the crate's ISO spellings as they stand -
+/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone, an offset
+/// after one blank - and the four only FIX writes: a bridge's one digit
+/// run, a clock that stops at its minutes, a `TZTimeOnly` read on the epoch
+/// day, and a numeric offset closed by `s`.
 ///
 /// Three FIX datatypes land on `DateTime64` and this reads all three, because
 /// only their spelling differs: `UTCTimestamp` states a date and no zone,
-/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. So
-/// the date is taken where there is one and the epoch day stands in where
-/// there is not, the seconds a `TZTimeOnly` may omit are filled, and the zone
-/// is kept where the value states one rather than `Z` written over it - which
-/// is what a `TZTimestamp` carrying `-05:00` needs, since appending `Z` to it
-/// spells a zone twice and reads as nothing at all.
+/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. The
+/// zone a value states outranks the column's; a value stating none is a wall
+/// clock in the column's zone, which is what `UTCTimestamp` means by saying
+/// nothing; and a column stating no zone - a `LocalMktDate`, a
+/// `LocalMktDatetime` - holds a local market value, so a reading that states
+/// a zone is not one and is left to the value contract, which refuses it.
 ///
-/// Neither half may be missing at once. A value stating a date is read
-/// whatever zone it states or omits, and one stating only a clock is read
-/// only where it states an offset - so a dated spelling that arrives without
-/// its date still answers nothing, exactly as it did when only the dated
-/// shape was read.
+/// What is answered is the typed value, in the column's own zone - the
+/// instant is the same under any - so the value contract restates the unit
+/// and reads no text a second time.
 pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
-    match dtype {
-        DataType::Boolean => match text.as_bytes() {
-            [b'Y' | b'y'] => Some(Scalar::from(true)),
-            [b'N' | b'n'] => Some(Scalar::from(false)),
-            _ => None,
-        },
-        leaf_dtype @ DataType::DateTime64 { .. } => {
-            let leaf = &leaf_dtype
-                .datetime_type()
-                .expect("the variant was just matched");
-            let timezone = leaf.timezone();
-            // The zone a value states outranks the column's, and a column
-            // stating none takes no zone rather than Z: a `LocalMktDate` and
-            // a `LocalMktDatetime` are local market values, and rendering
-            // them as instants would make the reading claim a zone the wire
-            // never sent.
-            let implied = if timezone.is_naive() { "" } else { "Z" };
-            // A date states no clock, so it reads as that day at midnight -
-            // which is what makes `UTCDateOnly` and `LocalMktDate` instants
-            // rather than a second temporal type to cast through. The reader
-            // takes the compact date as it stands, so the only thing left to
-            // write is the zone FIX leaves implied, and a naive column is
-            // owed none: its wire text is already the reading.
-            if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) {
-                return (!implied.is_empty())
-                    .then(|| Scalar::from(format_smolstr!("{text}{implied}").as_str()));
-            }
-            // A bridge writes a clock as one digit run - the date, the
-            // time, and three, six or nine digits of fraction - and it is
-            // the same instant `20240102-10:15:30.123` spells with its
-            // separators.
-            if text.len() >= 14 && text.bytes().all(|byte| byte.is_ascii_digit()) {
-                let fraction = &text[14..];
-                if matches!(fraction.len(), 0 | 3 | 6 | 9) {
-                    let point = if fraction.is_empty() { "" } else { "." };
-                    let rendered = format_smolstr!(
-                        "{}-{}-{}T{}:{}:{}{point}{fraction}{implied}",
-                        &text[..4],
-                        &text[4..6],
-                        &text[6..8],
-                        &text[8..10],
-                        &text[10..12],
-                        &text[12..14],
-                    );
-                    return Some(Scalar::from(rendered.as_str()));
-                }
-            }
-            let dated = fix_date(text);
-            let (clock, zone) = zoned(dated.as_ref().map_or(text, |(_, rest)| *rest));
-            let date = match dated.as_ref() {
-                Some((date, _)) => date.as_str(),
-                // A value stating no date is a `TZTimeOnly`, and readable
-                // only where it states its offset: FIX means *local* time by
-                // omitting one, which an instant cannot hold, and a dated
-                // spelling that lost its date is not a reading either.
-                None if zone.is_some() => EPOCH_DAY,
-                None => return None,
-            };
-            // `HH:MM` is the one width a FIX clock may stop at, and only a
-            // `TZTimeOnly` does; anything else is left to fail the read.
-            let seconds = if clock.len() == 5 { ":00" } else { "" };
-            let zone = zone.unwrap_or(implied);
-            let rendered = format_smolstr!("{date}T{clock}{seconds}{zone}");
-            Some(Scalar::from(rendered.as_str()))
-        }
-        _ => None,
-    }
-}
-
-/// The ISO date a FIX temporal opens with, and what follows it.
-///
-/// The eight digits are the test rather than the `-`, because a `TZTimeOnly`
-/// carrying a western offset has one too and `07:39:12-08` would otherwise
-/// read `07:39:12` as a date.
-///
-/// A value stating no date answers `None`, which is what separates the two
-/// kinds of caller: a column declared `TZTimeOnly` takes the epoch day and
-/// reads the instant, while one deriving a capture's clock wants a moment the
-/// capture happened at and has to refuse a dateless one.
-pub(super) fn fix_date(text: &str) -> Option<(SmolStr, &str)> {
-    let (day, rest) = text.split_once('-')?;
-    if day.len() != 8 || !day.bytes().all(|byte| byte.is_ascii_digit()) {
+    let DataType::DateTime64 { timezone, .. } = dtype else {
+        return None;
+    };
+    let read = crate::DateTime64::from_fix_text(text, *timezone).ok()?;
+    if timezone.is_naive() != read.timezone().is_naive() {
         return None;
     }
-    Some((
-        format_smolstr!("{}-{}-{}", &day[..4], &day[4..6], &day[6..8]),
-        rest,
-    ))
-}
-
-/// One FIX clock split from the zone it states, or `None` where it states
-/// none.
-///
-/// A clock states no sign and no `Z`, so the first of either opens the zone.
-/// A dated value stating none is UTC, which is what `UTCTimestamp` means by
-/// saying nothing; a dateless one stating none is not read at all.
-fn zoned(text: &str) -> (&str, Option<&str>) {
-    if let Some(clock) = text.strip_suffix(['Z', 'z']) {
-        return (clock, Some("Z"));
-    }
-    match text.find(['+', '-']) {
-        Some(at) => {
-            let (clock, zone) = text.split_at(at);
-            (clock, Some(zone))
-        }
-        None => (text, None),
-    }
+    Scalar::datetime64(read.count(), read.unit(), *timezone).ok()
 }
 
 /// Types one wire spelling under one field, translating its code first.
@@ -2664,15 +2603,11 @@ fn typed_translation(
     {
         return Ok(member);
     }
-    // Every wire value is text, and the generic value contract does not
-    // read text as a number, an instant or a flag. Two of those it can
-    // learn from the field alone, which is the crate's own coercion; the
-    // third is a FIX *spelling* and stays here, because the generic
-    // contract must not learn one.
-    // A FIX spelling is rewritten into the one the crate's coercion reads,
-    // and then coerced like any other text: `20240102-10:15:30` is a
-    // timestamp only after both steps, and the value contract reads
-    // neither a separator-free instant nor a bare `Y`.
+    // Every wire value is text, and the generic value contract reads it
+    // best effort - a number, a flag, an ISO instant - exactly as a column
+    // cast does. Only a datetime is read first, by the datetime's own FIX
+    // door: the zone a column implies and the spellings only FIX writes are
+    // what the generic contract must not learn.
     let candidate =
         wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
     // The text contract reads the spelling and hands the value through
@@ -2748,12 +2683,19 @@ fn member_fields(group: &Field) -> &[Field] {
     super::schema::item_fields(group).unwrap_or_default()
 }
 
-/// The tags one repeating group declares as its direct members, the first
-/// being the delimiter that opens an occurrence.
+/// The tags one repeating group declares as its direct members, as the wire
+/// spells them - a nested group by its counter - the first being the
+/// delimiter that opens an occurrence.
 fn declared_members(group: &Field) -> Vec<i32> {
     member_fields(group)
         .iter()
-        .filter_map(|member| member.as_fix().tag().ok().flatten())
+        .filter_map(|member| {
+            let fix = member.as_fix();
+            fix.counter()
+                .ok()
+                .flatten()
+                .or_else(|| fix.tag().ok().flatten())
+        })
         .collect()
 }
 

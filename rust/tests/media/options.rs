@@ -305,9 +305,11 @@ fn a_row_limit_one_above_the_stored_count_changes_nothing() {
 #[test]
 fn a_byte_limit_landing_mid_batch_slices_a_view_of_the_last_batch() {
     let source = batch(0..8);
-    let size = u64::try_from(source.get_array_memory_size()).unwrap();
-    // One byte short of the whole batch: the last row no longer fits, and the
-    // seven that do are handed out as a slice.
+    // The limit counts bytes as `memory_size` does - the rows' own extent,
+    // eight bytes a row here, not Arrow's whole-buffer accounting - so one
+    // byte short of the batch is seven rows, handed out as a slice.
+    let size = u64::try_from(yggdryl::arrow::memory_size(&source)).unwrap();
+    assert_eq!(size, 8 * 8);
     let options = IpcOptions::new().with_max_byte_size(size - 1);
     let batches: Vec<RecordBatch> = options
         .limit_arrow_reader(yggdryl::arrow::batch_reader(
@@ -435,6 +437,28 @@ fn an_unnest_is_refused_as_a_match_key_at_every_door_that_takes_one() {
 }
 
 #[test]
+fn a_plan_that_joins_rows_is_refused_and_leaves_the_options_unchanged() {
+    let mut options = IpcOptions::new().with_filter("id > 1").unwrap();
+    let before = options.clone();
+    let plan = "select id from trades join venues using (venue) where id > 2"
+        .parse()
+        .unwrap();
+    let message = options.set_plan(plan).unwrap_err().to_string();
+    assert!(message.contains("$.join"), "{message}");
+    assert!(
+        message.contains("record options hold no join section"),
+        "{message}"
+    );
+    assert_eq!(options, before);
+    // The text door refuses it the same way.
+    let message = IpcOptions::new()
+        .with_plan("select * from t left join v on id = vid")
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.join"), "{message}");
+}
+
+#[test]
 fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
     let options = IpcOptions::new()
         .with_max_row_size(10)
@@ -548,7 +572,7 @@ fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
         message.contains("a json document is one value"),
         "{message}"
     );
-    assert!(message.contains("read_arrow"), "{message}");
+    assert!(message.contains("read_serie"), "{message}");
     // Any other media type is refused with the encodings alone.
     let orc = yggdryl::MediaType::new(yggdryl::MimeType::ORC);
     let message = RecordOptions::for_media_type(&orc).unwrap_err().to_string();
@@ -653,9 +677,9 @@ fn record_options_preflight_each_write_intent_without_an_input_reader() {
 #[test]
 fn every_concrete_options_type_carries_the_same_commit_cadence() {
     fn assert_cadence(mut options: impl IORecordOptions) {
-        assert_eq!(options.commit_row_size(), None);
-        options.set_commit_row_size(Some(17));
-        assert_eq!(options.commit_row_size(), Some(17));
+        assert_eq!(options.commit_batch_num(), None);
+        options.set_commit_batch_num(Some(17));
+        assert_eq!(options.commit_batch_num(), Some(17));
     }
 
     assert_cadence(IpcOptions::new());
@@ -665,12 +689,12 @@ fn every_concrete_options_type_carries_the_same_commit_cadence() {
     #[cfg(feature = "parquet")]
     assert_cadence(yggdryl::parquet::ParquetOptions::new());
 
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(5);
-    assert_eq!(options.commit_row_size(), Some(5));
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(5);
+    assert_eq!(options.commit_batch_num(), Some(5));
     let RecordOptions::Ipc(inner) = options else {
         unreachable!()
     };
-    assert_eq!(inner.commit_row_size, Some(5));
+    assert_eq!(inner.commit_batch_num, Some(5));
 }
 
 #[test]
@@ -909,40 +933,66 @@ fn parquet_only_setters_reject_another_inferred_encoding() {
 }
 
 #[test]
-fn native_batch_writes_stop_at_the_smaller_conversion_or_commit_bound() {
+fn the_default_cadences_are_the_batch_rows_and_the_session_bytes() {
     assert_eq!(yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE, 65_536);
-    assert_eq!(
-        yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE,
-        yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE
-    );
-    let default = IpcOptions::new().with_commit_row_size(usize::MAX);
-    assert_eq!(
-        default.write_batch_row_size(),
-        Some(yggdryl::media::DEFAULT_RECORD_BATCH_ROW_SIZE)
-    );
-    assert_eq!(
-        IpcOptions::new()
-            .with_batch_row_size(7)
-            .with_commit_row_size(11)
-            .write_batch_row_size(),
-        Some(7)
-    );
-    assert_eq!(
-        IpcOptions::new()
-            .with_batch_row_size(11)
-            .with_commit_row_size(7)
-            .write_batch_row_size(),
-        Some(7)
-    );
-    assert_eq!(IpcOptions::new().write_batch_row_size(), None);
+    // A write session with no stated cadence publishes by these bytes,
+    // because it exists to publish between awaits.
+    assert_eq!(yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE, 64 * 1024 * 1024);
+    // A one-shot write with no stated cadence publishes once at the end.
+    assert_eq!(IpcOptions::new().commit_batch_num(), None);
 }
 
 #[test]
-fn zero_commit_row_size_is_a_typed_preflight_error() {
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(0);
-    let message = options.require_commit_row_size().unwrap_err().to_string();
-    assert!(message.contains("$.commit_row_size"), "{message}");
-    assert!(message.contains("non-zero"), "{message}");
+fn every_concrete_options_type_carries_the_same_thread_count() {
+    fn assert_threads(mut options: impl IORecordOptions) {
+        assert_eq!(options.num_threads(), None, "the destination's own answer");
+        options.set_num_threads(Some(3));
+        assert_eq!(options.num_threads(), Some(3));
+        options.set_num_threads(None);
+        assert_eq!(options.num_threads(), None);
+    }
+
+    assert_threads(IpcOptions::new());
+    assert_threads(yggdryl::avro::AvroOptions::new());
+    assert_threads(yggdryl::text::TextOptions::new());
+    assert_threads(ExcelOptions::new());
+    assert_threads(yggdryl::csv::CsvOptions::new());
+    assert_threads(yggdryl::xmla::XmlaOptions::new());
+    #[cfg(feature = "parquet")]
+    assert_threads(yggdryl::parquet::ParquetOptions::new());
+
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_num_threads(2);
+    assert_eq!(options.num_threads(), Some(2));
+    // The count is a fact of the options: two options differing in it differ.
+    assert_ne!(options, RecordOptions::Ipc(IpcOptions::new()));
+    let RecordOptions::Ipc(inner) = options else {
+        unreachable!()
+    };
+    assert_eq!(inner.num_threads, Some(2));
+}
+
+#[test]
+fn zero_num_threads_is_a_typed_preflight_error() {
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_num_threads(0);
+    let message = options.require_num_threads().unwrap_err().to_string();
+    assert!(message.contains("$.num_threads"), "{message}");
+    assert!(message.contains("non-zero thread count"), "{message}");
+    assert!(message.contains("got 0"), "{message}");
+    assert_eq!(
+        RecordOptions::Ipc(IpcOptions::new())
+            .with_num_threads(4)
+            .require_num_threads()
+            .unwrap(),
+        Some(4)
+    );
+}
+
+#[test]
+fn zero_commit_batch_num_is_a_typed_preflight_error() {
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(0);
+    let message = options.require_commit_batch_num().unwrap_err().to_string();
+    assert!(message.contains("$.commit_batch_num"), "{message}");
+    assert!(message.contains("non-zero batch count"), "{message}");
     assert!(message.contains("got 0"), "{message}");
 }
 
@@ -956,25 +1006,97 @@ fn a_reader_without_limits_is_returned_as_it_stands() {
     assert_eq!(rows(options.limit_arrow_reader(reader(3, 2)).unwrap()), 6);
 }
 
+/// The rows and the batches one publication reader carries.
+#[cfg(feature = "internals")]
+fn rows_and_batches(reader: BatchReader) -> (usize, usize) {
+    reader.fold((0, 0), |(rows, batches), batch| {
+        (rows + batch.unwrap().num_rows(), batches + 1)
+    })
+}
+
+/// `reader(count, per_batch)` with a zero-row batch before, between and
+/// after its batches.
+#[cfg(feature = "internals")]
+fn reader_with_empty_batches(count: i64, per_batch: i64) -> BatchReader {
+    let schema = schema().into_arrow_schema().unwrap();
+    let empty = RecordBatch::new_empty(Arc::clone(&schema));
+    let mut batches = vec![empty.clone()];
+    for index in 0..count {
+        batches.push(batch(index * per_batch..(index + 1) * per_batch));
+        batches.push(empty.clone());
+    }
+    yggdryl::arrow::batch_reader(schema, batches)
+}
+
 #[cfg(feature = "internals")]
 #[test]
-fn commit_readers_slice_exact_cadences_across_batch_boundaries() {
+fn commit_readers_cut_whole_batches_at_the_cadence() {
+    // A cadence counts batches and never cuts one: two batches a commit
+    // over batches of two, four and one rows is six rows, then one.
     let schema = schema().into_arrow_schema().unwrap();
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(2);
+    let commits = |source: BatchReader| {
+        yggdryl::internals::media_options::commit_arrow_readers(&options, source)
+            .unwrap()
+            .map(|commit| rows_and_batches(commit.unwrap()))
+            .collect::<Vec<_>>()
+    };
     let source =
         yggdryl::arrow::batch_reader(Arc::clone(&schema), [batch(0..2), batch(2..6), batch(6..7)]);
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(3);
-    let commits = yggdryl::internals::media_options::commit_arrow_readers(&options, source)
-        .unwrap()
-        .map(|commit| rows(commit.unwrap()))
-        .collect::<Vec<_>>();
+    assert_eq!(commits(source), [(6, 2), (1, 1)]);
 
-    assert_eq!(commits, [3, 3, 1]);
+    // An empty batch counts for nothing and is never published: the same
+    // rows with zero-row batches between them commit exactly the same.
+    let empty = RecordBatch::new_empty(Arc::clone(&schema));
+    let source = yggdryl::arrow::batch_reader(
+        Arc::clone(&schema),
+        [
+            batch(0..2),
+            empty.clone(),
+            batch(2..6),
+            empty.clone(),
+            batch(6..7),
+            empty,
+        ],
+    );
+    assert_eq!(commits(source), [(6, 2), (1, 1)]);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn a_byte_cadence_closes_when_the_held_batches_reach_the_target() {
+    // Two int64 rows a batch: sixteen bytes each, as `memory_size` counts.
+    let commits = |options: &RecordOptions, source: BatchReader, target: u64| {
+        yggdryl::internals::media_options::commit_arrow_readers_by_bytes(options, source, target)
+            .unwrap()
+            .map(|commit| rows_and_batches(commit.unwrap()))
+            .collect::<Vec<_>>()
+    };
+    let unstated = RecordOptions::Ipc(IpcOptions::new());
+    // An empty batch counts for nothing, its zero bytes included, and is
+    // never published, so a stream with zero-row batches between its
+    // batches commits exactly as the same stream without them.
+    for source in [reader, reader_with_empty_batches] {
+        // A target under one batch: every batch is a cadence, none is cut.
+        assert_eq!(
+            commits(&unstated, source(4, 2), 1),
+            [(2, 1), (2, 1), (2, 1), (2, 1)]
+        );
+        // Reached inside the second batch: two batches a cadence.
+        assert_eq!(commits(&unstated, source(4, 2), 24), [(4, 2), (4, 2)]);
+        assert_eq!(commits(&unstated, source(4, 2), 32), [(4, 2), (4, 2)]);
+        // Never reached: one remainder.
+        assert_eq!(commits(&unstated, source(4, 2), 1_000), [(8, 4)]);
+        // A stated batch count wins over the destination's byte default.
+        let stated = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(3);
+        assert_eq!(commits(&stated, source(4, 2), 1), [(6, 3), (2, 1)]);
+    }
 }
 
 #[cfg(feature = "internals")]
 #[test]
 fn a_commit_larger_than_the_stream_yields_one_final_remainder() {
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(20);
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(20);
     let commits = yggdryl::internals::media_options::commit_arrow_readers(&options, reader(3, 2))
         .unwrap()
         .map(|commit| rows(commit.unwrap()))
@@ -991,15 +1113,16 @@ fn a_full_commit_does_not_read_ahead() {
         inner: reader(2, 4),
         pulls: Arc::clone(&pulls),
     });
-    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(2);
+    let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_batch_num(1);
     let mut commits =
         yggdryl::internals::media_options::commit_arrow_readers(&options, counted).unwrap();
 
-    assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
+    // One pull fills a cadence of one batch; the next batch is not pulled
+    // until the caller asks for the next cadence.
+    assert_eq!(rows(commits.next().unwrap().unwrap()), 4);
     assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
-    // The next cadence is the unconsumed slice of that same input batch.
-    assert_eq!(rows(commits.next().unwrap().unwrap()), 2);
-    assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(rows(commits.next().unwrap().unwrap()), 4);
+    assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
 
 // A table hands each file its share of the threads, whatever encoding the

@@ -19,8 +19,8 @@ use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
 use yggdryl::iceberg::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
-    ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask, Snapshot,
-    SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
+    IcebergTable, ManifestContent, ManifestEntry, ManifestFile, PartitionSpec, ScanPlan, ScanTask,
+    Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata, Transform, assign_field_ids,
     read_manifest, read_manifest_for_plan, read_manifest_spec, write_manifest,
 };
 use yggdryl::local::LocalFolder;
@@ -113,7 +113,7 @@ fn plan_schema() -> Field {
 /// one venue skips the manifests whose summaries exclude it outright, and in
 /// every manifest it does open, the other venue's file survives to be excluded
 /// by its partition tuple - so `files_skipped` cannot be zero.
-fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
+fn plan_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
     assert!(
         files.is_multiple_of(2),
         "expected an even file count, got {files}"
@@ -122,7 +122,7 @@ fn plan_table(label: &str, files: usize) -> Table<LocalFolder> {
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -206,7 +206,7 @@ fn plan_benchmarks(criterion: &mut Criterion) {
 
 /// Drain the full options-driven reader so each measurement includes planning,
 /// file projection, residual filtering and declared conversion.
-fn options_filter_rows(table: &Table<LocalFolder>, options: &RecordOptions) -> usize {
+fn options_filter_rows(table: &IcebergTable<LocalFolder>, options: &RecordOptions) -> usize {
     table
         .read_arrow_reader(options)
         .expect("the options read plans")
@@ -217,7 +217,10 @@ fn options_filter_rows(table: &Table<LocalFolder>, options: &RecordOptions) -> u
 /// Compare a declaration identical to stored metadata with one that casts the
 /// filtered id from Int64 to UTF8. Both bind `id > '10'`, but text ordering must
 /// retain ids 2..9, so the second path cannot prune with numeric file bounds.
-fn options_filter_benchmarks(criterion: &mut Criterion, tables: [(usize, &Table<LocalFolder>); 2]) {
+fn options_filter_benchmarks(
+    criterion: &mut Criterion,
+    tables: [(usize, &IcebergTable<LocalFolder>); 2],
+) {
     let mut group = criterion.benchmark_group("read_options_filter");
     group.sample_size(10);
     for (files, table) in tables {
@@ -548,6 +551,77 @@ fn partition_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// One partition value of a time transform: the period arithmetic a
+/// partitioned write runs once per distinct grouping key - this crate's own
+/// `minutes[15]`, `week` and `quarter` beside the specification's `day` - over
+/// one microsecond instant. The write plan is the crate's own, so the group
+/// is reached through its internals and runs where that feature is on.
+#[cfg(feature = "internals")]
+fn partition_value_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::iceberg::PartitionField;
+    use yggdryl::internals::iceberg_partition::write_transforms;
+    use yggdryl::{TimeUnit, Timezone};
+
+    let mut schema = StructType::from_fields([DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: Timezone::NAIVE,
+    }
+    .required_field("ts")])
+    .map(DataType::from)
+    .expect("a valid schema")
+    .required_field("row");
+    assign_field_ids(&mut schema, 1).expect("ids assign");
+    // 2017-11-16T22:31:08, the instant Apache Iceberg's own fixtures use.
+    let instant = Scalar::datetime64(
+        1_510_871_468_000_000,
+        TimeUnit::Microsecond,
+        Timezone::NAIVE,
+    )
+    .expect("a valid instant");
+    let mut group = criterion.benchmark_group("iceberg_partition_value");
+    for (name, transform, expected) in [
+        (
+            "minutes_15",
+            Transform::Minutes(15),
+            Scalar::from(1_678_746),
+        ),
+        ("week", Transform::Week, Scalar::from(2_498)),
+        ("quarter", Transform::Quarter, Scalar::from(191)),
+        ("day", Transform::Day, Scalar::date32(17_486)),
+    ] {
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 1,
+                field_id: 1000,
+                name: "ts_period".into(),
+                transform,
+            }],
+        };
+        let partition = spec
+            .partition_field(&schema)
+            .expect("the transform reads ts");
+        let plan = write_transforms(&spec, &schema, &partition)
+            .expect("the plan resolves")
+            .remove(0);
+        // Proven once outside the timer: the period is the one the
+        // partition tests pin.
+        assert_eq!(
+            plan.partition_value(instant.clone())
+                .expect("the period computes"),
+            expected,
+            "{name}"
+        );
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                plan.partition_value(black_box(instant.clone()))
+                    .expect("the period computes")
+            });
+        });
+    }
+    group.finish();
+}
+
 /// Stable structural hashes over representative immutable Iceberg values.
 fn identity_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("identity");
@@ -700,11 +774,11 @@ fn compact_benchmarks(criterion: &mut Criterion) {
 /// One append is one commit is one file, so the merge benchmark gets a table
 /// whose per-file id bounds are as tight as bounds can be - which is exactly
 /// what lets the measured upsert carry most files unread.
-fn merge_table(label: &str, files: usize) -> Table<LocalFolder> {
+fn merge_table(label: &str, files: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -790,12 +864,12 @@ fn merge_benchmarks(criterion: &mut Criterion) {
 /// One append per partition is one commit is one file, and every file holds
 /// the same id, so the id bounds cannot tell the partitions apart: only the
 /// partition isolation can keep the measured merge from reading them all.
-fn partitioned_merge_table(label: &str, partitions: usize) -> Table<LocalFolder> {
+fn partitioned_merge_table(label: &str, partitions: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = plan_schema();
     let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -901,6 +975,103 @@ fn partitioned_commit_batch(partitions: usize, rows_per_partition: usize) -> Rec
     .expect("the batch matches the schema")
 }
 
+/// A stream of eight batches interleaving every partition, each batch out
+/// of the table's sort order, written through the record door: one commit
+/// of sorted partition files on one thread against four
+/// (`num_threads`), and the same stream paced to a commit every two
+/// batches.
+fn streamed_commit_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::IOMedia;
+    use yggdryl::media::IORecordOptions;
+
+    let mut group = criterion.benchmark_group("commit");
+    group.sample_size(10);
+    let path = scratch(SCRATCH_LABELS[7]);
+    let schema = plan_schema();
+    // Eight batches of every partition, ids descending within each so the
+    // table's ascending order is never the arrival order.
+    let batches: Vec<RecordBatch> = (0..8_usize)
+        .map(|index| {
+            let rows = COMMIT_PARTITIONS * COMMIT_ROWS_PER_PARTITION / 8;
+            let first = i64::try_from(index * rows).expect("the row fits an id");
+            RecordBatch::try_new(
+                schema
+                    .clone()
+                    .into_arrow_schema()
+                    .expect("the schema projects to Arrow"),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(
+                        (0..rows).map(|row| first + i64::try_from(rows - 1 - row).expect("fits")),
+                    )),
+                    Arc::new(StringArray::from_iter_values(
+                        (0..rows).map(|row| venue(row % COMMIT_PARTITIONS)),
+                    )),
+                ],
+            )
+            .expect("the batch matches the schema")
+        })
+        .collect();
+    let rows: usize = batches.iter().map(RecordBatch::num_rows).sum();
+    group.throughput(Throughput::Elements(rows as u64));
+    let sorted = || {
+        let _ = std::fs::remove_dir_all(&path);
+        IcebergTable::create_sorted(
+            LocalFolder::new(&path).expect("the scratch directory is addressable"),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column"),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 1,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .expect("the scratch table creates")
+    };
+    for (label, threads, cadence) in [
+        ("num_threads-1/one-commit", 1_usize, None),
+        ("num_threads-4/one-commit", 4, None),
+        ("num_threads-4/commit-every-2-batches", 4, Some(2_usize)),
+    ] {
+        group.bench_function(
+            format!("sorted_stream_{COMMIT_PARTITIONS}/{label}"),
+            |bencher| {
+                bencher.iter_batched(
+                    sorted,
+                    |mut table| {
+                        let mut options = table
+                            .record_options()
+                            .expect("the table's encoding")
+                            .with_num_threads(threads);
+                        options.set_commit_batch_num(cadence);
+                        table
+                            .append_arrow_reader(
+                                yggdryl::arrow::batch_reader(batches[0].schema(), batches.clone()),
+                                &options,
+                            )
+                            .expect("the stream appends");
+                        assert_eq!(
+                            table
+                                .metadata()
+                                .expect("current metadata")
+                                .snapshots()
+                                .len(),
+                            cadence.map_or(1, |every| 8 / every),
+                            "one commit per cadence"
+                        );
+                    },
+                    BatchSize::PerIteration,
+                );
+            },
+        );
+    }
+    group.finish();
+}
+
 /// One partitioned commit on one thread against four: the partition groups
 /// are independent, so their files are written concurrently and the
 /// manifest still lists them in group order.
@@ -918,7 +1089,7 @@ fn parallel_commit_benchmarks(criterion: &mut Criterion) {
                 bencher.iter_batched(
                     || {
                         let _ = std::fs::remove_dir_all(&path);
-                        let mut table = Table::create(
+                        let mut table = IcebergTable::create(
                             LocalFolder::new(&path).expect("the scratch directory is addressable"),
                             FormatVersion::V2,
                             schema.clone(),
@@ -973,11 +1144,11 @@ fn read_schema() -> Field {
 /// Each append is one commit is one file of (int64 id, float64 price, utf8
 /// venue from the eight-value pool, timestamp-like int64), so the parallel
 /// read gets files large enough that decode dominates the open.
-fn read_table(label: &str, files: usize, rows: usize) -> Table<LocalFolder> {
+fn read_table(label: &str, files: usize, rows: usize) -> IcebergTable<LocalFolder> {
     let path = scratch(label);
     let _ = std::fs::remove_dir_all(&path);
     let schema = read_schema();
-    let mut table = Table::create(
+    let mut table = IcebergTable::create(
         LocalFolder::new(&path).expect("the scratch directory is addressable"),
         FormatVersion::V2,
         schema.clone(),
@@ -1017,7 +1188,7 @@ fn read_table(label: &str, files: usize, rows: usize) -> Table<LocalFolder> {
 }
 
 /// Drain one full scan, counting the rows it yields.
-fn scan_rows(table: &Table<LocalFolder>) -> usize {
+fn scan_rows(table: &IcebergTable<LocalFolder>) -> usize {
     table
         .scan(None)
         .expect("the scan plans")
@@ -1102,7 +1273,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || {
                 let _ = std::fs::remove_dir_all(&path);
-                Table::create(
+                IcebergTable::create(
                     LocalFolder::new(&path).expect("the scratch directory is addressable"),
                     FormatVersion::V2,
                     schema.clone(),
@@ -1121,7 +1292,7 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
                             // Opened before the gate, so every handle is
                             // equally stale and every commit but the first
                             // has to rebase.
-                            let mut table = Table::open(
+                            let mut table = IcebergTable::open(
                                 LocalFolder::new(path).expect("the table folder is addressable"),
                             )
                             .expect("the contended table opens");
@@ -1171,7 +1342,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
         ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
         OutputMetadata, RandomAccessReader,
     };
-    use yggdryl::iceberg::Catalog;
+    use yggdryl::iceberg::IcebergCatalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
@@ -1296,16 +1467,39 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
             None,
         )
         .expect("a valid location");
-        (filesystem, Catalog::new(warehouse))
+        (
+            filesystem,
+            yggdryl::Catalog::from(IcebergCatalog::bound(
+                "warehouse",
+                yggdryl::holder::Holder::FsFolder(warehouse),
+            )),
+        )
     };
 
     let mut group = criterion.benchmark_group("catalog_resolve");
 
+    // A create descends through existing namespaces only, so the levels a
+    // table sits under are made before it, each one opened or created.
+    let namespaces = |catalog: &yggdryl::Catalog, path: &str| {
+        let mut dotted = String::new();
+        for part in path.split('.') {
+            if !dotted.is_empty() {
+                dotted.push('.');
+            }
+            dotted.push_str(part);
+            catalog
+                .namespaces()
+                .open_or_create(&dotted, &yggdryl::Properties::new())
+                .expect("a creatable namespace");
+        }
+    };
+
     // One populated catalog for the two read legs.
     let (filesystem, catalog) = counted();
+    namespaces(&catalog, "sales.eu");
     catalog
         .tables()
-        .create("sales.eu.orders", schema())
+        .create("sales.eu.orders", &schema(), &yggdryl::Properties::new())
         .expect("a creatable table");
 
     // The backend-call counts, printed once per leg so the round trips are a
@@ -1357,25 +1551,30 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // The create leg builds a fresh warehouse per iteration: the point is the
-    // missing three-level ancestry coming into being from the metadata write.
-    let mut ancestry_calls = None;
-    group.bench_function("create/missing-ancestry", |bencher| {
+    // The create leg builds a fresh warehouse per iteration with its three
+    // namespace levels in place before the clock starts: the point is the
+    // create's own descent through them and its writes.
+    let mut create_calls = None;
+    group.bench_function("create/under-three-levels", |bencher| {
         bencher.iter_batched(
-            counted,
+            || {
+                let (filesystem, catalog) = counted();
+                namespaces(&catalog, "a.b.c");
+                (filesystem, catalog)
+            },
             |(filesystem, catalog)| {
                 let before = filesystem.calls.load(Ordering::Relaxed);
                 catalog
                     .tables()
-                    .create("a.b.c.orders", schema())
+                    .create("a.b.c.orders", &schema(), &yggdryl::Properties::new())
                     .expect("a creatable table");
-                ancestry_calls.get_or_insert(filesystem.calls.load(Ordering::Relaxed) - before);
+                create_calls.get_or_insert(filesystem.calls.load(Ordering::Relaxed) - before);
             },
             BatchSize::SmallInput,
         );
     });
-    if let Some(calls) = ancestry_calls {
-        println!("catalog_resolve backend calls: create into missing ancestry = {calls}");
+    if let Some(calls) = create_calls {
+        println!("catalog_resolve backend calls: create under three namespace levels = {calls}");
     }
 
     group.finish();
@@ -1400,7 +1599,9 @@ mod s3 {
     use arrow_array::RecordBatch;
     use criterion::{BatchSize, Criterion, Throughput};
     use yggdryl::arrow::BatchReader;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, Transform, assign_field_ids};
+    use yggdryl::iceberg::{
+        FormatVersion, IcebergTable, PartitionSpec, Transform, assign_field_ids,
+    };
     use yggdryl::local::LocalFolder;
     use yggdryl::media::RecordOptions;
     use yggdryl::s3::{Credentials, S3File, S3Folder, S3Options, file_with, folder_with};
@@ -1496,11 +1697,11 @@ mod s3 {
     }
 
     /// A fresh venue-partitioned table under `key`.
-    fn table(store: &FakeS3, key: &str) -> Table<S3Folder> {
+    fn table(store: &FakeS3, key: &str) -> IcebergTable<S3Folder> {
         let schema = plan_schema();
         let spec =
             PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
-        Table::create(folder(store, key), FormatVersion::V2, schema, spec)
+        IcebergTable::create(folder(store, key), FormatVersion::V2, schema, spec)
             .expect("the table creates")
     }
 
@@ -1508,7 +1709,7 @@ mod s3 {
         yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
     }
 
-    fn scan_rows(table: &Table<S3Folder>, filters: &[(&str, &str)]) -> usize {
+    fn scan_rows(table: &IcebergTable<S3Folder>, filters: &[(&str, &str)]) -> usize {
         table
             .scan_where(filters, None)
             .expect("the scan plans")
@@ -1704,7 +1905,7 @@ mod s3 {
         spec.fields[0].transform = Transform::Hour;
         spec.fields[0].name = "currunix_hour".into();
         let fix_table = |label: &str| {
-            Table::create(
+            IcebergTable::create(
                 folder(&store, &next(label)),
                 FormatVersion::V3,
                 schema.clone(),
@@ -1712,7 +1913,7 @@ mod s3 {
             )
             .expect("the FIX table creates")
         };
-        let fix_rows = |table: &mut Table<S3Folder>| {
+        let fix_rows = |table: &mut IcebergTable<S3Folder>| {
             let read = log.read_arrow_reader(&text()).expect("a reader");
             let parsed = codec
                 .parse_text_arrow_reader(read)
@@ -1749,6 +1950,8 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     metadata_benchmarks(criterion);
     manifest_benchmarks(criterion);
     partition_benchmarks(criterion);
+    #[cfg(feature = "internals")]
+    partition_value_benchmarks(criterion);
     identity_benchmarks(criterion);
     compact_benchmarks(criterion);
     merge_benchmarks(criterion);
@@ -1756,6 +1959,7 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     read_benchmarks(criterion);
     contended_commit_benchmarks(criterion);
     parallel_commit_benchmarks(criterion);
+    streamed_commit_benchmarks(criterion);
     catalog_resolve_benchmarks(criterion);
 }
 

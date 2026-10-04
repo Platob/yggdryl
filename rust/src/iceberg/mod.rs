@@ -11,12 +11,12 @@
 //! `fixed[16]`.
 //!
 //! A table is one container: `metadata/` holds metadata and manifests, and
-//! `data/` holds record files. [`Table`] reaches both through its supplied
+//! `data/` holds record files. [`IcebergTable`] reaches both through its supplied
 //! handle and implements [`IOBase`], so [`crate::IOMedia`] operations use
 //! the same storage path.
 //!
 //! ```no_run
-//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+//! use yggdryl::iceberg::{FormatVersion, PartitionSpec, IcebergTable, assign_field_ids};
 //! use yggdryl::local::LocalFolder;
 //! use yggdryl::{DataType, Field, StructType};
 //!
@@ -30,14 +30,14 @@
 //!
 //! let folder = LocalFolder::new(LocalFolder::temporary()?.path()?.join("yggdryl-trades"))?;
 //! let spec = PartitionSpec::identity(0, &schema, &["venue"])?;
-//! let mut table = Table::create(folder, FormatVersion::V2, schema.clone(), spec)?;
+//! let mut table = IcebergTable::create(folder, FormatVersion::V2, schema.clone(), spec)?;
 //!
 //! // A table that has never been written to has no current snapshot.
-//! assert!(table.current_snapshot().is_none());
+//! assert!(table.current_snapshot()?.is_none());
 //!
 //! let rows = yggdryl::arrow::batch_reader(schema.into_arrow_schema()?, []);
 //! table.commit_append(rows)?;
-//! assert!(table.current_snapshot().is_some());
+//! assert!(table.current_snapshot()?.is_some());
 //! # Ok(())
 //! # }
 //! ```
@@ -73,9 +73,16 @@
 //!
 //! # Scope
 //!
-//! Yggdryl supplies storage and publication, not a remote catalog client.
-//! [`Table::open`] resolves `metadata/version-hint.text`, then falls back to the
-//! highest-numbered metadata document.
+//! Yggdryl supplies storage and publication. [`IcebergTable::open`] resolves
+//! `metadata/version-hint.text`, then falls back to the highest-numbered
+//! metadata document; a table whose current document a catalog service names
+//! is opened through a [`MetadataPointer`] instead
+//! ([`IcebergTable::open_pointed`]), which is how the Amazon S3 Tables
+//! catalog commits. [`IcebergTable::from_url`],
+//! [`IcebergTable::create_from_url`] and
+//! [`IcebergTable::open_or_create_from_url`] reach a table by its location
+//! alone - a folder any backend holds or, under the `s3tables` feature, a
+//! table an Amazon S3 Tables table bucket keeps - with nothing built first.
 //!
 //! Writes support `bucket`, `truncate`, `year`, `month`, `day`, `hour`,
 //! `identity`, and `void` through the official scalar transform contract.
@@ -90,6 +97,7 @@ pub(crate) mod metadata;
 mod official;
 pub(crate) mod options;
 pub(crate) mod partition;
+mod pointer;
 pub(crate) mod scan;
 mod schema;
 pub(crate) mod snapshot;
@@ -99,7 +107,8 @@ pub(crate) mod table;
 mod types;
 pub(crate) mod value;
 
-pub use catalog::{Catalog, Catalogs, Names, Namespace, Namespaces, Tables};
+pub(crate) use catalog::create_layout;
+pub use catalog::{IcebergCatalog, IcebergNamespace};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{
     DataFile, EntryStatus, FieldSummary, ManifestContent, ManifestEntry, ManifestFile,
@@ -109,10 +118,12 @@ pub use manifest::{
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
 pub use options::{IcebergOptions, WriteStaging};
 pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform};
+pub use pointer::{MetadataPointer, PointerState};
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
 pub use snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
-pub use table::{CommitConflict, Compaction, Table};
+pub(crate) use table::ReplacedPartitions;
+pub use table::{CommitConflict, Compaction, IcebergTable};
 pub use types::PrimitiveType;
 
 use crate::holder::Holder;
@@ -132,12 +143,31 @@ const DATA_DIR: &str = "data";
 /// the same call as reading and upserting one partition of a plain folder.
 pub(crate) struct Located {
     /// The table itself, opened from whichever ancestor holds its metadata.
-    table: Table<Holder>,
+    table: IcebergTable<Holder>,
     /// The `column=value` pairs the addressed location spells below the table.
     filters: Vec<(String, String)>,
 }
 
 impl Located {
+    /// Whether the location addresses the table whole rather than one of
+    /// its partitions.
+    pub(crate) fn is_whole(&self) -> bool {
+        self.filters.is_empty()
+    }
+
+    /// Replace every row of the table with `batches` in one snapshot,
+    /// whatever its partitions ([`IcebergTable::commit_overwrite_where`]
+    /// with no filter).
+    pub(crate) fn overwrite_whole(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
+        self.table.commit_overwrite_where(&[], batches)
+    }
+
+    /// Empty the table in one snapshot that keeps it a table
+    /// ([`IOBase::clear`] on it).
+    pub(crate) fn clear(&mut self) -> Result<()> {
+        self.table.clear()
+    }
+
     /// Return the table field used to shape every chunk of one resumed write.
     pub(crate) fn stored_field(&self) -> Result<crate::Field> {
         self.table.schema().cloned()
@@ -152,27 +182,16 @@ impl Located {
     /// Publish one already-shaped overwrite cadence.
     ///
     /// The rows were cast when they were shaped, so nothing here is safe or
-    /// unsafe: the addressed partitions are replaced by what arrives.
-    pub(crate) fn overwrite_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        let filters = self.filters.clone();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        self.table.commit_overwrite_where(&pairs, batches)
-    }
-
-    /// Publish one already-shaped append cadence.
-    pub(crate) fn append_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
-        self.table.commit_append(batches)
-    }
-
-    /// Publish one already-shaped merge cadence.
-    pub(crate) fn merge_prepared(
+    /// unsafe. `replaced` is the one write's accumulator of what its earlier
+    /// cadences replaced: an addressed partition is replaced by the first
+    /// cadence and appended to after, and a table addressed whole has each
+    /// partition its rows reach replaced once; see
+    /// [`IcebergTable::commit_overwrite_cadence`].
+    pub(crate) fn overwrite_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
-        merge_by: &crate::Selector,
-        safe: bool,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
     ) -> Result<()> {
         let filters = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
@@ -180,7 +199,39 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_merge_where(&pairs, batches, merge_by, safe)
+            .commit_overwrite_cadence(&pairs, batches, replaced, threads)
+    }
+
+    /// Publish one already-shaped append cadence.
+    pub(crate) fn append_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        self.table.commit_append_on(batches, threads)
+    }
+
+    /// Publish one already-shaped merge cadence.
+    ///
+    /// `replaced` is the one write's accumulator of the partitions its
+    /// earlier cadences replaced, so a merge keyed by the partition alone
+    /// replaces each partition once and appends to it after; see
+    /// [`IcebergTable::commit_merge_cadence`].
+    pub(crate) fn merge_prepared(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        merge_by: &crate::Selector,
+        safe: bool,
+        replaced: &mut ReplacedPartitions,
+        threads: Option<usize>,
+    ) -> Result<()> {
+        let filters = self.filters.clone();
+        let pairs: Vec<(&str, &str)> = filters
+            .iter()
+            .map(|(column, value)| (column.as_str(), value.as_str()))
+            .collect();
+        self.table
+            .commit_merge_cadence(&pairs, batches, merge_by, safe, replaced, threads)
     }
 
     /// Return the table a container handle addresses, if it addresses one.
@@ -209,7 +260,7 @@ impl Located {
             } else {
                 vec![".."; climbed].join("/")
             };
-            if let Some(table) = Table::locate(handle.child_by_path(&relative)?)? {
+            if let Some(table) = IcebergTable::locate(handle.child_by_path(&relative)?)? {
                 filters.reverse();
                 return Ok(Some(Self { table, filters }));
             }
@@ -252,7 +303,9 @@ impl Located {
         self.table.read_scoped(scope, options)
     }
 
-    /// Replace the addressed table partition in one commit.
+    /// Replace the addressed table partition - or, addressing the table
+    /// whole, the partitions the rows fall in: `IcebergTable::write_cadenced`
+    /// under [`IOMode::Overwrite`](crate::IOMode::Overwrite).
     ///
     /// # Errors
     ///
@@ -261,35 +314,12 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
-        options.require_write_mode(crate::IOMode::Overwrite)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let filters: Vec<(String, String)> = self.filters.clone();
-        let pairs: Vec<(&str, &str)> = filters
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_overwrite_where(&pairs, batches);
-        }
-        let schema = batches.schema();
-        let mut commits = options.commit_arrow_readers(batches)?;
-        let Some(first) = commits.next() else {
-            return self
-                .table
-                .commit_overwrite_where(&pairs, crate::arrow::batch_reader(schema, []));
-        };
-        self.table.commit_overwrite_where(&pairs, first?)?;
-        for commit in commits {
-            self.table.commit_append(commit?)?;
-        }
-        Ok(())
+    ) -> Result<crate::IOResult> {
+        self.write_cadenced(batches, crate::IOMode::Overwrite, options)
     }
 
-    /// Add the rows as a new snapshot, keeping every stored file.
+    /// Add the rows: `IcebergTable::write_cadenced` under
+    /// [`IOMode::Append`](crate::IOMode::Append).
     ///
     /// # Errors
     ///
@@ -298,34 +328,12 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
-        use crate::media::IORecordOptions;
-
-        options.require_write_mode(crate::IOMode::Append)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        options.require_write_limits()?;
-        if options.write_limit_is_zero() {
-            return Ok(());
-        }
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        if commit_row_size.is_none() {
-            return self.table.commit_append(batches);
-        }
-        for commit in options.commit_arrow_readers(batches)? {
-            self.table.commit_append(commit?)?;
-        }
-        Ok(())
+    ) -> Result<crate::IOResult> {
+        self.write_cadenced(batches, crate::IOMode::Append, options)
     }
 
-    /// Merge rows into the addressed table partition in one commit.
+    /// Merge rows into the addressed table partition:
+    /// `IcebergTable::write_cadenced` under [`IOMode::Merge`](crate::IOMode::Merge).
     ///
     /// # Errors
     ///
@@ -334,39 +342,37 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
-        use crate::media::IORecordOptions;
+    ) -> Result<crate::IOResult> {
+        self.write_cadenced(batches, crate::IOMode::Merge, options)
+    }
 
-        options.require_write_mode(crate::IOMode::Merge)?;
-        let commit_row_size = options.require_commit_row_size()?;
-        options.require_write_limits()?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let stored = self.table.schema()?.clone();
-        let (batches, _, _) =
-            crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
-            return Ok(());
-        };
-        let filters: Vec<(String, String)> = self.filters.clone();
+    /// `IcebergTable::write_cadenced` over the partitions this location
+    /// addresses.
+    fn write_cadenced(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        mode: crate::IOMode,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
+        use crate::media::IORecordOptions as _;
+
+        // The directories this location was reached through and the
+        // equalities the options' `where` spells name the scope together,
+        // as the table's own doors read the `where` alone: a column the
+        // path already pins is not pinned twice.
+        let mut filters = self.filters.clone();
+        if mode != crate::IOMode::Append {
+            for (column, value) in options.partition_pairs() {
+                if !filters.iter().any(|(held, _)| *held == column) {
+                    filters.push((column, value));
+                }
+            }
+        }
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        if commit_row_size.is_none() {
-            return self.table.commit_merge_where(
-                &pairs,
-                batches,
-                options.merge_by(),
-                options.safe(),
-            );
-        }
-        for commit in options.commit_arrow_readers(batches)? {
-            self.table
-                .commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
-        }
-        Ok(())
+        self.table.write_cadenced(batches, mode, options, &pairs)
     }
 
     /// Return the rows at the addressed table location.

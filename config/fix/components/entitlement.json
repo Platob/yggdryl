@@ -37,17 +37,6 @@
         }
       },
       {
-        "name": "noentitlementattrib",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noentitlementattrib",
-          "FIX:tag": "1777"
-        }
-      },
-      {
         "name": "entitlementattribgrp",
         "dtype": {
           "type": "null"
@@ -80,17 +69,6 @@
         }
       },
       {
-        "name": "noinstrumentscopes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentscopes",
-          "FIX:tag": "1656"
-        }
-      },
-      {
         "name": "instrumentscopes",
         "dtype": {
           "type": "null"
@@ -98,17 +76,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "instrumentscopes"
-        }
-      },
-      {
-        "name": "nomarketsegments",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomarketsegments",
-          "FIX:tag": "1310"
         }
       },
       {

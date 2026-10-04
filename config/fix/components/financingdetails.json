@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nocontractualdefinitions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocontractualdefinitions",
-          "FIX:tag": "40040"
-        }
-      },
-      {
         "name": "contractualdefinitions",
         "dtype": {
           "type": "null"
@@ -146,17 +135,6 @@
         }
       },
       {
-        "name": "nofinancingtermsupplements",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nofinancingtermsupplements",
-          "FIX:tag": "40046"
-        }
-      },
-      {
         "name": "financingtermsupplements",
         "dtype": {
           "type": "null"
@@ -164,17 +142,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "financingtermsupplements"
-        }
-      },
-      {
-        "name": "nocontractualmatrices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocontractualmatrices",
-          "FIX:tag": "40042"
         }
       },
       {

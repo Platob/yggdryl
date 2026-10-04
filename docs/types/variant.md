@@ -182,7 +182,7 @@ Two variants are equal when their bytes are - encoding sorts keys and narrows
 sizes, but preserved numeric widths can give equal native scalars different
 variant bytes. A variant feeds [the digest](../hashing.md#encoding) as the
 value it holds, so one value digests alike whether it crossed as itself or as a
-variant column's bytes, and [JSON, TOML and YAML](../media/index.md#json) write
+variant column's bytes, and [JSON, TOML and YAML](../media/json.md) write
 the value it holds, which is what every other variant reader shows.
 
 === "Rust"
@@ -329,7 +329,7 @@ Version 1 names twenty-one primitives - `null`, `boolean`, `int8`..`int64`,
 `float`, `double`, `decimal4`/`8`/`16`, `date`, `timestamp` and `timestamp ntz`
 in microseconds and in nanoseconds, `time` (microseconds, no zone), `binary`,
 `string`, `uuid` - and supported leaves without a standard physical type use
-the spelling the [JSON codec](../media/index.md#json) gives them. Values the
+the spelling the [JSON codec](../media/json.md) gives them. Values the
 standard cannot represent are refused. Decoding follows the types the standard
 names:
 
@@ -413,9 +413,9 @@ A variant column is the same two binaries wherever it lands, because every forma
 | medium | what it states |
 | --- | --- |
 | [Arrow](../arrow/index.md) | a struct of `metadata` and `value` under `arrow.parquet.variant` |
-| [Parquet](../media/index.md#parquet) | `optional group name (VARIANT(1)) { required binary metadata; required binary value; }` - the two children carrying no field id, which is what Iceberg requires; a file another writer produced imports as a variant from that annotation alone |
-| [Avro](../media/index.md#avro) | a record of `metadata` and `value`, both `bytes`, read by name and carrying no field ids, annotated `"logicalType": "variant"`; a reader that does not know the annotation reads the record, as the specification requires |
-| [Iceberg](../media/index.md#iceberg) | the v3 `variant` and `unknown` types, both refused by a v1 or v2 table. `variant` is written as the Parquet group above and never given bounds - a variant's ordering is not defined. `unknown` reads as a variant declared `ICEBERG:type = unknown` and back as a variant column of nulls: a top-level one is kept out of the data files, and one inside a struct, a list or a map stores Arrow's null column in its slot |
+| [Parquet](../media/parquet.md) | `optional group name (VARIANT(1)) { required binary metadata; required binary value; }` - the two children carrying no field id, which is what Iceberg requires; a file another writer produced imports as a variant from that annotation alone |
+| [Avro](../media/avro.md) | a record of `metadata` and `value`, both `bytes`, read by name and carrying no field ids, annotated `"logicalType": "variant"`; a reader that does not know the annotation reads the record, as the specification requires |
+| [Iceberg](../media/iceberg.md) | the v3 `variant` and `unknown` types, both refused by a v1 or v2 table. `variant` is written as the Parquet group above and never given bounds - a variant's ordering is not defined. `unknown` reads as a variant declared `ICEBERG:type = unknown` and back as a variant column of nulls: a top-level one is kept out of the data files, and one inside a struct, a list or a map stores Arrow's null column in its slot |
 
 The encoding happens once at the value boundary, and the media layers move the bytes. Avro reads the two fields by name in either wire order; reader-schema resolution interprets the result as a `Variant` when the reader declares that annotation. Parquet restores the annotation inside structs, lists and maps as well as at the root.
 

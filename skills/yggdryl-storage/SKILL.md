@@ -23,7 +23,7 @@ Install and cross-language conventions are in `yggdryl`.
 | Task | Rust | Python | JavaScript |
 | --- | --- | --- | --- |
 | handle from a path, role decided later | `Holder::local(path)?` | `IOBase(path)` (composes coding + media, see below) | `new IOBase(path)`, `IOBase.from(value)` |
-| handle from a URL (scheme picks backend) | `Holder::from_url(&url, [("media_type", "...")])?` | `IOBase("s3://b/k")`, `IOBase(Url(...))` | `new IOBase('s3://b/k')` |
+| handle from a URL, or any identifier that locates one (scheme picks backend) | `Holder::from_url(&url, [("media_type", "...")])?` | `IOBase("s3://b/k")`, `IOBase(Url(...))` | `new IOBase('s3://b/k')` |
 | in-memory bytes | `Buffer::new()`, `Buffer::from_bytes(vec)`, `Holder::buffer(b)` | `IOBase.from_bytes(data)` | `IOBase.fromBytes(buf)` |
 | declare what bytes are | `Buffer::with_media_type(mt)`, `set_media_type(mt)` | `h.media_type = "text/csv"` | `h.mediaType = 'text/csv'` |
 | commit to a role, stored bytes | `LocalFile::new(p)?`, `LocalFolder::new(p)?`, `LocalPath::new(p)?` | `LocalFile(p)`, `LocalFolder(p)`, `LocalPath(p)` | n/a: one `IOBase` class |
@@ -52,7 +52,9 @@ Install and cross-language conventions are in `yggdryl`.
 | scope (cache metadata) | `open()?` ... `close()?` | `with IOBase(p) as h:` | `h.open()` ... `h.close()` |
 | page cache | `h.buffered(BufferedOptions::default())` | `h.buffered(page_size=, max_bytes=, ttl=)` (spends `h`) | `h.buffered({ pageSize, maxBytes, ttlMs })` (returns `h`) |
 | count calls | `Counted::new(h)`, `calls().get(Call::Pread)`, `counts()` | Rust only | Rust only |
+| write a log through a handle | `yggdryl::logging::FileHandler::new(h)`: one `append_bytes` per publish, `with_capacity(n)` over a remote store, `logging::shutdown()` before exit | `yggdryl.logging.FileHandler(location, capacity=0)`, a `logging.Handler` | `new logging.FileHandler(location, { capacity })` |
 | object store (`s3` feature) | `s3::file(url)?`, `s3::file_with(url, S3Options)?`, `s3::file_at(Provider::Aws, bucket, key)?` | `IOBase("gs://b/k")`, `S3File(url)`, `S3File(bucket, key, provider="s3", options={...})` | `new IOBase('az://c@acct.blob.core.windows.net/k')` |
+| an Amazon S3 Tables table bucket (`s3tables` feature) | no byte backend opens `s3tables://`: a handle on one is what it names - `Holder::from_url(location, &props)?` the catalog, a namespace or the Iceberg table (`yggdryl-warehouse`), `Catalog::from_url(&bucket_arn, &props)?` the catalog; its tables' files are `s3://<id>--table-s3` objects, written with `PutObject` and never listed or deleted - a table's own `ls` is refused, and its `remove` is one `DeleteTable` | `IOBase("s3tables://b/ns/t")`, `Catalog.from_url(arn, profile=...)` | `new IOBase('s3tables://b/ns/t')`, `warehouse.Catalog.fromUrl(arn, { profile })` |
 | HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
 | many HTTP requests | `session.send_all(requests, Some(n))` (lazy, ordered) | `session.send_all(items, concurrency=n)` | `session.sendAll(items, n)` |
 | HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
@@ -143,8 +145,14 @@ Install and cross-language conventions are in `yggdryl`.
 15. **Credentials resolve lazily, explicit wins.** Unset knobs come from the
     URL, the environment (`AWS_`, `GOOGLE_`, `AZURE_`, `YGGDRYL_`), the store's
     files, then defaults; the AWS identity is botocore's chain through
-    `aws::Session`. `with_environment(false)` seals everything but explicit
-    values - see `references/backends.md`.
+    `aws::Session` (Rust only: Python and Node take its knobs as `options`),
+    with the console sign-in `aws login` files. The shared files are read
+    again whenever either moved, so a set dumped anew into
+    `~/.aws/credentials` reaches a running process at its next request; a
+    lapsed set, or one a store refused, is passed over by name and the sources
+    after it are asked. The walk logs under `yggdryl.aws.session`, key ids
+    masked. `with_environment(false)` seals everything but explicit values -
+    see `references/backends.md`.
 16. **HTTP is a handle and a client.** An `http`/`https` URL is a leaf: a
     whole read is one `GET`, a range one ranged `GET`, `size` one `HEAD`
     (none inside `open()`). A body read whole or streamed resumes a cut
@@ -173,15 +181,18 @@ Install and cross-language conventions are in `yggdryl`.
     `session.get(url)` alone is the unsent `Request` itself, only
     `.send()`'s answer has none. Every page lays out as one Arrow batch
     through `Pages::into_arrow_reader`, `.intoArrowReader`, or Python's
-    `.read_arrow()`.
-18. **No host is made up.** `HOSTNAME` (Rust `yggdryl::HOSTNAME`, Python
-    `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`) is the machine's name, read
-    once. A buffer (`mem://<host>/<pid>/<address>`) and a filesystem
-    answering in this process (`memory://<host>/...`) name it; a local file
-    names none (`file:///path`, and `file://localhost/path` is that path);
-    a store names its bucket or endpoint, never this machine. Children,
-    `ls` and `glob` keep their parent's host - compare against `HOSTNAME`,
-    never a literal, since every machine answers its own.
+    `.read_serie()`.
+18. **No host is made up.** A local file names none (`file:///path`; no
+    host is added where none was given, since Windows reads a named one as
+    a share, and on Unix `file://localhost/path` and `file://<HOSTNAME>/path`
+    read as that same path). A buffer (`mem://localhost/<pid>/<address>`)
+    and a filesystem answering in this process (`memory://localhost/...`)
+    name `localhost`, the one name the crate writes for this machine; a
+    store names its bucket or endpoint, never this machine. Children, `ls`
+    and `glob` keep their parent's host. `HOSTNAME` (Rust
+    `yggdryl::HOSTNAME`, Python `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`)
+    is the machine's own name, read once: intake reads it as this machine,
+    and no URL names it.
 
 ## Pitfalls
 
@@ -205,7 +216,7 @@ Install and cross-language conventions are in `yggdryl`.
 | `s3://my.bucket.com/key` | a first part ending `.com`/`.io`/`.net` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |
 | a thread pool calling `session.get(url)` per URL | `session.send_all(urls, concurrency)`: one pool, ordered, lazy, the interpreter released |
-| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it; retry it yourself when it is safe |
+| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it. Rust: say it does no harm twice with `Request::with_idempotent(true)`, name the answers worth another attempt with `with_retry_on(\|status, headers, body\| ...)`, bound them with `with_max_attempts(n)`. Python and JavaScript send by the method's own idempotency: retry it yourself when it is safe |
 | `Client(...).session(http_version=2)` on a client built without it | refused by name: the pool's knobs are the client's - `Client({"http_version": "2"}).session(...)` |
 | `http_version=3` against a plain `http://` origin | QUIC needs TLS: it answers as `2` (`h2c`); HTTP/3 is an `https` origin |
 | `session.get(url).content` on a large download | `get(url, stream=True)` and `iter_content(n)` / Rust `stream()?`: the body stays on the wire and resumes |
@@ -226,8 +237,9 @@ Install and cross-language conventions are in `yggdryl`.
 - HTTP, HTTP/2 and HTTP/3: https://platob.github.io/yggdryl/holder/#http
 - Pagination and `Pages`: https://platob.github.io/yggdryl/holder/#pages
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
-- Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/#compression
-- Charsets: https://platob.github.io/yggdryl/media/#charsets
+- Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/compression/
+- Logging through any handle: https://platob.github.io/yggdryl/logging/
+- Charsets: https://platob.github.io/yggdryl/media/charsets/
 - Sibling skills: `yggdryl-records` (rows on a handle, partitions), `yggdryl-uri`
   (URLs, globs, Hive paths), `yggdryl-documents` (JSON/YAML/TOML/XML),
   `yggdryl-hashing` (digest values).

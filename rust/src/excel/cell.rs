@@ -122,9 +122,12 @@ impl DateSystem {
         // Bound integer conversion before casting; f64-to-integer saturation
         // would silently turn a huge argument into a plausible date.
         const I64_CEILING: f64 = 9_223_372_036_854_775_808.0;
-        if !month.is_finite() || !day.is_finite()
-            || month < i64::MIN as f64 || month >= I64_CEILING
-            || day < i64::MIN as f64 || day >= I64_CEILING
+        if !month.is_finite()
+            || !day.is_finite()
+            || month < i64::MIN as f64
+            || month >= I64_CEILING
+            || day < i64::MIN as f64
+            || day >= I64_CEILING
         {
             return None;
         }
@@ -134,11 +137,12 @@ impl DateSystem {
         let civil_year = i32::try_from(month_index.div_euclid(12)).ok()?;
         let civil_month = (month_index.rem_euclid(12) + 1) as u32;
         // days_from_civil subtracts one from January/February's year.
-        if civil_year == i32::MIN && civil_month <= 2 { return None; }
+        if civil_year == i32::MIN && civil_month <= 2 {
+            return None;
+        }
         let first = crate::timezone::days_from_civil(civil_year, civil_month, 1);
         let base = first - self.epoch_days();
-        let base = if self == Self::Year1900
-            && first < crate::timezone::days_from_civil(1900, 3, 1)
+        let base = if self == Self::Year1900 && first < crate::timezone::days_from_civil(1900, 3, 1)
         {
             base - 1
         } else {
@@ -165,12 +169,17 @@ impl DateSystem {
         if !months.is_finite() || months < i64::MIN as f64 || months >= I64_CEILING {
             return None;
         }
-        let index = source.year.checked_mul(12)?
-            .checked_add(source.month)?.checked_sub(1)?
+        let index = source
+            .year
+            .checked_mul(12)?
+            .checked_add(source.month)?
+            .checked_sub(1)?
             .checked_add(months.trunc() as i64)?;
         let year = i32::try_from(index.div_euclid(12)).ok()?;
         let first_year = if self == Self::Year1900 { 1900 } else { 1904 };
-        if !(first_year..=9999).contains(&year) { return None; }
+        if !(first_year..=9999).contains(&year) {
+            return None;
+        }
         let month = (index.rem_euclid(12) + 1) as u32;
         let first = crate::timezone::days_from_civil(year, month, 1);
         let (next_year, next_month) = if month == 12 {
@@ -194,10 +203,20 @@ impl DateSystem {
                 let weekday = (day + 6).rem_euclid(7);
                 match day {
                     0 => {
-                        return ExcelCalendar { year: 1900, month: 1, day: 0, weekday };
+                        return ExcelCalendar {
+                            year: 1900,
+                            month: 1,
+                            day: 0,
+                            weekday,
+                        };
                     }
                     60 => {
-                        return ExcelCalendar { year: 1900, month: 2, day: 29, weekday };
+                        return ExcelCalendar {
+                            year: 1900,
+                            month: 2,
+                            day: 29,
+                            weekday,
+                        };
                     }
                     1..=59 => (day - 25_568, weekday),
                     _ => (day - 25_569, weekday),
@@ -288,11 +307,9 @@ impl DateSystem {
         } else {
             (millis, TimeUnit::Millisecond)
         };
-        crate::temporal::format_datetime(value, unit).ok_or_else(|| {
-            Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected a pivot cache date for serial {serial}"),
-            }
+        crate::temporal::format_datetime(value, unit).ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: format_smolstr!("expected a pivot cache date for serial {serial}"),
         })
     }
 
@@ -1786,9 +1803,12 @@ pub(crate) fn serial_text(serial: f64) -> SmolStr {
 
 /// Read a numeric cell's text as Excel spells one: a decimal or scientific
 /// literal, never `INF` or `NaN`.
+///
+/// The literal is the float reader's, and the finite filter is this cell's: a
+/// spreadsheet stores no infinity, so one is a refusal here and a reading
+/// everywhere else.
 pub(crate) fn parse_number(text: &str) -> Result<f64> {
-    let trimmed = text.trim();
-    let number: f64 = trimmed.parse().map_err(|_| Error::InvalidRecord {
+    let number = crate::floating::f64_from_text(text).ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new_static("$"),
         reason: format_smolstr!("expected a number in a numeric cell, got {text:?}"),
     })?;
@@ -1810,13 +1830,9 @@ pub(crate) fn iso_scalar(text: &str) -> Result<Scalar> {
     }
     // A datetime is read at the millisecond, as a serial is; digits below
     // it are refused by the millisecond leaf's own contract.
-    if let Ok((count, unit, zone)) = crate::temporal::parse_timestamp(text) {
-        return DataType::datetime64(TimeUnit::Millisecond, zone)?
-            .scalar(Scalar::datetime64(count, unit, zone)?);
-    }
-    if let Ok((count, unit)) = crate::temporal::parse_datetime(text) {
-        return DataType::datetime64(TimeUnit::Millisecond, Timezone::NAIVE)?
-            .scalar(Scalar::datetime64(count, unit, Timezone::NAIVE)?);
+    if let Ok(read) = crate::DateTime64::from_text(text, Timezone::NAIVE) {
+        return DataType::datetime64(TimeUnit::Millisecond, read.timezone())?
+            .scalar(Scalar::DateTime64(read));
     }
     if let Ok((count, unit)) = crate::temporal::parse_time(text) {
         return match unit {
@@ -1891,16 +1907,32 @@ pub(crate) fn wire_scalar(
         CellKind::SharedString | CellKind::FormulaString | CellKind::InlineString => {
             decoded(Scalar::from(Str::new(content)))
         }
-        CellKind::Boolean => decoded(match content.trim() {
-            "1" | "true" | "TRUE" => Scalar::from(true),
-            "0" | "" | "false" | "FALSE" => Scalar::from(false),
-            other => {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: format_smolstr!("expected 0 or 1 for a boolean cell, got {other:?}"),
-                });
+        // The cell kind selects the reading and the boolean reader spells it:
+        // `1` and `0` as the standard writes them, every other spelling a
+        // column of flags is read by. An empty `<v/>` states nothing, as an
+        // empty numeric cell does.
+        CellKind::Boolean => {
+            if content.trim().is_empty() {
+                return Ok(decoded(Scalar::Null));
             }
-        }),
+            decoded(
+                crate::boolean::bool_from_text(content)
+                    .map(Scalar::from)
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: SmolStr::new_static("$"),
+                        reason: crate::text::expected_got(
+                            format_args!("{} in a boolean cell", crate::boolean::BOOLEAN_SPELLINGS),
+                            format_args!(
+                                "{:?}",
+                                crate::text::elide_to(
+                                    content.trim(),
+                                    crate::text::ERROR_TEXT_LIMIT
+                                )
+                            ),
+                        ),
+                    })?,
+            )
+        }
         CellKind::Date => decoded(iso_scalar(content)?),
         CellKind::Error => decoded(Scalar::Null),
     })
@@ -1948,11 +1980,6 @@ pub(crate) fn field_scalar(
                     | TemporalKind::DateTime
                     | TemporalKind::Duration,
                 ) => field.scalar(system.temporal_from_serial(parse_number(content)?, dtype)?),
-                _ if matches!(dtype, DataType::Boolean) => match content.trim() {
-                    "1" => field.scalar(Scalar::from(true)),
-                    "0" => field.scalar(Scalar::from(false)),
-                    other => crate::text::prepare_text(Scalar::from(other), field),
-                },
                 _ => crate::text::prepare_text(Scalar::from(content), field),
             }
         }
@@ -1961,7 +1988,7 @@ pub(crate) fn field_scalar(
         }
         CellKind::Boolean => {
             let held = wire_scalar(kind, format, system, content)?.into_scalar()?;
-            if is_text_target {
+            if is_text_target && !held.is_null() {
                 return field.scalar(Scalar::from(cell_text(&held).into_owned()));
             }
             field.scalar(held)

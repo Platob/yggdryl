@@ -29,6 +29,7 @@ enum SchemeWire {
     Digest,
     Identity,
     Partition,
+    Sort,
     Transform,
     S3,
     S3a,
@@ -93,6 +94,8 @@ impl Scheme {
     pub const IDENTITY: Self = Self(SchemeWire::Identity);
     /// The generic field partition metadata namespace.
     pub const PARTITION: Self = Self(SchemeWire::Partition);
+    /// The `SORT:` field namespace: the order a struct's rows keep.
+    pub const SORT: Self = Self(SchemeWire::Sort);
     /// The `TRANSFORM:` field namespace: how a column is computed.
     pub const TRANSFORM: Self = Self(SchemeWire::Transform);
     /// The Amazon S3 object protocol scheme.
@@ -146,7 +149,7 @@ impl Scheme {
     }
 
     /// The prefix this scheme's metadata keys carry: its spelling in upper
-    /// case - `FIX:tag`, `PARTITION:sources`, `ICEBERG:doc` - so the crate's
+    /// case - `FIX:tag`, `PARTITION:by`, `ICEBERG:doc` - so the crate's
     /// own keys read like the `ARROW:extension:name` and `PARQUET:field_id`
     /// every catalog already carries. HTTPS shares HTTP's one namespace. A
     /// known scheme answers a static string; only a custom one allocates.
@@ -168,6 +171,7 @@ impl Scheme {
             SchemeWire::Digest => "DIGEST",
             SchemeWire::Identity => "IDENTITY",
             SchemeWire::Partition => "PARTITION",
+            SchemeWire::Sort => "SORT",
             SchemeWire::Transform => "TRANSFORM",
             SchemeWire::S3 => "S3",
             SchemeWire::S3a => "S3A",
@@ -208,6 +212,7 @@ impl Scheme {
             SchemeWire::Digest => "digest",
             SchemeWire::Identity => "identity",
             SchemeWire::Partition => "partition",
+            SchemeWire::Sort => "sort",
             SchemeWire::Transform => "transform",
             SchemeWire::S3 => "s3",
             SchemeWire::S3a => "s3a",
@@ -416,6 +421,7 @@ impl FromStr for Scheme {
             4 if value.eq_ignore_ascii_case("http") => Some(Self::HTTP),
             4 if value.eq_ignore_ascii_case("file") => Some(Self::FILE),
             4 if value.eq_ignore_ascii_case("glue") => Some(Self::GLUE),
+            4 if value.eq_ignore_ascii_case("sort") => Some(Self::SORT),
             5 if value.eq_ignore_ascii_case("https") => Some(Self::HTTPS),
             5 if value.eq_ignore_ascii_case("mysql") => Some(Self::MYSQL),
             5 if value.eq_ignore_ascii_case("arrow") => Some(Self::ARROW),

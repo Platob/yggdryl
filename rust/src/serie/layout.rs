@@ -107,6 +107,43 @@ pub(crate) fn splice_bits(
     builder.finish()
 }
 
+/// The bitmap `bits` as a builder over its own bytes, to rewrite in place.
+///
+/// `bits` is consumed, so where the leaf held it alone and it starts on the
+/// first bit of its buffer nothing else holds the bytes and `into_mutable`
+/// hands them back; a shared, sliced or foreign bitmap is copied once.
+pub(crate) fn owned_bits(bits: BooleanBuffer) -> BooleanBufferBuilder {
+    let len = bits.len();
+    if bits.offset() == 0 {
+        return match bits.into_inner().into_mutable() {
+            Ok(owned) => BooleanBufferBuilder::new_from_buffer(owned, len),
+            Err(shared) => {
+                let mut builder = BooleanBufferBuilder::new(len);
+                builder.append_buffer(&BooleanBuffer::new(shared, 0, len));
+                builder
+            }
+        };
+    }
+    let mut builder = BooleanBufferBuilder::new(len);
+    builder.append_buffer(&bits);
+    builder
+}
+
+/// Reverse the bits of `range` where they stand: one swap per pair that
+/// differs.
+pub(crate) fn reverse_bits(bits: &mut BooleanBufferBuilder, range: Range<usize>) {
+    let (mut low, mut high) = (range.start, range.end);
+    while low + 1 < high {
+        high -= 1;
+        let (left, right) = (bits.get_bit(low), bits.get_bit(high));
+        if left != right {
+            bits.set_bit(low, right);
+            bits.set_bit(high, left);
+        }
+        low += 1;
+    }
+}
+
 /// The typed buffer `values` is with `range` replaced by `replacement`.
 ///
 /// Appending at the end, and overwriting as many slots as are written, both

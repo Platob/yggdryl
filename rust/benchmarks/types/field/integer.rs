@@ -30,12 +30,29 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let structure = StructType::from_fields([DataType::Int64.required_field("id")])
         .expect("the benchmark Struct children are valid");
     let root = StructField::new("row", structure, false);
-    group.bench_function("into_struct_field", |bencher| {
+    group.bench_function("from_struct_field", |bencher| {
         bencher.iter_batched(
             || root.clone(),
             |field| black_box(Field::from(field)),
             BatchSize::SmallInput,
         );
+    });
+    // The struct pair: the predicate, and the one-child wrap of a datatype, a
+    // leaf field and a value, each a probe of the wrapped root and one build.
+    let record = Field::from(root.clone()).dtype().clone();
+    group.bench_function("is_struct", |bencher| {
+        bencher.iter(|| black_box(&record).is_struct());
+    });
+    group.bench_function("into_struct_type", |bencher| {
+        bencher.iter(|| black_box(&DataType::Int64).into_struct_type().unwrap());
+    });
+    let leaf = DataType::Int64.required_field("id");
+    group.bench_function("into_struct_field", |bencher| {
+        bencher.iter(|| black_box(&leaf).into_struct_field().unwrap());
+    });
+    let value = Scalar::from(5_i64);
+    group.bench_function("into_struct_scalar", |bencher| {
+        bencher.iter(|| black_box(&value).into_struct_scalar());
     });
     group.finish();
 

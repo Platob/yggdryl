@@ -125,17 +125,6 @@
         }
       },
       {
-        "name": "nolegcontractualdefinitions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcontractualdefinitions",
-          "FIX:tag": "42198"
-        }
-      },
-      {
         "name": "legfinancingcontractualdefinitions",
         "dtype": {
           "type": "null"
@@ -146,17 +135,6 @@
         }
       },
       {
-        "name": "nolegfinancingtermsupplements",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegfinancingtermsupplements",
-          "FIX:tag": "42200"
-        }
-      },
-      {
         "name": "legfinancingtermsupplements",
         "dtype": {
           "type": "null"
@@ -164,17 +142,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "legfinancingtermsupplements"
-        }
-      },
-      {
-        "name": "nolegcontractualmatrices",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegcontractualmatrices",
-          "FIX:tag": "42203"
         }
       },
       {

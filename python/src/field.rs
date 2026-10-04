@@ -9,7 +9,6 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyCapsule, PyDict, PyString};
-use yggdryl::expression::Function as CoreFunction;
 use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
 
 use crate::datatype::{
@@ -454,25 +453,16 @@ impl PyField {
         Ok(scalar)
     }
 
-    /// Applies this schema's metadata-declared columns to one `RecordBatch`.
+    /// Casts one `RecordBatch` onto this struct root.
     ///
-    /// `cast` reconciles the batch to this root first, `transform` computes
-    /// every column a `TRANSFORM:expression` or a `PARTITION:transform` over
-    /// `PARTITION:sources` declares, and `digest` fills every holder last,
-    /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
-    /// root and leaves a column holding anything but its canonical default
-    /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast alone: a `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration
+    /// is metadata the cast moves, never a column it fills - the protocol
+    /// views (`field.transform`, `field.digest`) fill those.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -480,27 +470,20 @@ impl PyField {
         let batch = record_batch_from_pyarrow(value)?;
         let applied = self
             .inner
-            .apply_arrow_batch(&batch, digest, transform, cast, options)
+            .apply_arrow_batch(&batch, options)
             .map_err(value_error)?;
         batch_to_pyarrow(py, applied)
     }
 
     /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
     ///
-    /// The declarations name every column they add, so the applied shape is a
-    /// property of two schemas: nothing is decoded, and a declaration that
-    /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast is compiled from the two schemas, so nothing is decoded, and
+    /// a source that cannot be cast fails here rather than on the first batch.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_schema<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -508,26 +491,21 @@ impl PyField {
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         let applied = self
             .inner
-            .apply_arrow_schema(schema, digest, transform, cast, options)
+            .apply_arrow_schema(schema, options)
             .map_err(value_error)?;
         arrow_schema_to_pyarrow(py, &applied)
     }
 
-    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
+    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is cast.
     ///
-    /// The applied schema is derived once, so the returned reader answers it
-    /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    /// The cast is compiled once, so the returned reader answers this root's
+    /// schema before the first batch is pulled and can be handed straight to
+    /// a write.
+    #[pyo3(signature = (value, *, safe=true, representation="value"))]
     fn apply_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
-        digest: bool,
-        transform: bool,
-        cast: bool,
         safe: bool,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
@@ -535,7 +513,7 @@ impl PyField {
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner
-            .apply_arrow_reader(reader, digest, transform, cast, options)
+            .apply_arrow_reader(reader, options)
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, applied)
     }
@@ -955,8 +933,8 @@ impl PyField {
     /// An absent marker means it may; an explicit `False` marks a field a
     /// schema declares but a constructor must refuse.
     #[getter]
-    fn is_init(&self) -> PyResult<bool> {
-        self.inner.is_init().map_err(value_error)
+    fn is_init(&self) -> bool {
+        self.inner.is_init()
     }
 
     /// Record whether a constructor may supply a value for this field.
@@ -1463,6 +1441,13 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::PARTITION)
     }
 
+    /// Returns the live sort-order property view: the `SORT:by` keys a
+    /// struct's rows keep.
+    #[getter]
+    fn sort(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::SORT)
+    }
+
     /// Returns the live generic transform-field property view.
     #[getter]
     fn transform(slf: Py<Self>) -> PyProtocolField {
@@ -1609,6 +1594,38 @@ impl PyField {
             .with_partition_fields(&names)
             .map(Self::from_inner)
             .map_err(value_error)
+    }
+
+    /// Returns this struct root partitioned by `entries`, in order.
+    ///
+    /// Each entry is a projection - its text (`venue`, `years(ts)`,
+    /// `minutes(ts, 15)`, `truncate(name, 4) as prefix`), a `Term`, or a
+    /// `(term, alias)` pair. A bare column is an identity partition and is
+    /// marked; any other entry adds a marked column named by its alias, else
+    /// `{source}_{function}` (`ts_year`, `ts_minutes`), which its term
+    /// computes through `field.partition.apply_arrow_batch` - a read or a
+    /// write only casts. The declaration is stored as `PARTITION:by`, and an
+    /// empty list removes it.
+    fn with_partition_by(&self, entries: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let projections = crate::expression::projections_from_iterable(entries, "entries")?;
+        self.inner
+            .with_partition_by(projections)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Returns the projections this struct's rows partition by, each as its
+    /// canonical text: the `PARTITION:by` declaration, else the marked
+    /// columns, else nothing.
+    #[getter]
+    fn partition_by(&self) -> PyResult<Vec<String>> {
+        Ok(self
+            .inner
+            .partition_by()
+            .map_err(value_error)?
+            .iter()
+            .map(ToString::to_string)
+            .collect())
     }
 
     /// Compare recursively, optionally ignoring metadata on every Field.
@@ -2074,16 +2091,16 @@ impl PyProtocolField {
         )))
     }
 
-    /// Refuse a typed partition property on a view of another protocol.
+    /// Refuse a typed transform property on a view of another protocol.
     ///
     /// [`Self::require_fix`] carries the rule; this is the same one for the
-    /// view `field.partition` returns.
-    fn require_partition(&self, property: &str) -> PyResult<()> {
-        if self.scheme == CoreScheme::PARTITION {
+    /// view `field.transform` returns.
+    fn require_transform(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::TRANSFORM {
             return Ok(());
         }
         Err(PyTypeError::new_err(format!(
-            "{property} is a partition property, and this is a {} view",
+            "{property} is a transform property, and this is a {} view",
             self.scheme.as_str()
         )))
     }
@@ -2110,13 +2127,30 @@ impl PyProtocolField {
         )))
     }
 
-    /// `sources` is the one property both declaring protocols answer.
-    fn require_sources(&self) -> PyResult<()> {
-        if self.scheme == CoreScheme::PARTITION || self.scheme == CoreScheme::DIGEST {
+    /// A transform's `by` is the argument list of its function, written
+    /// beside it by the `term` setter, so it is read here and never written
+    /// alone.
+    fn refuse_transform_by(&self, property: &str) -> PyResult<()> {
+        if self.scheme != CoreScheme::TRANSFORM {
             return Ok(());
         }
         Err(PyTypeError::new_err(format!(
-            "sources is a partition or digest property, and this is a {} view",
+            "{property} on a transform view would leave its function without its \
+             arguments; assign field.transform.term instead"
+        )))
+    }
+
+    /// `by` is the one property the four declaring protocols answer.
+    fn require_by(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION
+            || self.scheme == CoreScheme::DIGEST
+            || self.scheme == CoreScheme::SORT
+            || self.scheme == CoreScheme::TRANSFORM
+        {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a partition, sort, digest or transform property, and this is a {} view",
             self.scheme.as_str()
         )))
     }
@@ -2941,42 +2975,82 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
-    /// The field paths this partition column derives its value from.
+    /// The ordered list this declaration reads, each entry the canonical
+    /// text the core stores, or `None` where the field declares none.
     ///
-    /// Dotted paths, the way `Field.get_field` spells a nested one, in the one
-    /// shape every `sources` property has. One path is every transform the
-    /// core evaluates today; a longer list is stored and refused when the
-    /// column is applied.
+    /// `field.partition.by` is the projections a struct's rows partition by
+    /// (`venue`, `years(ts)`, `truncate(name, 4) as prefix`),
+    /// `field.sort.by` the `order by` keys they keep (`ts`, `price desc`),
+    /// `field.digest.by` the terms a holder reads (`id`, `lower(symbol)`, or
+    /// `*`), and `field.transform.by` the terms its function reads.
+    /// Assigning parses every entry through that grammar and stores it
+    /// canonically; assigning `None` removes the declaration.
     #[getter]
-    fn sources(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
-        self.require_sources()?;
+    fn by(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
+        self.require_by("by")?;
         let field = self.borrow_field(py)?;
-        if self.scheme == CoreScheme::DIGEST {
-            return field.inner.as_digest().sources().map_err(value_error);
+        let field = &field.inner;
+        if self.scheme == CoreScheme::PARTITION {
+            return Ok(field
+                .as_partition()
+                .by()
+                .map_err(value_error)?
+                .map(|entries| entries.iter().map(ToString::to_string).collect()));
         }
-        field.inner.as_partition().sources().map_err(value_error)
+        if self.scheme == CoreScheme::SORT {
+            return Ok(field
+                .as_sort()
+                .by()
+                .map_err(value_error)?
+                .map(|keys| keys.iter().map(ToString::to_string).collect()));
+        }
+        if self.scheme == CoreScheme::DIGEST {
+            return field.as_digest().by().map_err(value_error);
+        }
+        Ok(field
+            .as_transform()
+            .by()
+            .map_err(value_error)?
+            .map(|terms| terms.iter().map(ToString::to_string).collect()))
     }
 
     #[setter]
-    fn set_sources(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_sources()?;
-        let mut paths = Vec::new();
-        for path in value.try_iter()? {
-            paths.push(path?.extract::<String>()?);
+    fn set_by(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_by("by")?;
+        self.refuse_transform_by("by")?;
+        if value.is_none() {
+            self.remove_by(value.py())?;
+            return Ok(());
         }
+        let entries = crate::enums::strings_from_iterable(value, "by")?;
         let mut field = self.borrow_field_mut(value.py())?;
-        if self.scheme == CoreScheme::DIGEST {
-            return field
-                .inner
-                .as_digest_mut()
-                .set_sources(paths)
-                .map_err(value_error);
-        }
-        field
-            .inner
-            .as_partition_mut()
-            .set_sources(paths)
-            .map_err(value_error)
+        let field = &mut field.inner;
+        let written = if self.scheme == CoreScheme::PARTITION {
+            field.as_partition_mut().set_by_texts(entries)
+        } else if self.scheme == CoreScheme::SORT {
+            field.as_sort_mut().set_by_texts(entries)
+        } else {
+            field.as_digest_mut().set_by(entries)
+        };
+        written.map_err(value_error)
+    }
+
+    /// Remove the `by` declaration, answering the text it held.
+    ///
+    /// A struct then partitions or sorts by nothing it states, and a digest
+    /// holder reads every field beside it again.
+    fn remove_by(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_by("remove_by")?;
+        self.refuse_transform_by("remove_by")?;
+        let mut field = self.borrow_field_mut(py)?;
+        let field = &mut field.inner;
+        Ok(if self.scheme == CoreScheme::PARTITION {
+            field.as_partition_mut().remove_by()
+        } else if self.scheme == CoreScheme::SORT {
+            field.as_sort_mut().remove_by()
+        } else {
+            field.as_digest_mut().remove_by()
+        })
     }
 
     /// Whether this field holds a digest rather than contributing to one.
@@ -3001,7 +3075,7 @@ impl PyProtocolField {
 
     /// Remove the role, refusing while holder-only settings are still stored.
     ///
-    /// A schema can never carry a holder's algorithm or sources on a field
+    /// A schema can never carry a holder's algorithm or `by` list on a field
     /// that is no longer a holder, so those are removed first.
     fn remove_role(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_digest("remove_role")?;
@@ -3047,16 +3121,6 @@ impl PyProtocolField {
         self.require_digest("remove_algorithm")?;
         let mut field = self.borrow_field_mut(py)?;
         Ok(field.inner.as_digest_mut().remove_algorithm())
-    }
-
-    /// Remove a holder's declared sources, answering what was stored.
-    ///
-    /// A holder with no sources reads every field beside it, so removing the
-    /// list is how a selection goes back to that default.
-    fn remove_sources(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        self.require_digest("remove_sources")?;
-        let mut field = self.borrow_field_mut(py)?;
-        Ok(field.inner.as_digest_mut().remove_sources())
     }
 
     /// The field whose instant a coupled holder stores in front of its digest.
@@ -3131,72 +3195,63 @@ impl PyProtocolField {
         Ok(self.borrow_field(py)?.inner.as_digest().is_coupled())
     }
 
-    /// How this partition column derives its value, on the `partition` view.
+    /// The term this column is computed with, on the `transform` view.
     ///
-    /// The vocabulary is the [expression](../expression/grammar.md) grammar's
-    /// own function set, and it crosses as its canonical name: a dialect alias
-    /// resolves on the way in, so `dayofmonth` reads back as `day`. An absent
-    /// transform is the identity - the source value unchanged.
-    #[getter]
-    fn transform(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        self.require_partition("transform")?;
-        let field = self.borrow_field(py)?;
-        Ok(field
-            .inner
-            .as_partition()
-            .transform()
-            .map_err(value_error)?
-            .map(|transform| transform.as_str().to_owned()))
-    }
-
-    /// The term this partition column derives its value with.
-    ///
-    /// The declared `transform` is compiled over the field paths in
-    /// `sources`, so `year(event)` is what the column actually computes. A
-    /// column that declares neither answers `None`; a transform with no
-    /// sources, or more sources than the transform reads, is a `ValueError`.
+    /// A `TRANSFORM:expression` answers first; without one, the
+    /// `TRANSFORM:function` called over its `by` terms is the term - which is
+    /// what a derived partition column `Field.with_partition_by` adds
+    /// carries. An ordinary column answers `None`; a function declared with
+    /// no `by` beside it is a `ValueError` naming the property.
     #[getter]
     fn term(&self, py: Python<'_>) -> PyResult<Option<crate::expression::PyTerm>> {
-        self.require_partition("term")?;
+        self.require_transform("term")?;
         let field = self.borrow_field(py)?;
         Ok(field
             .inner
-            .as_partition()
+            .as_transform()
             .term()
             .map_err(value_error)?
             .map(crate::expression::PyTerm::from_core))
     }
 
+    /// Declare the term this column is computed with: a `Term` or its text.
+    ///
+    /// A call over plain columns is stored as its function and the columns
+    /// it reads as `TRANSFORM:by`, any other term as its canonical
+    /// `TRANSFORM:expression`; assigning `None` removes the declaration.
     #[setter]
-    fn set_transform(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_partition("transform")?;
-        let name = value.extract::<String>()?;
-        let transform = CoreFunction::from_name(&name).ok_or_else(|| {
-            PyValueError::new_err(format!(
-                "expected one of {}, got {name:?}",
-                CoreFunction::vocabulary()
-            ))
-        })?;
+    fn set_term(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_transform("term")?;
+        if value.is_none() {
+            self.remove_term(value.py())?;
+            return Ok(());
+        }
+        let term = crate::expression::term_from_value(value)?;
         let mut field = self.borrow_field_mut(value.py())?;
         field
             .inner
-            .as_partition_mut()
-            .set_transform(transform)
+            .as_transform_mut()
+            .set_term(&term)
             .map_err(value_error)
+    }
+
+    /// Remove the declared derivation, answering the term it spelled.
+    fn remove_term(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_transform("remove_term")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_transform_mut().remove_term())
     }
 
     /// Apply this protocol's declarations to one `pyarrow.RecordBatch`.
     ///
     /// The view is taken on the Struct root, and every declared Struct beneath
-    /// it is walked. `field.partition` computes each column its `transform`
-    /// and `source` declare; `field.digest` fills each holder. Both leave a
+    /// it is walked. `field.transform` - and `field.partition`, whose
+    /// derived columns are transforms - computes each column a `TRANSFORM:`
+    /// declaration derives; `field.digest` fills each holder. Both leave a
     /// column holding anything but its canonical default alone, so applying
     /// twice writes nothing the first pass already did.
     ///
     /// Every other protocol's view raises `TypeError` naming its own scheme.
-    // The signature is the Python keyword surface: one parameter per keyword,
-    // so it is as wide as the contract is and cannot be narrowed here.
-    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
     fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
@@ -3207,8 +3262,8 @@ impl PyProtocolField {
         let applied = if self.scheme == CoreScheme::PARTITION
             || self.scheme == CoreScheme::TRANSFORM
         {
-            // A partition declaration is a transform: both views compute the
-            // columns their `transform` derives.
+            // A derived partition column is a transform column: both views
+            // compute the columns a `TRANSFORM:` declaration derives.
             field.inner.as_transform().apply_arrow_batch(&batch)
         } else if self.scheme == CoreScheme::DIGEST {
             field.inner.as_digest().apply_arrow_batch(&batch)

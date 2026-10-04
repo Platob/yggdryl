@@ -26,8 +26,20 @@ fn concatenation_operator_uses_shared_text_conversion_and_dependencies() {
     book.set_entry("Data", "B2".parse().unwrap(), "7").unwrap();
     let changed = book.recalculate().unwrap();
     assert_eq!((changed.evaluated, changed.uncomputed), (2, 0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(1, 2)).as_str(), Some("qx"));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(2, 2)).as_f64(), Some(7.0));
+    assert_eq!(
+        book.sheet("Data")
+            .unwrap()
+            .scalar(CellRef::new(1, 2))
+            .as_str(),
+        Some("qx")
+    );
+    assert_eq!(
+        book.sheet("Data")
+            .unwrap()
+            .scalar(CellRef::new(2, 2))
+            .as_f64(),
+        Some(7.0)
+    );
 }
 
 #[test]
@@ -738,64 +750,120 @@ mod context {
 fn min_max_hold_subnormal_sources_while_count_still_counts_them() {
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
-    sheet.set_cell(CellRef::new(0, 0), f64::from_bits(1)).unwrap();
-    sheet.set_cell(CellRef::new(1, 0), -f64::from_bits(1)).unwrap();
-    for (row, expression) in [(0, "MIN(A1:A2)"), (1, "MAX(A1:A2)"),
-                              (2, "COUNT(A1:A2)"), (3, "COUNTA(A1:A2)")] {
+    sheet
+        .set_cell(CellRef::new(0, 0), f64::from_bits(1))
+        .unwrap();
+    sheet
+        .set_cell(CellRef::new(1, 0), -f64::from_bits(1))
+        .unwrap();
+    for (row, expression) in [
+        (0, "MIN(A1:A2)"),
+        (1, "MAX(A1:A2)"),
+        (2, "COUNT(A1:A2)"),
+        (3, "COUNTA(A1:A2)"),
+    ] {
         let at = CellRef::new(row, 1);
-        sheet.insert_cell(
-            Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900).unwrap()
-                .with_formula(Formula::from_file(expression, at)),
-        ).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(expression, at)),
+            )
+            .unwrap();
     }
     let report = book.calculate_all().unwrap();
     assert_eq!((report.evaluated, report.uncomputed), (2, 2));
     for row in [0, 1] {
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(row, 1)), Scalar::from(-777.0));
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(CellRef::new(row, 1)),
+            Scalar::from(-777.0)
+        );
     }
     for row in [2, 3] {
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(row, 1)), Scalar::from(2.0));
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(CellRef::new(row, 1)),
+            Scalar::from(2.0)
+        );
     }
-    book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 0), 3.0).unwrap();
-    book.sheet_mut("Data").unwrap().set_cell(CellRef::new(1, 0), 4.0).unwrap();
+    book.sheet_mut("Data")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 3.0)
+        .unwrap();
+    book.sheet_mut("Data")
+        .unwrap()
+        .set_cell(CellRef::new(1, 0), 4.0)
+        .unwrap();
     let report = book.recalculate().unwrap();
     assert_eq!((report.evaluated, report.uncomputed), (4, 0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0, 1)), Scalar::from(3.0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(1, 1)), Scalar::from(4.0));
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(CellRef::new(0, 1)),
+        Scalar::from(3.0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(CellRef::new(1, 1)),
+        Scalar::from(4.0)
+    );
 }
 
 #[test]
 fn ordered_comparisons_cover_all_native_cases_and_hold_unmodeled_collation() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/comparisons_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/comparisons_native.json")).unwrap();
     assert_eq!(fixture["native_observations"], 842);
     assert_eq!(fixture["native_cache_comparisons_equal"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     let cases = fixture["cases"].as_array().unwrap();
     let mut coverage = (0, 0);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
-        for sheet in ["Values", "CycleShape", "Cases"] { book.add_sheet(sheet).unwrap(); }
+        for sheet in ["Values", "CycleShape", "Cases"] {
+            book.add_sheet(sheet).unwrap();
+        }
         for (sheet, cells) in fixture["source_cells"].as_object().unwrap() {
             for (address, value) in cells.as_object().unwrap() {
-                let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
-                    else if let Some(value) = value.as_str() { Scalar::from(value) }
-                    else { Scalar::from(value.as_f64().unwrap()) };
-                book.sheet_mut(sheet).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                let value = if let Some(value) = value.as_bool() {
+                    Scalar::from(value)
+                } else if let Some(value) = value.as_str() {
+                    Scalar::from(value)
+                } else {
+                    Scalar::from(value.as_f64().unwrap())
+                };
+                book.sheet_mut(sheet)
+                    .unwrap()
+                    .set_cell(address.parse().unwrap(), value)
+                    .unwrap();
             }
         }
         for case in cases.iter().filter(|case| case["date_system"] == year) {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut(case["sheet"].as_str().unwrap())
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            at,
+                        )),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
-        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (349, 72, 0));
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (349, 72, 0)
+        );
         for case in cases.iter().filter(|case| case["date_system"] == year) {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at).unwrap();
+            let cell = book
+                .sheet(case["sheet"].as_str().unwrap())
+                .unwrap()
+                .cell(at)
+                .unwrap();
             if case["rust_policy"] == "held_unmodeled_collation" {
                 coverage.1 += 1;
                 assert_eq!(cell.value(), &Scalar::from(-777.0), "{}", case["id"]);
@@ -804,15 +872,34 @@ fn ordered_comparisons_cover_all_native_cases_and_hold_unmodeled_collation() {
             coverage.0 += 1;
             let cache = &case["saved_cache"];
             match cache["type"].as_str().unwrap() {
-                "b" => assert_eq!(cell.value().as_bool(), Some(cache["value_text"] == "1"), "{}", case["id"]),
-                "str" => assert_eq!(cell.value().as_str(), Some(cache["value_text"].as_str().unwrap_or("")), "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), cache["value_text"].as_str(), "{}", case["id"]),
+                "b" => assert_eq!(
+                    cell.value().as_bool(),
+                    Some(cache["value_text"] == "1"),
+                    "{}",
+                    case["id"]
+                ),
+                "str" => assert_eq!(
+                    cell.value().as_str(),
+                    Some(cache["value_text"].as_str().unwrap_or("")),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    cache["value_text"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("unexpected native cache type {other}"),
             }
         }
-        let before = ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision());
+        let before =
+            ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision());
         assert_eq!(book.calculate_all().unwrap().evaluated, 349);
-        assert_eq!(["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision()), before);
+        assert_eq!(
+            ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision()),
+            before
+        );
         assert_eq!(book.recalculate().unwrap().evaluated, 0);
     }
     assert_eq!(coverage, (698, 144));
@@ -833,34 +920,73 @@ fn basic_math_native_scalar_calls_and_subnormal_hold() {
     ] {
         let mut book = Workbook::new();
         let input = book.add_sheet("Inputs").unwrap();
-        input.insert_cell(Cell::from_scalar("A2".parse().unwrap(), Scalar::from(-3.2), DateSystem::Year1900).unwrap()).unwrap();
+        input
+            .insert_cell(
+                Cell::from_scalar(
+                    "A2".parse().unwrap(),
+                    Scalar::from(-3.2),
+                    DateSystem::Year1900,
+                )
+                .unwrap(),
+            )
+            .unwrap();
         let cases = book.add_sheet("Cases").unwrap();
         let at: CellRef = "B2".parse().unwrap();
-        cases.insert_cell(Cell::from_scalar(at, Scalar::from(99.0), DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(formula, at))).unwrap();
+        cases
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(99.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, at)),
+            )
+            .unwrap();
         assert_eq!(book.calculate_all().unwrap().evaluated, 1, "{formula}");
-        assert_eq!(book.sheet("Cases").unwrap().scalar(at).as_f64().unwrap().to_bits(), bits, "{formula}");
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .scalar(at)
+                .as_f64()
+                .unwrap()
+                .to_bits(),
+            bits,
+            "{formula}"
+        );
     }
 
     let mut book = Workbook::new();
     let inputs = book.add_sheet("Inputs").unwrap();
     let at: CellRef = "A11".parse().unwrap();
-    inputs.insert_cell(Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900).unwrap()
-        .with_formula(Formula::from_file("3E-308-2.5E-308", at))).unwrap();
+    inputs
+        .insert_cell(
+            Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900)
+                .unwrap()
+                .with_formula(Formula::from_file("3E-308-2.5E-308", at)),
+        )
+        .unwrap();
     let cases = book.add_sheet("Cases").unwrap();
     let result: CellRef = "B2".parse().unwrap();
-    cases.insert_cell(Cell::from_scalar(result, Scalar::from(77.0), DateSystem::Year1900).unwrap()
-        .with_formula(Formula::from_file("TRUNC(Inputs!A11)", result))).unwrap();
+    cases
+        .insert_cell(
+            Cell::from_scalar(result, Scalar::from(77.0), DateSystem::Year1900)
+                .unwrap()
+                .with_formula(Formula::from_file("TRUNC(Inputs!A11)", result)),
+        )
+        .unwrap();
     let report = book.calculate_all().unwrap();
     assert!(report.uncomputed >= 1);
-    assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(77.0));
+    assert_eq!(
+        book.sheet("Cases").unwrap().scalar(result),
+        Scalar::from(77.0)
+    );
 }
 
 #[test]
 fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() {
     let native: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/basic_math_native.json")).unwrap();
-    assert_eq!(native["source_sha256"], "ecc53230164fbecb0f4b74a78b3a85ee4b71898a15a7cad4a7e123a5522f8e12");
+    assert_eq!(
+        native["source_sha256"],
+        "ecc53230164fbecb0f4b74a78b3a85ee4b71898a15a7cad4a7e123a5522f8e12"
+    );
     assert_eq!(native["native_observations"], 154);
     assert_eq!(native["native_cache_equal"], 152);
     assert_eq!(native["native_cache_different"], 2);
@@ -872,7 +998,10 @@ fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() 
     assert_eq!(cases.len(), 154);
 
     let mut checked = (0, 0, 0);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Inputs").unwrap();
@@ -880,28 +1009,48 @@ fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() 
         for source in native["source_cells"].as_array().unwrap() {
             let address: CellRef = source["cell"].as_str().unwrap().parse().unwrap();
             let kind = source["kind"].as_str().unwrap();
-            if kind == "absent_blank" { continue; }
+            if kind == "absent_blank" {
+                continue;
+            }
             let value = &source["value"];
             if kind.starts_with("error_") || kind == "computed_subnormal" {
                 let text = value.as_str().unwrap();
                 let formula = text.strip_prefix('=').unwrap();
-                book.sheet_mut("Inputs").unwrap().insert_cell(
-                    Cell::from_scalar(address, Scalar::from(0.0), system).unwrap()
-                        .with_formula(Formula::from_file(formula, address)),
-                ).unwrap();
+                book.sheet_mut("Inputs")
+                    .unwrap()
+                    .insert_cell(
+                        Cell::from_scalar(address, Scalar::from(0.0), system)
+                            .unwrap()
+                            .with_formula(Formula::from_file(formula, address)),
+                    )
+                    .unwrap();
             } else {
-                let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
-                    else if let Some(value) = value.as_str() { Scalar::from(value) }
-                    else { Scalar::from(value.as_f64().unwrap()) };
-                book.sheet_mut("Inputs").unwrap().set_cell(address, value).unwrap();
+                let value = if let Some(value) = value.as_bool() {
+                    Scalar::from(value)
+                } else if let Some(value) = value.as_str() {
+                    Scalar::from(value)
+                } else {
+                    Scalar::from(value.as_f64().unwrap())
+                };
+                book.sheet_mut("Inputs")
+                    .unwrap()
+                    .set_cell(address, value)
+                    .unwrap();
             }
         }
         for case in cases.iter().filter(|case| case["date_system"] == year) {
             let address: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(address, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), address)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
         }
         book.calculate_all().unwrap();
         for case in cases.iter().filter(|case| case["date_system"] == year) {
@@ -918,7 +1067,10 @@ fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() 
                     if case["native_cache_comparison"] == "different" {
                         checked.2 += 1;
                         assert_eq!(case["function"], "TRUNC", "{id}");
-                        assert_eq!(case["raw_value2"]["ieee754_hex"], "0003986b3c0cf46a", "{id}");
+                        assert_eq!(
+                            case["raw_value2"]["ieee754_hex"], "0003986b3c0cf46a",
+                            "{id}"
+                        );
                         assert_eq!(cache["type"], "n", "{id}");
                         assert_eq!(cache["value_text"], "0", "{id}");
                     }
@@ -929,14 +1081,23 @@ fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() 
                     match cache["type"].as_str().unwrap() {
                         "n" => {
                             let expected = u64::from_str_radix(
-                                case["raw_value2"]["ieee754_hex"].as_str().unwrap(), 16,
-                            ).unwrap();
-                            let saved = cache["value_text"].as_str().unwrap().parse::<f64>().unwrap();
+                                case["raw_value2"]["ieee754_hex"].as_str().unwrap(),
+                                16,
+                            )
+                            .unwrap();
+                            let saved = cache["value_text"]
+                                .as_str()
+                                .unwrap()
+                                .parse::<f64>()
+                                .unwrap();
                             assert_eq!(saved.to_bits(), expected, "{id}: source cache transport");
                             assert_eq!(cell.value().as_f64().unwrap().to_bits(), expected, "{id}");
                         }
-                        "e" => assert_eq!(cell.error().map(|error| error.as_str()),
-                            cache["value_text"].as_str(), "{id}"),
+                        "e" => assert_eq!(
+                            cell.error().map(|error| error.as_str()),
+                            cache["value_text"].as_str(),
+                            "{id}"
+                        ),
                         other => panic!("{id}: unexpected native cache type {other}"),
                     }
                 }
@@ -951,7 +1112,10 @@ fn basic_math_all_154_native_vectors_replay_with_explicit_raw_subnormal_holds() 
 fn basic_math_all_190_native_near_integer_vectors_replay_exact_bits() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/basic_math_edge_native.json")).unwrap();
-    assert_eq!(fixture["source_sha256"], "5262ff532e1cf48845fdc86b6f5e89eb12ec02223bb64b7ed38a2170d1788b1d");
+    assert_eq!(
+        fixture["source_sha256"],
+        "5262ff532e1cf48845fdc86b6f5e89eb12ec02223bb64b7ed38a2170d1788b1d"
+    );
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     assert_eq!(fixture["native_observations"], 190);
@@ -961,50 +1125,88 @@ fn basic_math_all_190_native_near_integer_vectors_replay_exact_bits() {
     // Excel truncates long numeric lexemes when saving. Both the original
     // wire formula and its Excel-saved spelling must produce the same bits.
     for spelling in ["formula", "saved_formula"] {
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
-        let mut book = Workbook::new();
-        book.set_date_system(system);
-        book.add_sheet("Inputs").unwrap();
-        book.add_sheet("Cases").unwrap();
-        let sources = &fixture["source_cells"][year]["cells"];
-        for address in ["A1", "A2", "A3"] {
-            let at: CellRef = address.parse().unwrap();
-            let source = &sources[address];
-            let bits = u64::from_str_radix(source["bits"].as_str().unwrap(), 16).unwrap();
-            let cell = Cell::from_scalar(at,
-                Scalar::from(if address == "A1" { f64::from_bits(bits) } else { -777.0 }),
-                system).unwrap();
-            let cell = if let Some(formula) = source["formula"].as_str() {
-                cell.with_formula(Formula::from_file(formula, at))
-            } else { cell };
-            book.sheet_mut("Inputs").unwrap().insert_cell(cell).unwrap();
+        for (year, system) in [
+            ("1900", DateSystem::Year1900),
+            ("1904", DateSystem::Year1904),
+        ] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            book.add_sheet("Inputs").unwrap();
+            book.add_sheet("Cases").unwrap();
+            let sources = &fixture["source_cells"][year]["cells"];
+            for address in ["A1", "A2", "A3"] {
+                let at: CellRef = address.parse().unwrap();
+                let source = &sources[address];
+                let bits = u64::from_str_radix(source["bits"].as_str().unwrap(), 16).unwrap();
+                let cell = Cell::from_scalar(
+                    at,
+                    Scalar::from(if address == "A1" {
+                        f64::from_bits(bits)
+                    } else {
+                        -777.0
+                    }),
+                    system,
+                )
+                .unwrap();
+                let cell = if let Some(formula) = source["formula"].as_str() {
+                    cell.with_formula(Formula::from_file(formula, at))
+                } else {
+                    cell
+                };
+                book.sheet_mut("Inputs").unwrap().insert_cell(cell).unwrap();
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                book.sheet_mut("Cases")
+                    .unwrap()
+                    .insert_cell(
+                        Cell::from_scalar(at, Scalar::from(-777.0), system)
+                            .unwrap()
+                            .with_formula(Formula::from_file(case[spelling].as_str().unwrap(), at)),
+                    )
+                    .unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.uncomputed, report.circular_count), (0, 0));
+            for address in ["A1", "A2", "A3"] {
+                let expected =
+                    u64::from_str_radix(sources[address]["bits"].as_str().unwrap(), 16).unwrap();
+                let at: CellRef = address.parse().unwrap();
+                assert_eq!(
+                    book.sheet("Inputs")
+                        .unwrap()
+                        .scalar(at)
+                        .as_f64()
+                        .unwrap()
+                        .to_bits(),
+                    expected,
+                    "{year}: source {address}"
+                );
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                checked += 1;
+                let id = case["id"].as_str().unwrap();
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                assert_eq!(case["saved_cache_type"], "n", "{id}");
+                let expected = u64::from_str_radix(case["raw_bits"].as_str().unwrap(), 16).unwrap();
+                let saved = case["saved_cache_text"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert_eq!(saved.to_bits(), expected, "{id}: cache transport");
+                assert_eq!(
+                    book.sheet("Cases")
+                        .unwrap()
+                        .scalar(at)
+                        .as_f64()
+                        .unwrap()
+                        .to_bits(),
+                    expected,
+                    "{id}"
+                );
+            }
         }
-        for case in cases.iter().filter(|case| case["date_system"] == year) {
-            let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case[spelling].as_str().unwrap(), at)),
-            ).unwrap();
-        }
-        let report = book.calculate_all().unwrap();
-        assert_eq!((report.uncomputed, report.circular_count), (0, 0));
-        for address in ["A1", "A2", "A3"] {
-            let expected = u64::from_str_radix(sources[address]["bits"].as_str().unwrap(), 16).unwrap();
-            let at: CellRef = address.parse().unwrap();
-            assert_eq!(book.sheet("Inputs").unwrap().scalar(at).as_f64().unwrap().to_bits(), expected,
-                "{year}: source {address}");
-        }
-        for case in cases.iter().filter(|case| case["date_system"] == year) {
-            checked += 1;
-            let id = case["id"].as_str().unwrap();
-            let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            assert_eq!(case["saved_cache_type"], "n", "{id}");
-            let expected = u64::from_str_radix(case["raw_bits"].as_str().unwrap(), 16).unwrap();
-            let saved = case["saved_cache_text"].as_str().unwrap().parse::<f64>().unwrap();
-            assert_eq!(saved.to_bits(), expected, "{id}: cache transport");
-            assert_eq!(book.sheet("Cases").unwrap().scalar(at).as_f64().unwrap().to_bits(), expected, "{id}");
-        }
-    }
     }
     assert_eq!(checked, 380);
 }
@@ -1016,21 +1218,45 @@ fn lazy_selectors_evaluator_preserves_selected_types_and_reference_origin() {
 
     let mut evaluator = ContextEvaluator::default();
     for (text, expected, calls) in [
-        ("IF(FALSE,MYSTERY(A1),7)", Some(Scalar::from(7.0)), [0, 0, 0]),
+        (
+            "IF(FALSE,MYSTERY(A1),7)",
+            Some(Scalar::from(7.0)),
+            [0, 0, 0],
+        ),
         ("IF(TRUE,MYSTERY(A1),7)", None, [0, 0, 0]),
         ("IF(FALSE,9)", Some(Scalar::from(false)), [0, 0, 0]),
         ("IF(FALSE,9,)", Some(Scalar::from(0.0)), [0, 0, 0]),
         ("IFERROR(NA(),ABS(-9))", Some(Scalar::from(9.0)), [0, 0, 0]),
         ("IFNA(NA(),TRUE)", Some(Scalar::from(true)), [0, 0, 0]),
-        ("CHOOSE(1.9,9,SUM(A1:A5))", Some(Scalar::from(9.0)), [0, 0, 0]),
-        ("CHOOSE(2.9,9,SUM(A1:A5))", Some(Scalar::from(7.0)), [1, 0, 5]),
-        ("SUM(IF(TRUE,A1:A5,MYSTERY(1)))", Some(Scalar::from(7.0)), [1, 0, 5]),
-        ("SUM(CHOOSE(2,MYSTERY(1),A1:A5))", Some(Scalar::from(7.0)), [1, 0, 5]),
+        (
+            "CHOOSE(1.9,9,SUM(A1:A5))",
+            Some(Scalar::from(9.0)),
+            [0, 0, 0],
+        ),
+        (
+            "CHOOSE(2.9,9,SUM(A1:A5))",
+            Some(Scalar::from(7.0)),
+            [1, 0, 5],
+        ),
+        (
+            "SUM(IF(TRUE,A1:A5,MYSTERY(1)))",
+            Some(Scalar::from(7.0)),
+            [1, 0, 5],
+        ),
+        (
+            "SUM(CHOOSE(2,MYSTERY(1),A1:A5))",
+            Some(Scalar::from(7.0)),
+            [1, 0, 5],
+        ),
         ("IFERROR(A1,SUM(A1:A5))", Some(Scalar::from(2.0)), [1, 1, 0]),
         ("IFNA(A1,SUM(A1:A5))", Some(Scalar::from(2.0)), [1, 1, 0]),
     ] {
         let formula = Formula::from_file(text, CellRef::new(0, 1));
-        assert_eq!(evaluator.evaluate(&formula, false, false).unwrap(), expected, "{text}");
+        assert_eq!(
+            evaluator.evaluate(&formula, false, false).unwrap(),
+            expected,
+            "{text}"
+        );
         assert_eq!(evaluator.calls(), calls, "{text}");
         assert!(evaluator.is_clear(), "{text}");
     }
@@ -1046,11 +1272,16 @@ fn lazy_selectors_evaluator_cleans_a_selected_late_read_failure() {
     let mut evaluator = ContextEvaluator::default();
     let formula = Formula::from_file("IF(TRUE,SUM(A1:A5),9)", CellRef::new(0, 1));
     let error = evaluator.evaluate(&formula, false, true).unwrap_err();
-    assert!(matches!(error, yggdryl::Error::InvalidRecord { ref path, .. } if path == "context-fixture!A3"));
+    assert!(
+        matches!(error, yggdryl::Error::InvalidRecord { ref path, .. } if path == "context-fixture!A3")
+    );
     assert_eq!(evaluator.calls(), [1, 0, 3]);
     assert!(evaluator.is_clear());
     let skipped = Formula::from_file("IF(FALSE,SUM(A1:A5),9)", CellRef::new(0, 1));
-    assert_eq!(evaluator.evaluate(&skipped, false, true).unwrap(), Some(Scalar::from(9.0)));
+    assert_eq!(
+        evaluator.evaluate(&skipped, false, true).unwrap(),
+        Some(Scalar::from(9.0))
+    );
     assert_eq!(evaluator.calls(), [0, 0, 0]);
     assert!(evaluator.is_clear());
 }
@@ -1059,22 +1290,51 @@ fn lazy_selectors_evaluator_cleans_a_selected_late_read_failure() {
 #[test]
 fn multi_selectors_evaluator_visits_initial_inputs_and_only_the_chosen_result() {
     use yggdryl::internals::excel_formula_eval::ContextEvaluator;
-    let mut evaluator=ContextEvaluator::default();
-    for (text,expected,calls) in [
-        ("IFS(TRUE,11,A1,12)",Scalar::from(11.0),[1,0,0]),
-        ("SWITCH(1,1,11,A1,12)",Scalar::from(11.0),[1,0,0]),
-        ("IFS(FALSE,A1,TRUE,12)",Scalar::from(12.0),[0,0,0]),
-        ("SWITCH(2,1,A1,2,12)",Scalar::from(12.0),[0,0,0]),
-        ("IFS(TRUE,11,NA(),MYSTERY(1))",Scalar::from(11.0),[0,0,0]),
-        ("SWITCH(1,1,11,NA(),MYSTERY(1))",Scalar::from(11.0),[0,0,0]),
-        ("SUM(IFS(TRUE,A1:A5,TRUE,MYSTERY(1)))",Scalar::from(7.0),[1,0,5]),
-        ("SUM(SWITCH(1,1,A1:A5,MYSTERY(1)))",Scalar::from(7.0),[1,0,5]),
-        ("ISREF(IFS(TRUE,A1,TRUE,MYSTERY(1)))",Scalar::from(true),[1,0,0]),
-        ("ISREF(SWITCH(1,1,A1,MYSTERY(1)))",Scalar::from(true),[1,0,0]),
+    let mut evaluator = ContextEvaluator::default();
+    for (text, expected, calls) in [
+        ("IFS(TRUE,11,A1,12)", Scalar::from(11.0), [1, 0, 0]),
+        ("SWITCH(1,1,11,A1,12)", Scalar::from(11.0), [1, 0, 0]),
+        ("IFS(FALSE,A1,TRUE,12)", Scalar::from(12.0), [0, 0, 0]),
+        ("SWITCH(2,1,A1,2,12)", Scalar::from(12.0), [0, 0, 0]),
+        (
+            "IFS(TRUE,11,NA(),MYSTERY(1))",
+            Scalar::from(11.0),
+            [0, 0, 0],
+        ),
+        (
+            "SWITCH(1,1,11,NA(),MYSTERY(1))",
+            Scalar::from(11.0),
+            [0, 0, 0],
+        ),
+        (
+            "SUM(IFS(TRUE,A1:A5,TRUE,MYSTERY(1)))",
+            Scalar::from(7.0),
+            [1, 0, 5],
+        ),
+        (
+            "SUM(SWITCH(1,1,A1:A5,MYSTERY(1)))",
+            Scalar::from(7.0),
+            [1, 0, 5],
+        ),
+        (
+            "ISREF(IFS(TRUE,A1,TRUE,MYSTERY(1)))",
+            Scalar::from(true),
+            [1, 0, 0],
+        ),
+        (
+            "ISREF(SWITCH(1,1,A1,MYSTERY(1)))",
+            Scalar::from(true),
+            [1, 0, 0],
+        ),
     ] {
-        let formula=Formula::from_file(text,CellRef::new(0,1));
-        assert_eq!(evaluator.evaluate(&formula,false,false).unwrap(),Some(expected),"{text}");
-        assert_eq!(evaluator.calls(),calls,"{text}");assert!(evaluator.is_clear(),"{text}");
+        let formula = Formula::from_file(text, CellRef::new(0, 1));
+        assert_eq!(
+            evaluator.evaluate(&formula, false, false).unwrap(),
+            Some(expected),
+            "{text}"
+        );
+        assert_eq!(evaluator.calls(), calls, "{text}");
+        assert!(evaluator.is_clear(), "{text}");
     }
 }
 
@@ -1084,23 +1344,27 @@ fn geometry_functions_read_reference_shape_without_scalar_or_range_values() {
     use yggdryl::internals::excel_formula_eval::ContextEvaluator;
     let mut evaluator = ContextEvaluator::default();
     for (text, expected, calls) in [
-        ("ROW(A1:A5)", Some(1.0), [1,0,0]),
-        ("COLUMN(A1:A5)", Some(1.0), [1,0,0]),
-        ("ROWS(A1:A5)", Some(5.0), [1,0,0]),
-        ("COLUMNS(A1:A5)", Some(1.0), [1,0,0]),
-        ("ROWS(@A1:A5)", Some(1.0), [1,0,0]),
-        ("SUM(@A1:A5)", Some(2.0), [1,1,0]),
-        ("ROWS({1,2;3,4})", Some(2.0), [0,0,0]),
-        ("COLUMNS({1,2;3,4})", Some(2.0), [0,0,0]),
-        ("ROWS(IF(TRUE,{1,2;3,4},0))", Some(2.0), [0,0,0]),
-        ("ROWS(TRUE)", Some(1.0), [0,0,0]),
+        ("ROW(A1:A5)", Some(1.0), [1, 0, 0]),
+        ("COLUMN(A1:A5)", Some(1.0), [1, 0, 0]),
+        ("ROWS(A1:A5)", Some(5.0), [1, 0, 0]),
+        ("COLUMNS(A1:A5)", Some(1.0), [1, 0, 0]),
+        ("ROWS(@A1:A5)", Some(1.0), [1, 0, 0]),
+        ("SUM(@A1:A5)", Some(2.0), [1, 1, 0]),
+        ("ROWS({1,2;3,4})", Some(2.0), [0, 0, 0]),
+        ("COLUMNS({1,2;3,4})", Some(2.0), [0, 0, 0]),
+        ("ROWS(IF(TRUE,{1,2;3,4},0))", Some(2.0), [0, 0, 0]),
+        ("ROWS(TRUE)", Some(1.0), [0, 0, 0]),
         // Native literal_arrays_native.json retains the exact numeric10.
         // Array evaluation adds no reference intake, scalarization or range read.
-        ("SUM({1,2;3,4})", Some(10.0), [0,0,0]),
-        ("ROW(7)", None, [0,0,0]),
+        ("SUM({1,2;3,4})", Some(10.0), [0, 0, 0]),
+        ("ROW(7)", None, [0, 0, 0]),
     ] {
-        let formula = Formula::from_entry(text, CellRef::new(0,0)).unwrap();
-        assert_eq!(evaluator.evaluate(&formula, false, false).unwrap(), expected.map(Scalar::from), "{text}");
+        let formula = Formula::from_entry(text, CellRef::new(0, 0)).unwrap();
+        assert_eq!(
+            evaluator.evaluate(&formula, false, false).unwrap(),
+            expected.map(Scalar::from),
+            "{text}"
+        );
         assert_eq!(evaluator.calls(), calls, "{text}");
         assert!(evaluator.is_clear(), "{text}");
     }
@@ -1113,7 +1377,10 @@ fn temporal_serial_extraction_matches_native_direct_cases() {
         serde_json::from_str(include_str!("../fixtures/temporal_functions_native.json")).unwrap();
     assert_eq!(fixture["native_cache_equal"], 248);
     let mut covered = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let before_covered = covered;
         let mut book = Workbook::new();
         book.set_date_system(system);
@@ -1121,23 +1388,37 @@ fn temporal_serial_extraction_matches_native_direct_cases() {
         let selected = fixture["cases"].as_array().unwrap().iter().filter(|case| {
             case["date_system"] == year
                 && (case["group"] == "serial_direct" || case["group"] == "phantom_weekday")
-                && matches!(case["function"].as_str(), Some("YEAR" | "MONTH" | "DAY" | "WEEKDAY"))
+                && matches!(
+                    case["function"].as_str(),
+                    Some("YEAR" | "MONTH" | "DAY" | "WEEKDAY")
+                )
         });
         for case in selected {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
             covered += 1;
         }
-        assert_eq!(covered - before_covered, 42, "{year}: native fixture selection");
+        assert_eq!(
+            covered - before_covered,
+            42,
+            "{year}: native fixture selection"
+        );
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (42, 0), "{year}");
         for case in fixture["cases"].as_array().unwrap().iter().filter(|case| {
             case["date_system"] == year
                 && (case["group"] == "serial_direct" || case["group"] == "phantom_weekday")
-                && matches!(case["function"].as_str(), Some("YEAR" | "MONTH" | "DAY" | "WEEKDAY"))
+                && matches!(
+                    case["function"].as_str(),
+                    Some("YEAR" | "MONTH" | "DAY" | "WEEKDAY")
+                )
         }) {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
@@ -1145,12 +1426,14 @@ fn temporal_serial_extraction_matches_native_direct_cases() {
                 "n" => assert_eq!(
                     cell.value().as_f64(),
                     Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 "e" => assert_eq!(
                     cell.error().map(|error| error.as_str()),
                     case["cache"].as_str(),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
@@ -1167,7 +1450,10 @@ fn temporal_serial_extraction_uses_styled_source_raw_serial() {
 
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/temporal_functions_native.json")).unwrap();
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Inputs").unwrap();
@@ -1175,10 +1461,10 @@ fn temporal_serial_extraction_uses_styled_source_raw_serial() {
             .into_iter()
             .enumerate()
         {
-            book.sheet_mut("Inputs").unwrap().set_cell(
-                CellRef::new((row + 1) as u32, 0),
-                Scalar::from(serial),
-            ).unwrap();
+            book.sheet_mut("Inputs")
+                .unwrap()
+                .set_cell(CellRef::new((row + 1) as u32, 0), Scalar::from(serial))
+                .unwrap();
         }
         book.set_style(
             "Inputs",
@@ -1187,7 +1473,8 @@ fn temporal_serial_extraction_uses_styled_source_raw_serial() {
                 number_format: Some("mm-dd-yy".into()),
                 ..StylePatch::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         book.add_sheet("Cases").unwrap();
         for case in fixture["cases"].as_array().unwrap().iter().filter(|case| {
             case["date_system"] == year
@@ -1195,10 +1482,14 @@ fn temporal_serial_extraction_uses_styled_source_raw_serial() {
                 && matches!(case["function"].as_str(), Some("YEAR" | "MONTH" | "DAY"))
         }) {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (18, 0), "{year}");
@@ -1209,9 +1500,15 @@ fn temporal_serial_extraction_uses_styled_source_raw_serial() {
         }) {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             assert_eq!(
-                book.sheet("Cases").unwrap().cell(at).unwrap().value().as_f64(),
+                book.sheet("Cases")
+                    .unwrap()
+                    .cell(at)
+                    .unwrap()
+                    .value()
+                    .as_f64(),
                 Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
-                "{}", case["id"]
+                "{}",
+                case["id"]
             );
         }
     }
@@ -1226,14 +1523,18 @@ fn prefixed_days_matches_native_scalar_and_reference_cases() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/days_weekday_native.json")).unwrap();
     assert_eq!(fixture["native_cache_equal"], 140);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Inputs").unwrap();
         for (row, serial) in [0.0, 1.0, 59.0, 60.0, 60.5, 61.0].into_iter().enumerate() {
-            book.sheet_mut("Inputs").unwrap().set_cell(
-                CellRef::new((row + 1) as u32, 0), Scalar::from(serial),
-            ).unwrap();
+            book.sheet_mut("Inputs")
+                .unwrap()
+                .set_cell(CellRef::new((row + 1) as u32, 0), Scalar::from(serial))
+                .unwrap();
         }
         book.set_style(
             "Inputs",
@@ -1242,20 +1543,30 @@ fn prefixed_days_matches_native_scalar_and_reference_cases() {
                 number_format: Some("mm-dd-yy".into()),
                 ..StylePatch::default()
             },
-        ).unwrap();
+        )
+        .unwrap();
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year
-                && case["function"] == "DAYS"
-                && case["group"] != "construction"
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year
+                    && case["function"] == "DAYS"
+                    && case["group"] != "construction"
+            })
+            .collect();
         assert_eq!(cases.len(), 17, "{year}: native DAYS selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (17, 0), "{year}");
@@ -1266,12 +1577,14 @@ fn prefixed_days_matches_native_scalar_and_reference_cases() {
                 "n" => assert_eq!(
                     cell.value().as_f64(),
                     Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 "e" => assert_eq!(
                     cell.error().map(|error| error.as_str()),
                     case["cache"].as_str(),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
@@ -1283,20 +1596,30 @@ fn prefixed_days_matches_native_scalar_and_reference_cases() {
 fn weekday_return_modes_match_native_integer_fractional_and_error_codes() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/days_weekday_native.json")).unwrap();
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year && case["function"] == "WEEKDAY"
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year && case["function"] == "WEEKDAY")
+            .collect();
         assert_eq!(cases.len(), 52, "{year}: native WEEKDAY selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (52, 0), "{year}");
@@ -1307,12 +1630,14 @@ fn weekday_return_modes_match_native_integer_fractional_and_error_codes() {
                 "n" => assert_eq!(
                     cell.value().as_f64(),
                     Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 "e" => assert_eq!(
                     cell.error().map(|error| error.as_str()),
                     case["cache"].as_str(),
-                    "{}", case["id"]
+                    "{}",
+                    case["id"]
                 ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
@@ -1323,29 +1648,46 @@ fn weekday_return_modes_match_native_integer_fractional_and_error_codes() {
 #[test]
 fn index_and_offset_native_references() {
     super::native_function_fixture(include_str!("../fixtures/indexed_offset_native.json"), 48);
-    super::native_function_fixture(include_str!("../fixtures/indexed_offset_edges_native.json"), 36);
+    super::native_function_fixture(
+        include_str!("../fixtures/indexed_offset_edges_native.json"),
+        36,
+    );
 }
 
 #[test]
 fn index_reference_dependencies_follow_only_the_consumed_cells() {
     let mut book = Workbook::new();
     book.add_sheet("Data").unwrap();
-    for (at, text) in [("A1", "=INDEX(A1:B1,1,2)"), ("B1", "7"),
-        ("A2", "=SUM(INDEX(B1:C2,0,1))"), ("B2", "3"),
-        ("C1", "=A1+1"), ("C2", "=A2+1")]
-    {
+    for (at, text) in [
+        ("A1", "=INDEX(A1:B1,1,2)"),
+        ("B1", "7"),
+        ("A2", "=SUM(INDEX(B1:C2,0,1))"),
+        ("B2", "3"),
+        ("C1", "=A1+1"),
+        ("C2", "=A2+1"),
+    ] {
         book.set_entry("Data", at.parse().unwrap(), text).unwrap();
     }
-    let report=book.calculate_all().unwrap();
-    assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(4,0,0));
-    for (at,value) in [("A1",7.0),("A2",10.0),("C1",8.0),("C2",11.0)] {
-        assert_eq!(book.sheet("Data").unwrap().scalar(at.parse().unwrap()), Scalar::from(value));
+    let report = book.calculate_all().unwrap();
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (4, 0, 0)
+    );
+    for (at, value) in [("A1", 7.0), ("A2", 10.0), ("C1", 8.0), ("C2", 11.0)] {
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at.parse().unwrap()),
+            Scalar::from(value)
+        );
     }
-    book.set_entry("Data","B2".parse().unwrap(),"4").unwrap();
-    assert_eq!(book.recalculate().unwrap().evaluated,2);
-    assert_eq!(book.sheet("Data").unwrap().scalar("C2".parse().unwrap()),Scalar::from(12.0));
-    book.set_entry("Data","A1".parse().unwrap(),"=INDEX(A1:B1,1,1)").unwrap();
-    assert_eq!(book.recalculate().unwrap().circular_count,1);
+    book.set_entry("Data", "B2".parse().unwrap(), "4").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 2);
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar("C2".parse().unwrap()),
+        Scalar::from(12.0)
+    );
+    book.set_entry("Data", "A1".parse().unwrap(), "=INDEX(A1:B1,1,1)")
+        .unwrap();
+    assert_eq!(book.recalculate().unwrap().circular_count, 1);
 }
 
 /// The documented WEEKDAY return-type table is closed; outside codes are #NUM!.
@@ -1355,21 +1697,51 @@ fn weekday_out_of_table_modes_refuse_with_num() {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        for (index, code) in ["-1", "4", "19", "1E100", "-0.5", "17.9", "17"].iter().enumerate() {
+        for (index, code) in ["-1", "4", "19", "1E100", "-0.5", "17.9", "17"]
+            .iter()
+            .enumerate()
+        {
             let at = CellRef::new((index + 1) as u32, 0);
             let formula = format!("WEEKDAY(61,{code})");
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(&formula, at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(&formula, at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (7, 0), "{system}");
         for row in 1..=5 {
-            assert_eq!(book.sheet("Cases").unwrap().cell(CellRef::new(row, 0)).unwrap().error().map(|e| e.as_str()), Some("#NUM!"), "{system} row {row}");
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .cell(CellRef::new(row, 0))
+                    .unwrap()
+                    .error()
+                    .map(|e| e.as_str()),
+                Some("#NUM!"),
+                "{system} row {row}"
+            );
         }
         // Fractional mode 17.9 truncates to 17, the documented Sunday-first mode.
-        assert_eq!(book.sheet("Cases").unwrap().cell(CellRef::new(6, 0)).unwrap().value().as_f64(), book.sheet("Cases").unwrap().cell(CellRef::new(7, 0)).unwrap().value().as_f64(), "{system}");
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .cell(CellRef::new(6, 0))
+                .unwrap()
+                .value()
+                .as_f64(),
+            book.sheet("Cases")
+                .unwrap()
+                .cell(CellRef::new(7, 0))
+                .unwrap()
+                .value()
+                .as_f64(),
+            "{system}"
+        );
     }
 }
 
@@ -1379,20 +1751,30 @@ fn date_constructor_matches_native_phantom_and_rollover_cases() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/temporal_functions_native.json")).unwrap();
     assert_eq!(fixture["native_cache_equal"], 248);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year && case["function"] == "DATE"
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year && case["function"] == "DATE")
+            .collect();
         assert_eq!(cases.len(), 10, "{year}: native DATE selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (10, 0), "{year}");
@@ -1400,8 +1782,18 @@ fn date_constructor_matches_native_phantom_and_rollover_cases() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "n" => assert_eq!(cell.value().as_f64(), Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()), "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["cache"].as_str(), "{}", case["id"]),
+                "n" => assert_eq!(
+                    cell.value().as_f64(),
+                    Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    case["cache"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
         }
@@ -1416,28 +1808,52 @@ fn clock_parts_match_native_rollover_and_source_cases() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/clock_parts_native.json")).unwrap();
     assert_eq!(fixture["native_cache_equal"], 120);
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Inputs").unwrap();
         for (row, serial) in [0.0, 1.0, 59.0, 60.0, 60.5, 61.0].into_iter().enumerate() {
-            book.sheet_mut("Inputs").unwrap().set_cell(CellRef::new((row + 2) as u32, 0), Scalar::from(serial)).unwrap();
+            book.sheet_mut("Inputs")
+                .unwrap()
+                .set_cell(CellRef::new((row + 2) as u32, 0), Scalar::from(serial))
+                .unwrap();
         }
-        book.set_style("Inputs", &["A2:A7".parse::<CellRange>().unwrap()], &StylePatch {
-            number_format: Some("mm-dd-yy hh:mm:ss.000".into()),
-            ..StylePatch::default()
-        }).unwrap();
+        book.set_style(
+            "Inputs",
+            &["A2:A7".parse::<CellRange>().unwrap()],
+            &StylePatch {
+                number_format: Some("mm-dd-yy hh:mm:ss.000".into()),
+                ..StylePatch::default()
+            },
+        )
+        .unwrap();
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year && matches!(case["function"].as_str(), Some("HOUR" | "MINUTE" | "SECOND"))
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year
+                    && matches!(
+                        case["function"].as_str(),
+                        Some("HOUR" | "MINUTE" | "SECOND")
+                    )
+            })
+            .collect();
         assert_eq!(cases.len(), 48, "{year}: native clock-part selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (48, 0), "{year}");
@@ -1445,8 +1861,18 @@ fn clock_parts_match_native_rollover_and_source_cases() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "n" => assert_eq!(cell.value().as_f64(), Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()), "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["cache"].as_str(), "{}", case["id"]),
+                "n" => assert_eq!(
+                    cell.value().as_f64(),
+                    Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    case["cache"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
         }
@@ -1458,20 +1884,30 @@ fn clock_parts_match_native_rollover_and_source_cases() {
 fn time_constructor_matches_native_component_and_error_cases() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/clock_parts_native.json")).unwrap();
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year && case["function"] == "TIME"
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year && case["function"] == "TIME")
+            .collect();
         assert_eq!(cases.len(), 12, "{year}: native TIME selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (12, 0), "{year}");
@@ -1481,10 +1917,16 @@ fn time_constructor_matches_native_component_and_error_cases() {
             match case["cache_type"].as_str().unwrap() {
                 "n" => {
                     let observed = cell.value().as_f64().unwrap();
-                    let native = u64::from_str_radix(case["value2_bits"].as_str().unwrap(), 16).unwrap();
+                    let native =
+                        u64::from_str_radix(case["value2_bits"].as_str().unwrap(), 16).unwrap();
                     assert_eq!(observed.to_bits(), native, "{}", case["id"]);
                 }
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["cache"].as_str(), "{}", case["id"]),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    case["cache"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
         }
@@ -1497,21 +1939,33 @@ fn time_constructor_matches_native_component_and_error_cases() {
 fn month_shift_matches_native_phantom_and_modern_cases() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/temporal_functions_native.json")).unwrap();
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year
-                && matches!(case["function"].as_str(), Some("EDATE" | "EOMONTH"))
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year
+                    && matches!(case["function"].as_str(), Some("EDATE" | "EOMONTH"))
+            })
+            .collect();
         assert_eq!(cases.len(), 10, "{year}: native month-shift selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (10, 0), "{year}");
@@ -1519,8 +1973,18 @@ fn month_shift_matches_native_phantom_and_modern_cases() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "n" => assert_eq!(cell.value().as_f64(), Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()), "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["cache"].as_str(), "{}", case["id"]),
+                "n" => assert_eq!(
+                    cell.value().as_f64(),
+                    Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    case["cache"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
         }
@@ -1534,23 +1998,40 @@ fn month_shift_before_epoch_and_extreme_date_month_refuse_without_panicking() {
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
         let formulas = [
-            "EDATE(0,-1)", "EDATE(1,-1)", "EDATE(0,-12)", "EDATE(1,-12)",
-            "EOMONTH(0,-1)", "EOMONTH(1,-1)",
-            "EOMONTH(0,-12)", "EOMONTH(1,-12)",
+            "EDATE(0,-1)",
+            "EDATE(1,-1)",
+            "EDATE(0,-12)",
+            "EDATE(1,-12)",
+            "EOMONTH(0,-1)",
+            "EOMONTH(1,-1)",
+            "EOMONTH(0,-12)",
+            "EOMONTH(1,-12)",
             "DATE(1900,-25769826575,1)",
         ];
         for (index, formula) in formulas.into_iter().enumerate() {
             let at = CellRef::new(index as u32, 0);
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(formula, at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula, at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (9, 0), "{system}");
         for row in 0..9 {
-            assert_eq!(book.sheet("Cases").unwrap().cell(CellRef::new(row, 0)).unwrap()
-                .error().map(|error| error.as_str()), Some("#NUM!"), "{system} row {row}");
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .cell(CellRef::new(row, 0))
+                    .unwrap()
+                    .error()
+                    .map(|error| error.as_str()),
+                Some("#NUM!"),
+                "{system} row {row}"
+            );
         }
     }
 }
@@ -1561,24 +2042,38 @@ fn month_shift_before_epoch_and_extreme_date_month_refuse_without_panicking() {
 fn parsed_temporal_text_uses_unambiguous_entry_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../fixtures/temporal_functions_native.json")).unwrap();
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
-        let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| {
-            case["date_system"] == year
-                && ((case["function"] == "DATEVALUE"
-                        && matches!(case["formula"].as_str(),
-                            Some("DATEVALUE(\"2024-02-29\")" | "DATEVALUE(\"1900-02-29\")")))
-                    || case["function"] == "TIMEVALUE")
-        }).collect();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year
+                    && ((case["function"] == "DATEVALUE"
+                        && matches!(
+                            case["formula"].as_str(),
+                            Some("DATEVALUE(\"2024-02-29\")" | "DATEVALUE(\"1900-02-29\")")
+                        ))
+                        || case["function"] == "TIMEVALUE")
+            })
+            .collect();
         assert_eq!(cases.len(), 6, "{year}: locale-free text selection");
         for case in &cases {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-            book.sheet_mut("Cases").unwrap().insert_cell(
-                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                    .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
-            ).unwrap();
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(case["formula"].as_str().unwrap(), at)),
+                )
+                .unwrap();
         }
         let report = book.calculate_all().unwrap();
         assert_eq!((report.evaluated, report.uncomputed), (6, 0), "{year}");
@@ -1586,8 +2081,18 @@ fn parsed_temporal_text_uses_unambiguous_entry_contract() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "n" => assert_eq!(cell.value().as_f64(), Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()), "{}", case["id"]),
-                "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["cache"].as_str(), "{}", case["id"]),
+                "n" => assert_eq!(
+                    cell.value().as_f64(),
+                    Some(case["cache"].as_str().unwrap().parse::<f64>().unwrap()),
+                    "{}",
+                    case["id"]
+                ),
+                "e" => assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    case["cache"].as_str(),
+                    "{}",
+                    case["id"]
+                ),
                 other => panic!("{}: unexpected cache type {other}", case["id"]),
             }
         }
@@ -1599,17 +2104,28 @@ fn ambiguous_formula_date_text_keeps_its_cache_without_workbook_locale() {
     let mut book = Workbook::new();
     book.add_sheet("Cases").unwrap();
     let at = CellRef::new(0, 0);
-    book.sheet_mut("Cases").unwrap().insert_cell(
-        Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file("DATEVALUE(\"1/2/2024\")", at)),
-    ).unwrap();
+    book.sheet_mut("Cases")
+        .unwrap()
+        .insert_cell(
+            Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900)
+                .unwrap()
+                .with_formula(Formula::from_file("DATEVALUE(\"1/2/2024\")", at)),
+        )
+        .unwrap();
     let before = book.sheet("Cases").unwrap().revision();
     let report = book.calculate_all().unwrap();
     assert_eq!((report.evaluated, report.uncomputed), (0, 1));
     assert_eq!(book.sheet("Cases").unwrap().revision(), before);
-    assert_eq!(book.sheet("Cases").unwrap().cell(at).unwrap().value().as_f64(), Some(-777.0));
+    assert_eq!(
+        book.sheet("Cases")
+            .unwrap()
+            .cell(at)
+            .unwrap()
+            .value()
+            .as_f64(),
+        Some(-777.0)
+    );
 }
-
 
 #[test]
 fn gcd_lcm_replay_all_88_native_integer_math_observations() {
@@ -1621,7 +2137,10 @@ fn gcd_lcm_replay_all_88_native_integer_math_observations() {
     assert_eq!(fixture["cleanup_completed"], true);
     let cases = fixture["cases"].as_array().unwrap();
     let mut covered = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Values").unwrap();
@@ -1635,21 +2154,41 @@ fn gcd_lcm_replay_all_88_native_integer_math_observations() {
                 Scalar::from(value.as_str().unwrap())
             };
             let at: CellRef = address.parse().unwrap();
-            book.sheet_mut("Values").unwrap().insert_cell(
-                Cell::from_scalar(at, value, system).unwrap()
-            ).unwrap();
+            book.sheet_mut("Values")
+                .unwrap()
+                .insert_cell(Cell::from_scalar(at, value, system).unwrap())
+                .unwrap();
         }
-        for case in cases.iter().filter(|case| case["date_system"] == year
-            && case["shape"]["kind"] == "source") {
-            book.set_entry("Values", case["cell"].as_str().unwrap().parse().unwrap(),
-                case["actual"]["formula"].as_str().unwrap()).unwrap();
+        for case in cases
+            .iter()
+            .filter(|case| case["date_system"] == year && case["shape"]["kind"] == "source")
+        {
+            book.set_entry(
+                "Values",
+                case["cell"].as_str().unwrap().parse().unwrap(),
+                case["actual"]["formula"].as_str().unwrap(),
+            )
+            .unwrap();
         }
-        let chosen: Vec<_> = cases.iter().filter(|case| case["date_system"] == year
-            && matches!(case["shape"]["function"].as_str(), Some("GCD" | "LCM"))).collect();
-        assert_eq!(chosen.len(), 44, "{year}: every native GCD/LCM case must run");
+        let chosen: Vec<_> = cases
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year
+                    && matches!(case["shape"]["function"].as_str(), Some("GCD" | "LCM"))
+            })
+            .collect();
+        assert_eq!(
+            chosen.len(),
+            44,
+            "{year}: every native GCD/LCM case must run"
+        );
         for case in &chosen {
-            book.set_entry("Cases", case["cell"].as_str().unwrap().parse().unwrap(),
-                case["actual"]["formula"].as_str().unwrap()).unwrap();
+            book.set_entry(
+                "Cases",
+                case["cell"].as_str().unwrap().parse().unwrap(),
+                case["actual"]["formula"].as_str().unwrap(),
+            )
+            .unwrap();
         }
         book.calculate_all().unwrap();
         let sheet = book.sheet("Cases").unwrap();
@@ -1658,12 +2197,20 @@ fn gcd_lcm_replay_all_88_native_integer_math_observations() {
             let cell = sheet.cell(at).unwrap();
             let cache = &case["saved_cache"];
             match cache["type"].as_str().unwrap_or("n") {
-                "e" => assert_eq!(cell.error(), Some(ExcelError::from_text(
-                    cache["value_text"].as_str().unwrap())), "{}", case["id"]),
+                "e" => assert_eq!(
+                    cell.error(),
+                    Some(ExcelError::from_text(cache["value_text"].as_str().unwrap())),
+                    "{}",
+                    case["id"]
+                ),
                 "n" => {
                     let expected: f64 = cache["value_text"].as_str().unwrap().parse().unwrap();
-                    assert_eq!(sheet.scalar(at).as_f64().unwrap().to_bits(), expected.to_bits(),
-                        "{}", case["id"]);
+                    assert_eq!(
+                        sheet.scalar(at).as_f64().unwrap().to_bits(),
+                        expected.to_bits(),
+                        "{}",
+                        case["id"]
+                    );
                 }
                 other => panic!("unexpected native cache type {other}: {}", case["id"]),
             }
@@ -1672,7 +2219,6 @@ fn gcd_lcm_replay_all_88_native_integer_math_observations() {
     }
     assert_eq!(covered, 88);
 }
-
 
 #[test]
 fn gcd_lcm_replay_native_integer_boundaries() {
@@ -1688,13 +2234,20 @@ fn gcd_lcm_replay_native_integer_boundaries() {
         assert_eq!(fixture["native_run_passed"], true);
         assert_eq!(fixture["cleanup_completed"], true);
         let cases = fixture["cases"].as_array().unwrap();
-        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for (year, system) in [
+            ("1900", DateSystem::Year1900),
+            ("1904", DateSystem::Year1904),
+        ] {
             let mut book = Workbook::new();
             book.set_date_system(system);
             book.add_sheet("Cases").unwrap();
             for case in cases.iter().filter(|case| case["date_system"] == year) {
-                book.set_entry("Cases", case["cell"].as_str().unwrap().parse().unwrap(),
-                    case["formula"].as_str().unwrap()).unwrap();
+                book.set_entry(
+                    "Cases",
+                    case["cell"].as_str().unwrap().parse().unwrap(),
+                    case["formula"].as_str().unwrap(),
+                )
+                .unwrap();
             }
             book.calculate_all().unwrap();
             let sheet = book.sheet("Cases").unwrap();
@@ -1702,12 +2255,20 @@ fn gcd_lcm_replay_native_integer_boundaries() {
                 let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
                 let cell = sheet.cell(at).unwrap();
                 match case["cache_type"].as_str().unwrap() {
-                    "e" => assert_eq!(cell.error(), Some(ExcelError::from_text(
-                        case["cache_value"].as_str().unwrap())), "{}", case["id"]),
+                    "e" => assert_eq!(
+                        cell.error(),
+                        Some(ExcelError::from_text(case["cache_value"].as_str().unwrap())),
+                        "{}",
+                        case["id"]
+                    ),
                     "n" => {
                         let expected: f64 = case["cache_value"].as_str().unwrap().parse().unwrap();
-                        assert_eq!(sheet.scalar(at).as_f64().unwrap().to_bits(), expected.to_bits(),
-                            "{}", case["id"]);
+                        assert_eq!(
+                            sheet.scalar(at).as_f64().unwrap().to_bits(),
+                            expected.to_bits(),
+                            "{}",
+                            case["id"]
+                        );
                     }
                     other => panic!("unexpected native cache {other}: {}", case["id"]),
                 }
@@ -1718,24 +2279,30 @@ fn gcd_lcm_replay_native_integer_boundaries() {
     assert_eq!(seen, 54);
 }
 
-
 #[test]
 fn lcm_replays_native_intermediate_error_order() {
     use yggdryl::excel::ExcelError;
 
-    let fixture: serde_json::Value = serde_json::from_str(
-        include_str!("../fixtures/lcm_order_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/lcm_order_native.json")).unwrap();
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     let cases = fixture["cases"].as_array().unwrap();
     let mut seen = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
         for case in cases.iter().filter(|case| case["date_system"] == year) {
-            book.set_entry("Cases", case["cell"].as_str().unwrap().parse().unwrap(),
-                case["formula"].as_str().unwrap()).unwrap();
+            book.set_entry(
+                "Cases",
+                case["cell"].as_str().unwrap().parse().unwrap(),
+                case["formula"].as_str().unwrap(),
+            )
+            .unwrap();
         }
         book.calculate_all().unwrap();
         let sheet = book.sheet("Cases").unwrap();
@@ -1743,12 +2310,20 @@ fn lcm_replays_native_intermediate_error_order() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = sheet.cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "e" => assert_eq!(cell.error(), Some(ExcelError::from_text(
-                    case["cache_value"].as_str().unwrap())), "{}", case["id"]),
+                "e" => assert_eq!(
+                    cell.error(),
+                    Some(ExcelError::from_text(case["cache_value"].as_str().unwrap())),
+                    "{}",
+                    case["id"]
+                ),
                 "n" => {
                     let expected: f64 = case["cache_value"].as_str().unwrap().parse().unwrap();
-                    assert_eq!(sheet.scalar(at).as_f64().unwrap().to_bits(), expected.to_bits(),
-                        "{}", case["id"]);
+                    assert_eq!(
+                        sheet.scalar(at).as_f64().unwrap().to_bits(),
+                        expected.to_bits(),
+                        "{}",
+                        case["id"]
+                    );
                 }
                 other => panic!("unexpected native cache {other}: {}", case["id"]),
             }
@@ -1757,7 +2332,6 @@ fn lcm_replays_native_intermediate_error_order() {
     }
     assert_eq!(seen, 16);
 }
-
 
 /// Replay one independent family from an unchanged native report. Its source
 /// error cells remain present, while the count proves every selected case ran.
@@ -1783,39 +2357,73 @@ fn lookup_native_function_subset(text: &str, function: &str, expected: usize, a1
 
 #[test]
 fn match_native_sorted_exact_and_wildcards() {
-    lookup_native_function_subset(include_str!("../fixtures/lookup_functions_native.json"), "MATCH", 72, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/lookup_functions_native.json"),
+        "MATCH",
+        72,
+        false,
+    );
 }
 
 #[test]
 fn vlookup_native_sorted_exact_and_index_edges() {
-    lookup_native_function_subset(include_str!("../fixtures/lookup_functions_native.json"), "VLOOKUP", 42, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/lookup_functions_native.json"),
+        "VLOOKUP",
+        42,
+        false,
+    );
 }
 
 #[test]
 fn hlookup_native_sorted_exact_and_index_edges() {
-    lookup_native_function_subset(include_str!("../fixtures/lookup_functions_native.json"), "HLOOKUP", 42, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/lookup_functions_native.json"),
+        "HLOOKUP",
+        42,
+        false,
+    );
 }
 
 #[test]
 fn lookup_native_sorted_vector() {
-    lookup_native_function_subset(include_str!("../fixtures/lookup_functions_native.json"), "LOOKUP", 16, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/lookup_functions_native.json"),
+        "LOOKUP",
+        16,
+        false,
+    );
 }
 
 #[test]
 fn xlookup_native_scalar_exact_approximate_and_wildcard() {
-    lookup_native_function_subset(include_str!("../fixtures/lookup_functions_native.json"), "XLOOKUP", 56, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/lookup_functions_native.json"),
+        "XLOOKUP",
+        56,
+        false,
+    );
 }
 
 #[test]
 fn indirect_native_a1_reference_identity_and_range() {
-    lookup_native_function_subset(include_str!("../fixtures/reference_functions_native.json"), "INDIRECT", 18, false);
+    lookup_native_function_subset(
+        include_str!("../fixtures/reference_functions_native.json"),
+        "INDIRECT",
+        18,
+        false,
+    );
 }
 
 #[test]
 fn address_native_a1_text_and_error_edges() {
-    lookup_native_function_subset(include_str!("../fixtures/address_functions_native.json"), "ADDRESS", 50, true);
+    lookup_native_function_subset(
+        include_str!("../fixtures/address_functions_native.json"),
+        "ADDRESS",
+        50,
+        true,
+    );
 }
-
 
 #[test]
 fn lookup_native_lazy_fallback_and_later_error() {
@@ -1827,17 +2435,24 @@ fn lookup_native_lazy_fallback_and_later_error() {
     super::native_function_fixture(fixture, 18);
 }
 
-
 #[test]
 fn lookup_exact_prefix_avoids_later_key_cycle() {
     let mut book = Workbook::new();
     book.add_sheet("Data").unwrap();
     book.add_sheet("Cases").unwrap();
     for (at, input) in [
-        ("A1", "1"), ("A2", "3"), ("A3", "=Cases!B2+1"),
-        ("B1", "10"), ("B2", "30"), ("B3", "50"),
-        ("J1", "1"), ("K1", "3"), ("L1", "=Cases!B3+1"),
-        ("J2", "10"), ("K2", "30"), ("L2", "50"),
+        ("A1", "1"),
+        ("A2", "3"),
+        ("A3", "=Cases!B2+1"),
+        ("B1", "10"),
+        ("B2", "30"),
+        ("B3", "50"),
+        ("J1", "1"),
+        ("K1", "3"),
+        ("L1", "=Cases!B3+1"),
+        ("J2", "10"),
+        ("K2", "30"),
+        ("L2", "50"),
     ] {
         book.set_entry("Data", at.parse().unwrap(), input).unwrap();
     }
@@ -1847,34 +2462,47 @@ fn lookup_exact_prefix_avoids_later_key_cycle() {
         ("B4", "=VLOOKUP(1,Data!A1:B3,2,FALSE)"),
         ("B5", "=_xlfn.XLOOKUP(1,Data!A1:A3,Data!B1:B3)"),
     ] {
-        book.set_entry("Cases", at.parse().unwrap(), formula).unwrap();
+        book.set_entry("Cases", at.parse().unwrap(), formula)
+            .unwrap();
     }
     let report = book.calculate_all().unwrap();
-    assert_eq!(report.circular_count, 0, "unused key suffixes cannot create cycles");
+    assert_eq!(
+        report.circular_count, 0,
+        "unused key suffixes cannot create cycles"
+    );
     for (at, expected) in [("B2", 1.0), ("B3", 10.0), ("B4", 10.0), ("B5", 10.0)] {
-        assert_eq!(book.sheet("Cases").unwrap().scalar(at.parse().unwrap()), Scalar::from(expected),
-            "{at}: an exact earlier match must finish before a later key formula");
+        assert_eq!(
+            book.sheet("Cases").unwrap().scalar(at.parse().unwrap()),
+            Scalar::from(expected),
+            "{at}: an exact earlier match must finish before a later key formula"
+        );
     }
 }
-
 
 #[test]
 fn lcm_replays_native_u64_intermediate_order() {
     use yggdryl::excel::ExcelError;
 
-    let fixture: serde_json::Value = serde_json::from_str(
-        include_str!("../fixtures/lcm_u64_order_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/lcm_u64_order_native.json")).unwrap();
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     let cases = fixture["cases"].as_array().unwrap();
     let mut seen = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
         for case in cases.iter().filter(|case| case["date_system"] == year) {
-            book.set_entry("Cases", case["cell"].as_str().unwrap().parse().unwrap(),
-                case["formula"].as_str().unwrap()).unwrap();
+            book.set_entry(
+                "Cases",
+                case["cell"].as_str().unwrap().parse().unwrap(),
+                case["formula"].as_str().unwrap(),
+            )
+            .unwrap();
         }
         book.calculate_all().unwrap();
         let sheet = book.sheet("Cases").unwrap();
@@ -1882,12 +2510,20 @@ fn lcm_replays_native_u64_intermediate_order() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = sheet.cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "e" => assert_eq!(cell.error(), Some(ExcelError::from_text(
-                    case["cache_value"].as_str().unwrap())), "{}", case["id"]),
+                "e" => assert_eq!(
+                    cell.error(),
+                    Some(ExcelError::from_text(case["cache_value"].as_str().unwrap())),
+                    "{}",
+                    case["id"]
+                ),
                 "n" => {
                     let expected: f64 = case["cache_value"].as_str().unwrap().parse().unwrap();
-                    assert_eq!(sheet.scalar(at).as_f64().unwrap().to_bits(), expected.to_bits(),
-                        "{}", case["id"]);
+                    assert_eq!(
+                        sheet.scalar(at).as_f64().unwrap().to_bits(),
+                        expected.to_bits(),
+                        "{}",
+                        case["id"]
+                    );
                 }
                 other => panic!("unexpected native cache {other}: {}", case["id"]),
             }
@@ -1897,40 +2533,52 @@ fn lcm_replays_native_u64_intermediate_order() {
     assert_eq!(seen, 16);
 }
 
-
 #[test]
 fn lcm_fractional_zero_clears_provisional_overflow() {
     // Excel truncates nonnegative numeric arguments before the exact pair fold.
     // A later 0.5 is therefore the same annihilating integer as a later zero.
     let mut book = Workbook::new();
     book.add_sheet("Cases").unwrap();
-    book.set_entry("Cases", "A1".parse().unwrap(),
-        "=LCM(POWER(2,52),POWER(2,52)-1,0.5)").unwrap();
+    book.set_entry(
+        "Cases",
+        "A1".parse().unwrap(),
+        "=LCM(POWER(2,52),POWER(2,52)-1,0.5)",
+    )
+    .unwrap();
     book.calculate_all().unwrap();
     assert_eq!(
-        book.sheet("Cases").unwrap().scalar("A1".parse().unwrap()).as_f64(),
+        book.sheet("Cases")
+            .unwrap()
+            .scalar("A1".parse().unwrap())
+            .as_f64(),
         Some(0.0)
     );
 }
-
 
 #[test]
 fn factorial_replays_native_order_and_boundary() {
     use yggdryl::excel::ExcelError;
 
-    let fixture: serde_json::Value = serde_json::from_str(
-        include_str!("../fixtures/factorial_order_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/factorial_order_native.json")).unwrap();
     assert_eq!(fixture["native_run_passed"], true);
     assert_eq!(fixture["cleanup_completed"], true);
     let cases = fixture["cases"].as_array().unwrap();
     let mut seen = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         let mut book = Workbook::new();
         book.set_date_system(system);
         book.add_sheet("Cases").unwrap();
         for case in cases.iter().filter(|case| case["date_system"] == year) {
-            book.set_entry("Cases", case["cell"].as_str().unwrap().parse().unwrap(),
-                case["formula"].as_str().unwrap()).unwrap();
+            book.set_entry(
+                "Cases",
+                case["cell"].as_str().unwrap().parse().unwrap(),
+                case["formula"].as_str().unwrap(),
+            )
+            .unwrap();
         }
         book.calculate_all().unwrap();
         let sheet = book.sheet("Cases").unwrap();
@@ -1938,12 +2586,20 @@ fn factorial_replays_native_order_and_boundary() {
             let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
             let cell = sheet.cell(at).unwrap();
             match case["cache_type"].as_str().unwrap() {
-                "e" => assert_eq!(cell.error(), Some(ExcelError::from_text(
-                    case["cache_value"].as_str().unwrap())), "{}", case["id"]),
+                "e" => assert_eq!(
+                    cell.error(),
+                    Some(ExcelError::from_text(case["cache_value"].as_str().unwrap())),
+                    "{}",
+                    case["id"]
+                ),
                 "n" => {
                     let expected: f64 = case["cache_value"].as_str().unwrap().parse().unwrap();
-                    assert_eq!(sheet.scalar(at).as_f64().unwrap().to_bits(), expected.to_bits(),
-                        "{}", case["id"]);
+                    assert_eq!(
+                        sheet.scalar(at).as_f64().unwrap().to_bits(),
+                        expected.to_bits(),
+                        "{}",
+                        case["id"]
+                    );
                 }
                 other => panic!("unexpected native cache {other}: {}", case["id"]),
             }
@@ -1955,87 +2611,192 @@ fn factorial_replays_native_order_and_boundary() {
 
 #[test]
 fn financial_annuities_keep_omitted_defaults_scalar_dependencies_and_errors() {
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    book.set_entry("Data",CellRef::new(0,0),"1").unwrap();
-    for (row,formula,expected) in [(0,"FV(A1,3,1,0)",-7.0),(1,"PV(A1,3,1,0)",-0.875),
-        (2,"FV(A1,3,1,,1)",-14.0),(3,"FV(0,3,1,2)",-5.0)] {
-        let host=CellRef::new(row,1);book.set_entry("Data",host,&format!("={formula}")).unwrap();
-        book.calculate_all().unwrap();assert_eq!(book.sheet("Data").unwrap().scalar(host).as_f64(),Some(expected));
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    book.set_entry("Data", CellRef::new(0, 0), "1").unwrap();
+    for (row, formula, expected) in [
+        (0, "FV(A1,3,1,0)", -7.0),
+        (1, "PV(A1,3,1,0)", -0.875),
+        (2, "FV(A1,3,1,,1)", -14.0),
+        (3, "FV(0,3,1,2)", -5.0),
+    ] {
+        let host = CellRef::new(row, 1);
+        book.set_entry("Data", host, &format!("={formula}"))
+            .unwrap();
+        book.calculate_all().unwrap();
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(host).as_f64(),
+            Some(expected)
+        );
     }
-    book.set_entry("Data",CellRef::new(0,0),"0").unwrap();
-    assert_eq!(book.recalculate().unwrap().evaluated,3);
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0,1)).as_f64(),Some(-3.0));
-    book.set_entry("Data",CellRef::new(0,0),"=1/0").unwrap();
-    assert_eq!(book.recalculate().unwrap().evaluated,4);
-    assert_eq!(book.sheet("Data").unwrap().cell(CellRef::new(0,1)).unwrap().error().map(|v|v.as_str()),Some("#DIV/0!"));
+    book.set_entry("Data", CellRef::new(0, 0), "0").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 3);
+    assert_eq!(
+        book.sheet("Data")
+            .unwrap()
+            .scalar(CellRef::new(0, 1))
+            .as_f64(),
+        Some(-3.0)
+    );
+    book.set_entry("Data", CellRef::new(0, 0), "=1/0").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 4);
+    assert_eq!(
+        book.sheet("Data")
+            .unwrap()
+            .cell(CellRef::new(0, 1))
+            .unwrap()
+            .error()
+            .map(|v| v.as_str()),
+        Some("#DIV/0!")
+    );
 }
 
 #[test]
 fn financial_npv_distinguishes_missing_slots_from_sparse_reference_blanks() {
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    for (row,formula,expected) in [(0,"NPV(1,1,,3)",0.875),(1,"NPV(1,1,Z1,3)",1.25),
-        (2,"NPV(0,10000000000000000,1,-10000000000000000)",0.0)] {
-        let host=CellRef::new(row,0);book.set_entry("Data",host,&format!("={formula}")).unwrap();
-        book.calculate_all().unwrap();assert_eq!(book.sheet("Data").unwrap().scalar(host).as_f64(),Some(expected));
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (row, formula, expected) in [
+        (0, "NPV(1,1,,3)", 0.875),
+        (1, "NPV(1,1,Z1,3)", 1.25),
+        (2, "NPV(0,10000000000000000,1,-10000000000000000)", 0.0),
+    ] {
+        let host = CellRef::new(row, 0);
+        book.set_entry("Data", host, &format!("={formula}"))
+            .unwrap();
+        book.calculate_all().unwrap();
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(host).as_f64(),
+            Some(expected)
+        );
     }
-    book.set_entry("Data",CellRef::new(0,25),"1").unwrap();
-    assert_eq!(book.recalculate().unwrap().evaluated,1);
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(1,0)).as_f64(),Some(1.125));
+    book.set_entry("Data", CellRef::new(0, 25), "1").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(
+        book.sheet("Data")
+            .unwrap()
+            .scalar(CellRef::new(1, 0))
+            .as_f64(),
+        Some(1.125)
+    );
 }
-
 
 #[cfg(feature = "internals")]
 #[test]
 fn lookup_range_callback_count_is_prefix_and_resume_linear() {
     use yggdryl::internals::excel_formula_eval::ContextEvaluator;
     for length in [64_u64, 4_096] {
-        let formula = Formula::from_entry(
-            &format!("MATCH(1,A1:A{length},0)"), CellRef::new(0, 1)).unwrap();
+        let formula =
+            Formula::from_entry(&format!("MATCH(1,A1:A{length},0)"), CellRef::new(0, 1)).unwrap();
         let mut evaluator = ContextEvaluator::default();
-        assert_eq!(evaluator.evaluate_lookup(&formula, length, 0, None).unwrap(),
-            Some(Scalar::from(1.0)), "first match over {length}");
+        assert_eq!(
+            evaluator
+                .evaluate_lookup(&formula, length, 0, None)
+                .unwrap(),
+            Some(Scalar::from(1.0)),
+            "first match over {length}"
+        );
         assert_eq!(evaluator.calls()[2], 1, "exact match visited a suffix");
         assert!(evaluator.is_clear());
-        assert_eq!(evaluator.evaluate_lookup(&formula, length, length - 1, Some(length / 2)).unwrap(),
-            Some(Scalar::from(length as f64)), "last match over {length}");
-        assert_eq!(evaluator.calls()[2], length as usize,
-            "resumed lookup replayed a prefix instead of retaining its ordinal");
+        assert_eq!(
+            evaluator
+                .evaluate_lookup(&formula, length, length - 1, Some(length / 2))
+                .unwrap(),
+            Some(Scalar::from(length as f64)),
+            "last match over {length}"
+        );
+        assert_eq!(
+            evaluator.calls()[2],
+            length as usize,
+            "resumed lookup replayed a prefix instead of retaining its ordinal"
+        );
         assert!(evaluator.is_clear());
     }
 }
 
 #[test]
 fn literal_arrays_native_leaf_publication_and_aggregate_origin_are_exact() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/literal_arrays_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/literal_arrays_native.json")).unwrap();
     let cases = fixture["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 210);
-    assert_eq!(cases.iter().filter(|case| case["initial_leaf_slice"] == true).count(), 134);
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| case["initial_leaf_slice"] == true)
+            .count(),
+        134
+    );
     let mut checked = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         for saved in [false, true] {
             let mut book = Workbook::new();
             book.set_date_system(system);
             book.add_sheet("Cases").unwrap();
-            let selected: Vec<_> = cases.iter().filter(|case| case["date_system"] == year && case["initial_leaf_slice"] == true).collect();
+            let selected: Vec<_> = cases
+                .iter()
+                .filter(|case| case["date_system"] == year && case["initial_leaf_slice"] == true)
+                .collect();
             for case in &selected {
                 let host: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
-                book.sheet_mut("Cases").unwrap().insert_cell(
-                    Cell::from_scalar(host, Scalar::from(-777.0), system).unwrap()
-                        .with_formula(Formula::from_file(formula.as_str().unwrap(), host)),
-                ).unwrap();
+                let formula = if saved {
+                    &case["saved_cache"]["formula_text"]
+                } else {
+                    &case["wire_formula"]
+                };
+                book.sheet_mut("Cases")
+                    .unwrap()
+                    .insert_cell(
+                        Cell::from_scalar(host, Scalar::from(-777.0), system)
+                            .unwrap()
+                            .with_formula(Formula::from_file(formula.as_str().unwrap(), host)),
+                    )
+                    .unwrap();
             }
             let report = book.calculate_all().unwrap();
-            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (67, 0, 0), "{year} saved={saved}");
+            assert_eq!(
+                (report.evaluated, report.uncomputed, report.circular_count),
+                (67, 0, 0),
+                "{year} saved={saved}"
+            );
             for case in selected {
                 let host: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
                 let cell = book.sheet("Cases").unwrap().cell(host).unwrap();
                 let expected = &case["saved_cache"];
                 match expected["type"].as_str().unwrap() {
-                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()), "{} saved={saved}", case["id"]),
-                    "b" => assert_eq!(cell.value().as_bool(), Some(expected["value_text"] == "1"), "{} saved={saved}", case["id"]),
-                    "str" => assert_eq!(cell.value().as_str(), expected["value_text"].as_str(), "{} saved={saved}", case["id"]),
-                    "e" => assert_eq!(cell.error().map(|v| v.as_str()), expected["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    "n" => assert_eq!(
+                        cell.value().as_f64().map(f64::to_bits),
+                        Some(
+                            expected["value_text"]
+                                .as_str()
+                                .unwrap()
+                                .parse::<f64>()
+                                .unwrap()
+                                .to_bits()
+                        ),
+                        "{} saved={saved}",
+                        case["id"]
+                    ),
+                    "b" => assert_eq!(
+                        cell.value().as_bool(),
+                        Some(expected["value_text"] == "1"),
+                        "{} saved={saved}",
+                        case["id"]
+                    ),
+                    "str" => assert_eq!(
+                        cell.value().as_str(),
+                        expected["value_text"].as_str(),
+                        "{} saved={saved}",
+                        case["id"]
+                    ),
+                    "e" => assert_eq!(
+                        cell.error().map(|v| v.as_str()),
+                        expected["value_text"].as_str(),
+                        "{} saved={saved}",
+                        case["id"]
+                    ),
                     other => panic!("unexpected native array cache {other}"),
                 }
                 checked += 1;
@@ -2060,50 +2821,84 @@ fn literal_arrays_keep_numeric_text_and_boolean_aggregate_rules_distinct() {
         ("GCD({1,\"3\"})", Some(1.0), None),
         ("LCM({1,TRUE})", None, Some("#VALUE!")),
         ("LCM({1,\"3\"})", Some(3.0), None),
-    ].into_iter().enumerate() {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let host = CellRef::new(row as u32, 0);
-        book.sheet_mut("Data").unwrap().insert_cell(Cell::from_scalar(host, Scalar::from(-777.0), DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(formula, host))).unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(host, Scalar::from(-777.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, host)),
+            )
+            .unwrap();
         // Every value is also retained in the independent wrapped native run.
         let report = book.calculate_all().unwrap();
         assert_eq!(report.uncomputed, 0, "{formula}");
         let cell = book.sheet("Data").unwrap().cell(host).unwrap();
         assert_eq!(cell.error().map(|v| v.as_str()), error, "{formula}");
-        if error.is_none() { assert_eq!(cell.value().as_f64(), expected, "{formula}"); }
+        if error.is_none() {
+            assert_eq!(cell.value().as_f64(), expected, "{formula}");
+        }
     }
 }
 
-
 #[test]
 fn reference_operators_native_unions_intersections_and_ranges() {
-    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
-    let fixture: serde_json::Value = serde_json::from_str(
-        include_str!("../fixtures/reference_operators_native.json")).unwrap();
+    use yggdryl::{
+        Scalar,
+        excel::{Cell, CellRef, DateSystem, Formula, Workbook},
+    };
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/reference_operators_native.json")).unwrap();
     let mut failures = Vec::new();
     let mut checked = 0;
     for run in fixture["runs"].as_array().unwrap() {
         assert_eq!(run["native_run_passed"], true);
         assert_eq!(run["cleanup_completed"], true);
-        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for (year, system) in [
+            ("1900", DateSystem::Year1900),
+            ("1904", DateSystem::Year1904),
+        ] {
             for saved in [false, true] {
                 let mut book = Workbook::new();
                 book.set_date_system(system);
                 book.add_sheet("Values").unwrap();
                 book.add_sheet("Cases").unwrap();
                 for (address, value) in run["source_cells"]["Values"].as_object().unwrap() {
-                    let value = if let Some(text) = value.as_str() { Scalar::from(text) }
-                        else { Scalar::from(value.as_f64().unwrap()) };
-                    book.sheet_mut("Values").unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                    let value = if let Some(text) = value.as_str() {
+                        Scalar::from(text)
+                    } else {
+                        Scalar::from(value.as_f64().unwrap())
+                    };
+                    book.sheet_mut("Values")
+                        .unwrap()
+                        .set_cell(address.parse().unwrap(), value)
+                        .unwrap();
                 }
-                let cases: Vec<_> = run["cases"].as_array().unwrap().iter()
-                    .filter(|case| case["date_system"] == year).collect();
+                let cases: Vec<_> = run["cases"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|case| case["date_system"] == year)
+                    .collect();
                 for case in &cases {
                     let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-                    let text = if saved { &case["saved_cache"]["formula_text"] }
-                        else { &case["wire_formula"] };
-                    book.sheet_mut("Cases").unwrap().insert_cell(
-                        Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
-                            .with_formula(Formula::from_file(text.as_str().unwrap(), at))).unwrap();
+                    let text = if saved {
+                        &case["saved_cache"]["formula_text"]
+                    } else {
+                        &case["wire_formula"]
+                    };
+                    book.sheet_mut("Cases")
+                        .unwrap()
+                        .insert_cell(
+                            Cell::from_scalar(at, Scalar::from(-777.0), system)
+                                .unwrap()
+                                .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                        )
+                        .unwrap();
                 }
                 let report = book.calculate_all().unwrap();
                 assert_eq!(report.circular_count, 0);
@@ -2114,13 +2909,22 @@ fn reference_operators_native_unions_intersections_and_ranges() {
                     let text = cache["value_text"].as_str().unwrap();
                     let equal = match cache["type"].as_str().unwrap() {
                         "e" => cell.error().is_some_and(|error| error.as_str() == text),
-                        "b" => cell.error().is_none() && cell.value().as_bool() == Some(text == "1"),
-                        "n" => cell.error().is_none() && cell.value().as_f64().map(f64::to_bits)
-                            == Some(text.parse::<f64>().unwrap().to_bits()),
+                        "b" => {
+                            cell.error().is_none() && cell.value().as_bool() == Some(text == "1")
+                        }
+                        "n" => {
+                            cell.error().is_none()
+                                && cell.value().as_f64().map(f64::to_bits)
+                                    == Some(text.parse::<f64>().unwrap().to_bits())
+                        }
                         other => panic!("unexpected oracle type {other}"),
                     };
-                    if !equal { failures.push(format!("{} saved={saved}: {} expected {text}, got {:?}",
-                        case["id"], case["wire_formula"], cell)); }
+                    if !equal {
+                        failures.push(format!(
+                            "{} saved={saved}: {} expected {text}, got {:?}",
+                            case["id"], case["wire_formula"], cell
+                        ));
+                    }
                     checked += 1;
                 }
             }
@@ -2128,40 +2932,67 @@ fn reference_operators_native_unions_intersections_and_ranges() {
     }
     // 116 original + 24 colon shapes, each replayed as authored and saved.
     assert_eq!(checked, 280);
-    assert!(failures.is_empty(), "{} mismatches:\n{}", failures.len(), failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "{} mismatches:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 #[test]
 fn literal_arrays_explicit_projection_keeps_native_scalar_only_boundaries() {
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    for (address,formula,expected) in [
-        ("A1","SUM(_xlfn.SINGLE({1,2}))",Scalar::from(1.0)),
-        ("A2","CONCATENATE({\"a\",\"b\"},\"x\")",Scalar::from("ax")),
-        ("A3","CONCATENATE({\"a\",\"b\"})",Scalar::from("a")),
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (address, formula, expected) in [
+        ("A1", "SUM(_xlfn.SINGLE({1,2}))", Scalar::from(1.0)),
+        ("A2", "CONCATENATE({\"a\",\"b\"},\"x\")", Scalar::from("ax")),
+        ("A3", "CONCATENATE({\"a\",\"b\"})", Scalar::from("a")),
     ] {
-        let host:CellRef=address.parse().unwrap();
-        book.sheet_mut("Data").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(formula,host))).unwrap();
-        let report=book.calculate_all().unwrap();assert_eq!(report.uncomputed,0,"{formula}");
-        assert_eq!(book.sheet("Data").unwrap().scalar(host),expected,"{formula}");
+        let host: CellRef = address.parse().unwrap();
+        book.sheet_mut("Data")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(host, Scalar::from(-777.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, host)),
+            )
+            .unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!(report.uncomputed, 0, "{formula}");
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(host),
+            expected,
+            "{formula}"
+        );
     }
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn literal_arrays_context_lends_the_original_arena_without_reference_reads() {
-    let mut evaluator=yggdryl::internals::excel_formula_eval::ContextEvaluator::default();
-    for (formula,expected) in [("{1,TRUE,\"3\"}",Scalar::from(1.0)),("SUM(_xlfn.SINGLE({1,2}))",Scalar::from(1.0)),("CONCATENATE({\"a\",\"b\"})",Scalar::from("a"))] {
-        let formula=Formula::from_file(formula,CellRef::new(0,0));
-        assert_eq!(evaluator.evaluate(&formula,false,false).unwrap(),Some(expected));
-        assert_eq!(evaluator.calls(),[0,0,0]);assert!(evaluator.is_clear());
+    let mut evaluator = yggdryl::internals::excel_formula_eval::ContextEvaluator::default();
+    for (formula, expected) in [
+        ("{1,TRUE,\"3\"}", Scalar::from(1.0)),
+        ("SUM(_xlfn.SINGLE({1,2}))", Scalar::from(1.0)),
+        ("CONCATENATE({\"a\",\"b\"})", Scalar::from("a")),
+    ] {
+        let formula = Formula::from_file(formula, CellRef::new(0, 0));
+        assert_eq!(
+            evaluator.evaluate(&formula, false, false).unwrap(),
+            Some(expected)
+        );
+        assert_eq!(evaluator.calls(), [0, 0, 0]);
+        assert!(evaluator.is_clear());
     }
 }
-
 
 #[test]
 fn reference_operators_admit_only_consumed_geometry() {
-    use yggdryl::{Scalar, excel::{CellRef, Workbook}};
+    use yggdryl::{
+        Scalar,
+        excel::{CellRef, Workbook},
+    };
     let at = |text: &str| text.parse::<CellRef>().unwrap();
     let mut book = Workbook::new();
     book.add_sheet("Data").unwrap();
@@ -2177,23 +3008,59 @@ fn reference_operators_admit_only_consumed_geometry() {
         ("G1", "=ROWS((G1,A2))"),
         ("H1", "=ISREF((H1,A2))"),
         ("I1", "=SUM((A2,A2))"),
-    ] { book.set_entry("Data", at(address), text).unwrap(); }
+    ] {
+        book.set_entry("Data", at(address), text).unwrap();
+    }
     let report = book.calculate_all().unwrap();
-    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (9, 0, 0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(5.0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(2.0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("H1")), Scalar::from(true));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("I1")), Scalar::from(4.0));
-    for (address, error) in [("C1", "#VALUE!"), ("D1", "#VALUE!"), ("E1", "#VALUE!"),
-        ("F1", "#VALUE!"), ("G1", "#REF!")] {
-        assert_eq!(book.sheet("Data").unwrap().cell(at(address)).unwrap().error()
-            .map(|error| error.as_str()), Some(error), "{address}");
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (9, 0, 0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("A1")),
+        Scalar::from(5.0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("B1")),
+        Scalar::from(2.0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("H1")),
+        Scalar::from(true)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("I1")),
+        Scalar::from(4.0)
+    );
+    for (address, error) in [
+        ("C1", "#VALUE!"),
+        ("D1", "#VALUE!"),
+        ("E1", "#VALUE!"),
+        ("F1", "#VALUE!"),
+        ("G1", "#REF!"),
+    ] {
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .cell(at(address))
+                .unwrap()
+                .error()
+                .map(|error| error.as_str()),
+            Some(error),
+            "{address}"
+        );
     }
     book.set_entry("Data", at("A2"), "7").unwrap();
     let report = book.recalculate().unwrap();
-    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (3, 0, 0));
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (3, 0, 0)
+    );
     for (address, value) in [("A1", 10.0), ("B1", 7.0), ("I1", 14.0)] {
-        assert_eq!(book.sheet("Data").unwrap().scalar(at(address)), Scalar::from(value));
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at(address)),
+            Scalar::from(value)
+        );
     }
     assert_eq!(book.recalculate().unwrap().evaluated, 0);
 }
@@ -2203,43 +3070,91 @@ fn reference_operators_preserve_real_union_cycles() {
     use yggdryl::excel::{CellRef, Workbook};
     let mut book = Workbook::new();
     book.add_sheet("Data").unwrap();
-    book.set_entry("Data", CellRef::new(0, 0), "=SUM((A1,A2))").unwrap();
+    book.set_entry("Data", CellRef::new(0, 0), "=SUM((A1,A2))")
+        .unwrap();
     book.set_entry("Data", CellRef::new(1, 0), "2").unwrap();
     let report = book.calculate_all().unwrap();
-    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (0, 1, 1));
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (0, 1, 1)
+    );
     assert_eq!(report.circular, [("Data".into(), CellRef::new(0, 0))]);
 }
 
 #[test]
 fn literal_arrays_mapped_operations_match_native_elements_and_scalar_boundaries() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
     let cases = fixture["cases"].as_array().unwrap();
     assert_eq!(cases.len(), 258);
     let mut checked = 0;
-    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
         for saved in [false, true] {
             // Distinct native corpora reuse coordinates, so each retains its own workbook.
             for corpus in ["literal", "wrapped", "mapping"] {
-                let mut book = Workbook::new(); book.set_date_system(system);
-                book.add_sheet("Values").unwrap(); book.add_sheet("Cases").unwrap();
+                let mut book = Workbook::new();
+                book.set_date_system(system);
+                book.add_sheet("Values").unwrap();
+                book.add_sheet("Cases").unwrap();
                 book.set_entry("Values", CellRef::new(0, 0), "10").unwrap();
                 book.set_entry("Values", CellRef::new(1, 0), "20").unwrap();
-                let selected: Vec<_> = cases.iter().filter(|case| case["date_system"] == year && case["corpus"] == corpus && case["mapped_operations_slice"] == true).collect();
+                let selected: Vec<_> = cases
+                    .iter()
+                    .filter(|case| {
+                        case["date_system"] == year
+                            && case["corpus"] == corpus
+                            && case["mapped_operations_slice"] == true
+                    })
+                    .collect();
                 for case in &selected {
                     let host: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
-                    let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
-                    book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host, Scalar::from(-777.0), system).unwrap()
-                        .with_formula(Formula::from_file(formula.as_str().unwrap(), host))).unwrap();
+                    let formula = if saved {
+                        &case["saved_cache"]["formula_text"]
+                    } else {
+                        &case["wire_formula"]
+                    };
+                    book.sheet_mut("Cases")
+                        .unwrap()
+                        .insert_cell(
+                            Cell::from_scalar(host, Scalar::from(-777.0), system)
+                                .unwrap()
+                                .with_formula(Formula::from_file(formula.as_str().unwrap(), host)),
+                        )
+                        .unwrap();
                 }
                 let report = book.calculate_all().unwrap();
-                assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (selected.len() as u64, 0, 0), "{year} {corpus} saved={saved}");
+                assert_eq!(
+                    (report.evaluated, report.uncomputed, report.circular_count),
+                    (selected.len() as u64, 0, 0),
+                    "{year} {corpus} saved={saved}"
+                );
                 for case in selected {
                     let host: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
                     let cell = book.sheet("Cases").unwrap().cell(host).unwrap();
                     let expected = &case["saved_cache"];
                     match expected["type"].as_str().unwrap() {
-                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()), "{} saved={saved}", case["id"]),
-                        "e" => assert_eq!(cell.error().map(|v| v.as_str()), expected["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        "n" => assert_eq!(
+                            cell.value().as_f64().map(f64::to_bits),
+                            Some(
+                                expected["value_text"]
+                                    .as_str()
+                                    .unwrap()
+                                    .parse::<f64>()
+                                    .unwrap()
+                                    .to_bits()
+                            ),
+                            "{} saved={saved}",
+                            case["id"]
+                        ),
+                        "e" => assert_eq!(
+                            cell.error().map(|v| v.as_str()),
+                            expected["value_text"].as_str(),
+                            "{} saved={saved}",
+                            case["id"]
+                        ),
                         other => panic!("unexpected mapped native cache {other}"),
                     }
                     checked += 1;
@@ -2257,89 +3172,206 @@ fn literal_arrays_capture_scalar_references_once_before_broadcast() {
     let mut evaluator = yggdryl::internals::excel_formula_eval::ContextEvaluator::default();
     let formula = Formula::from_file("SUM({1,2,3,4}+A1)", CellRef::new(0, 1));
     // Fixture A1 is 2; four elements add it, but intake/scalarization occur once.
-    assert_eq!(evaluator.evaluate(&formula, false, false).unwrap(), Some(Scalar::from(18.0)));
+    assert_eq!(
+        evaluator.evaluate(&formula, false, false).unwrap(),
+        Some(Scalar::from(18.0))
+    );
     assert_eq!(evaluator.calls(), [1, 1, 0]);
     assert!(evaluator.is_clear());
 }
 
 #[test]
 fn literal_arrays_sumproduct_uses_native_array_elements_and_selected_shapes() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
     let mut checked = 0;
     for case in fixture["cases"].as_array().unwrap().iter().filter(|case| {
-        matches!(case["wire_formula"].as_str(), Some("SUMPRODUCT({1,2},{3,4})" | "SUMPRODUCT({1,TRUE,\"3\"})" | "SUMPRODUCT({1,2}+1,{3,4})" | "SUMPRODUCT(IF(TRUE,{1,2},{3,4}),{3,4})"))
+        matches!(
+            case["wire_formula"].as_str(),
+            Some(
+                "SUMPRODUCT({1,2},{3,4})"
+                    | "SUMPRODUCT({1,TRUE,\"3\"})"
+                    | "SUMPRODUCT({1,2}+1,{3,4})"
+                    | "SUMPRODUCT(IF(TRUE,{1,2},{3,4}),{3,4})"
+            )
+        )
     }) {
         for saved in [false, true] {
-            let system = if case["date_system"] == "1904" { DateSystem::Year1904 } else { DateSystem::Year1900 };
-            let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Cases").unwrap();
-            let host:CellRef=case["cell"].as_str().unwrap().parse().unwrap();
-            let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
-            book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap()
-                .with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
-            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(1,0),"{} saved={saved}",case["id"]);
-            assert_eq!(book.sheet("Cases").unwrap().scalar(host).as_f64().map(f64::to_bits),Some(case["saved_cache"]["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{} saved={saved}",case["id"]);
-            checked+=1;
+            let system = if case["date_system"] == "1904" {
+                DateSystem::Year1904
+            } else {
+                DateSystem::Year1900
+            };
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            book.add_sheet("Cases").unwrap();
+            let host: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+            let formula = if saved {
+                &case["saved_cache"]["formula_text"]
+            } else {
+                &case["wire_formula"]
+            };
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(host, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), host)),
+                )
+                .unwrap();
+            let report = book.calculate_all().unwrap();
+            assert_eq!(
+                (report.evaluated, report.uncomputed),
+                (1, 0),
+                "{} saved={saved}",
+                case["id"]
+            );
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(host)
+                    .as_f64()
+                    .map(f64::to_bits),
+                Some(
+                    case["saved_cache"]["value_text"]
+                        .as_str()
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                        .to_bits()
+                ),
+                "{} saved={saved}",
+                case["id"]
+            );
+            checked += 1;
         }
     }
-    assert_eq!(checked,16);
+    assert_eq!(checked, 16);
 }
 
 #[test]
 fn literal_arrays_sumproduct_keeps_composed_scalar_mapping_eligible() {
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    for (row,formula,expected) in [
-        (0,"SUMPRODUCT(ABS({-1,2})+1)",5.0),
-        (1,"SUMPRODUCT(ROUND({1.2,2.8},0)+1)",6.0),
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (row, formula, expected) in [
+        (0, "SUMPRODUCT(ABS({-1,2})+1)", 5.0),
+        (1, "SUMPRODUCT(ROUND({1.2,2.8},0)+1)", 6.0),
     ] {
-        let at=CellRef::new(row,0);
-        book.sheet_mut("Data").unwrap().insert_cell(Cell::from_scalar(at,Scalar::from(-777.0),DateSystem::Year1900).unwrap()
-            .with_formula(Formula::from_file(formula,at))).unwrap();
-        let report=book.calculate_all().unwrap();assert_eq!(report.uncomputed,0,"{formula}");
-        assert_eq!(book.sheet("Data").unwrap().scalar(at).as_f64(),Some(expected),"{formula}");
+        let at = CellRef::new(row, 0);
+        book.sheet_mut("Data")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, at)),
+            )
+            .unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!(report.uncomputed, 0, "{formula}");
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at).as_f64(),
+            Some(expected),
+            "{formula}"
+        );
     }
 }
 
 #[test]
 fn literal_arrays_selected_positions_match_native_broadcast_and_error_boundaries() {
-    let fixture:serde_json::Value=serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
-    let mut checked=0;
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../fixtures/mapped_arrays_native.json")).unwrap();
+    let mut checked = 0;
     for case in fixture["cases"].as_array().unwrap().iter().filter(|case| {
-        matches!(case["wire_formula"].as_str(),Some(
-            "SUM(IF({TRUE,FALSE},{1,2},{3,4}))" |
-            "SUM(IF({TRUE,FALSE},{1,2},{3,4})+1)" |
-            "SUM(IF({TRUE,FALSE},1,4))" |
-            "SUM(IF({TRUE;FALSE},{1,2},{3,4}))" |
-            "SUM(IF({TRUE,FALSE},Values!A1,Values!A2))" |
-            "SUM(CHOOSE({1,2},{1,2},{3,4}))" |
-            "SUM(IFERROR({1,#N/A},{3,4}))"))
+        matches!(
+            case["wire_formula"].as_str(),
+            Some(
+                "SUM(IF({TRUE,FALSE},{1,2},{3,4}))"
+                    | "SUM(IF({TRUE,FALSE},{1,2},{3,4})+1)"
+                    | "SUM(IF({TRUE,FALSE},1,4))"
+                    | "SUM(IF({TRUE;FALSE},{1,2},{3,4}))"
+                    | "SUM(IF({TRUE,FALSE},Values!A1,Values!A2))"
+                    | "SUM(CHOOSE({1,2},{1,2},{3,4}))"
+                    | "SUM(IFERROR({1,#N/A},{3,4}))"
+            )
+        )
     }) {
-        for saved in [false,true] {
-            let system=if case["date_system"]=="1904" {DateSystem::Year1904}else{DateSystem::Year1900};
-            let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
-            book.set_entry("Values",CellRef::new(0,0),"10").unwrap();book.set_entry("Values",CellRef::new(1,0),"20").unwrap();
-            let at:CellRef=case["cell"].as_str().unwrap().parse().unwrap();
-            let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
-            book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(at,Scalar::from(-777.0),system).unwrap()
-                .with_formula(Formula::from_file(formula.as_str().unwrap(),at))).unwrap();
-            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(1,0,0),"{} saved={saved}",case["id"]);
-            assert_eq!(book.sheet("Cases").unwrap().scalar(at).as_f64().map(f64::to_bits),Some(case["saved_cache"]["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{} saved={saved}",case["id"]);
-            checked+=1;
+        for saved in [false, true] {
+            let system = if case["date_system"] == "1904" {
+                DateSystem::Year1904
+            } else {
+                DateSystem::Year1900
+            };
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            book.add_sheet("Values").unwrap();
+            book.add_sheet("Cases").unwrap();
+            book.set_entry("Values", CellRef::new(0, 0), "10").unwrap();
+            book.set_entry("Values", CellRef::new(1, 0), "20").unwrap();
+            let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+            let formula = if saved {
+                &case["saved_cache"]["formula_text"]
+            } else {
+                &case["wire_formula"]
+            };
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                )
+                .unwrap();
+            let report = book.calculate_all().unwrap();
+            assert_eq!(
+                (report.evaluated, report.uncomputed, report.circular_count),
+                (1, 0, 0),
+                "{} saved={saved}",
+                case["id"]
+            );
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(at)
+                    .as_f64()
+                    .map(f64::to_bits),
+                Some(
+                    case["saved_cache"]["value_text"]
+                        .as_str()
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap()
+                        .to_bits()
+                ),
+                "{} saved={saved}",
+                case["id"]
+            );
+            checked += 1;
         }
     }
-    assert_eq!(checked,28);
+    assert_eq!(checked, 28);
 }
 
-#[cfg(feature="internals")]
+#[cfg(feature = "internals")]
 #[test]
 fn literal_arrays_mapped_storage_depends_on_plan_not_output_grid() {
-    let horizontal=std::iter::repeat_n("1",64).collect::<Vec<_>>().join(",");
-    let mut capacities=Vec::new();
-    for rows in [1,64] {
-        let vertical=std::iter::repeat_n("1",rows).collect::<Vec<_>>().join(";");
-        let formula=Formula::from_file(&format!("SUM({{{horizontal}}}+{{{vertical}}})"),CellRef::new(0,0));
-        let mut evaluator=yggdryl::internals::excel_formula_eval::ContextEvaluator::default();
-        assert_eq!(evaluator.evaluate(&formula,false,false).unwrap(),Some(Scalar::from((rows*128) as f64)));
-        capacities.push(evaluator.array_capacity());assert!(evaluator.is_clear());
+    let horizontal = std::iter::repeat_n("1", 64).collect::<Vec<_>>().join(",");
+    let mut capacities = Vec::new();
+    for rows in [1, 64] {
+        let vertical = std::iter::repeat_n("1", rows).collect::<Vec<_>>().join(";");
+        let formula = Formula::from_file(
+            &format!("SUM({{{horizontal}}}+{{{vertical}}})"),
+            CellRef::new(0, 0),
+        );
+        let mut evaluator = yggdryl::internals::excel_formula_eval::ContextEvaluator::default();
+        assert_eq!(
+            evaluator.evaluate(&formula, false, false).unwrap(),
+            Some(Scalar::from((rows * 128) as f64))
+        );
+        capacities.push(evaluator.array_capacity());
+        assert!(evaluator.is_clear());
     }
-    assert_eq!(capacities[0],capacities[1],"64 vs4096 output elements retained a value grid: {capacities:?}");
+    assert_eq!(
+        capacities[0], capacities[1],
+        "64 vs4096 output elements retained a value grid: {capacities:?}"
+    );
 }

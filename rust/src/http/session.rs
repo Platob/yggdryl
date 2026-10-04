@@ -11,7 +11,7 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use super::client::{Answer, Wire};
+use super::client::Answer;
 use super::{
     Authorization, Client, Cookie, CookieJar, Headers, HttpOptions, Method, Pages, Request,
     Response, StatsSnapshot, Status,
@@ -388,6 +388,19 @@ impl Session {
         url: &Url,
         ranged: bool,
     ) -> Result<Headers> {
+        self.headers_reading(request, url, ranged, crate::auth::variable)
+    }
+
+    /// [`Self::headers_for`], the environment the `.netrc` file is located
+    /// by read through `variable`: the process's in a request, a map in a
+    /// test.
+    pub(crate) fn headers_reading(
+        &self,
+        request: &Request,
+        url: &Url,
+        ranged: bool,
+        variable: impl Fn(&str) -> Option<String>,
+    ) -> Result<Headers> {
         let mut headers = request.headers().merge_with(self.inner.options.headers())?;
         let authorization = request
             .authorization()
@@ -402,7 +415,7 @@ impl Session {
                         .flatten()
                 })
             })
-            .or_else(|| self.environment_authorization(url));
+            .or_else(|| self.netrc_authorization(url, variable));
         if let Some(authorization) = authorization
             && (request.authorization().is_some()
                 || !headers.contains_key(authorization.header_name()))
@@ -434,7 +447,9 @@ impl Session {
     /// request's or the session's credential travels under (`X-Api-Key`),
     /// and a `Cookie` the caller stated - the jar's own cookies for `url` go
     /// back on, because they are that origin's, and so does the `.netrc`
-    /// entry for its host.
+    /// entry for its host. What the request's per-attempt hook makes is
+    /// withheld beside them, where the hop's wire is built
+    /// ([`Self::exchange`]).
     fn withhold_credentials(
         &self,
         request: &Request,
@@ -457,19 +472,24 @@ impl Session {
         }
         // The new host's own `.netrc` entry is its credential, as it would
         // be for a request sent there first.
-        if let Some(authorization) = self.environment_authorization(url) {
+        if let Some(authorization) = self.netrc_authorization(url, crate::auth::variable) {
             headers.insert(authorization.header_name(), &authorization.header_value())?;
         }
         Ok(())
     }
 
-    /// The `.netrc` credential for `url`'s host, when the options read the
-    /// environment ([`super::netrc`]).
-    fn environment_authorization(&self, url: &Url) -> Option<Authorization> {
-        if !self.inner.options.read_environment() {
+    /// The `.netrc` credential for `url`'s host, when the options take one
+    /// ([`HttpOptions::netrc`], [`super::netrc`]); `variable` reads the
+    /// environment that locates the file.
+    fn netrc_authorization(
+        &self,
+        url: &Url,
+        variable: impl Fn(&str) -> Option<String>,
+    ) -> Option<Authorization> {
+        if !self.inner.options.netrc() {
             return None;
         }
-        super::netrc::environment_authorization(url.hostname()?, crate::auth::variable)
+        super::netrc::environment_authorization(url.hostname()?, variable)
     }
 
     /// One exchange with redirects and cookies.
@@ -477,7 +497,10 @@ impl Session {
     /// The client executes each hop; every `Set-Cookie` is stored; a
     /// `Location` is resolved through [`Url::join_reference`]; a `303`, and
     /// a `301` or `302` on `POST`, become a `GET` without the body, a `307`
-    /// or `308` keep both; the credential is withheld from another host.
+    /// or `308` keep both; the credential is withheld from another origin,
+    /// and so is what the request's per-attempt hook would make - a proof
+    /// or a signature is a credential the caller stated for the origin it
+    /// named, so the hook is not called for that hop.
     /// Answers the final hop, its URL, the drained earlier hops oldest first,
     /// and the time the whole exchange took.
     ///
@@ -504,7 +527,8 @@ impl Session {
         let mut hops = 0_u32;
         loop {
             let mut headers = self.headers_for(request, &url, ranged)?;
-            if hops > 0 && !same_origin(request.url(), &url) {
+            let elsewhere = hops > 0 && !same_origin(request.url(), &url);
+            if elsewhere {
                 self.withhold_credentials(request, &url, &mut headers)?;
             }
             if body.is_empty() && method != request.method() {
@@ -515,14 +539,20 @@ impl Session {
             for (name, value) in extra {
                 headers.insert(name, value)?;
             }
-            let wire = Wire {
+            let mut wire = request.wire(
                 method,
-                url: &url,
-                headers: &headers,
-                body: (!body.is_empty()).then(|| body.as_bytes()),
+                &url,
+                &headers,
+                (!body.is_empty()).then(|| body.as_bytes()),
                 timeout,
-                idempotent: method.is_idempotent(),
-            };
+            );
+            if elsewhere {
+                // A proof or a signature made per attempt is the caller's
+                // credential for the origin the request named, and with
+                // none sent there is no refusal of one to mend.
+                wire.attempt_headers = None;
+                wire.resend_on = None;
+            }
             let answer = self.inner.client.execute(&wire)?;
             if options.cookies() {
                 self.jar()?

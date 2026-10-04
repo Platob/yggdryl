@@ -266,21 +266,26 @@ mod text {
         }
 
         #[test]
-        fn a_column_that_states_nothing_leaves_its_field_at_the_default() {
-            let mut with_offset = TextOptions::new();
-            with_offset.start_rownum = Some(5);
-            // Written with no offset, so the first line has no place and its
-            // `seqnum` cell is null - a place is a count, and `seqnum` is
-            // null at zero.
+        fn a_place_restores_the_position_and_one_before_the_reading_offset_is_refused() {
+            // Written with no offset: the first line's place is zero, and a
+            // place is always stated.
             let lines = decode(b"only\n", &TextOptions::new());
             let batch = into_arrow_batch(lines, &TextOptions::new()).expect("a batch");
-            // The reading options count from five. Nothing stated is nothing
-            // to take an offset off, so the line keeps the position the
-            // stream read it at rather than a place the row never stated.
-            let back = from_arrow_batch(&batch, &with_offset).expect("lines read back");
+            let back = from_arrow_batch(&batch, &TextOptions::new()).expect("lines read back");
             assert_eq!(back.len(), 1);
-            assert_eq!(back[0].index(), 0, "the position it was read at");
+            assert_eq!(back[0].index(), 0, "the position its place states");
             assert_eq!(back[0].body(), "only");
+
+            // Options counting from five place no line at zero: the row's
+            // place lies before their offset, and it is refused by name
+            // rather than wrapped onto a position.
+            let mut with_offset = TextOptions::new();
+            with_offset.start_rownum = Some(5);
+            let refused = from_arrow_batch(&batch, &with_offset)
+                .expect_err("a place before the offset")
+                .to_string();
+            assert!(refused.contains("$[0].seqnum"), "{refused}");
+            assert!(refused.contains("at or after start_rownum"), "{refused}");
         }
 
         #[test]

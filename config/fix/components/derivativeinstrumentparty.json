@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "noderivativeinstrumentpartysubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noderivativeinstrumentpartysubids",
-          "FIX:tag": "1296"
-        }
-      },
-      {
         "name": "derivativeinstrumentpartysubids",
         "dtype": {
           "type": "null"

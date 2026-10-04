@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nounderlyinglegsecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyinglegsecurityaltid",
-          "FIX:tag": "1334"
-        }
-      },
-      {
         "name": "underlyinglegsecurityaltidgrp",
         "dtype": {
           "type": "null"

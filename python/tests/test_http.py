@@ -400,6 +400,47 @@ class TestRequestsShape:
             warnings.simplefilter("error")
             Client({"warehouse": "s3://lake"})
 
+    def test_netrc_is_a_property_that_leaves_the_entry_unsent(
+        self, origin: str, tmp_path: pathlib.Path
+    ) -> None:
+        # `netrc` is an `HttpOptions` property like the rest: a boolean is
+        # taken, by keyword or in the mapping, and the entry `NETRC` names is
+        # then not sent; anything else is refused naming the property. The
+        # file is read in a subprocess, so this process's own environment
+        # and home directory are never consulted.
+        import os
+        import subprocess
+        import sys
+
+        host = urllib.parse.urlsplit(origin).hostname
+        netrc = tmp_path / "netrc"
+        netrc.write_text(f"machine {host} login alice password s3cret\n")
+        script = (
+            "import sys\n"
+            "from yggdryl.http import Session\n"
+            "for session in (\n"
+            "    Session(sys.argv[1]),\n"
+            "    Session(sys.argv[1], netrc=False),\n"
+            "    Session(sys.argv[1], options={'netrc': 'no'}),\n"
+            "):\n"
+            "    print(session.get('/echo').json()['headers'].get('authorization'))\n"
+        )
+        environment = {
+            key: value for key, value in os.environ.items() if "proxy" not in key.lower()
+        }
+        environment["NETRC"] = str(netrc)
+        run = subprocess.run(
+            [sys.executable, "-c", script, origin],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        assert run.stdout.splitlines() == ["Basic YWxpY2U6czNjcmV0", "None", "None"]
+        with pytest.raises(ValueError, match="netrc"):
+            Session(origin, netrc="sometimes")
+
     def test_a_session_over_a_client_refuses_another_pool_knob(self, origin: str) -> None:
         client = Client({"max_attempts": 5})
         # The client's own knobs, or none stated, are the client's.
@@ -561,7 +602,7 @@ class TestPages:
         assert table.column("id").to_pylist() == [1, 2, 3, 4, 5]
 
     def test_pages_read_as_a_serie_reader(self, session: Session) -> None:
-        reader = session.pages("/linked", records="data").read_arrow()
+        reader = session.pages("/linked", records="data").read_serie()
         rows = [row for serie in reader for row in serie.as_py()]
         assert [row["id"] for row in rows] == [10, 11, 20, 21, 30, 31]
 
@@ -569,7 +610,7 @@ class TestPages:
         pages = session.pages("/items")
         pages.into_arrow_reader()
         with pytest.raises(ValueError, match="already"):
-            pages.read_arrow()
+            pages.read_serie()
 
     def test_next_is_the_request_for_the_following_page(
         self, session: Session, origin: str
@@ -596,8 +637,8 @@ class TestIOBase:
             {"id": 2, "name": "b"},
         ]
         # A structured text document is the one record column its rows parse
-        # into: `read_arrow` is the record read that takes it.
-        rows = [row for serie in handle.read_arrow() for row in serie.as_py()]
+        # into: `read_serie` is the record read that takes it.
+        rows = [row for serie in handle.read_serie() for row in serie.as_py()]
         assert rows == [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
 
     def test_a_parquet_body_reads_by_range(self, origin: str) -> None:

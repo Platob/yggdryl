@@ -6,6 +6,7 @@ import {
   Scalar,
   Serie,
   SerieReader,
+  SpillOptions,
   fields,
   type ArrowCastOptions,
 } from '..'
@@ -116,3 +117,67 @@ void [empty, typedEmpty, one, many, cast, arrays, wide, single, drained, field, 
   length, chunks, chunk, nulls, isEmpty, isNull, row, maybe, rows, values, json, iter, window,
   child, childAt, children, items, reached, joined, recast, typed, copy, back, stream, out, held,
   same, sameRows, order, text]
+
+// Ordering, uniqueness and grouping across the chunks.
+const chunkOrder: Serie = wide.sortIndices({ descending: true })
+const chunkOrdered: boolean = wide.isSorted()
+const chunkUnique: boolean = wide.isUnique()
+const chunkDistinct: number = wide.uniqueCount()
+const chunkBytes: number = wide.memorySize()
+const chunkSorted: ChunkedSerie = wide.intoSorted({ nullsFirst: true })
+const chunkDeduplicated: ChunkedSerie = wide.intoUnique()
+const chunkReversed: ChunkedSerie = wide.intoReversed()
+const chunkTaken: ChunkedSerie = wide.intoTaken([1, 0])
+const chunkFiltered: ChunkedSerie = wide.intoFiltered(new Serie([true]))
+const chunkGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(['a'])
+const chunkKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(batches)
+const vectorKeyGroups: Array<[Scalar, ChunkedSerie]> = wide.partitionBy(vector)
+// @ts-expect-error one grouping door: keys held in chunks go through partitionBy
+wide.partitionByChunked(batches)
+const chunkChained: ChunkedSerie = wide
+  .asSorted()
+  .asUnique()
+  .asReversed()
+  .asTaken([0])
+  .asFiltered([true])
+// @ts-expect-error an ordering option is `descending` or `nullsFirst`
+wide.asSorted({ nulls: 'first' })
+// @ts-expect-error the private ordering bridges are hidden
+wide._partitionByNative
+
+// Windows by key across the chunks: each `[key, rows]`, stating no record.
+const chunkWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id')
+const chunkSortedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy(['id'], true)
+const chunkClearedWindows: Array<[Scalar, ChunkedSerie]> = wide.windowBy('id', null)
+// @ts-expect-error `sorted` is a boolean
+wide.windowBy('id', 'yes')
+// @ts-expect-error a chunked window states no record
+chunkWindows[0][1].staticValues
+// @ts-expect-error the private windowing bridge is hidden
+wide._windowByNative
+void [chunkWindows, chunkSortedWindows, chunkClearedWindows]
+
+void [chunkOrder, chunkOrdered, chunkUnique, chunkDistinct, chunkBytes, chunkSorted,
+  chunkDeduplicated, chunkReversed, chunkTaken, chunkFiltered, chunkGroups, chunkKeyGroups,
+  vectorKeyGroups, chunkChained]
+
+// Spill, orderings by key and joins across the chunks.
+const chunkResident: number = wide.residentSize()
+const chunkSpilled: boolean = wide.isSpilled()
+wide.spill(new SpillOptions({ byteSize: 1_024 }))
+wide.spill()
+const chunkDeclared: string[] | null = wide.declaredOrder()
+const chunkOrderBy: Serie = wide.sortIndicesBy('id desc')
+const chunkSortedBy: ChunkedSerie = wide.intoSortBy([{ term: 'id', descending: true }])
+const chunkSortedInPlace: ChunkedSerie = wide.asSortBy('id').asReversed()
+const chunkJoined: ChunkedSerie = wide.joinWith(wide, 'id', 'left', { coalesce: false })
+// @ts-expect-error a chunked serie joins a chunked serie
+wide.joinWith(new Serie([1]), 'id')
+// @ts-expect-error the private join bridge is hidden
+wide._joinWithNative
+const chunkSpilledInPlace: ChunkedSerie = wide.asSpilled(new SpillOptions({ byteSize: 0 })).asReversed()
+const chunkSpilledCopy: ChunkedSerie = wide.intoSpilled()
+// @ts-expect-error the private spill bridges are hidden
+wide._asSpilledNative
+void [chunkResident, chunkSpilled, chunkDeclared, chunkOrderBy, chunkSortedBy,
+  chunkSortedInPlace, chunkJoined, chunkSpilledInPlace, chunkSpilledCopy]

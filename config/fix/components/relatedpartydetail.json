@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "norelatedpartydetailsubids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpartydetailsubids",
-          "FIX:tag": "1566"
-        }
-      },
-      {
         "name": "relatedpartydetailsubids",
         "dtype": {
           "type": "null"
@@ -69,17 +58,6 @@
         }
       },
       {
-        "name": "norelatedpartydetailaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "norelatedpartydetailaltid",
-          "FIX:tag": "1569"
-        }
-      },
-      {
         "name": "relatedpartydetailaltidgrp",
         "dtype": {
           "type": "null"
@@ -87,17 +65,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "relatedpartydetailaltidgrp"
-        }
-      },
-      {
-        "name": "nopartyrelationships",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyrelationships",
-          "FIX:tag": "1514"
         }
       },
       {

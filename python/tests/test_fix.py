@@ -29,13 +29,13 @@ from yggdryl import (
     Field,
     Identifiers,
     IOBase,
+    IOResult,
     MimeType,
     Scalar,
     TextLine,
     TextOptions,
     Timezone,
     Url,
-    refresh_logging,
 )
 from yggdryl.fix import (
     ULBRIDGE_ROWHEADER,
@@ -59,14 +59,13 @@ from yggdryl.graph import BookEvent, MarketData, OrderEvent
 CLOCK_batch = DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000)
 
 def _kinds(ids: Identifiers) -> dict[str, str]:
-    """The identifiers of a set by type, each value under its type."""
-    return {id.type: id.value for id in ids}
+    """Each type a set holds, its base key's value: the type's answer."""
+    return {id.type: id.value for id in ids if id.src == "base"}
 
 
-def _row_kinds(cell: list[tuple[str, dict[str, str]]]) -> dict[str, str]:
-    """An identifier column's cell - a map from `src:type` to its row - by type."""
-    assert all(key == f"{row['src']}:{row['type']}" for key, row in cell), "a key is its row's src:type"
-    return {row["type"]: row["value"] for _, row in cell}
+def _row_kinds(cell: list[tuple[str, str]]) -> dict[str, str]:
+    """An identifier column's cell - a map from each key's text to its value - by type."""
+    return {key: value for key, value in cell if ":" not in key}
 
 
 
@@ -416,11 +415,14 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert isinstance(reader, pa.RecordBatchReader)
     # The one lifted `marketdata` schema every leaf is written under: the
     # kind, then every fact a column of its own, the book's entries, deltas,
-    # executions and price levels nested.
+    # a trade's executions and price levels nested - sixty-two columns, an
+    # operation's `bookaction` and `bookposition` among them.
     assert reader.schema == MarketData.field().into_arrow_schema()
     names = reader.schema.names
+    assert len(names) == 62
     assert names[0] == "curruuid"
     assert names.index("marketdatakind") == 15
+    assert {"bookaction", "bookposition"} <= set(names)
     assert {"alive", "deltas", "executions", "bidlimits", "asklimits"} <= set(names)
     assert not {"bidside", "askside", "snapshotpartitions", "kind"} & set(names)
     assert "price" in names and "quantity" in names
@@ -435,35 +437,43 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     # The book states its best tradable levels as its own bid and ask.
     assert [row["bidpx"] for row in rows] == [decimal.Decimal("100"), decimal.Decimal("101")]
     assert [row["askpx"] for row in rows] == [decimal.Decimal("102"), decimal.Decimal("102")]
+    # The full refresh is a snapshot input, so its book is whole: every entry
+    # alive on it, each a quote filed under QUOT, and its levels best first,
+    # each stating whether it trades. The update's book states its deltas
+    # alone - no grid, no snapshot input - so it states no alive entry and no
+    # level, and a book holds no execution: the trade entry (`269=2`) is an
+    # execution no book folds, so the bid's change is its one delta.
+    assert [row["alive"] is None for row in rows] == [False, True]
     assert rows[0]["alive"][0]["price"] == decimal.Decimal("100")
-    assert rows[1]["alive"][0]["price"] == decimal.Decimal("101")
-    # Every entry of a W or X is a quote, filed under QUOT.
-    assert rows[1]["alive"][0]["marketdatakind"] == MarketDataKind.QUOT
-    assert [entry["side"] for entry in rows[1]["alive"]] == [Side.BUYS, Side.SELL]
-    assert len(rows[1]["deltas"]) == 1
-    assert len(rows[1]["executions"]) == 1
-    assert rows[1]["executions"][0]["marketdatakind"] == MarketDataKind.EXEC
-    # An operation row names its entry under `mdentryid`; the levels are
-    # the book's, best first, each stating whether it trades.
-    assert _row_kinds(rows[1]["alive"][0]["identifiers"]) == {"mdentryid": "B1"}
-    [bid] = rows[1]["bidlimits"]
+    assert rows[0]["alive"][0]["marketdatakind"] == MarketDataKind.QUOT
+    assert [entry["side"] for entry in rows[0]["alive"]] == [Side.BUYS, Side.SELL]
+    [bid] = rows[0]["bidlimits"]
     assert (bid["price"], bid["quantity"], bid["tradable"]) == (
-        decimal.Decimal("101"),
-        decimal.Decimal("11"),
+        decimal.Decimal("100"),
+        decimal.Decimal("10"),
         True,
     )
-    assert [level["price"] for level in rows[1]["asklimits"]] == [decimal.Decimal("102")]
+    assert [level["price"] for level in rows[0]["asklimits"]] == [decimal.Decimal("102")]
+    assert (rows[1]["bidlimits"], rows[1]["asklimits"]) == (None, None)
+    assert [row["executions"] for row in rows] == [None, None]
+    [delta] = rows[1]["deltas"]
+    assert (delta["price"], delta["side"], delta["bookaction"]) == (decimal.Decimal("101"), Side.BUYS, "1")
+    # An operation row names its entry under `mdentryid`.
+    assert _row_kinds(delta["identifiers"]) == {"mdentryid": "B1"}
 
-    # The rows read back as the typed books they were written from.
+    # The rows read back as the typed books they were written from, the
+    # update's whole once rebuilt over the refresh's.
     books = [data.as_book_event() for data in MarketData.from_arrow_reader(table)]
     assert all(isinstance(book, BookEvent) for book in books)
     first, second = (book for book in books if book is not None)
+    assert first.is_complete and not second.is_complete
     assert first.best_price(Side.BUYS) is not None
     assert first.best_price(Side.BUYS).as_py() == decimal.Decimal("100")
     assert second.best_price(Side.BUYS) is not None
     assert second.best_price(Side.BUYS).as_py() == decimal.Decimal("101")
-    assert len(second.executions) == 1
-    live = second.alive[0].as_quote_event()
+    whole = second.with_previous(first)
+    assert whole is not None and whole.is_complete
+    live = whole.alive_on(Side.BUYS)[0].as_quote_event()
     assert live is not None and _kinds(live.identifiers) == {"mdentryid": "B1"}
     assert live.quantity is not None and live.quantity.as_py() == decimal.Decimal("11")
 
@@ -577,16 +587,25 @@ def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batc
     assert isinstance(reader, pa.RecordBatchReader)
     assert reader.schema == MarketData.field().into_arrow_schema()
     batches = list(reader)
-    # A two-sided quote and a trade split into sided messages at the parse
-    # (A12, A13): the source message a line reads as is no leaf of its own,
-    # so the order, the fill and the snapshot are what reach the book.
-    assert [batch.num_rows for batch in batches] == [2, 1]
+    # A trade splits into sided messages at the parse (A12): the source
+    # message a line reads as is no leaf of its own. A quote is one element
+    # holding both its legs, never split, so the order, the two-sided quote,
+    # the fill and the snapshot are the market data.
+    assert [batch.num_rows for batch in batches] == [2, 2]
     table = pa.Table.from_batches(batches)
     assert table.column("marketdatakind").to_pylist() == [
         MarketDataKind.ORDR,
+        MarketDataKind.QUOT,
         MarketDataKind.EXEC,
         MarketDataKind.BOOK,
     ]
+    # The quote states its two legs and no side, under side 0.
+    assert table.column("crosscode").to_pylist()[1] == "14:0:Q1"
+    assert (table.column("bidpx").to_pylist()[1], table.column("askpx").to_pylist()[1]) == (
+        decimal.Decimal("99"),
+        decimal.Decimal("101"),
+    )
+    assert table.column("side").to_pylist()[1] == Side.UNKN
     direct = list(codec.market_data(capture))
     assert list(MarketData.from_arrow_reader(table)) == direct
 
@@ -631,9 +650,10 @@ def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegis
     assert stated.curruuid != bare.curruuid
     assert stated.currhashcode != bare.currhashcode
     # The message door always carries it; the book door honours the switch.
+    # With no grid the book states its deltas alone: the order is its one.
     assert message.market_data() == [stated]
     [book] = MarketData.from_arrow_reader(off.book_arrow_reader([message]))
-    [live] = book.as_book_event().alive  # type: ignore[union-attr]
+    [live] = book.as_book_event().deltas  # type: ignore[union-attr]
     assert live.metadata == {}
 
 
@@ -712,18 +732,20 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     once = [held.curruuid for held in every if not (held.curruuid in seen or seen.add(held.curruuid))]
     assert once == [held.curruuid for held in walked]
 
-    # Eighteen deliveries reach a book - eight fills and ten order reports,
-    # a fill and a report of the twenty yielded once - and none is refused:
-    # the trade whose side states no Side(54) split into a fill of side
-    # UNKN, which its book keeps among its executions on neither side.
+    # Twenty-one deliveries are market data - eight fills and ten order
+    # reports, a fill and a report of the twenty yielded once, and the NOVN
+    # order's three steps: the venue's acknowledgement - an execution report
+    # of no fill, its order's leaf - the restatement and the expiry - and
+    # none is refused: the trade whose side states no Side(54) split into a
+    # fill of side UNKN.
     operations = list(codec.market_data(walked))
-    assert len(operations) == 18
-    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 10
+    assert len(operations) == 21
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 13
 
-    # Every operation folds; the unpriced sell order of 2454 rests at its
-    # side's unpriced level and leaves at the same instant, so the last of
-    # the eight books - one the trade's - holds nothing and states both as
-    # deltas. The hash moved with the split fills, the sided cross codes,
+    # Every order folds and every execution is pruned; the unpriced sell
+    # order of 2454 rests at its side's unpriced level and leaves at the same
+    # instant, so the last book holds nothing and states both as deltas. The
+    # hash moved with the split fills, the sided cross codes,
     # the book's own bid and ask facts (A12, A17, A20), the metadata a
     # follower takes from its chain, the four-letter side code the
     # book's own unstated side feeds (`UNKN`), the time in force, an
@@ -732,15 +754,37 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
     # `identifiers`, `partyids` and `securityids`. It moved again with the
     # stored cross code (`3:0:2454`, kind and side before the base, which the
     # cross hash and every identity derive from) and the identifier maps
-    # (keyed `src:type`, the bridge's own keys inferred into them), the one
-    # value `rust/tests/fix/ulbridge.rs` pins for the same log.
+    # (keyed `src:type`, the bridge's own keys inferred into them). It moved
+    # again when every type took its base key, spelled as the type alone -
+    # the wire's identifiers digest under `base`, beside the base key a named
+    # source fills - and when the bridge's `DETAILEDCFICODE` became a name of
+    # `CFICode(461)`, folded into it: the one value `rust/tests/fix/ulbridge.rs`
+    # pins for the same log. A book holds no execution - a fill moved its
+    # book through its order's report - so a book stands at every instant an
+    # order states, ten of them with the NOVN order's three steps, each its
+    # deltas alone: with no grid and no snapshot input no book is whole. The
+    # hash moved again when a book stopped holding executions, when a code's
+    # first book came to state its deltas alone, and when a book came to be
+    # keyed by its instrument's ISIN, holding it as its `isin`.
     books = list(graph.BookIterator(operations))
-    assert len(books) == 8
+    assert len(books) == 10
+    assert not any(book.is_complete for book in books)
     last = books[-1]
     assert last.ticker == "2454"
+    assert (last.isincode, last.crosscode) == ("TW0002454006", "3:0:TW0002454006")
     assert last.alive == []
     assert [delta.price for delta in last.deltas] == [None, None]
-    assert last.currhashcode == 1_642_488_774_851_967_775
+    assert last.currhashcode == 9_341_042_899_919_963_577
+    # Every book is keyed by the ISIN its inputs state, else their ticker:
+    # the masked line's number keys its own book.
+    assert sorted({book.crosscode for book in books}) == [
+        "3:0:CH0012005267",
+        "3:0:CH0012214059",
+        "3:0:CH0012221716",
+        "3:0:TW0001605004",
+        "3:0:TW0002454006",
+        "3:0:XX0000000001",
+    ]
 
     # No leaf keys a typed fact - Account(1) is no typed fact since A1 - and
     # the fill line 105 carries states its bridge's own namespaced key, which
@@ -751,12 +795,12 @@ def test_the_bridge_capture_reads_as_market_data_and_folds_into_books(
             assert typed not in operation.metadata
         assert "tech.clientid" not in operation.metadata
     assert any(
-        getattr(operation.into_leaf(), "partyids", Identifiers()).get_from("tech", "clientid") == "OMSX1"
+        getattr(operation.into_leaf(), "partyids", Identifiers()).get_from("tech:clientid") == "OMSX1"
         for operation in operations
     )
 
 
-def test_lifecycled_two_sided_trade_streams_executions_without_depth(
+def test_lifecycled_two_sided_trade_streams_executions_and_no_book(
     seed_batch: FixRegistry,
 ) -> None:
     codec = _fixed_batch(seed_batch, batch_row_size=1)
@@ -779,13 +823,13 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     ]
     assert all(source.curruuid in fill.srcuuids for fill in fills)
 
-    rows = codec.book_arrow_reader(
-        codec.lifecycle(messages), snapshot_millis=0
-    ).read_all().to_pylist()
+    # A book holds no execution - a fill moves a book through its order's
+    # report - so an instant only executions touched emits no book.
+    assert codec.book_arrow_reader(codec.lifecycle(messages), snapshot_millis=0).read_all().num_rows == 0
 
-    assert len(rows) == 1
-    book = rows[0]
-    by_side = {execution["side"]: execution for execution in book["executions"]}
+    rows = codec.market_arrow_reader(codec.lifecycle(messages)).read_all().to_pylist()
+    assert len(rows) == 2
+    by_side = {execution["side"]: execution for execution in rows}
     assert set(by_side) == {Side.BUYS, Side.SELL}
     buy, sell = by_side[Side.BUYS], by_side[Side.SELL]
     # A trade-capture side states no price and no quantity: its last
@@ -804,7 +848,7 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     assert all(
         execution["marketdatakind"] == MarketDataKind.EXEC
         and execution["ticker"] == "AAPL"
-        and execution["currunix"] == book["currunix"]
+        and execution["currunix"] == pa.scalar(source.currunix, pa.timestamp("ns", "UTC")).as_py()
         for execution in by_side.values()
     )
     buy_ids, sell_ids = _row_kinds(buy["identifiers"]), _row_kinds(sell["identifiers"])
@@ -818,8 +862,6 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     assert buy["crossuuid"] != sell["crossuuid"]
     # Each fill's stored cross code is its kind and its side, then its base.
     assert buy["crosscode"].startswith("8:1:") and sell["crosscode"].startswith("8:2:")
-    assert book["marketdatakind"] == MarketDataKind.BOOK
-    assert book["alive"] == [] and book["deltas"] == []
 
 
 @pytest.mark.parametrize(
@@ -830,7 +872,7 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
             b"32=4|31=101.25|60=20260921-10:00:00|552=1|"
             b"1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|",
             [Side.UNKN],
-            1,
+            0,
         ),
         (
             b"8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|"
@@ -846,8 +888,8 @@ def test_a_trade_side_stating_no_side_splits_into_a_fill_of_side_unknown(
     # The executions split once, at the parse (A12): a side stating no
     # Side(54) is still a fill, of side UNKN, said as a warning - never a
     # lost fill - and a trade stating no side at all splits into none. The
-    # report itself is no leaf of a book; a fill of side UNKN is one of
-    # its book's executions, on neither side.
+    # report itself is no leaf of a book, and a book holds no execution, so
+    # neither emits a book.
     codec = _fixed_batch(seed_batch)
     trade, *split = codec.parse_line(body)
     assert (trade.state, trade.side) == (State.TRADE, Side.UNKN)
@@ -958,12 +1000,58 @@ def test_rows_prune_projected_scalars_and_complete_groups_from_residual_entries(
     residual = row.as_py()[schema.index_of("fixentries")]
     assert not any(key.split(":")[0] == "55" for key in residual)
     assert "453:parties" in residual
-    assert [str(id) for id in message.partyids] == ["proprietary:executingfirm=BRK"]
+    assert [str(id) for id in message.partyids] == ["executingfirm=BRK", "proprietary:executingfirm=BRK"]
     assert row.as_py()[schema.index_of("metadata")] == {"9999": "x"}
     rebuilt = FixMsg.from_row(schema, row, seed_batch)
     assert rebuilt.by_tag(55).as_py() == "AAPL"
-    assert rebuilt.by_tag(453).as_py() == 1
+    assert len(rebuilt.by_name("parties").as_py()) == 1
+    assert rebuilt.get_by_tag(453) is None
     assert rebuilt.into_row(schema) == row
+
+
+def test_a_bridges_code_aliases_land_in_securityids_and_leave_the_rows_metadata(
+    seed_batch: FixRegistry,
+) -> None:
+    # A bridge's code-like keys each land in `securityids`: the crate's own
+    # `ISINCODE` and `BLOOMBERGCODE` views, and the keyed `RICCODE`,
+    # `OMS_CUSIPCODE` and `SEDOLCODE` an unmapped key is read by. The row's
+    # `metadata` holds none of them - a keyed one rides `fixentries` under
+    # `0:<key>`, a view its own column - and only a value a type refuses by
+    # shape stays in `metadata`; the row read back restates the sets, the
+    # digest and the identity.
+    codec = _fixed_batch(seed_batch)
+    schema = fix_schema(seed_batch)
+    held = _one(
+        codec,
+        b"8=FIX.4.4|35=D|11=C1|ISINCODE=US0378331005|BLOOMBERGCODE=AAPL US Equity|"
+        b"OMS_CUSIPCODE=037833100|RICCODE=AAPL.O|SEDOLCODE=2046251|#CUSIPCODE=03783310|10=0|",
+    )
+    assert _kinds(held.securityids) == {
+        "bloomberg": "AAPL US Equity",
+        "cusip": "037833100",
+        "isin": "US0378331005",
+        "ric": "AAPL.O",
+        "sedol": "2046251",
+    }
+    assert held.securityids.get_from("oms:cusip") == "037833100"
+    assert [field for field, _ in held.anomalies] == ["cusipcode"]
+
+    row = held.into_row(schema)
+    cells = row.as_py()
+    assert cells[schema.index_of("metadata")] == {"cusipcode": "03783310"}
+    residual = cells[schema.index_of("fixentries")]
+    assert {key: value for key, value in residual.items() if key.startswith("0:")} == {
+        "0:omscusipcode": "037833100",
+        "0:riccode": "AAPL.O",
+        "0:sedolcode": "2046251",
+    }
+    assert (cells[schema.index_of("isincode")], cells[schema.index_of("bloombergcode")]) == (
+        "US0378331005",
+        "AAPL US Equity",
+    )
+    again = FixMsg.from_row(schema, row, seed_batch)
+    assert again.securityids == held.securityids
+    assert (again.currhashcode, again.curruuid) == (held.currhashcode, held.curruuid)
 
 
 def test_a_captures_own_columns_are_carried_and_never_become_facts(seed_batch: FixRegistry) -> None:
@@ -1032,7 +1120,7 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
     narrow = Field(
         "fix",
         DataType.from_fields(
-            [column for column in wide if column.name not in ("fixentries", "nofixentries")]
+            [column for column in wide if column.name != "fixentries"]
         ),
         nullable=False,
     )
@@ -1054,12 +1142,13 @@ def test_a_row_without_the_entries_column_keeps_projected_content(seed_batch: Fi
 def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     seed_batch: FixRegistry,
 ) -> None:
-    """A group of no occurrence is stated by its count alone.
+    """A group is its list alone, and one holding nothing is stated empty.
 
-    ``802=0`` is the counter stating zero beside the empty list and re-emits;
-    PyIceberg reads a null list of structs back as ``[]`` beside a null
-    counter, which states nothing: each row read back and settled again from
-    its content is the message the parse wrote.
+    ``802=0`` is the list holding nothing and re-emits; a column holds a group
+    as null or as at least one occurrence, so the zero rides the residual
+    record, and PyIceberg reads a null list of structs back as ``[]``, which
+    states nothing: each row read back and settled again from its content is
+    the message the parse wrote.
     """
     codec = _fixed_batch(seed_batch)
     party = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|453=1|448=X|447=D|452=1|"
@@ -1074,25 +1163,22 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
     # states; it holds the dictionary's `Parties(453)` group as a column, in
     # place of the `partyids` identifiers, as a narrower table may.
     wide = fix_schema(seed_batch)
-    count_field = copy.copy(seed_batch.field_by_tag(453))
     group_field = copy.copy(seed_batch.field_by_counter(453))
-    count_field.set_nullable(True)
     group_field.set_nullable(True)
     columns = []
     for column in wide:
         if column.name == "fixentries":
-            columns.extend([count_field, group_field])
+            columns.append(group_field)
         if column.name not in ("currhashcode", "partyids"):
             columns.append(column)
     narrow = Field("fix", DataType.from_fields(columns), nullable=False)
     parties = narrow.index_of("parties")
     party_item = narrow.field_by_path("parties").dtype.field_at(0)
     subids = party_item.index_of("partysubids")
-    count = party_item.index_of("nopartysubids")
+    assert party_item.index_of("nopartysubids") is None
     for message, stated in ((absent, False), (counted, True)):
         written = message.into_row(narrow).as_py()
-        assert (written[parties][0][count] is not None) is stated
-        assert (written[parties][0][subids] is not None) is stated
+        assert written[parties][0][subids] is None
         read_back = copy.deepcopy(written)
         read_back[parties][0][subids] = []
         for row in (written, read_back):
@@ -1105,10 +1191,10 @@ def test_a_group_counting_none_is_stated_and_a_list_read_back_empty_is_not(
 def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
     seed_batch: FixRegistry,
 ) -> None:
-    """The same rule at the root: ``453=0`` is stated, ``partyids = {}`` beside no count is not.
+    """The same rule at the root: ``453=0`` is stated, ``partyids = {}`` is not.
 
-    A ``partyids`` identifier map read back as ``{}`` where the row held null - its
-    ``nopartyids`` still null, or no such column at all - is the group absent.
+    A ``partyids`` identifier map read back as ``{}`` where the row held null is
+    the group absent.
     """
     codec = _fixed_batch(seed_batch)
     order = b"8=FIX.4.4|35=D|49=S|56=T|34=7|11=A|55=AAPL|54=1|"
@@ -1118,23 +1204,22 @@ def test_a_root_group_counting_none_is_stated_and_a_map_read_back_empty_is_not(
     assert "453=" not in absent.into_text("|")
 
     wide = fix_schema(seed_batch)
-    for dropped in ({"currhashcode"}, {"currhashcode", "nopartyids"}):
-        narrow = Field(
-            "fix",
-            DataType.from_fields([column for column in wide if column.name not in dropped]),
-            nullable=False,
-        )
-        partyids = narrow.index_of("partyids")
-        for message, stated in ((absent, False), (counted, True)):
-            written = message.into_row(narrow).as_py()
-            read_back = copy.deepcopy(written)
-            if read_back[partyids] is None:
-                read_back[partyids] = {}
-            for row in (written, read_back):
-                held = FixMsg.from_row(narrow, row, seed_batch)
-                assert held.currhashcode == message.currhashcode
-                assert held.curruuid == message.curruuid
-                assert ("|453=" in held.into_text("|")) is stated
+    narrow = Field(
+        "fix",
+        DataType.from_fields([column for column in wide if column.name != "currhashcode"]),
+        nullable=False,
+    )
+    partyids = narrow.index_of("partyids")
+    for message, stated in ((absent, False), (counted, True)):
+        written = message.into_row(narrow).as_py()
+        read_back = copy.deepcopy(written)
+        if read_back[partyids] is None:
+            read_back[partyids] = {}
+        for row in (written, read_back):
+            held = FixMsg.from_row(narrow, row, seed_batch)
+            assert held.currhashcode == message.currhashcode
+            assert held.curruuid == message.curruuid
+            assert ("|453=" in held.into_text("|")) is stated
 
 
 def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry) -> None:
@@ -1151,14 +1236,14 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry
     # A parse chains nothing, but places each message within its instant:
     # all four are undated, so they share the codec's default and count up.
     # The fill splits into its report and an execution of its own (A12).
-    assert _column(table, "seqnum") == [None, 1, 2, 3]
+    assert _column(table, "seqnum") == [0, 1, 2, 3]
     assert _column(table, "prevuuid") == [None, None, None, None]
 
     walked = codec.lifecycle_arrow_reader(table).read_all()
     assert walked.schema == table.schema, "the same schema in and out"
     # The order's later steps each keep their own place; the execution
     # shares the fill's instant with its report and stands after it.
-    assert _column(walked, "seqnum") == [None, None, None, 1], "a later instant keeps its own place"
+    assert _column(walked, "seqnum") == [0, 0, 0, 1], "a later instant keeps its own place"
     assert _column(walked, "prevuuid")[0] is None and _column(walked, "prevuuid")[3] is None
     assert all(held is not None for held in _column(walked, "prevuuid")[1:3])
     assert _column(walked, "fixentries") == _column(table, "fixentries"), "the record is untouched"
@@ -1252,9 +1337,9 @@ def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
     registry.insert(group)
     group = registry.field_by_name("Parties")
     group.fix.group = "Parties"
-    counter = registry.field(453)
-    counter.fix.field_ref = "NoPartyIDs"
-    registry.insert(_message("NewOrderSingle", "D", [counter, group]))
+    # A group is its list alone: the counter is the dictionary's field and
+    # no member of the message beside it.
+    registry.insert(_message("NewOrderSingle", "D", [group]))
     return registry
 
 
@@ -1612,7 +1697,7 @@ def _numeric_group_registry(scoped: bool) -> FixRegistry:
     held.fix.component = component.name
     registry.insert(held)
     if scoped:
-        message = _message("AlphaMessage", "X", [counter, held, tail])
+        message = _message("AlphaMessage", "X", [held, tail])
         message.fix.branches = ["alpha"]
         registry.insert(message)
     return registry
@@ -1629,7 +1714,8 @@ def test_numeric_groups_resolve_through_the_one_namespace(scoped: bool) -> None:
     codec = FixCodec(registry)
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"
     message = codec.parse_fix_line(wire)
-    assert message.by_name("NoAlphaRows").as_py() == 1
+    assert len(message.by_name("AlphaRows").as_py()) == 1
+    assert message.get_by_name("NoAlphaRows") is None
     assert message.by_path("AlphaRows[0].AlphaID").as_py() == 42
     assert message.by_name("AlphaValue").as_py() == 7
     assert message.by_tag(55).as_py() == "AAPL"
@@ -1954,16 +2040,24 @@ def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
         )
     )
     # A parent stated without its base is what it came from: `firm:orderid`
-    # is filled from `firm:parentorderid`, under the parent's own source.
+    # is filled from `firm:parentorderid`, under the parent's own source; a
+    # named source fills its type's base key where the wire stated none.
     assert [str(id) for id in message.identifiers] == [
+        "clordid=U1",
+        "execid=E1",
         "firm:orderid=P1",
         "firm:parentorderid=P1",
-        "fix:execid=E1",
-        "fix:orderid=O1",
+        "orderid=O1",
+        "parentorderid=P1",
         "shop:clordid=U1",
     ]
-    assert message.identifiers.get_from("firm", "parentorderid") == "P1"
-    assert [str(id) for id in message.partyids] == ["venue:account=ACC1", "venue:userid=trader1"]
+    assert message.identifiers.get_from("firm:parentorderid") == "P1"
+    assert [str(id) for id in message.partyids] == [
+        "account=ACC1",
+        "userid=trader1",
+        "venue:account=ACC1",
+        "venue:userid=trader1",
+    ]
     assert not message.securityids
 
 
@@ -2244,15 +2338,18 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
-    # The columns every message settles are non-null; every other one is
-    # nullable, because a message that carried nothing there answers null.
+    # The columns every message settles are non-null - its place among the
+    # messages of its instant with them, zero for the first; every other one
+    # is nullable, because a message that carried nothing there answers null.
     assert [name for name, field in fields.items() if not field.nullable] == [
         "curruuid",
         "crossuuid",
+        "crosscode",
         "currhashcode",
         "crosshashcode",
         "currunix",
         "creaunix",
+        "seqnum",
     ]
 
     # The clocks are instants in UTC, to the nanosecond; the identities are
@@ -2451,13 +2548,24 @@ def test_a_glob_of_cblocks_passes_over_a_tag_typed_two_ways(tmp_path: pathlib.Pa
     (folder / "bloomberg_fix44_dropcopy.cfb").write_text(_rejection("integer"))
     (folder / "axessiq_fix44.cfb").write_text(_rejection("boolean"))
     (folder / "tradeweb_fix44.cfb").write_text(_rejection("string"))
+    (folder / "broken_fix44.cfb").write_text("<cplugin-configuration><vocabulary>")
+    (folder / "notes.txt").write_text("not a dictionary")
+    # A folder holds the .cfb files directly inside it, and a glob what it
+    # matches: both fold the same files into the same dictionary.
+    globbed = FixRegistry()
+    globbed.add_cfb_files(folder / "*fix44*.cfb")
     dictionary = FixRegistry()
-    report = dictionary.add_cfb_files(folder, "*.cfb")
+    report = dictionary.add_cfb_files(folder)
+    assert dictionary.into_json() == globbed.into_json()
 
-    # Every file folds; the first in URL order is held. An integer contradicts
-    # a flag and is named; text is every FIX datatype on the wire, so it
-    # restates the flag and folds under it.
+    # Every file folds but the one that is no CBlock, which is left out and
+    # named; the first in URL order is held. An integer contradicts a flag
+    # and is named; text is every FIX datatype on the wire, so it restates
+    # the flag and folds under it.
     assert report["sources"] == 3
+    [failed] = report["failed"]
+    assert failed["source"].endswith("broken_fix44.cfb")
+    assert "vocabulary" in failed["reason"]
     assert report["restated"] == 1
     [dropped] = report["dropped"]
     assert dropped["source"].endswith("bloomberg_fix44_dropcopy.cfb")
@@ -2560,7 +2668,6 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
         ]
 
     caplog.set_level(logging.WARNING)
-    refresh_logging()
 
     # A tag named by no decimal is no tag: the warning says what was wrong,
     # where the file says it, which dialect's file it is and what the reader
@@ -2816,7 +2923,6 @@ def _order(seed: FixRegistry) -> Field:
             [
                 seed.field_by_tag(55),
                 seed.field_by_tag(38),
-                seed.field_by_name("NoPartyIDs"),
                 seed.field_by_name("Parties"),
                 Field("9999", "utf8"),
                 seed.field_by_tag(52),
@@ -2829,7 +2935,6 @@ def _order(seed: FixRegistry) -> Field:
 ORDER_VALUE: dict[str, Any] = {
     "symbol": "AAPL",
     "orderqty": decimal.Decimal("100"),
-    "nopartyids": 1,
     "parties": [{"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}],
     "9999": "custom",
     "sendingtime": CLOCK,
@@ -2844,12 +2949,11 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     # the row, so the root keeps only what the message states of its own.
     assert [child.name for child in message.field] == [
         "symbol",
-        "nopartyids",
         "parties",
         "9999",
     ]
     assert message.registry == seed
-    assert len(message) == 4
+    assert len(message) == 3
     symbol_id = seed.field_by_tag(55).fix.id
     assert symbol_id is not None
     assert message.by_tag(55).as_py() == "AAPL"
@@ -3347,8 +3451,8 @@ def test_the_entries_are_the_row_read_as_a_tree(seed: FixRegistry) -> None:
         (0, "9999", "x", []),
         (59, "timeinforce", "0", []),
     ]
-    # The group's counter is the group entry's own value, so the counter
-    # child beside it states nothing the entries do not already.
+    # The group's length is the group entry's own value, filed under its
+    # counter's tag, and no counter child stands beside it.
     assert [tag for tag, _, _, _ in message.entries()].count(453) == 1
     # A typed fact is not an entry: the holders answer those, the lifted
     # `ClOrdID(11)` and the trailer's own `CheckSum(10)` included.
@@ -3403,7 +3507,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     )
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
-    assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
+    assert repr(message) == 'FixMsg("NewOrderSingle", 3 values)'
 
 
 def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
@@ -3584,6 +3688,30 @@ def _dated_line(body: bytes) -> TextLine:
     return TextLine(0, body, [RECORDED], options)
 
 
+def test_a_timestamp_reads_an_offset_after_one_blank() -> None:
+    """A datetime field is read by the core's own datetime reader.
+
+    A formatter that separates its fields writes the zone after a blank -
+    ``yyyyMMdd-HH:mm:ss Z`` - and it is the same instant; a bridge closes
+    that offset with ``s``, which adds nothing to it, and any other letter
+    there is no offset, the value left unstated.
+    """
+    codec = FixCodec(FixRegistry(), default_sending_time=CLOCK, exclude_msgtypes=[])
+    instant = DataType('datetime64(ns,"UTC")')
+    stated = next(
+        codec.parse_line(
+            b"8=FIX.4.4|35=0|52=20260101-10:00:00 +0400|60=20260101-10:00:00.250 -0500|10=0|"
+        )
+    )
+    assert stated.by_tag(52) == instant.scalar(1_767_247_200_000_000_000)
+    assert stated.by_tag(60) == instant.scalar(1_767_279_600_250_000_000)
+    suffixed = next(codec.parse_line(b"8=FIX.4.4|35=0|60=20260101-10:00:00 +0400s|10=0|"))
+    assert suffixed.by_tag(60) == instant.scalar(1_767_247_200_000_000_000)
+    other = next(codec.parse_line(b"8=FIX.4.4|35=0|60=20260101-10:00:00 +0400m|10=0|"))
+    unstated = other.get_by_tag(60)
+    assert unstated is None or unstated.is_null()
+
+
 def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegistry) -> None:
     """The line was recorded as its message went by: nearer the send than any pin."""
     line = _dated_line(b"8=FIX.4.4|35=8|10=0|")
@@ -3630,8 +3758,8 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
     assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").currunix == CLOCK_NS
 
 
-def test_a_quote_states_its_bid_and_offer_and_splits_when_two_sided(seed: FixRegistry) -> None:
-    """A quote's bid and offer are facts of their own; two sides split (A13, A20)."""
+def test_a_quote_states_its_bid_and_offer_and_holds_both_legs(seed: FixRegistry) -> None:
+    """A quote's bid and offer are facts of their own, its two legs one message (A20)."""
     codec = _fixed(seed)
 
     # A bid alone states the bid and no side: no side is invented from it.
@@ -3649,21 +3777,28 @@ def test_a_quote_states_its_bid_and_offer_and_splits_when_two_sided(seed: FixReg
     assert offer.askpx is not None and offer.askpx.as_py() == 102
     assert offer.askqty is not None and offer.askqty.as_py() == 50
 
-    # Both sides split at the parse into a buy at the bid and a sell at the
-    # offer, each keeping the pair its source stated and chaining per side.
-    source, buy, sell = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
-    assert source.side is Side.UNKN
-    assert (buy.side, sell.side) == (Side.BUYS, Side.SELL)
-    assert buy.price is not None and buy.price.as_py() == 101
-    assert sell.price is not None and sell.price.as_py() == 102
-    assert (source.crosscode, buy.crosscode, sell.crosscode) == ("14:0:Q3", "14:1:Q3", "14:2:Q3")
-    assert buy.bidpx == sell.bidpx == source.bidpx
-    assert buy.askpx == sell.askpx == source.askpx
-    assert buy.srcuuids == sell.srcuuids == [source.curruuid]
+    # Both legs are one message: the parse never splits a quote, which states
+    # no side, no price of its own and its two legs under side 0.
+    [quote] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|")
+    assert quote.side is Side.UNKN and quote.price is None
+    assert quote.crosscode == "14:0:Q3"
+    assert quote.bidpx is not None and quote.bidpx.as_py() == 101
+    assert quote.askpx is not None and quote.askpx.as_py() == 102
+    # Its book rests it on both sides as one entry, one delta; with no grid
+    # that book states its delta alone, whole over the empty book of its key.
+    [book] = [data.as_book_event() for data in MarketData.from_arrow_reader(codec.book_arrow_reader([quote]))]
+    assert book is not None and not book.is_complete
+    assert [delta.crosscode for delta in book.deltas] == ["14:0:Q3"]
+    assert (book.bidpx, book.askpx) == (quote.bidpx, quote.askpx)
+    whole = book.with_previous(BookEvent.keyed(book.currunix, "AAPL"))
+    assert whole is not None
+    assert [entry.crosscode for entry in whole.alive] == ["14:0:Q3"]
+    assert whole.alive_on(Side.BUYS) == whole.alive_on(Side.SELL) == whole.alive
 
-    # A stated side stands, and a one-sided quote stays one message.
+    # A stated side is a tag: the code states side 0, and the one leg stated
+    # is the one side the quote rests on.
     [stated] = codec.parse_line(b"8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|")
-    assert stated.side is Side.SELL and stated.crosscode == "14:2:Q4"
+    assert stated.side is Side.SELL and stated.crosscode == "14:0:Q4"
 
 
 def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
@@ -3713,9 +3848,15 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
     filled = next(reader.parse_line(line))
     assert filled.by_tag(22).as_py() == "4"
-    # A US ISIN embeds the CUSIP, derived beside it under its own source.
+    # A US ISIN embeds the CUSIP, derived beside it under its own source,
+    # which fills the CUSIP's base key.
     assert _kinds(filled.securityids) == {"cusip": "037833100", "isin": "US0378331005"}
-    assert [str(id) for id in filled.securityids] == ["derived:cusip=037833100", "fix:isin=US0378331005"]
+    assert [str(id) for id in filled.securityids] == [
+        "cusip=037833100",
+        "derived:cusip=037833100",
+        "isin=US0378331005",
+    ]
+    assert filled.securityids.is_derived("cusip") and not filled.securityids.is_derived("isin")
     assert filled.by_tag(470).as_py() == "US"
     # An order stating no time in force is a day order.
     assert filled.by_tag(59).as_py() == "0"
@@ -3739,15 +3880,15 @@ def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: Fix
     unknown = reader.parse_fix_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|")
     assert _kinds(unknown.identifiers) == {"clordid": "C-1"}
     assert unknown.header().msgtype == "ZZ"
-    # Each is keyed `src:type` - the source `fix` the field is the wire's
-    # own, the type the word its name folds to - and displays as such.
+    # Each is keyed by its type alone - a FIX field states the base key, the
+    # type the word its name folds to - and displays as such.
     assert [str(id) for id in report.identifiers] == [
-        "fix:clordid=C-001",
-        "fix:execid=E-09",
-        "fix:orderid=O-01",
+        "clordid=C-001",
+        "execid=E-09",
+        "orderid=O-01",
     ]
-    assert report.identifiers.get_from("fix", "orderid") == "O-01"
-    assert report.identifiers.get_from("base", "orderid") is None
+    assert report.identifiers.get_from("orderid") == "O-01"
+    assert report.identifiers.get_from("fix:orderid") == "O-01", "the standard's word reads as the base"
 
 
 def test_party_ids_are_typed_by_role_and_sourced_by_their_id_source(seed: FixRegistry) -> None:
@@ -3757,22 +3898,23 @@ def test_party_ids_are_typed_by_role_and_sourced_by_their_id_source(seed: FixReg
         b"8=FIX.4.4|35=D|11=C-1|41=C-0|1=ACC9|453=2|448=BRK|447=D|452=1|448=CL|447=N|452=3|10=0|"
     )
     assert [str(id) for id in message.partyids] == [
-        "base:account=ACC9",
+        "account=ACC9",
+        "clientid=CL",
+        "executingfirm=BRK",
         "legalentityidentifier:clientid=CL",
         "proprietary:executingfirm=BRK",
     ]
     assert message.partyids.get("executingfirm") == "BRK"
-    assert message.partyids.get_from("proprietary", "executingfirm") == "BRK"
+    assert message.partyids.get_from("proprietary:executingfirm") == "BRK"
     # `OrigClOrdID(41)` is the `origclordid` of the `clordid` it replaced: its
     # own key beside the `clordid`'s, no lineage held on the identifier.
-    replaced = message.identifiers.get_identifier("clordid")
-    assert replaced is not None and replaced.value == "C-1"
-    assert message.identifiers.get_from("fix", "origclordid") == "C-0"
-    assert [id.key for id in message.identifiers] == ["fix:clordid", "fix:origclordid"]
+    assert message.identifiers.get("clordid") == "C-1"
+    assert message.identifiers.get_from("origclordid") == "C-0"
+    assert [id.key for id in message.identifiers] == ["clordid", "origclordid"]
     # A party stating no role is typed `party`, a bare unknown role code is
-    # `partyrole<code>`, and a source stating none is `base`.
+    # `partyrole<code>`, and a source stating none is the base source.
     bare = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C-2|453=2|448=P1|452=9999|448=P2|10=0|")
-    assert [str(id) for id in bare.partyids] == ["base:party=P2", "base:partyrole9999=P1"]
+    assert [str(id) for id in bare.partyids] == ["party=P2", "partyrole9999=P1"]
 
 
 def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_to(seed: FixRegistry) -> None:
@@ -3784,9 +3926,11 @@ def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_
     )
     # An identifier the key's source and type name, a party for a role, a
     # security for a security type: each in its own map, keyed `src:type`.
-    assert [str(id) for id in message.identifiers] == ["fix:clordid=C1", "venue:clordid=X1"]
-    assert [str(id) for id in message.partyids] == ["venue:userid=U1"]
-    assert [str(id) for id in message.securityids] == ["venue:instrumentid=dbi;X"]
+    # A named source fills its type's base key only where nothing states it:
+    # the wire's `ClOrdID` answers `clordid`.
+    assert [str(id) for id in message.identifiers] == ["clordid=C1", "venue:clordid=X1"]
+    assert [str(id) for id in message.partyids] == ["userid=U1", "venue:userid=U1"]
+    assert [str(id) for id in message.securityids] == ["instrumentid=dbi;X", "venue:instrumentid=dbi;X"]
     # Another instrument's security (`underlyingisin`) and a name that is no
     # identifier's (`transversalkey`) are lifted nowhere.
     assert message.isincode is None
@@ -3795,16 +3939,16 @@ def test_an_unmapped_key_naming_an_identifier_lands_in_the_set_its_type_belongs_
     # The entries stay on the wire as they arrived, folded.
     wire = message.into_text("|")
     assert "venueclordid=X1" in wire and "underlyingisin=CH0012214059" in wire and "transversalkey=K1" in wire
-    # A whole security name is that type from `base`, its value checked.
+    # A whole security name is that type from the base source, its value checked.
     isin = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=C1|security_isin=US0378331005|10=0|")
-    assert isin.securityids.get_from("base", "isin") == "US0378331005"
+    assert isin.securityids.get_from("isin") == "US0378331005"
     # The market leaf lifts the same keys and keeps the rest in its metadata.
     [leaf] = message.market_data()
     order = leaf.as_order_event()
     assert order is not None
-    assert order.identifiers.get_from("venue", "clordid") == "X1"
-    assert order.partyids.get_from("venue", "userid") == "U1"
-    assert order.securityids.get_from("venue", "instrumentid") == "dbi;X"
+    assert order.identifiers.get_from("venue:clordid") == "X1"
+    assert order.partyids.get_from("venue:userid") == "U1"
+    assert order.securityids.get_from("venue:instrumentid") == "dbi;X"
     assert order.metadata == {"transversalkey": "K1", "underlyingisin": "CH0012214059"}
 
 
@@ -3886,10 +4030,11 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
     latest = next(codec.parse_line(REPORT))
 
     # ExecType PartiallyFilled is restated as Trade; Rule80A A is an agency
-    # order; ExecBroker and ClientID are two parties, in tag order, counted.
+    # order; ExecBroker and ClientID are two parties, in tag order, the
+    # group's length its count.
     assert latest.by_tag(150).as_py() == "F"
     assert latest.by_tag(528).as_py() == "A"
-    assert latest.by_tag(453).as_py() == 2
+    assert len(latest.by_name("parties").as_py()) == 2
     assert latest.by_path("parties[0].partyid").as_py() == "BRKR"
     assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
     # The fill under its newest spelling, reachable by the old one too.
@@ -4076,9 +4221,9 @@ def test_a_security_source_reads_by_its_name_and_an_unknown_one_is_kept(seed: Fi
         # A derivation reads the name as the code: the ISIN's country.
         assert by_name.get(470) == by_code.get(470)
     private = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|22=100|48=HOUSE-1|10=0|")
-    assert private.securityids.get_from("fix", "100") == "HOUSE-1"
+    assert private.securityids.get_from("100") == "HOUSE-1"
     refused = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|22=House/Key|48=HK-1|10=0|")
-    assert refused.securityids.get_from("fix", "housekey") is None
+    assert refused.securityids.get_from("housekey") is None
     assert "securityid" in [field for field, _ in refused.anomalies]
 
 
@@ -4386,8 +4531,10 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "creaunix",
         "currhashcode",
         "crosshashcode",
+        "crosscode",
         "curruuid",
         "crossuuid",
+        "seqnum",
         "beginstring",
     }
     # The facts a row derives are typed as the thing they hold.
@@ -4792,14 +4939,14 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
     options.rowheader = ULBRIDGE_ROWHEADER
     captures = options.source_field()
     names = [child.name for child in captures]
-    assert names[-6:] == [
-        "msgthreadid",
+    assert names[-4:] == [
         "msgsessionid",
         "msgctxid",
         "msgseqnum",
         "msgpluginid",
-        "loglevel",
     ]
+    # The thread and the level are matched and lifted into no column.
+    assert "msgthreadid" not in names and "loglevel" not in names
     assert str(captures.field("msgseqnum").dtype) == "int64"
     # The clock is `mtime`, consumed into each line's `currunix`, so it leads
     # no column of its own.
@@ -4835,3 +4982,358 @@ def test_the_bridge_row_header_dates_each_line_by_its_own_clock(tmp_path: pathli
         1_786_718_799_769_123_000,
         1_786_718_800_000_000_000,
     ]
+
+
+def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
+    seed_batch: FixRegistry,
+) -> None:
+    # Text rows read with `read_serie` go into the codec and what comes out
+    # is the native reader a following `append_serie` writes off the GIL:
+    # no `pyarrow` stream between, and the rows the Arrow doors answer.
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    options.start_rownum = 1
+    source = IOBase.from_bytes(ULBRIDGE_LOG.read_bytes())
+    source.media_type = Url("file:///ulbridge.log").media_type
+    codec = _fixed_batch(seed_batch)
+
+    parsed = codec.parse_text_serie(source.read_serie(options=options))
+    assert isinstance(parsed, yggdryl.SerieReader)
+    walked = codec.lifecycle_serie(parsed)
+    assert isinstance(walked, yggdryl.SerieReader)
+    rows = sum(len(record) for record in walked)
+
+    arrow = codec.lifecycle_arrow_reader(
+        codec.parse_text_arrow_reader(source.read_arrow_reader(options=options))
+    ).read_all()
+    assert rows == arrow.num_rows > 0
+
+    # A table read back feeds the walk and the books as messages.
+    messages = list(
+        codec.messages_serie(codec.parse_text_serie(source.read_serie(options=options)))
+    )
+    assert len(messages) == codec.parse_text_arrow_reader(
+        source.read_arrow_reader(options=options)
+    ).read_all().num_rows
+    market = codec.market_data_serie(codec.parse_text_serie(source.read_serie(options=options)))
+    assert isinstance(market, yggdryl.SerieReader)
+    assert sum(len(record) for record in market) > 0
+    books = codec.book_serie(codec.lifecycle(messages), 900_000)
+    assert isinstance(books, yggdryl.SerieReader)
+
+
+# The key every table of the capture pipeline declares: when a row happened
+# and the hash of what it states.
+CAPTURE_PRIMARY_KEY = ("currunix", "currhashcode")
+# What the partition column every table of the pipeline computes holds: a
+# derived column is described by whoever declares it.
+CAPTURE_PARTUNIX = (
+    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes."
+)
+
+# What every table of the pipeline requires of each row: its key, its place
+# among the rows of its instant, and the code and hash of its chain.
+CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
+
+
+def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTable:
+    """A format-v3 table for rows of ``row``, as Iceberg states them.
+
+    Partitioned by ``partunix`` - ``currunix`` floored to the quarter hour, a
+    column the table computes for every row written to it - sorted by it, the
+    instant, the place within the instant and the content hash, with the
+    instant and the hash its primary key.
+    """
+    schema = row.into_scheme_compat("iceberg").with_partition_by(
+        ["time_bucket('15 minutes', currunix) as partunix"]
+    )
+    for name in CAPTURE_REQUIRED:
+        column = schema[name]
+        column.set_nullable(False)
+        schema[name] = column
+    partunix = schema["partunix"]
+    partunix.set_description(CAPTURE_PARTUNIX)
+    schema["partunix"] = partunix
+    schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
+    schema = yggdryl.iceberg.assign_field_ids(schema)
+    # Iceberg names a key by the identifiers of its columns, which exist once
+    # the schema is numbered.
+    key = sorted(schema[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
+    schema.iceberg.update({"identifier-field-ids": ",".join(map(str, key))})
+    return yggdryl.iceberg.IcebergTable.create(IOBase(root), schema, format_version=3)
+
+
+THREADED_DOORS_SCRIPT = """
+import io
+import logging
+import pathlib
+import sys
+import threading
+
+import yggdryl
+from yggdryl import IOBase, TextOptions
+from yggdryl.fix import ULBRIDGE_ROWHEADER, FixCodec, FixRegistry, fix_schema
+
+CALLER = threading.get_ident()
+on_workers = []
+
+
+class Counting(logging.Handler):
+    def emit(self, record):
+        if threading.get_ident() != CALLER:
+            on_workers.append(record.getMessage())
+
+
+# Warnings reach Python's `logging`, so a parse worker that raises one takes
+# the GIL - and a record handled on a thread that is not the caller's is one
+# a worker took it for.
+logging.basicConfig(level=logging.WARNING, handlers=[Counting()])
+
+registry = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
+folder = pathlib.Path(sys.argv[2])
+codec = FixCodec(registry, exclude_msgtypes=[], threads=4)
+assert codec.threads == 4
+options = TextOptions()
+options.rowheader = ULBRIDGE_ROWHEADER
+options.timezone = "UTC"
+options.start_rownum = 1
+schema = fix_schema(registry)
+
+# A warning is said the first time and counted after, by the field it names:
+# each door reads lines stating a field of its own with a value that field's
+# type refuses, so each door's first warning is said while that door runs.
+TAGS = iter(
+    [6, 12, 14, 31, 32, 38, 44, 53, 84, 99, 110, 111, 118, 119, 132, 133, 134, 135]
+    + [140, 151, 152, 155, 159, 188, 189, 190, 191, 192, 194, 195, 202, 210, 211, 218]
+    + [223, 231, 236, 270, 271, 290]
+)
+HEADER = (
+    b"2026-08-14 14:46:39.771 [15255-e7254b12:9f0316669a:40221] [OMS_X1_TradeCapture] (INFO) "
+)
+LINES = 320
+
+
+def bodies(tag):
+    return [
+        b"Receiving : 8=FIX.4.4|35=D|11=D%d-%d|55=ABC|54=1|%d=zz|10=000|" % (tag, index, tag)
+        for index in range(LINES)
+    ]
+
+
+def capture(tag):
+    path = folder / ("capture-%d.log" % tag)
+    path.write_bytes(b"".join(HEADER + line + b"\\n" for line in bodies(tag)))
+    return path
+
+
+def rows(tag):
+    return IOBase(capture(tag)).read_serie(options=options)
+
+
+def text_lines(tag):
+    return list(IOBase(capture(tag)).read_text_lines(options=options))
+
+
+def parsed(tag):
+    # The parse as `pyarrow` holds it: a C stream over the core's reader.
+    return codec.parse_text_arrow_reader(rows(tag))
+
+
+def messages(tag):
+    # Lazy: the lines are parsed, on the workers, as the door pulls them.
+    return codec.parse_lines(bodies(tag))
+
+
+def drain(reader):
+    return sum(len(batch) for batch in reader)
+
+
+def count(iterable):
+    return sum(1 for _ in iterable)
+
+
+DOORS = {
+    "parse_lines": lambda tag: count(codec.parse_lines(bodies(tag))),
+    "parse_lines of a generator": lambda tag: count(
+        codec.parse_lines(line for line in bodies(tag))
+    ),
+    "parse_text_lines": lambda tag: count(codec.parse_text_lines(text_lines(tag))),
+    "parse_text_arrow_reader": lambda tag: drain(parsed(tag)),
+    "parse_text_arrow_reader read whole": lambda tag: parsed(tag).read_all().num_rows,
+    "parse_text_arrow_reader of a pyarrow reader": lambda tag: drain(
+        codec.parse_text_arrow_reader(rows(tag).into_arrow_reader())
+    ),
+    "parse_text_serie": lambda tag: drain(codec.parse_text_serie(rows(tag))),
+    "messages": lambda tag: count(codec.messages(parsed(tag))),
+    "messages_serie": lambda tag: count(codec.messages_serie(codec.parse_text_serie(rows(tag)))),
+    "arrow_reader": lambda tag: drain(codec.arrow_reader(schema, messages(tag))),
+    "serie_reader": lambda tag: drain(codec.serie_reader(schema, messages(tag))),
+    "lifecycle": lambda tag: count(codec.lifecycle(messages(tag))),
+    "lifecycle of messages": lambda tag: count(codec.lifecycle(codec.messages(parsed(tag)))),
+    "lifecycle_arrow_reader": lambda tag: drain(codec.lifecycle_arrow_reader(parsed(tag))),
+    "lifecycle_serie": lambda tag: drain(
+        codec.lifecycle_serie(codec.parse_text_serie(rows(tag)))
+    ),
+    "market_data": lambda tag: count(codec.market_data(messages(tag))),
+    "market_arrow_reader": lambda tag: drain(codec.market_arrow_reader(messages(tag))),
+    "market_data_arrow_reader": lambda tag: drain(codec.market_data_arrow_reader(parsed(tag))),
+    "market_data_serie": lambda tag: drain(
+        codec.market_data_serie(codec.parse_text_serie(rows(tag)))
+    ),
+    "market_serie": lambda tag: drain(codec.market_serie(messages(tag))),
+    "book_arrow_reader": lambda tag: drain(codec.book_arrow_reader(messages(tag))),
+    "book_serie": lambda tag: drain(codec.book_serie(messages(tag))),
+    "format_messages": lambda tag: len(codec.format_messages(messages(tag), schema)),
+    "format_arrow_reader": lambda tag: drain(codec.format_arrow_reader(parsed(tag), schema)),
+    "write_arrow_reader": lambda tag: codec.write_arrow_reader(parsed(tag), io.BytesIO()),
+    "IOBase.overwrite_arrow_reader": lambda tag: IOBase(folder / ("reader-%d.arrows" % tag))
+    .overwrite_arrow_reader(parsed(tag))
+    .written_rows,
+    "IOBase.overwrite_serie of a pyarrow reader": lambda tag: IOBase(
+        folder / ("stream-%d.arrows" % tag)
+    )
+    .overwrite_serie(parsed(tag))
+    .written_rows,
+    "IOBase.overwrite_serie of a SerieReader": lambda tag: IOBase(
+        folder / ("serie-%d.arrows" % tag)
+    )
+    .overwrite_serie(codec.lifecycle_serie(codec.parse_text_serie(rows(tag))))
+    .written_rows,
+    "Serie.from_": lambda tag: len(yggdryl.Serie.from_(parsed(tag))),
+    "ChunkedSerie.from_": lambda tag: len(yggdryl.ChunkedSerie.from_(parsed(tag))),
+}
+
+for name, door in DOORS.items():
+    said = len(on_workers)
+    # Said before the door runs: a door that hangs is the last one named.
+    print("door:", name, flush=True)
+    door(next(TAGS))
+    assert len(on_workers) > said, "no worker logged while %s ran" % name
+print("ok")
+"""
+
+
+def test_no_door_waiting_on_a_threaded_parse_holds_the_gil(tmp_path: pathlib.Path) -> None:
+    """A parse spread over worker threads logs through Python's ``logging``,
+    and a worker that logs takes the GIL - so a door waiting on the workers
+    must have released it: held, the two wait on each other for good.
+
+    Every door of the codec that can wait on them is driven, and every
+    consumer a parse reader is handed to - a handle's writes, ``Serie.from_``
+    - at four threads, each over lines whose refused field is its own, so a
+    worker's warning is said while that door runs and the script asserts one
+    was. In a process of its own under a deadline, because the failure is a
+    hang and a test that hangs proves nothing; what it had printed names the
+    door that hung. One thread never showed it: the worker was the caller.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", THREADED_DOORS_SCRIPT, str(SEED), str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired as hung:
+        seen = hung.stdout if isinstance(hung.stdout, str) else (hung.stdout or b"").decode()
+        doors = [line for line in seen.splitlines() if line.startswith("door:")]
+        raise AssertionError(f"a door hung holding the GIL; the last named: {doors[-1:]}") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")
+
+
+def test_the_capture_pipeline_lands_table_to_table_on_series(
+    seed_batch: FixRegistry, tmp_path: pathlib.Path
+) -> None:
+    # Bridge logs under a glob are one stream of text rows; a table takes
+    # them with `append_serie`, and the rows it yields back, in its own
+    # order, are parsed, walked and written with `overwrite_serie`, which
+    # replaces the quarters of an hour they fall in. No `pyarrow` stream
+    # between any two stages, and every write says what it did.
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    captured = ULBRIDGE_LOG.read_bytes().splitlines(keepends=True)
+    (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
+    (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
+    # The glob names the captures; a note beside them is not one.
+    (logs / "notes.txt").write_bytes(b"not a capture\n")
+
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    options.start_rownum = 1
+    lines = IOBase(logs / "*.log").read_serie(options=options)
+    assert isinstance(lines, yggdryl.SerieReader)
+    text_row = lines.field
+
+    text = _capture_table(tmp_path / "text", text_row)
+    appended = text.append_serie(lines)
+    assert appended == IOResult(144, 144)
+    assert appended.skipped_rows == 0
+    assert text.row_size() == 144
+    assert text.format_version == 3
+
+    # The table is what its schema says: partitioned by the quarter hour it
+    # computes, sorted, keyed, and its identity columns typed `uuid`.
+    stored = text.schema
+    assert stored.metadata["PARTITION:by"] == '["partunix"]'
+    assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]'
+    key = sorted(stored[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
+    assert stored.iceberg.get("identifier-field-ids") == ",".join(map(str, key))
+    assert not any(stored[name].nullable for name in CAPTURE_REQUIRED)
+    assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
+    # Every column says what it holds, which the table states as its doc:
+    # the partition column as the pipeline declared it.
+    assert [column.name for column in stored if column.description is None] == []
+    assert stored["partunix"].description == CAPTURE_PARTUNIX
+
+    def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
+        # The two instants as their nanosecond counts, in the order read.
+        keys: list[tuple[int, int]] = []
+        for batch in table.read_arrow_reader(select=["partunix", "currunix"]):
+            partunix = batch.column("partunix").cast(pa.int64()).to_pylist()
+            currunix = batch.column("currunix").cast(pa.int64()).to_pylist()
+            keys.extend(zip(partunix, currunix))
+        return keys
+
+    quarter = 900 * 1_000_000_000
+    instants = ordered(text)
+    assert len(instants) == 144
+    assert instants == sorted(instants)
+    assert all(partunix == currunix - currunix % quarter for partunix, currunix in instants)
+
+    # The stored text, in the table's order, parsed and walked.
+    # Every available CPU, as a pipeline runs: the parse spreads by batch and
+    # answers what one thread answers.
+    codec = _fixed_batch(seed_batch, threads=None)
+    assert codec.threads >= 1
+
+    def walked() -> yggdryl.SerieReader:
+        return codec.lifecycle_serie(codec.parse_text_serie(text.read_serie(field=text_row)))
+
+    stream = walked()
+    fix = _capture_table(tmp_path / "fix", stream.field)
+    written = fix.overwrite_serie(stream)
+    assert written.read_rows == written.written_rows == fix.row_size() > 0
+    assert written.skipped_rows == 0
+    # The Arrow doors over the same stored text walk the same rows.
+    assert (
+        codec.lifecycle_arrow_reader(
+            codec.parse_text_arrow_reader(text.read_arrow_reader(field=text_row))
+        )
+        .read_all()
+        .num_rows
+        == written.written_rows
+    )
+    rows = ordered(fix)
+    assert rows == sorted(rows)
+
+    # Running the stage again replaces the quarters its rows fall in: the
+    # same rows under one more snapshot, never the two runs together.
+    again = fix.overwrite_serie(walked())
+    assert again == written
+    assert fix.row_size() == written.written_rows
+    assert len(fix.snapshots) == 2
+    assert ordered(fix) == rows

@@ -366,10 +366,9 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
             ("partyrole", &Scalar::from(3))
         ]
     );
-    assert_eq!(
-        integer(&latest, 453),
-        Some(2),
-        "the counter states the count"
+    assert!(
+        latest.get_by_tag(453).is_none(),
+        "the group's length is the count"
     );
     assert_eq!(
         latest.by_path(&path("parties[1].partyrole")).unwrap(),
@@ -406,7 +405,6 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|439=CLR|440=ACCT|10=0|");
     let parties = occurrences(&latest, "parties");
     assert_eq!(parties.len(), 1);
-    assert_eq!(integer(&latest, 453), Some(1));
     assert_eq!(
         latest.by_path(&path("parties[0].partyid")).unwrap(),
         Scalar::from("CLR")
@@ -422,8 +420,12 @@ fn a_group_fill_merges_into_the_occurrence_whose_constants_match() {
         Scalar::from("ACCT")
     );
     assert_eq!(
-        latest.by_path(&path("parties[0].nopartysubids")).unwrap(),
-        Scalar::from(1)
+        latest
+            .by_path(&path("parties[0].partysubids"))
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(1)
     );
 
     // Alone, ClearingAccount makes the role-4 party itself.
@@ -482,7 +484,7 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
         &reader,
         b"8=FIX.4.2|35=D|11=A|115=ONBEHALF|370=20240102-10:15:30|10=0|",
     );
-    assert_eq!(integer(&hop, 627), Some(1));
+    assert_eq!(occurrences(&hop, "hops").len(), 1);
     assert_eq!(
         hop.by_path(&path("hops[0].hopcompid")).unwrap(),
         Scalar::from("ONBEHALF")
@@ -510,6 +512,34 @@ fn a_multiple_value_field_matches_by_token() {
     let plain = restated(&reader, b"8=FIX.4.4|35=D|11=A|18=G|10=0|");
     assert_eq!(text(&plain, 18).as_deref(), Some("G"));
     assert_eq!(plain.get_by_tag(1094), None);
+}
+
+#[test]
+fn a_boolean_field_is_named_by_the_table_every_flag_is_read_by() {
+    let reader = reader();
+    // `OddLot(575)` `Y` is `LotType(1093)` `1`, and `PublishTrdIndicator(852)`
+    // `Y` and `N` are `TradePublishIndicator(1390)` `1` and `0`: the fields
+    // are booleans, which a condition on `Y` names as the flag it is.
+    let odd = restated(&reader, b"8=FIX.4.4|35=D|11=A|575=Y|10=0|");
+    assert_eq!(text(&odd, 1093).as_deref(), Some("1"));
+    assert!(
+        odd.by_tag(575).unwrap().is_null(),
+        "a deprecated field is restated, not kept"
+    );
+    let round = restated(&reader, b"8=FIX.4.4|35=D|11=A|575=N|10=0|");
+    assert_eq!(round.get_by_tag(1093), None, "no rule names `N` for it");
+    assert_eq!(
+        round.by_tag(575).unwrap(),
+        Scalar::from(false),
+        "a flag no rule restates stays as it arrived"
+    );
+    let published = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=Y|10=0|");
+    assert_eq!(integer(&published, 1390), Some(1));
+    let withheld = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=N|10=0|");
+    assert_eq!(integer(&withheld, 1390), Some(0));
+    // A value the message stated stands, whatever the flag says.
+    let stated = restated(&reader, b"8=FIX.4.4|35=8|37=O1|852=Y|1390=0|10=0|");
+    assert_eq!(integer(&stated, 1390), Some(0));
 }
 
 #[test]
@@ -601,31 +631,31 @@ fn a_constant_written_over_a_multiple_value_source_replaces_the_matched_token() 
 #[test]
 fn a_group_fill_appending_to_a_counted_group_leaves_the_anomalies_alone() {
     let reader = reader();
-    // The wire counted one party; ClientID makes a second. The row's counter
-    // is re-counted with it, and what the message says of itself does not
+    // The wire counted one party; ClientID makes a second. The group's
+    // length is its count, and what the message says of itself does not
     // change: the wire was not miscounted.
     let latest = restated(
         &reader,
         b"8=FIX.4.4|35=D|11=A|453=1|448=X|452=1|109=CLIENT|10=0|",
     );
     assert_eq!(occurrences(&latest, "parties").len(), 2);
-    assert_eq!(integer(&latest, 453), Some(2));
+    assert!(latest.anomalies().is_empty());
     // A counter stating none, with a party to make.
     let none = restated(&reader, b"8=FIX.4.4|35=D|11=A|453=0|76=BRKR|10=0|");
     assert_eq!(occurrences(&none, "parties").len(), 1);
-    assert_eq!(integer(&none, 453), Some(1));
+    assert!(none.anomalies().is_empty());
 }
 
 #[test]
 fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     // The counter states none and `ExecBroker(76)` makes a party: the rule
     // opens the group the dictionary declares rather than a column of its
-    // own, and the counter counts what is there.
+    // own, and the group's length is what is there.
     let reader = reader();
     let latest = restated(&reader, b"8=FIX.4.4|35=D|11=A|453=0|76=BRKR|10=0|");
     assert!(names(&latest).contains(&"parties"), "{:?}", names(&latest));
     assert!(
-        names(&latest).contains(&"nopartyids"),
+        !names(&latest).contains(&"nopartyids"),
         "{:?}",
         names(&latest)
     );
@@ -638,7 +668,6 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
             ("partyrole", &Scalar::from(1))
         ]
     );
-    assert_eq!(integer(&latest, 453), Some(1));
 }
 
 #[test]
@@ -718,5 +747,5 @@ fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
             ("partyrole", &Scalar::from(1))
         ]
     );
-    assert_eq!(integer(&party, 453), Some(1));
+    assert!(party.get_by_tag(453).is_none());
 }

@@ -41,7 +41,7 @@ function venues(root) {
     [Field.from('id: int64'), Field.from('symbol: utf8'), Field.from('venue: utf8')],
     { nullable: false },
   )
-  const table = iceberg.Table.create(path.join(root, 'trades'), declared, ['venue'])
+  const table = iceberg.IcebergTable.create(path.join(root, 'trades'), declared, ['venue'])
   for (const [id, symbol, venue] of [
     [1n, 'AAPL', 'XNAS'],
     [2n, 'MSFT', 'XNYS'],
@@ -109,7 +109,11 @@ test('the tree is built from either spelling', () => {
   assert.equal(Term.all(['a', 'b']).toString(), 'a and b')
   assert.equal(new Term('a = 1 or a = 2').simplify().toString(), 'a in (1, 2)')
   assert.ok(new Term('a = 1 or a = 2').explain().startsWith('or'))
-  assert.throws(() => price.comparison('approximately', '1'), /comparison/)
+  // A comparison is read by the grammar's own reader: every spelling it
+  // takes, in any case, and a refusal naming the vocabulary.
+  assert.equal(price.comparison('!=', '1').toString(), 'price <> 1')
+  assert.equal(price.comparison(' IS NOT DISTINCT FROM ', '1').toString(), 'price is not distinct from 1')
+  assert.throws(() => price.comparison('approximately', '1'), /expected a comparison - =, <>, !=, <, <=, >, >= or is \[not\] distinct from - got "approximately"/)
 })
 
 test('arithmetic builders stay lazy term nodes', () => {
@@ -145,7 +149,7 @@ test('binding resolves the columns and folds the literals', () => {
   // The literal is converted once, into the column's own exact type.
   assert.equal(
     bound.term.toString(),
-    "price > decimal128(9,2) '100.00' and size is not null",
+    "price > decimal128(9,2) '100' and size is not null",
   )
   assert.match(bound.explain(), /column price/)
   assert.throws(() => new Term('size >= :floor').bind(TRADES), /floor/)
@@ -188,7 +192,7 @@ test('a literal holds the value it is given, text included', () => {
   assert.equal(Term.literal(Scalar.from('x')).toString(), "'x'")
   // A typed literal reads its value under the datatype it names.
   assert.equal(Term.typedLiteral('int8', 5).toString(), "int8 '5'")
-  assert.equal(Term.typedLiteral('decimal(9,2)', '1.5').toString(), "decimal32(9,2) '1.50'")
+  assert.equal(Term.typedLiteral('decimal(9,2)', '1.5').toString(), "decimal32(9,2) '1.5'")
   assert.throws(() => Term.typedLiteral('int8', 1000), /int8/)
   assert.equal(Term.column('tags').key('venue').toString(), "tags['venue']")
 })
@@ -376,7 +380,7 @@ test('a float cast into a decimal rounds half away from zero on both tiers', () 
     ['0.13', '0'],
     ['-0.13', '0'],
     ['1.15', '1'],
-    ['2.50', '3'],
+    ['2.5', '3'],
     ['0.01', '0'],
   ]
   const bound = cast.bind(root)
@@ -534,8 +538,11 @@ test('a plan is built section by section', () => {
   const nested = new Plan('select a from t').withSource(new Plan('select a, b from u where b > 1'))
   assert.equal(nested.toString(), 'select a from (select a, b from u where b > 1)')
   assert.ok(nested.sourcePlan.equals('select a, b from u where b > 1'))
-  assert.throws(() => new Plan().withWrite('sideways'), /verb/)
-  assert.throws(() => new Plan().withOrdering(['price sideways']), /expression/)
+  // A verb and an ordering key are read by the grammar's own readers.
+  assert.equal(new Plan().withWrite('MERGE INTO', 't', ['id']).verb, 'upsert into')
+  assert.equal(new Plan().withOrdering(['price DESC NULLS FIRST']).toString(), 'select * order by price desc nulls first')
+  assert.throws(() => new Plan().withWrite('sideways'), /expected a write verb - insert, append, overwrite, replace, upsert, merge or delete - got "sideways"/)
+  assert.throws(() => new Plan().withOrdering(['price sideways']), /at byte 6: expected the end of the expression/)
 })
 
 test('a field is a plan and a plan is a field', () => {

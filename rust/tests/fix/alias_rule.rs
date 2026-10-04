@@ -177,7 +177,9 @@ fn the_other_aliased_fields_still_resolve_from_one_spelling() {
         let Some(tag) = field.as_fix().tag().ok().flatten() else {
             continue;
         };
-        if field.dtype().is_nested() || tag == 37 {
+        // A counter's alias names the group it counts, which is its list
+        // alone and no field the tag reaches.
+        if field.dtype().is_nested() || tag == 37 || registry.get_field_by_counter(tag).is_some() {
             continue;
         }
         for alias in field.as_fix().names() {

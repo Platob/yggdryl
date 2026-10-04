@@ -81,17 +81,6 @@
         }
       },
       {
-        "name": "nolegprotectiontermeventqualifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprotectiontermeventqualifiers",
-          "FIX:tag": "41633"
-        }
-      },
-      {
         "name": "legprotectiontermeventqualifiers",
         "dtype": {
           "type": "null"

@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nodeliveryschedulesettltimes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nodeliveryschedulesettltimes",
-          "FIX:tag": "41054"
-        }
-      },
-      {
         "name": "deliveryschedulesettltimes",
         "dtype": {
           "type": "null"

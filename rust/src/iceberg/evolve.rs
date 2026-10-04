@@ -56,7 +56,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::TableMetadata;
 use crate::text::elide_to;
-use crate::{DataType, Error, Field, Result, StructType};
+use crate::{DataType, Error, Field, FieldPath, Result, StructType};
 
 /// How many bytes of a caller-supplied path an error message shows.
 const PATH_LIMIT: usize = 64;
@@ -128,8 +128,10 @@ const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
 /// order, numbers every added column above the captured `last-column-id`, and
 /// returns the evolved root ready for [`TableMetadata::add_schema`].
 ///
-/// A path is dotted: `"quote.price"` names the column `price` inside the
-/// struct column `quote`, and the empty parent `""` names the root itself.
+/// A path is a field path of struct column names: `"quote.price"` names the
+/// column `price` inside the struct column `quote`, a column whose name holds
+/// a dot is quoted (`"\"a.b\""` in Rust source) and never two levels, and
+/// the empty parent `""` names the root itself.
 #[derive(Clone, Debug)]
 pub struct SchemaUpdate {
     /// The schema the update starts from.
@@ -149,7 +151,7 @@ enum Op {
     DropColumn { path: SmolStr },
     /// Rename a column, keeping its identifier.
     RenameColumn { path: SmolStr, name: SmolStr },
-    /// Set a column's `ICEBERG:doc` documentation string.
+    /// Set a column's documentation: the field's own description.
     UpdateDoc { path: SmolStr, doc: SmolStr },
     /// Relax a required column to optional.
     MakeNullable { path: SmolStr },
@@ -180,8 +182,8 @@ impl SchemaUpdate {
         })
     }
 
-    /// Record a new column under `parent` - `""` for the root, a dotted path
-    /// for a nested struct.
+    /// Record a new column under `parent` - `""` for the root, a field path
+    /// of struct column names for a nested struct.
     ///
     /// On apply the column and every child it has are numbered fresh above
     /// the captured `last-column-id`, depth first, so a retired identifier is
@@ -208,8 +210,9 @@ impl SchemaUpdate {
         });
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at
-    /// `path`, through the field's Iceberg protocol view.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own [`Field::description`], which the schema document states
+    /// as its `doc`. An empty one clears it.
     pub fn update_doc(&mut self, path: &str, doc: impl Into<SmolStr>) {
         self.ops.push(Op::UpdateDoc {
             path: SmolStr::new(path),
@@ -298,11 +301,7 @@ impl SchemaUpdate {
 /// Append one column, stripped of any stale identifiers, under `parent`.
 fn apply_add(schema: &mut Field, parent: &str, mut field: Field) -> Result<()> {
     strip_ids(&mut field)?;
-    let segments: Vec<&str> = if parent.is_empty() {
-        Vec::new()
-    } else {
-        parent.split('.').collect()
-    };
+    let segments = struct_path(parent)?;
     edit_children(schema, &segments, parent, |children| {
         if children.iter().any(|child| child.name() == field.name()) {
             return Err(invalid(format_smolstr!(
@@ -318,10 +317,10 @@ fn apply_add(schema: &mut Field, parent: &str, mut field: Field) -> Result<()> {
 
 /// Remove the column at `path`.
 fn apply_drop(schema: &mut Field, path: &str) -> Result<()> {
-    let (segments, name) = split_column_path(path)?;
+    let (segments, name) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == name) else {
-            return Err(missing_column(name, children, path));
+            return Err(missing_column(&name, children, path));
         };
         children.remove(index);
         Ok(())
@@ -330,11 +329,11 @@ fn apply_drop(schema: &mut Field, path: &str) -> Result<()> {
 
 /// Rename the column at `path`, keeping its identifier.
 fn apply_rename(schema: &mut Field, path: &str, name: SmolStr) -> Result<()> {
-    let (segments, target) = split_column_path(path)?;
+    let (segments, target) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         if children
             .iter()
-            .any(|child| child.name() == name && child.name() != target)
+            .any(|child| child.name() == name && child.name() != target.as_str())
         {
             return Err(invalid(format_smolstr!(
                 "expected an unused name for {:?}, got {:?} which a sibling already carries",
@@ -343,31 +342,36 @@ fn apply_rename(schema: &mut Field, path: &str, name: SmolStr) -> Result<()> {
             )));
         }
         let Some(index) = children.iter().position(|child| child.name() == target) else {
-            return Err(missing_column(target, children, path));
+            return Err(missing_column(&target, children, path));
         };
         children[index].set_name(name);
         Ok(())
     })
 }
 
-/// Set the `ICEBERG:doc` property on the column at `path`.
+/// Set the description of the column at `path`, or clear it for an empty
+/// one.
 fn apply_doc(schema: &mut Field, path: &str, doc: &str) -> Result<()> {
-    let (segments, target) = split_column_path(path)?;
+    let (segments, target) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
-            return Err(missing_column(target, children, path));
+            return Err(missing_column(&target, children, path));
         };
-        children[index].as_iceberg_mut().set_doc(doc)?;
+        if doc.is_empty() {
+            children[index].remove_description();
+        } else {
+            children[index].set_description(doc)?;
+        }
         Ok(())
     })
 }
 
 /// Relax the column at `path` to optional.
 fn apply_nullable(schema: &mut Field, path: &str) -> Result<()> {
-    let (segments, target) = split_column_path(path)?;
+    let (segments, target) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
-            return Err(missing_column(target, children, path));
+            return Err(missing_column(&target, children, path));
         };
         children[index].set_nullable(true);
         Ok(())
@@ -376,10 +380,10 @@ fn apply_nullable(schema: &mut Field, path: &str) -> Result<()> {
 
 /// Promote the type of the column at `path`.
 fn apply_type(schema: &mut Field, path: &str, dtype: DataType) -> Result<()> {
-    let (segments, target) = split_column_path(path)?;
+    let (segments, target) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
-            return Err(missing_column(target, children, path));
+            return Err(missing_column(&target, children, path));
         };
         let column = &mut children[index];
         // An `unknown` column stores nothing to read back, so v3 promotes it
@@ -404,16 +408,54 @@ fn apply_type(schema: &mut Field, path: &str, dtype: DataType) -> Result<()> {
     })
 }
 
-/// Split a dotted column path into its parent segments and the column name.
-fn split_column_path(path: &str) -> Result<(Vec<&str>, &str)> {
-    if path.is_empty() {
-        return Err(invalid(SmolStr::new_static(
-            "expected a dotted column path, got \"\"",
+/// Resolve a recorded column path once, by the one path parser: struct
+/// children only, a name holding a dot the quoted `"a.b"` and never two
+/// levels, the empty text the root.
+fn struct_path(text: &str) -> Result<Vec<SmolStr>> {
+    // The root is the empty text alone: blank text names no column.
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let path = FieldPath::from_str(text).map_err(|error| {
+        invalid(format_smolstr!(
+            "expected a column path, got {:?}: {error}",
+            elide_to(text, PATH_LIMIT)
+        ))
+    })?;
+    if path.alias().is_some() {
+        return Err(invalid(format_smolstr!(
+            "expected a column path without `as`, got {:?}",
+            elide_to(text, PATH_LIMIT)
         )));
     }
-    let mut segments: Vec<&str> = path.split('.').collect();
-    let name = segments.pop().unwrap_or_default();
-    Ok((segments, name))
+    if path.is_root() {
+        return Err(invalid(format_smolstr!(
+            "expected a column path, got {:?}",
+            elide_to(text, PATH_LIMIT)
+        )));
+    }
+    path.segments()
+        .iter()
+        .map(|segment| {
+            segment.as_name().map(SmolStr::new).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected struct column names, got {segment} in {:?}",
+                    elide_to(text, PATH_LIMIT)
+                ))
+            })
+        })
+        .collect()
+}
+
+/// The struct names above a column and the column's own name.
+fn resolve_column_path(path: &str) -> Result<(Vec<SmolStr>, SmolStr)> {
+    let mut names = struct_path(path)?;
+    let Some(name) = names.pop() else {
+        return Err(invalid(SmolStr::new_static(
+            "expected a column path, got \"\"",
+        )));
+    };
+    Ok((names, name))
 }
 
 /// Walk `segments` down nested structs and edit the children at the end.
@@ -421,7 +463,7 @@ fn split_column_path(path: &str) -> Result<(Vec<&str>, &str)> {
 /// The mutation rebuilds every struct on the way back up, because a field's
 /// children live behind its shared datatype; an error on the way down leaves
 /// the schema untouched.
-fn edit_children<F>(node: &mut Field, segments: &[&str], path: &str, edit: F) -> Result<()>
+fn edit_children<F>(node: &mut Field, segments: &[SmolStr], path: &str, edit: F) -> Result<()>
 where
     F: FnOnce(&mut Vec<Field>) -> Result<()>,
 {

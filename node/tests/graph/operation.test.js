@@ -26,7 +26,7 @@ function orderEvent(facts = {}) {
     quantity: 5,
     ticker: 'ACME',
     timeinforce: '0',
-    identifiers: new Identifiers([new Identifier('fix', 'orderid', 'O-100')]),
+    identifiers: new Identifiers([new Identifier('orderid', 'O-100')]),
     ...facts,
   })
 }
@@ -159,8 +159,12 @@ test('at dates an element and intoElement undates it', () => {
   const event = element.at(CLOCK)
   assert.ok(event instanceof graph.QuoteEvent)
   assert.equal(event.currunix, CLOCK)
-  assert.equal(event.crosscode, '14:2:Q-1')
+  // A quote holds its two legs and is stored unsided: its side is a tag,
+  // and the price it states on the offer is its ask leg.
+  assert.equal(event.crosscode, '14:0:Q-1')
   assert.equal(event.price, element.price)
+  assert.equal(event.askpx, '102')
+  assert.equal(event.bidpx, null)
   const back = event.intoElement()
   assert.ok(back instanceof graph.Quote)
   assert.ok(back.equals(element))
@@ -231,7 +235,7 @@ for (const [name, build] of [
   ['QuoteEvent with a book', () => new graph.QuoteEvent(CLOCK, { book: new graph.BookRef({ scope: 'S' }) })],
   ['Order', () => new graph.Order({ crosscode: 'O', metadata: { k: 'v' } })],
   ['Quote', () => new graph.Quote()],
-  ['Execution', () => new graph.Execution({ securityids: [new Identifier('base', 'isin', 'US0378331005')] })],
+  ['Execution', () => new graph.Execution({ securityids: [new Identifier('isin', 'US0378331005')] })],
 ]) {
   test(`${name}: equals, stableHash, toString, clone and toJSON round trip`, () => {
     const leaf = build()

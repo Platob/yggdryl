@@ -9,21 +9,26 @@
 //! Cloning one shares that work, so a session built once serves every handle
 //! a process opens.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use super::container;
-use super::credentials::Credentials;
+use super::credentials::{Credentials, Refusal};
+use super::login;
 use super::metadata::{self, Imds};
 use super::process;
 use super::profile::{self, Files, Profile};
+use super::sigv4::Signer;
 use super::sso::{self, Sso, SsoLogin};
 use super::sts::{self, AssumedRole, CredentialSource};
-use crate::auth::{Environment, Expiring, Lease, Report, instant};
-use crate::{Error, Result};
+use crate::auth::{Environment, Expiring, Lease, Report, instant, iso8601};
+use crate::duration::duration_from_text;
+use crate::integer::integer_from_text_as;
+use crate::{Arn, ArnPartition, Charset, Error, Result};
+use smol_str::SmolStr;
 
 /// The profile read when nothing names another.
 const DEFAULT_PROFILE: &str = "default";
@@ -42,8 +47,19 @@ const RETRY_PAUSE: Duration = Duration::from_secs(30);
 const ANONYMOUS_HOLD: Duration = Duration::from_secs(5 * 60);
 /// The bound on establishing a connection to any identity service.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// The largest answer an identity service gives that is read: every one is
+/// a document of a few kilobytes.
+const MAX_IDENTITY_ANSWER: u64 = 256 * 1024;
 /// How many `source_profile` steps a chain of profiles may take.
 const MAX_PROFILE_DEPTH: usize = 8;
+/// How many access key ids a store refused a session remembers. A
+/// temporary set's key id is issued once, so a refused one never signs
+/// again; the bound keeps a process refused over and over from growing.
+const REFUSED_KEYS: usize = 8;
+/// How many signers a session keeps: one per region and service the set in
+/// hand signs for, each holding its day's derived key. A process signs for a
+/// handful; the bound keeps one that names regions without end from growing.
+const SIGNERS: usize = 8;
 /// The regions the global `sts.amazonaws.com` still serves under the legacy
 /// endpoint mode; every other region is regional in both modes.
 const LEGACY_STS_REGIONS: [&str; 15] = [
@@ -143,18 +159,68 @@ impl Expiring for Found {
     fn expires_at(&self) -> Option<SystemTime> {
         self.credentials.expires_at()
     }
+
+    fn refresh_window(&self) -> Option<Duration> {
+        (self.source == "login").then_some(login::REFRESH_WINDOW)
+    }
 }
 
 struct Inner {
     knobs: Knobs,
-    agent: OnceLock<ureq::Agent>,
-    files: OnceLock<Files>,
+    /// The HTTP session the identity services are reached through, built
+    /// once; its refusal - a CA bundle that cannot be read - is every
+    /// identity request's.
+    http: OnceLock<std::result::Result<crate::http::Session, String>>,
+    /// Both shared files as last read; read again by a walk that finds
+    /// either moved on disk, and by the first question after `invalidate`.
+    files: Mutex<Option<SharedFiles>>,
     /// The set in hand, refreshed before it lapses and kept while a walk
     /// that would replace it fails.
     lease: Lease<Found>,
     /// The next walk passes the CLI caches by: a store said the set they
     /// hold has lapsed, whatever their expiry says.
     skip_caches: AtomicBool,
+    /// The access key ids a store refused, oldest first, at most
+    /// `REFUSED_KEYS`: a source answering one is passed over.
+    refused: Mutex<VecDeque<Refused>>,
+    /// The signers of the set in hand, oldest first, at most `SIGNERS`.
+    signers: Mutex<Vec<Held>>,
+}
+
+/// One signer, and what it was made for: the whole set rather than its key
+/// alone, because a refreshed session can keep its access key id and change
+/// its secret or its token.
+struct Held {
+    credentials: Credentials,
+    region: String,
+    service: SmolStr,
+    signer: Arc<Signer>,
+}
+
+/// A key a store refused, and until when: for good when its set lapsed,
+/// until the end of a pause when the store did not recognize it.
+struct Refused {
+    access_key_id: String,
+    until: Option<SystemTime>,
+}
+
+/// Both shared files as one read of them found them.
+struct SharedFiles {
+    /// The version of the configuration file and of the credentials file
+    /// the read saw, `None` for one stated as text or not on disk.
+    versions: [Option<Version>; 2],
+    parsed: Arc<Files>,
+    /// Why a file that is there could not be read, for the walk to name.
+    unreadable: Vec<String>,
+}
+
+/// What the file system says of one shared file: rewriting it in place - a
+/// set dumped anew, a profile edited - moves its length or the instant it
+/// was written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Version {
+    length: u64,
+    modified: Option<SystemTime>,
 }
 
 /// Who this process is to AWS, and where AWS is.
@@ -168,8 +234,15 @@ struct Inner {
 /// | --- | --- | --- | --- | --- |
 /// | profile | `with_profile` | `AWS_DEFAULT_PROFILE`, `AWS_PROFILE` | | `default` |
 /// | region | `with_region` | `AWS_REGION`, `AWS_DEFAULT_REGION` | `region` | none |
-/// | endpoint of a service | `with_endpoint_url` | `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL` | `[services]`, `endpoint_url` | the published host |
+/// | endpoint of a service | `with_service_endpoint_url`, then `with_endpoint_url` | `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL` | its `[services]` entry, then `endpoint_url` | the published host |
 /// | credentials | `with_credentials`, `with_assumed_role`, `with_sso`, `with_credential_process` | the chain | the chain | none, unsigned |
+///
+/// A service's endpoint is botocore's configured endpoint
+/// ([`Self::endpoint_url`]): `<SERVICE>` is its service id - `S3`, `STS`,
+/// `SSO`, `SSO_OIDC`, `SIGNIN`, `S3TABLES` for the services this crate
+/// calls - and `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, else the profile's
+/// `ignore_configured_endpoint_urls`, switches the environment and profile
+/// columns off and never what was stated.
 ///
 /// The credential chain is walked in the order botocore walks it, and every
 /// source that is configured and broken is recorded and passed over rather
@@ -188,15 +261,15 @@ struct Inner {
 /// assert_eq!(keys.access_key_id(), "AKIAIOSFODNN7EXAMPLE");
 /// assert_eq!(session.credential_source(), Some("explicit credentials"));
 /// assert_eq!(session.region().as_deref(), Some("eu-west-3"));
-/// assert_eq!(session.sts_endpoint("eu-west-3"), "https://sts.eu-west-3.amazonaws.com");
+/// assert_eq!(session.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
 ///
 /// // A session told the environment answers from it, and nothing else.
 /// let session = Session::new()
 ///     .with_variables([("AWS_REGION", "ap-southeast-1"), ("AWS_ENDPOINT_URL_S3", "http://localhost:9000")])
 ///     .with_directory("/nonexistent/.aws");
 /// assert_eq!(session.region().as_deref(), Some("ap-southeast-1"));
-/// assert_eq!(session.endpoint_url("s3").as_deref(), Some("http://localhost:9000"));
-/// assert_eq!(session.endpoint_url("sts"), None);
+/// assert_eq!(session.endpoint_url("s3")?.as_deref(), Some("http://localhost:9000"));
+/// assert_eq!(session.endpoint_url("sts")?, None);
 /// # Ok(())
 /// # }
 /// ```
@@ -221,8 +294,8 @@ impl Session {
         Self {
             inner: Arc::new(Inner {
                 knobs,
-                agent: OnceLock::new(),
-                files: OnceLock::new(),
+                http: OnceLock::new(),
+                files: Mutex::new(None),
                 lease: Lease::new(
                     "AWS credential set",
                     REFRESH_WINDOW,
@@ -230,6 +303,8 @@ impl Session {
                     ANONYMOUS_HOLD,
                 ),
                 skip_caches: AtomicBool::new(false),
+                refused: Mutex::new(VecDeque::new()),
+                signers: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -318,15 +393,20 @@ impl Session {
         })
     }
 
-    /// Reach every service at `url`, as `AWS_ENDPOINT_URL` does.
+    /// Reach every service at `url`, the identity services a walk calls
+    /// included, as `AWS_ENDPOINT_URL` does - but stated, so it beats every
+    /// configured endpoint and is never ignored;
+    /// [`Self::with_service_endpoint_url`] beats it for one service.
     #[must_use]
     pub fn with_endpoint_url(&self, url: impl Into<String>) -> Self {
         let url: String = url.into();
         self.modified(|knobs| knobs.endpoint_url = endpoint(&url))
     }
 
-    /// Reach `service` - `s3`, `sts`, `sso-oidc` - at `url`, as
-    /// `AWS_ENDPOINT_URL_<SERVICE>` and a `[services]` entry do.
+    /// Reach `service` - its service id, `s3`, `sts`, `sso-oidc`, read as
+    /// [`Self::endpoint_url`] reads it - at `url`, as
+    /// `AWS_ENDPOINT_URL_<SERVICE>` and a `[services]` entry do, over
+    /// [`Self::with_endpoint_url`] and every configured endpoint.
     #[must_use]
     pub fn with_service_endpoint_url(&self, service: &str, url: impl Into<String>) -> Self {
         let url: String = url.into();
@@ -673,25 +753,99 @@ impl Session {
             })
     }
 
-    /// Both shared files, read once.
-    fn files(&self) -> &Files {
-        self.inner.files.get_or_init(|| {
-            let knobs = &self.inner.knobs;
-            let read = |text: Option<&String>, path: fn(&Self) -> Option<PathBuf>| match text {
-                Some(text) => Some(text.clone()),
-                None if self.reads_environment() => {
-                    // A stray byte in one comment is no reason to read no
-                    // profile at all: what is not UTF-8 is replaced.
-                    path(self)
-                        .and_then(|path| std::fs::read(path).ok())
-                        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    /// Both shared files, as last read.
+    fn files(&self) -> Arc<Files> {
+        let mut held = lock(&self.inner.files);
+        Arc::clone(&held.get_or_insert_with(|| self.read_files()).parsed)
+    }
+
+    /// Read both shared files again when either moved on disk since they
+    /// were read, so a session living across an edit - a set dumped anew,
+    /// a profile changed - signs with what the files say now. A walk calls
+    /// it, never a request: two `metadata` calls a walk.
+    fn reread_files(&self) {
+        let versions = self.file_versions();
+        let mut held = lock(&self.inner.files);
+        if held.as_ref().is_none_or(|read| read.versions != versions) {
+            let moved = held.is_some();
+            *held = Some(self.read_files());
+            if moved {
+                // A key a store did not recognize may be one the edit fixed.
+                lock(&self.inner.refused).retain(|refused| refused.until.is_none());
+            }
+        }
+    }
+
+    /// Whether either shared file moved on disk since it was last read.
+    fn files_moved(&self) -> bool {
+        let versions = self.file_versions();
+        lock(&self.inner.files)
+            .as_ref()
+            .is_some_and(|read| read.versions != versions)
+    }
+
+    /// What the file system says of the shared files the session reads
+    /// from disk.
+    fn file_versions(&self) -> [Option<Version>; 2] {
+        let knobs = &self.inner.knobs;
+        let version = |text: Option<&String>, path: Option<PathBuf>| {
+            if text.is_some() || !self.reads_environment() {
+                return None;
+            }
+            let metadata = std::fs::metadata(path?).ok()?;
+            Some(Version {
+                length: metadata.len(),
+                modified: metadata.modified().ok(),
+            })
+        };
+        [
+            version(knobs.config_text.as_ref(), self.config_file()),
+            version(knobs.credentials_text.as_ref(), self.credentials_file()),
+        ]
+    }
+
+    /// Both shared files, read now. The versions are taken before the
+    /// bytes, so a write landing between the two is read again by the next
+    /// walk rather than missed.
+    fn read_files(&self) -> SharedFiles {
+        let knobs = &self.inner.knobs;
+        let versions = self.file_versions();
+        let mut unreadable = Vec::new();
+        let mut read = |text: Option<&String>, path: Option<PathBuf>, what: &str| {
+            if let Some(text) = text {
+                return Some(text.clone());
+            }
+            if !self.reads_environment() {
+                return None;
+            }
+            let path = path?;
+            match std::fs::read(&path) {
+                Ok(bytes) => Some(decode_shared_file(&bytes)),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => {
+                    unreadable.push(format!(
+                        "the {what} {} could not be read: {error}",
+                        path.display()
+                    ));
+                    None
                 }
-                None => None,
-            };
-            let config = read(knobs.config_text.as_ref(), Self::config_file);
-            let credentials = read(knobs.credentials_text.as_ref(), Self::credentials_file);
-            Files::parse(config.as_deref(), credentials.as_deref())
-        })
+            }
+        };
+        let config = read(
+            knobs.config_text.as_ref(),
+            self.config_file(),
+            "configuration file",
+        );
+        let credentials = read(
+            knobs.credentials_text.as_ref(),
+            self.credentials_file(),
+            "credentials file",
+        );
+        SharedFiles {
+            versions,
+            parsed: Arc::new(Files::parse(config.as_deref(), credentials.as_deref())),
+            unreadable,
+        }
     }
 
     /// The profile [`Self::profile_name`] names, when either file holds it.
@@ -724,25 +878,71 @@ impl Session {
     ///
     /// `None` off an instance, or when the service is disabled.
     pub fn instance_region(&self) -> Option<String> {
-        self.imds()?.region(self.agent())
+        self.imds()?.region(self.http().ok()?)
     }
 
-    /// The endpoint `service` is reached at, when one was configured: what
-    /// was stated, else `AWS_ENDPOINT_URL_<SERVICE>`, else `AWS_ENDPOINT_URL`,
-    /// else the profile's `[services]` entry, else the profile's
-    /// `endpoint_url` - the last four skipped under
-    /// `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` or the profile's
-    /// `ignore_configured_endpoint_urls`.
+    /// The endpoint `service` is reached at, when one was stated or
+    /// configured, in botocore's order:
     ///
-    /// `service` is the service id - `s3`, `sts`, `sso-oidc` - spelled any
-    /// way; `None` means the service's published host.
-    pub fn endpoint_url(&self, service: &str) -> Option<String> {
+    /// 1. what was stated for it ([`Self::with_service_endpoint_url`]), then
+    ///    for every service ([`Self::with_endpoint_url`]);
+    /// 2. `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL`;
+    /// 3. the `endpoint_url` of the service's entry in the `[services]`
+    ///    section the profile names, then the profile's own `endpoint_url`.
+    ///
+    /// Steps 2 and 3 are skipped under `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`,
+    /// else the profile's `ignore_configured_endpoint_urls`, each read
+    /// through the crate's one boolean table - wider than botocore's, which
+    /// takes only `true` - and a blank variable read as unset, so the profile
+    /// is read next; step 1 is never skipped. A blank variable or value is
+    /// no source. The endpoint is kept as given, path included, its trailing
+    /// `/` dropped.
+    ///
+    /// `service` is the service id botocore names the variable and the
+    /// entry after - `S3`, `STS`, `SSO`, `SSO OIDC`, `Signin`, `S3Tables`,
+    /// `Secrets Manager` - in any case, a hyphen or a space read as `_`:
+    /// `sso-oidc` reads `AWS_ENDPOINT_URL_SSO_OIDC` and the `[services]` key
+    /// `sso_oidc`. It is never the endpoint prefix (`oidc`, `portal.sso`) or
+    /// the signing name. `Ok(None)` means the service's published host.
+    ///
+    /// ```
+    /// use yggdryl::aws::Session;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let session = Session::new()
+    ///     .with_variables([
+    ///         ("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/"),
+    ///         ("AWS_ENDPOINT_URL", "http://localhost:4566"),
+    ///     ])
+    ///     .with_directory("/nonexistent/.aws");
+    /// assert_eq!(
+    ///     session.endpoint_url("SSO OIDC")?.as_deref(),
+    ///     Some("http://localhost:4566/oidc")
+    /// );
+    /// assert_eq!(session.endpoint_url("sts")?.as_deref(), Some("http://localhost:4566"));
+    ///
+    /// // A profile naming a [services] section nobody wrote is refused.
+    /// let misspelt = session
+    ///     .with_variables::<&str, &str>([])
+    ///     .with_config_text("[default]\nservices = locl\n\n[services local]\ns3 =\n  endpoint_url = http://localhost:9000\n");
+    /// assert!(misspelt.endpoint_url("s3").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// When the lookup reaches it: a configured value that names no endpoint
+    /// (`/`), and a profile whose `services` names a section that defines
+    /// nothing - each named, as botocore refuses them, rather than leaving
+    /// the published host a typo would.
+    pub fn endpoint_url(&self, service: &str) -> Result<Option<String>> {
         let key = profile::service_key(service);
         if let Some(url) = self.inner.knobs.service_endpoints.get(&key) {
-            return Some(url.clone());
+            return Ok(Some(url.clone()));
         }
         if let Some(url) = &self.inner.knobs.endpoint_url {
-            return Some(url.clone());
+            return Ok(Some(url.clone()));
         }
         let profile = self.profile();
         let ignored = self
@@ -754,18 +954,34 @@ impl Session {
             .or_else(|| profile.as_ref()?.flag("ignore_configured_endpoint_urls"))
             .unwrap_or(false);
         if ignored {
-            return None;
+            return Ok(None);
         }
-        self.variable(&format!("AWS_ENDPOINT_URL_{}", key.to_ascii_uppercase()))
-            .or_else(|| self.variable("AWS_ENDPOINT_URL"))
-            .or_else(|| {
-                profile
-                    .as_ref()?
-                    .service_endpoint_url(&key)
-                    .map(str::to_owned)
+        let variable = format!("AWS_ENDPOINT_URL_{}", key.to_ascii_uppercase());
+        for name in [variable.as_str(), "AWS_ENDPOINT_URL"] {
+            if let Some(url) = self.variable(name) {
+                return configured(&url, || name.to_owned()).map(Some);
+            }
+        }
+        let Some(profile) = profile else {
+            return Ok(None);
+        };
+        if let Some(url) = profile.service_endpoint_url(&key)? {
+            return configured(url, || {
+                format!(
+                    "the endpoint_url of {key} in the [services] section the profile {} names",
+                    profile.name()
+                )
             })
-            .or_else(|| profile.as_ref()?.endpoint_url().map(str::to_owned))
-            .and_then(|url| endpoint(&url))
+            .map(Some);
+        }
+        profile
+            .endpoint_url()
+            .map(|url| {
+                configured(url, || {
+                    format!("the endpoint_url of the profile {}", profile.name())
+                })
+            })
+            .transpose()
     }
 
     /// Whether the FIPS endpoints are used.
@@ -801,39 +1017,104 @@ impl Session {
     }
 
     /// The STS endpoint an exchange for `region` goes to.
-    pub fn sts_endpoint(&self, region: &str) -> String {
-        self.sts_target(region).0
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::endpoint_url`].
+    pub fn sts_endpoint(&self, region: &str) -> Result<String> {
+        Ok(self.sts_target(region)?.0)
     }
 
     /// The STS endpoint an exchange for `region` goes to, and the region it
-    /// is signed for: the global endpoint the legacy mode keeps is signed for
-    /// `us-east-1`, whatever region the caller is in.
-    pub(crate) fn sts_target(&self, region: &str) -> (String, String) {
-        if let Some(url) = self.endpoint_url("sts") {
-            return (url, region.to_owned());
-        }
-        let fips = self.use_fips_endpoint();
-        let dualstack = self.use_dualstack_endpoint();
-        if !self.sts_regional_endpoints()
-            && !fips
-            && !dualstack
+    /// is signed for: [`Self::service_endpoint`], under the one rule that is
+    /// STS's own - the global endpoint the legacy mode keeps for the older
+    /// regions, signed for `us-east-1` whatever region the caller is in.
+    pub(crate) fn sts_target(&self, region: &str) -> Result<(String, String)> {
+        let configured = self.endpoint_url("sts")?;
+        if configured.is_none()
+            && !self.sts_regional_endpoints()
+            && !self.use_fips_endpoint()
+            && !self.use_dualstack_endpoint()
             && LEGACY_STS_REGIONS.contains(&region)
         {
-            return (
+            return Ok((
                 "https://sts.amazonaws.com".to_owned(),
                 DEFAULT_REGION.to_owned(),
-            );
+            ));
         }
-        let service = if fips { "sts-fips" } else { "sts" };
-        let suffix = match (region.starts_with("cn-"), dualstack) {
-            (true, _) => "amazonaws.com.cn",
-            (false, true) => "api.aws",
-            (false, false) => "amazonaws.com",
-        };
-        (
-            format!("https://{service}.{region}.{suffix}"),
-            region.to_owned(),
-        )
+        let endpoint = configured.unwrap_or_else(|| self.published_endpoint("sts", region));
+        Ok((endpoint, region.to_owned()))
+    }
+
+    /// The endpoint `service` is reached at in `region`: the one configured
+    /// for it ([`Self::endpoint_url`]), else the host the partition
+    /// publishes - `https://{service}[-fips].{region}.{suffix}`, the suffix
+    /// the region's partition's, the dual-stack one under
+    /// [`Self::use_dualstack_endpoint`], `-fips` under
+    /// [`Self::use_fips_endpoint`].
+    ///
+    /// `service` names the service twice: as the service id the configured
+    /// endpoint is looked up by (`AWS_ENDPOINT_URL_S3TABLES`, the
+    /// `[services]` key `s3tables`), and as the endpoint prefix its published
+    /// host is built from. The door fits a service whose two names agree
+    /// once folded: `s3tables`, `sts`, `glue`. One whose names differ, such
+    /// as SSO OIDC (`oidc`), SSO (`portal.sso`) or Secrets Manager
+    /// (`secretsmanager`), asks [`Self::endpoint_url`] by its service id and
+    /// builds its own host, as does a service whose hosts follow another
+    /// shape: S3, the Sign-In service. Neither name is always the SigV4
+    /// signing name.
+    ///
+    /// ```
+    /// use yggdryl::aws::Session;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let session = Session::new().with_environment(false);
+    /// assert_eq!(
+    ///     session.service_endpoint("s3tables", "eu-west-3")?,
+    ///     "https://s3tables.eu-west-3.amazonaws.com"
+    /// );
+    /// assert_eq!(
+    ///     session.with_use_fips_endpoint(true).service_endpoint("s3tables", "us-gov-west-1")?,
+    ///     "https://s3tables-fips.us-gov-west-1.amazonaws.com"
+    /// );
+    /// assert_eq!(
+    ///     session
+    ///         .with_service_endpoint_url("s3tables", "http://localhost:4566/")
+    ///         .service_endpoint("s3tables", "eu-west-3")?,
+    ///     "http://localhost:4566"
+    /// );
+    ///
+    /// // `AWS_ENDPOINT_URL_S3TABLES`, named after the service id `S3Tables`.
+    /// let configured = Session::new()
+    ///     .with_variables([("AWS_ENDPOINT_URL_S3TABLES", "http://localhost:4566/tables/")])
+    ///     .with_directory("/nonexistent/.aws");
+    /// assert_eq!(
+    ///     configured.service_endpoint("s3tables", "eu-west-3")?,
+    ///     "http://localhost:4566/tables"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::endpoint_url`].
+    pub fn service_endpoint(&self, service: &str, region: &str) -> Result<String> {
+        Ok(match self.endpoint_url(service)? {
+            Some(url) => url,
+            None => self.published_endpoint(service, region),
+        })
+    }
+
+    /// The host the region's partition publishes for `service`, as a URL.
+    fn published_endpoint(&self, service: &str, region: &str) -> String {
+        let host = ArnPartition::from_region(region).service_host(
+            service,
+            region,
+            self.use_fips_endpoint(),
+            self.use_dualstack_endpoint(),
+        );
+        format!("https://{host}")
     }
 
     /// The attempts per request the environment or the profile name, as
@@ -841,7 +1122,7 @@ impl Session {
     pub fn max_attempts(&self) -> Option<u32> {
         self.variable("AWS_MAX_ATTEMPTS")
             .or_else(|| self.profile()?.get("max_attempts").map(str::to_owned))
-            .and_then(|value| value.parse().ok())
+            .and_then(|value| integer_from_text_as::<u32>(&value))
             .filter(|attempts| *attempts > 0)
     }
 
@@ -861,6 +1142,7 @@ impl Session {
     ///
     /// A bundle that cannot be read, or holds no certificate: trust is never
     /// widened to the platform's roots by a bundle nobody could read.
+    #[cfg(feature = "s3")]
     pub(crate) fn tls_config(&self) -> Result<Option<ureq::tls::TlsConfig>> {
         let Some(path) = self.ca_bundle() else {
             return Ok(None);
@@ -954,9 +1236,8 @@ impl Session {
                 .metadata_timeout
                 .or_else(|| {
                     setting("AWS_METADATA_SERVICE_TIMEOUT", "metadata_service_timeout")
-                        .and_then(|seconds| seconds.parse::<f64>().ok())
-                        .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
-                        .map(Duration::from_secs_f64)
+                        .and_then(|seconds| duration_from_text(&seconds))
+                        .filter(|timeout| !timeout.is_zero())
                 })
                 .unwrap_or(defaults.timeout),
             attempts: knobs
@@ -966,7 +1247,7 @@ impl Session {
                         "AWS_METADATA_SERVICE_NUM_ATTEMPTS",
                         "metadata_service_num_attempts",
                     )
-                    .and_then(|count| count.parse().ok())
+                    .and_then(|count| integer_from_text_as::<u32>(&count))
                 })
                 .unwrap_or(defaults.attempts)
                 .max(1),
@@ -976,25 +1257,37 @@ impl Session {
         })
     }
 
-    /// The HTTP client the identity services are reached through, built
-    /// once.
-    pub(crate) fn agent(&self) -> &ureq::Agent {
-        self.inner.agent.get_or_init(|| {
-            let mut builder = ureq::Agent::config_builder()
-                .http_status_as_error(false)
-                .max_redirects(0)
-                .max_redirects_will_error(false)
-                .timeout_connect(Some(CONNECT_TIMEOUT))
-                .user_agent(concat!("yggdryl/", env!("CARGO_PKG_VERSION")));
-            match self.tls_config() {
-                Ok(Some(tls)) => builder = builder.tls_config(tls),
-                Ok(None) => {}
-                Err(error) => log::warn!(
-                    "{error}; the identity services are reached with the platform's roots"
-                ),
-            }
-            ureq::Agent::new_with_config(builder.build())
-        })
+    /// The HTTP session the identity services are reached through, built
+    /// once: no redirect followed - a credential header never reaches
+    /// another host - no cookie kept, no `.netrc` credential added, the
+    /// process's proxy settings read only by a session reading the process
+    /// environment, and the CA bundle the session names trusted alone.
+    ///
+    /// # Errors
+    ///
+    /// A CA bundle that cannot be read or holds no certificate: every
+    /// identity request refuses naming it, rather than trusting the
+    /// platform's roots in its place.
+    pub(crate) fn http(&self) -> Result<&crate::http::Session> {
+        self.inner
+            .http
+            .get_or_init(|| {
+                let process = matches!(self.inner.knobs.environment, Environment::Process);
+                let mut options = crate::http::HttpOptions::default()
+                    .with_read_environment(self.reads_environment() && process)
+                    .with_netrc(false)
+                    .with_cookies(false)
+                    .with_follow_redirects(false)
+                    .with_connect_timeout(CONNECT_TIMEOUT)
+                    .with_max_body_size(MAX_IDENTITY_ANSWER);
+                if let Some(bundle) = self.ca_bundle() {
+                    options = options.with_ca_bundle(bundle);
+                }
+                crate::http::Session::with_options(options)
+                    .map_err(|error| format!("the identity services cannot be reached: {error}"))
+            })
+            .as_ref()
+            .map_err(|message| refusal(message.clone()))
     }
 
     // --- credentials --------------------------------------------------------
@@ -1014,17 +1307,14 @@ impl Session {
     /// Returns a refusal naming every source that was configured and could
     /// not answer, when no source answered.
     pub fn credentials(&self, now: SystemTime) -> Result<Option<Credentials>> {
-        let found = self.inner.lease.get(now, || {
-            self.walk(now).map(|found| {
-                found.map(|(credentials, source)| Found {
-                    credentials,
-                    source,
-                })
-            })
-        })?;
-        if found.is_some() {
-            self.inner.skip_caches.store(false, Ordering::Relaxed);
+        // A hold - nothing configured, or a failure inside its pause - is a
+        // promise about the files as they stood; one edited since - a set
+        // dumped anew, a profile fixed - breaks it, so this ask walks again.
+        // Two `metadata` calls, paid only while a hold stands.
+        if self.inner.lease.is_holding(now) && self.files_moved() {
+            self.inner.lease.invalidate();
         }
+        let found = self.inner.lease.get(now, || self.walk(now))?;
         Ok(found.map(|found| found.credentials))
     }
 
@@ -1034,29 +1324,157 @@ impl Session {
         self.inner.lease.peek().map(|found| found.source)
     }
 
-    /// Forget the set in hand, so the next request walks the chain again.
+    /// Forget the set in hand and the shared files as read, so the next
+    /// request reads the files again and walks the chain again.
     ///
     /// What a client does when a store answers that the set it was handed has
     /// expired before the session thought it would.
     pub fn invalidate(&self) {
         self.inner.skip_caches.store(true, Ordering::Relaxed);
+        *lock(&self.inner.files) = None;
         self.inner.lease.invalidate();
     }
 
-    /// [`Self::invalidate`], only when the set in hand is the one whose
-    /// access key id is `access_key_id` - so a client refused with one set
-    /// does not discard the fresh one another client already obtained.
+    /// Record that a store refused the key `access_key_id` - lapsed,
+    /// revoked or unknown - and [`Self::invalidate`] when that key is the
+    /// one in hand, so a client refused with one set does not discard the
+    /// fresh one another client already obtained.
+    ///
+    /// A refused key never signs again on this session: the walk passes
+    /// over a source that answers it, naming it, and asks the sources
+    /// after it - a set dumped anew under another key, a sign-in, the
+    /// container or the instance. A set stated with
+    /// [`Self::with_credentials`] is what the caller said and is still
+    /// answered.
     ///
     /// Answers whether anything was forgotten.
     pub fn invalidate_if(&self, access_key_id: &str) -> bool {
-        match self.inner.lease.peek() {
-            Some(found) if found.credentials.access_key_id() == access_key_id => {
-                self.invalidate();
-                true
+        self.refuse(access_key_id, None);
+        self.forget_if(access_key_id, true)
+    }
+
+    /// What a client does with a store's refusal of the key that signed a
+    /// request: remember it as the code says - for good for a set that
+    /// lapsed, for the pause for a key the store does not recognize - and
+    /// forget the set in hand when it is that key. Answers whether the
+    /// code refused the key at all.
+    pub(crate) fn refused_by_store(
+        &self,
+        access_key_id: &str,
+        code: &str,
+        now: SystemTime,
+    ) -> bool {
+        let Some(refusal) = Refusal::from_code(code) else {
+            return false;
+        };
+        let until = match refusal {
+            Refusal::Lapsed => None,
+            Refusal::Unrecognized => Some(now + RETRY_PAUSE),
+        };
+        self.refuse(access_key_id, until);
+        self.forget_if(access_key_id, true);
+        true
+    }
+
+    /// Whether a request `signed` by this access key and refused goes out
+    /// once more: the session is told what the refusal says of the key, and
+    /// answers whether it now signs with another one - the same set would be
+    /// refused the same way.
+    ///
+    /// `code` is the error code the answer named: one that refuses the
+    /// request rather than its key answers `false` and changes nothing.
+    /// `None` is a refusal that could name none - a `HEAD` answered with no
+    /// body while it carried a session token - for which the sources are
+    /// read again with nothing held against the key, which may be fine.
+    /// `Ok(true)` with no set left is a session that now signs nothing.
+    ///
+    /// # Errors
+    ///
+    /// The session's own refusal - every source and why - when nothing
+    /// answers any more: that, rather than the store's verdict, is what the
+    /// caller can act on.
+    pub(crate) fn answers_another(
+        &self,
+        signed: &str,
+        code: Option<&str>,
+        now: SystemTime,
+    ) -> Result<bool> {
+        match code {
+            Some(code) => {
+                if !self.refused_by_store(signed, code, now) {
+                    return Ok(false);
+                }
             }
-            Some(_) => false,
             None => {
-                self.invalidate();
+                self.forget_if(signed, false);
+            }
+        }
+        let fresh = self.credentials(now)?;
+        Ok(fresh.is_none_or(|fresh| fresh.access_key_id() != signed))
+    }
+
+    /// The signer of the set in hand at `now` for `service`, the SigV4
+    /// signing name, in `region`; `None` for unsigned requests.
+    ///
+    /// One signer is kept per credential set, region and service, so the
+    /// day's signing key is derived once for all the requests that share
+    /// them; a set that was replaced takes its signers with it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::credentials`].
+    pub(crate) fn signer(
+        &self,
+        service: &str,
+        region: &str,
+        now: SystemTime,
+    ) -> Result<Option<Arc<Signer>>> {
+        let Some(credentials) = self.credentials(now)? else {
+            return Ok(None);
+        };
+        let mut signers = lock(&self.inner.signers);
+        if let Some(held) = signers.iter().find(|held| {
+            held.region == region && held.service == service && held.credentials == credentials
+        }) {
+            return Ok(Some(Arc::clone(&held.signer)));
+        }
+        // Only the set in hand signs: one it replaced leaves nothing behind.
+        signers.retain(|held| held.credentials == credentials);
+        if signers.len() >= SIGNERS {
+            signers.remove(0);
+        }
+        let signer = Arc::new(Signer::for_service(
+            service,
+            credentials.access_key_id(),
+            credentials.secret_access_key(),
+            credentials.session_token().map(str::to_owned),
+            region,
+        ));
+        signers.push(Held {
+            credentials,
+            region: region.to_owned(),
+            service: service.into(),
+            signer: Arc::clone(&signer),
+        });
+        Ok(Some(signer))
+    }
+
+    /// Forget the set in hand and the files as read when the set in hand
+    /// is `access_key_id`'s, or nothing is held; `skip_caches` says whether
+    /// the next walk passes the CLI caches by too. Answers whether anything
+    /// was forgotten.
+    pub(crate) fn forget_if(&self, access_key_id: &str, skip_caches: bool) -> bool {
+        let forget = || {
+            if skip_caches {
+                self.inner.skip_caches.store(true, Ordering::Relaxed);
+            }
+            *lock(&self.inner.files) = None;
+            self.inner.lease.invalidate();
+        };
+        match self.inner.lease.peek() {
+            Some(found) if found.credentials.access_key_id() != access_key_id => false,
+            Some(_) | None => {
+                forget();
                 true
             }
         }
@@ -1087,11 +1505,12 @@ impl Session {
                 "no home directory to file the sign-in under: set Session::with_directory",
             ));
         };
-        let oidc = self
-            .endpoint_url("sso-oidc")
-            .unwrap_or_else(|| sso.oidc_endpoint());
+        let oidc = match self.endpoint_url("sso-oidc")? {
+            Some(url) => url,
+            None => sso.oidc_endpoint(),
+        };
         let token = sso::login(
-            self.agent(),
+            self.http()?,
             &oidc,
             &sso,
             &self.inner.knobs.sso_login,
@@ -1110,18 +1529,117 @@ impl Session {
 
     /// Walk the chain once: the first source that answers, or every source
     /// that was configured and could not.
-    fn walk(&self, now: SystemTime) -> Result<Option<(Credentials, &'static str)>> {
-        let mut report = Report::new("AWS credentials");
-        if let Some(found) = self.walk_into(&mut report, now, false) {
-            return Ok(Some(found));
+    ///
+    /// The shared files are read again first when either moved on disk,
+    /// and what the walk found is logged under `yggdryl.aws.session`: each
+    /// source asked at `DEBUG`, the source that answered at `INFO`, and a
+    /// set passed over, or an answer found only after passing sources over,
+    /// at `WARNING`. A key id is logged as its first and last four
+    /// characters; nothing secret is.
+    fn walk(&self, now: SystemTime) -> Result<Option<Found>> {
+        self.reread_files();
+        let mut report = Report::new("AWS credentials", module_path!());
+        let Some((credentials, source)) = self.walk_into(&mut report, now, false) else {
+            return report.conclude();
+        };
+        if !report.failures().is_empty() {
+            log::warn!(
+                "signing with the AWS credential set {source} answered, after passing over: {}",
+                report.failures().join("; ")
+            );
         }
-        report.conclude()
+        log::info!(
+            "AWS credentials from {source}: key {}{}",
+            credentials.key_id_hint(),
+            credentials
+                .expires_at()
+                .map(|at| format!(", lapsing at {}", iso8601(at)))
+                .unwrap_or_default()
+        );
+        self.inner.skip_caches.store(false, Ordering::Relaxed);
+        Ok(Some(Found {
+            credentials,
+            source,
+        }))
+    }
+
+    /// `found`, which `source` answered, when it may sign at `now`; a set
+    /// that has lapsed, or whose key a store refused, is recorded against
+    /// `source` - with `hint`, the way out - and passed over, so the walk
+    /// asks the sources after it.
+    fn admit(
+        &self,
+        report: &mut Report,
+        source: &'static str,
+        found: Credentials,
+        now: SystemTime,
+        hint: impl FnOnce() -> String,
+    ) -> Option<(Credentials, &'static str)> {
+        let Some(reason) = self.unusable(&found, now) else {
+            return Some((found, source));
+        };
+        let hint = hint();
+        let reason = if hint.is_empty() {
+            reason
+        } else {
+            format!("{reason}: {hint}")
+        };
+        log::warn!("passing over the AWS credential set {source} answered: {reason}");
+        report.failed(source, reason);
+        None
+    }
+
+    /// Why `found` cannot sign at `now`, when it cannot: a store refused
+    /// its key, or it has lapsed.
+    fn unusable(&self, found: &Credentials, now: SystemTime) -> Option<String> {
+        let key = found.key_id_hint();
+        if self.is_refused(found.access_key_id(), now) {
+            return Some(format!(
+                "a store refused its key {key} as expired, revoked or unknown"
+            ));
+        }
+        let expiry = found.expires_at().filter(|expiry| *expiry <= now)?;
+        Some(format!(
+            "its key {key} lapsed at {}, and this machine's clock reads {}",
+            iso8601(expiry),
+            iso8601(now)
+        ))
+    }
+
+    /// Remember that a store refused `access_key_id`, `until` an instant or
+    /// for good; a refusal for good is never shortened by a later one.
+    fn refuse(&self, access_key_id: &str, until: Option<SystemTime>) {
+        let mut refused = lock(&self.inner.refused);
+        if let Some(held) = refused
+            .iter_mut()
+            .find(|held| held.access_key_id == access_key_id)
+        {
+            held.until = held.until.zip(until).map(|(held, until)| held.max(until));
+            return;
+        }
+        if refused.len() == REFUSED_KEYS {
+            refused.pop_front();
+        }
+        refused.push_back(Refused {
+            access_key_id: access_key_id.to_owned(),
+            until,
+        });
+    }
+
+    /// Whether a store's refusal of `access_key_id` still stands at `now`.
+    fn is_refused(&self, access_key_id: &str, now: SystemTime) -> bool {
+        lock(&self.inner.refused).iter().any(|held| {
+            held.access_key_id == access_key_id && held.until.is_none_or(|until| now < until)
+        })
     }
 
     /// The steps of the chain, in botocore's order.
     ///
     /// `skip_role` is set when the walk is the base of the explicit role,
-    /// which wraps everything after it.
+    /// which wraps everything after it. Every set a source answers passes
+    /// [`Self::admit`] - a lapsed one, or one whose key a store refused, is
+    /// passed over by name - except a set the caller stated, which is what
+    /// the caller said.
     fn walk_into(
         &self,
         report: &mut Report,
@@ -1135,7 +1653,7 @@ impl Session {
         if let (false, Some(role)) = (skip_role, &knobs.role) {
             if role.web_identity_token_file().is_some() {
                 return match self.trade_web_identity(role, now) {
-                    Ok(traded) => Some((traded, "web identity")),
+                    Ok(traded) => self.admit(report, "web identity", traded, now, String::new),
                     Err(error) => {
                         report.failed("web identity", error);
                         None
@@ -1162,11 +1680,11 @@ impl Session {
                     return None;
                 }
             };
+            // A role the caller named is the identity they meant; the keys
+            // beneath it are not a fallback, whatever the exchange answers.
             return match self.trade(role, &base, now) {
-                Ok(traded) => Some((traded, "assumed role")),
+                Ok(traded) => self.admit(report, "assumed role", traded, now, String::new),
                 Err(error) => {
-                    // A role the caller named is the identity they meant; the
-                    // keys beneath it are not a fallback.
                     report.failed("assumed role", error);
                     None
                 }
@@ -1177,13 +1695,23 @@ impl Session {
         }
         if let Some(sso) = &knobs.sso {
             match self.sso_credentials(sso, now) {
-                Ok(found) => return Some((found, "sso")),
+                Ok(found) => {
+                    if let Some(admitted) = self.admit(report, "sso", found, now, String::new) {
+                        return Some(admitted);
+                    }
+                }
                 Err(error) => report.failed("sso", error),
             }
         }
         if let Some(command) = &knobs.credential_process {
             match process::run(command) {
-                Ok(found) => return Some((found, "credential process")),
+                Ok(found) => {
+                    if let Some(admitted) =
+                        self.admit(report, "credential process", found, now, String::new)
+                    {
+                        return Some(admitted);
+                    }
+                }
                 Err(error) => report.failed("credential process", error),
             }
         }
@@ -1193,13 +1721,23 @@ impl Session {
         let env = &knobs.environment;
         if knobs.profile.is_none() {
             match environment_credentials(env) {
-                Ok(Some(found)) => return Some((found, "environment")),
+                Ok(Some(found)) => {
+                    let hint = || {
+                        "set AWS_ACCESS_KEY_ID and its companions anew, or unset them".to_owned()
+                    };
+                    if let Some(admitted) = self.admit(report, "environment", found, now, hint) {
+                        return Some(admitted);
+                    }
+                }
                 Ok(None) => report.absent("environment"),
                 Err(error) => report.failed("environment", error),
             }
         }
 
         let name = self.profile_name();
+        for problem in self.unreadable_files() {
+            report.failed("shared files", problem);
+        }
         let profile = self.files().profile(&name);
         // A profile that names a role means that role: when the exchange
         // fails, the profile's own keys are not a fallback, because they are
@@ -1227,7 +1765,13 @@ impl Session {
                 Ok(Some(role)) => {
                     role_named = true;
                     match self.trade_profile_role(&role, profile, now, 0) {
-                        Ok(found) => return Some((found, "assumed role")),
+                        Ok(found) => {
+                            if let Some(admitted) =
+                                self.admit(report, "assumed role", found, now, String::new)
+                            {
+                                return Some(admitted);
+                            }
+                        }
                         Err(error) => report.failed("assumed role", error),
                     }
                 }
@@ -1247,49 +1791,125 @@ impl Session {
                 role = role.with_session_name(name);
             }
             match self.trade_web_identity(&role, now) {
-                Ok(found) => return Some((found, "web identity")),
+                Ok(found) => {
+                    if let Some(admitted) =
+                        self.admit(report, "web identity", found, now, String::new)
+                    {
+                        return Some(admitted);
+                    }
+                }
                 Err(error) => report.failed("web identity", error),
             }
         }
         if let Some(profile) = profile.as_ref().filter(|_| !role_named) {
             match profile.sso() {
                 Ok(Some(sso)) => match self.sso_credentials(&sso, now) {
-                    Ok(found) => return Some((found, "sso")),
+                    Ok(found) => {
+                        if let Some(admitted) = self.admit(report, "sso", found, now, String::new) {
+                            return Some(admitted);
+                        }
+                    }
                     Err(error) => report.failed("sso", error),
                 },
                 Ok(None) => {}
                 Err(error) => report.failed("sso", error),
             }
-            if let Some(found) = profile.credential_file_credentials() {
-                return Some((found, "shared credentials file"));
+            let dump_anew = |file: Option<PathBuf>| {
+                move || {
+                    format!(
+                        "write a fresh set under [{}] in {}, or sign in again",
+                        profile.name(),
+                        describe(file)
+                    )
+                }
+            };
+            match profile.credential_file_credentials() {
+                Ok(Some(found)) => {
+                    let hint = dump_anew(self.credentials_file());
+                    if let Some(admitted) =
+                        self.admit(report, "shared credentials file", found, now, hint)
+                    {
+                        return Some(admitted);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => report.failed("shared credentials file", error),
+            }
+            if let Some(login_session) = profile.login_session() {
+                match self.login_credentials(profile, login_session, now) {
+                    Ok(found) => {
+                        let hint =
+                            || format!("sign in again: `aws login --profile {}`", profile.name());
+                        if let Some(admitted) = self.admit(report, "login", found, now, hint) {
+                            return Some(admitted);
+                        }
+                    }
+                    Err(error) => report.failed("login", error),
+                }
             }
             if let Some(command) = profile.credential_process() {
                 match process::run(command) {
-                    Ok(found) => return Some((found, "credential process")),
+                    Ok(found) => {
+                        if let Some(admitted) =
+                            self.admit(report, "credential process", found, now, String::new)
+                        {
+                            return Some(admitted);
+                        }
+                    }
                     Err(error) => report.failed("credential process", error),
                 }
             }
-            if let Some(found) = profile.config_file_credentials() {
-                return Some((found, "config file"));
+            match profile.config_file_credentials() {
+                Ok(Some(found)) => {
+                    let hint = dump_anew(self.config_file());
+                    if let Some(admitted) = self.admit(report, "config file", found, now, hint) {
+                        return Some(admitted);
+                    }
+                }
+                Ok(None) => {}
+                Err(error) => report.failed("config file", error),
             }
         }
-        if let Some(found) = self.legacy_credentials(env) {
-            return Some((found, "boto config"));
+        if let Some(found) = self.legacy_credentials(env)
+            && let Some(admitted) = self.admit(report, "boto config", found, now, String::new)
+        {
+            return Some(admitted);
         }
-        match container::credentials(self.agent(), env) {
-            Ok(Some(found)) => return Some((found, "container")),
+        match self
+            .http()
+            .and_then(|http| container::credentials(http, env))
+        {
+            Ok(Some(found)) => {
+                if let Some(admitted) = self.admit(report, "container", found, now, String::new) {
+                    return Some(admitted);
+                }
+            }
             Ok(None) => report.absent("container"),
             Err(error) => report.failed("container", error),
         }
         match self.imds() {
-            Some(imds) => match imds.credentials(self.agent()) {
-                Ok(Some(found)) => return Some((found, "instance metadata")),
+            Some(imds) => match self.http().and_then(|http| imds.credentials(http)) {
+                Ok(Some(found)) => {
+                    if let Some(admitted) =
+                        self.admit(report, "instance metadata", found, now, String::new)
+                    {
+                        return Some(admitted);
+                    }
+                }
                 Ok(None) => report.absent("instance metadata"),
                 Err(error) => report.failed("instance metadata", error),
             },
             None => report.absent("instance metadata (disabled)"),
         }
         None
+    }
+
+    /// Why a shared file that is there could not be read, as last read.
+    fn unreadable_files(&self) -> Vec<String> {
+        lock(&self.inner.files)
+            .as_ref()
+            .map(|read| read.unreadable.clone())
+            .unwrap_or_default()
     }
 
     /// The key pair the legacy boto files spell, when the environment names
@@ -1371,7 +1991,7 @@ impl Session {
         let base = match (role.source_profile(), role.credential_source()) {
             (Some(source), _) => match owner.filter(|owner| owner.name() == source) {
                 // A profile naming itself signs with its own keys.
-                Some(owner) => owner.credentials().ok_or_else(|| {
+                Some(owner) => owner.credentials()?.ok_or_else(|| {
                     refusal(format!(
                         "the profile {source} names itself as source_profile and holds no keys"
                     ))
@@ -1403,12 +2023,12 @@ impl Session {
                 .ok_or_else(|| {
                     refusal("credential_source Ec2InstanceMetadata, and the service is disabled")
                 })?
-                .credentials(self.agent())?
+                .credentials(self.http()?)?
                 .ok_or_else(|| {
                     refusal("credential_source Ec2InstanceMetadata, and the service did not answer")
                 })?,
             (None, Some(CredentialSource::EcsContainer)) => {
-                container::credentials(self.agent(), env)?.ok_or_else(|| {
+                container::credentials(self.http()?, env)?.ok_or_else(|| {
                     refusal(
                         "credential_source EcsContainer, and no container endpoint is configured",
                     )
@@ -1433,8 +2053,11 @@ impl Session {
         if let Some(sso) = profile.sso()? {
             return self.sso_credentials(&sso, now);
         }
-        if let Some(found) = profile.credentials() {
+        if let Some(found) = profile.credentials()? {
             return Ok(found);
+        }
+        if let Some(login_session) = profile.login_session() {
+            return self.login_credentials(profile, login_session, now);
         }
         if let Some(command) = profile.credential_process() {
             return process::run(command);
@@ -1443,6 +2066,60 @@ impl Session {
             "the profile {} holds no keys, role, sign-in or process",
             profile.name()
         )))
+    }
+
+    /// The set the console sign-in `login_session` names, which `aws login`
+    /// filed for `profile`: read from its cache, and refreshed at the Sign-In
+    /// service of the session's region while it nears its end - or at once,
+    /// whatever its expiry says, when a store refused the set in hand.
+    fn login_credentials(
+        &self,
+        profile: &Profile,
+        login_session: &str,
+        now: SystemTime,
+    ) -> Result<Credentials> {
+        let cache = self
+            .variable("AWS_LOGIN_CACHE_DIRECTORY")
+            .map(|path| profile::expand_user(&path, self.home().as_deref()))
+            .or_else(|| {
+                self.directory()
+                    .map(|directory| directory.join("login").join("cache"))
+            })
+            .ok_or_else(|| {
+                refusal(
+                    "no home directory to read the `aws login` sign-in from: set \
+                     Session::with_directory or AWS_LOGIN_CACHE_DIRECTORY",
+                )
+            })?;
+        let arn = Arn::from_str(login_session.trim()).map_err(|error| {
+            refusal(format!(
+                "the profile {} names login_session {login_session:?}, which is not an ARN: {error}",
+                profile.name()
+            ))
+        })?;
+        let region = self.region().unwrap_or_else(|| {
+            ArnPartition::from_arn(&arn)
+                .map_or(DEFAULT_REGION, ArnPartition::global_region)
+                .to_owned()
+        });
+        let endpoint = match self.endpoint_url("signin")? {
+            Some(endpoint) => endpoint,
+            None => login::endpoint(
+                &region,
+                self.use_fips_endpoint(),
+                self.use_dualstack_endpoint(),
+            )
+            .map_err(refusal)?,
+        };
+        login::credentials(
+            self.http()?,
+            &endpoint,
+            &cache,
+            login_session,
+            profile.name(),
+            &|key| self.is_refused(key, now),
+            now,
+        )
     }
 
     /// Trade `base` for `role`'s session, through the CLI cache when it holds
@@ -1462,6 +2139,12 @@ impl Session {
         {
             return Ok(cached);
         }
+        if let Some(reason) = self.unusable(base, now) {
+            return Err(refusal(format!(
+                "the keys that would sign the exchange for {} cannot: {reason}",
+                role.role_arn()
+            )));
+        }
         let token_code = match role.mfa_serial() {
             Some(serial) => Some(self.mfa_code(serial, role)?),
             None => None,
@@ -1470,13 +2153,13 @@ impl Session {
             .region()
             .map(str::to_owned)
             .or_else(|| self.region())
-            .unwrap_or_else(|| DEFAULT_REGION.to_owned());
+            .unwrap_or_else(|| default_region_of(role.role_arn()).to_owned());
         let (endpoint, signing_region) = match role.endpoint() {
             Some(endpoint) => (endpoint.to_owned(), region),
-            None => self.sts_target(&region),
+            None => self.sts_target(&region)?,
         };
         let traded = sts::assume(
-            self.agent(),
+            self.http()?,
             base,
             role,
             &role.session_name_at(now),
@@ -1484,7 +2167,20 @@ impl Session {
             &endpoint,
             &signing_region,
             now,
-        )?;
+        )
+        .inspect_err(|error| {
+            // STS refusing the keys themselves - not the role - is the same
+            // news a store's refusal is: they never sign again here.
+            if let Error::Remote { code, .. } = error {
+                match Refusal::from_code(code) {
+                    Some(Refusal::Lapsed) => self.refuse(base.access_key_id(), None),
+                    Some(Refusal::Unrecognized) => {
+                        self.refuse(base.access_key_id(), Some(now + RETRY_PAUSE));
+                    }
+                    None => {}
+                }
+            }
+        })?;
         if let Some(directory) = cache {
             sts::write_cache(&directory, &key, &traded);
         }
@@ -1506,13 +2202,13 @@ impl Session {
             .region()
             .map(str::to_owned)
             .or_else(|| self.region())
-            .unwrap_or_else(|| DEFAULT_REGION.to_owned());
-        let endpoint = role
-            .endpoint()
-            .map(str::to_owned)
-            .unwrap_or_else(|| self.sts_endpoint(&region));
+            .unwrap_or_else(|| default_region_of(role.role_arn()).to_owned());
+        let endpoint = match role.endpoint() {
+            Some(endpoint) => endpoint.to_owned(),
+            None => self.sts_endpoint(&region)?,
+        };
         sts::assume_with_web_identity(
-            self.agent(),
+            self.http()?,
             role,
             token.trim(),
             &role.session_name_at(now),
@@ -1554,17 +2250,19 @@ impl Session {
         {
             return Ok(cached);
         }
-        let oidc = self
-            .endpoint_url("sso-oidc")
-            .unwrap_or_else(|| sso.oidc_endpoint());
-        let portal = self
-            .endpoint_url("sso")
-            .unwrap_or_else(|| sso.portal_endpoint());
+        let oidc = match self.endpoint_url("sso-oidc")? {
+            Some(url) => url,
+            None => sso.oidc_endpoint(),
+        };
+        let portal = match self.endpoint_url("sso")? {
+            Some(url) => url,
+            None => sso.portal_endpoint(),
+        };
         let token_path = token_cache_path(&directory, sso);
         let mut token = sso::Token::read(&token_path);
         if let Some(held) = token.clone() {
             if held.is_stale(now) && held.can_refresh(now) {
-                match sso::refresh(self.agent(), &oidc, &held, now) {
+                match sso::refresh(self.http()?, &oidc, &held, now) {
                     Ok(fresh) => {
                         if let Err(error) = fresh.write(&token_path) {
                             log::warn!(
@@ -1594,7 +2292,7 @@ impl Session {
             Some(token) => token,
             None => {
                 let signed_in =
-                    sso::login(self.agent(), &oidc, sso, &self.inner.knobs.sso_login, now)?;
+                    sso::login(self.http()?, &oidc, sso, &self.inner.knobs.sso_login, now)?;
                 if let Err(error) = signed_in.write(&token_path) {
                     log::warn!(
                         "the IAM Identity Center sign-in could not be filed at {}: {error}",
@@ -1604,7 +2302,7 @@ impl Session {
                 signed_in
             }
         };
-        let found = sso::role_credentials(self.agent(), &portal, sso, &token)?;
+        let found = sso::role_credentials(self.http()?, &portal, sso, &token)?;
         sts::write_cache(&cli_cache, &credentials_key, &found);
         Ok(found)
     }
@@ -1634,7 +2332,11 @@ impl std::fmt::Debug for Session {
             .field("assumed_role", &knobs.role)
             .field("sso", &knobs.sso)
             .field("credential_process", &knobs.credential_process)
-            .field("endpoint_url", &knobs.endpoint_url)
+            // An endpoint may carry user information; it is never rendered.
+            .field(
+                "endpoint_url",
+                &knobs.endpoint_url.as_deref().map(crate::fs::mask_uri),
+            )
             .field("config_file", &knobs.config_file)
             .field("credentials_file", &knobs.credentials_file)
             .field("directory", &knobs.directory)
@@ -1643,6 +2345,16 @@ impl std::fmt::Debug for Session {
             .field("mfa_prompt", &knobs.mfa_prompt.as_ref().map(|_| "<set>"))
             .finish_non_exhaustive()
     }
+}
+
+/// The region a request about `arn` names when nothing names another: the
+/// region its partition's global services answer in - `cn-northwest-1` for
+/// a role in China - and `us-east-1` for text that names no partition.
+fn default_region_of(arn: &str) -> &'static str {
+    Arn::from_str(arn)
+        .ok()
+        .and_then(|arn| ArnPartition::from_arn(&arn))
+        .map_or(DEFAULT_REGION, ArnPartition::global_region)
 }
 
 /// The cache file `sso`'s token is filed under `directory`.
@@ -1700,6 +2412,12 @@ pub mod internals {
     pub fn imds_endpoint(session: &super::Session) -> Option<String> {
         session.imds().map(|imds| imds.endpoint)
     }
+
+    /// The bound on each metadata request the session would make, or `None`
+    /// when the service is disabled or the session consults no environment.
+    pub fn imds_timeout(session: &super::Session) -> Option<std::time::Duration> {
+        session.imds().map(|imds| imds.timeout)
+    }
 }
 
 /// One endpoint URL as a session keeps it: trimmed, no trailing slash, and
@@ -1707,6 +2425,18 @@ pub mod internals {
 fn endpoint(url: &str) -> Option<String> {
     let url = url.trim().trim_end_matches('/');
     (!url.is_empty()).then(|| url.to_owned())
+}
+
+/// A configured endpoint as a session keeps it, refused naming `source`
+/// when it names none - `/` - as botocore refuses it, rather than the
+/// lookup ending at the published host.
+fn configured(url: &str, source: impl FnOnce() -> String) -> Result<String> {
+    endpoint(url).ok_or_else(|| {
+        Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{} is {url:?}, which names no endpoint", source()),
+        ))
+    })
 }
 
 /// A path for a refusal, or the word for none.
@@ -1719,4 +2449,18 @@ fn refusal(message: impl Into<String>) -> Error {
         std::io::ErrorKind::PermissionDenied,
         message.into(),
     ))
+}
+
+/// A shared file's text, in the charset its byte-order mark names - what
+/// PowerShell writes is UTF-16 or UTF-8 behind one - else UTF-8. A stray
+/// byte in one comment is no reason to read no profile at all, so what the
+/// charset cannot read is replaced.
+fn decode_shared_file(bytes: &[u8]) -> String {
+    let (charset, mark) = Charset::from_bom(bytes).unwrap_or((Charset::Utf8, 0));
+    charset.decode_lossy(&bytes[mark..]).into_owned()
+}
+
+/// The guard of a lock the session holds, whatever a panicking holder left.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

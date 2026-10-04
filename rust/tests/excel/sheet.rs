@@ -3189,24 +3189,41 @@ fn fractional_date_and_whole_day_time_formats_keep_canonical_numeric_serials() {
 
 #[test]
 fn criteria_typed_text_cache_is_derived_and_does_not_change_sheet_equality() {
-    let mut original=Sheet::new("Data").unwrap();
-    original.set_cell(at("A1"),Scalar::from_sequence([Scalar::from("same"),Scalar::from(17_i64)])).unwrap();
-    let mut other=original.clone();
-    let mut guard=other.cell_mut(at("A1")).unwrap();
-    *guard=guard.clone();std::mem::forget(guard);
-    assert_eq!(original,other,"invalidating a derived spelling preserves source equality");
+    let mut original = Sheet::new("Data").unwrap();
+    original
+        .set_cell(
+            at("A1"),
+            Scalar::from_sequence([Scalar::from("same"), Scalar::from(17_i64)]),
+        )
+        .unwrap();
+    let mut other = original.clone();
+    let mut guard = other.cell_mut(at("A1")).unwrap();
+    *guard = guard.clone();
+    std::mem::forget(guard);
+    assert_eq!(
+        original, other,
+        "invalidating a derived spelling preserves source equality"
+    );
 }
 
 #[test]
 fn typed_text_write_reuses_derived_spelling_without_changing_bytes() {
     use crate::excel_package::typed_text_write_cost_book;
-    for rows in [1,64] {
-        let typed=typed_text_write_cost_book(rows,true);let text=typed_text_write_cost_book(rows,false);
-        let typed_bytes=typed.into_bytes().unwrap();let text_bytes=text.into_bytes().unwrap();
-        assert_eq!(typed_bytes,text_bytes,"the cached spelling is a derived fact");
-        let reopened=Workbook::from_bytes(typed_bytes).unwrap();
+    for rows in [1, 64] {
+        let typed = typed_text_write_cost_book(rows, true);
+        let text = typed_text_write_cost_book(rows, false);
+        let typed_bytes = typed.into_bytes().unwrap();
+        let text_bytes = text.into_bytes().unwrap();
+        assert_eq!(
+            typed_bytes, text_bytes,
+            "the cached spelling is a derived fact"
+        );
+        let reopened = Workbook::from_bytes(typed_bytes).unwrap();
         for row in 0..rows {
-            assert_eq!(reopened.sheet("Data").unwrap().scalar(CellRef::new(row,0)),text.sheet("Data").unwrap().scalar(CellRef::new(row,0)));
+            assert_eq!(
+                reopened.sheet("Data").unwrap().scalar(CellRef::new(row, 0)),
+                text.sheet("Data").unwrap().scalar(CellRef::new(row, 0))
+            );
         }
     }
 }

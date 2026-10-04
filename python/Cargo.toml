@@ -18,13 +18,12 @@ arrow-data.workspace = true
 arrow-pyarrow.workspace = true
 arrow-schema.workspace = true
 half.workspace = true
-# Named directly because the bridge is configured with its level filters.
-log.workspace = true
 pyo3.workspace = true
 yggdryl = { path = "../rust", default-features = false, features = [
     "http3",
     "iceberg",
     "s3",
+    "s3tables",
 ] }
 serde_json = "1"
 # The extension's own allocator. Every Arrow buffer a read decodes is a
@@ -33,9 +32,6 @@ serde_json = "1"
 # PyArrow itself ships - keeps freed pages for the next batch. Only this
 # binary sets it: the core crate is a library and never picks one.
 mimalloc = { version = "0.1", default-features = false }
-# Bridges the core's `log` records into Python's `logging`, so a record is
-# emitted where the work happens and reaches the handler the caller configured.
-pyo3-log = "0.13.4"
 
 # mimalloc compiles its five thread-locals under the initial-exec TLS model,
 # which a module opened by `dlopen` may use only where the loader keeps

@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nolegpricingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpricingdatebusinesscenters",
-          "FIX:tag": "41607"
-        }
-      },
-      {
         "name": "legpricingdatebusinesscenters",
         "dtype": {
           "type": "null"

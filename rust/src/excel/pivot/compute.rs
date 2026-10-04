@@ -30,61 +30,66 @@ fn invalid(path: impl Into<SmolStr>, expected: &str, actual: impl std::fmt::Debu
     }
 }
 
-fn source_headers(source: &PivotSource, sheet: &Sheet) -> Result<(Vec<SmolStr>, BTreeMap<SmolStr, u32>)> {
-        if !sheet.name().eq_ignore_ascii_case(&source.sheet) {
+fn source_headers(
+    source: &PivotSource,
+    sheet: &Sheet,
+) -> Result<(Vec<SmolStr>, BTreeMap<SmolStr, u32>)> {
+    if !sheet.name().eq_ignore_ascii_case(&source.sheet) {
+        return Err(invalid(
+            "$.source.sheet",
+            "the selected source sheet",
+            sheet.name(),
+        ));
+    }
+    let range = source.range;
+    range
+        .start()
+        .require_in_grid()
+        .map_err(|error| invalid("$.source.range", "an in-grid source start", error))?;
+    range
+        .end()
+        .require_in_grid()
+        .map_err(|error| invalid("$.source.range", "an in-grid source end", error))?;
+    if range.row_size() < 2 {
+        return Err(invalid(
+            "$.source.range",
+            "a header and at least one body row",
+            range,
+        ));
+    }
+    let mut headers = BTreeMap::<SmolStr, u32>::new();
+    let mut labels = Vec::with_capacity(range.column_size() as usize);
+    for column in range.start().column()..=range.end().column() {
+        let at = CellRef::new(range.start().row(), column);
+        let label = sheet
+            .cell(at)
+            .and_then(|cell| cell.value().as_str())
+            .ok_or_else(|| {
+                invalid(
+                    format_smolstr!("{}!{at}", sheet.name()),
+                    "a text source header",
+                    "blank or non-text",
+                )
+            })?;
+        if label.trim().is_empty() {
             return Err(invalid(
-                "$.source.sheet",
-                "the selected source sheet",
-                sheet.name(),
+                format_smolstr!("{}!{at}", sheet.name()),
+                "a nonempty source header",
+                label,
             ));
         }
-        let range = source.range;
-        range.start().require_in_grid().map_err(|error| {
-            invalid("$.source.range", "an in-grid source start", error)
-        })?;
-        range.end().require_in_grid().map_err(|error| {
-            invalid("$.source.range", "an in-grid source end", error)
-        })?;
-        if range.row_size() < 2 {
+        // Header normalization is one intake fact. Keep the original
+        // spelling for the public field while rejecting aliases.
+        let folded = SmolStr::new(label.to_ascii_lowercase());
+        if let Some(first) = headers.insert(folded, column) {
             return Err(invalid(
-                "$.source.range",
-                "a header and at least one body row",
-                range,
+                format_smolstr!("{}!{at}", sheet.name()),
+                "a distinct source header",
+                CellRef::new(range.start().row(), first),
             ));
         }
-        let mut headers = BTreeMap::<SmolStr, u32>::new();
-        let mut labels = Vec::with_capacity(range.column_size() as usize);
-        for column in range.start().column()..=range.end().column() {
-            let at = CellRef::new(range.start().row(), column);
-            let label = sheet
-                .cell(at)
-                .and_then(|cell| cell.value().as_str())
-                .ok_or_else(|| {
-                    invalid(
-                        format_smolstr!("{}!{at}", sheet.name()),
-                        "a text source header",
-                        "blank or non-text",
-                    )
-                })?;
-            if label.trim().is_empty() {
-                return Err(invalid(
-                    format_smolstr!("{}!{at}", sheet.name()),
-                    "a nonempty source header",
-                    label,
-                ));
-            }
-            // Header normalization is one intake fact. Keep the original
-            // spelling for the public field while rejecting aliases.
-            let folded = SmolStr::new(label.to_ascii_lowercase());
-            if let Some(first) = headers.insert(folded, column) {
-                return Err(invalid(
-                    format_smolstr!("{}!{at}", sheet.name()),
-                    "a distinct source header",
-                    CellRef::new(range.start().row(), first),
-                ));
-            }
-            labels.push(SmolStr::new(label));
-        }
+        labels.push(SmolStr::new(label));
+    }
     Ok((labels, headers))
 }
 
@@ -157,9 +162,15 @@ impl PivotItem {
     /// Explicit item@n fixes visible spelling across Excel UI locales.
     pub(crate) fn authored_error_label(&self) -> Option<&'static str> {
         match self {
-            Self::Error(error @ (ExcelError::Null | ExcelError::Div0 | ExcelError::Value |
-                                  ExcelError::Ref | ExcelError::Name | ExcelError::Num | ExcelError::NA)) =>
-                Some(error.as_str()),
+            Self::Error(
+                error @ (ExcelError::Null
+                | ExcelError::Div0
+                | ExcelError::Value
+                | ExcelError::Ref
+                | ExcelError::Name
+                | ExcelError::Num
+                | ExcelError::NA),
+            ) => Some(error.as_str()),
             _ => None,
         }
     }
@@ -225,11 +236,18 @@ impl PivotItems {
 
     /// One pass over unique typed items; source rows are never rescanned.
     pub(crate) fn facts(&self) -> PivotItemFacts {
-        let mut facts = PivotItemFacts { integer: true, date_only: true, ..PivotItemFacts::default() };
+        let mut facts = PivotItemFacts {
+            integer: true,
+            date_only: true,
+            ..PivotItemFacts::default()
+        };
         let mut types = 0_u8;
         for item in &self.entries {
             match item {
-                PivotItem::Blank => { facts.blank = true; facts.date_only = false; }
+                PivotItem::Blank => {
+                    facts.blank = true;
+                    facts.date_only = false;
+                }
                 PivotItem::Number(value) => {
                     facts.number = true;
                     facts.date_only = false;
@@ -238,9 +256,19 @@ impl PivotItems {
                     facts.min_number = Some(facts.min_number.map_or(*value, |min| min.min(*value)));
                     facts.max_number = Some(facts.max_number.map_or(*value, |max| max.max(*value)));
                 }
-                PivotItem::Date(_) => { facts.date = true; types |= 2; }
-                PivotItem::Text(_) => { facts.string = true; facts.date_only = false; types |= 4; }
-                PivotItem::Boolean(_) => { facts.date_only = false; types |= 8; }
+                PivotItem::Date(_) => {
+                    facts.date = true;
+                    types |= 2;
+                }
+                PivotItem::Text(_) => {
+                    facts.string = true;
+                    facts.date_only = false;
+                    types |= 4;
+                }
+                PivotItem::Boolean(_) => {
+                    facts.date_only = false;
+                    types |= 8;
+                }
                 // Missing/error items do not establish another data type.
                 PivotItem::Error(_) => facts.date_only = false,
             }
@@ -462,7 +490,13 @@ impl Group {
         } else {
             Accumulator::default()
         };
-        Self { aggregate, values, error: None, source_error: None, present: false }
+        Self {
+            aggregate,
+            values,
+            error: None,
+            source_error: None,
+            present: false,
+        }
     }
 
     fn input(
@@ -569,18 +603,19 @@ impl Group {
             Aggregate::Product => Ok(Some(self.values.finish_product())),
             Aggregate::Var => self.values.finish_variance(true),
             Aggregate::VarP => self.values.finish_variance(false),
-            Aggregate::StdDev | Aggregate::StdDevP => {
-                self.values
-                    .finish_variance(self.aggregate == Aggregate::StdDev)
-                    .and_then(|variance| variance
+            Aggregate::StdDev | Aggregate::StdDevP => self
+                .values
+                .finish_variance(self.aggregate == Aggregate::StdDev)
+                .and_then(|variance| {
+                    variance
                         .map(|variance| {
                             Scalar::from(variance)
                                 .checked_sqrt()
                                 .map_err(|_| ExcelError::Num)
                                 .and_then(|root| root.as_f64().ok_or(ExcelError::Num))
                         })
-                        .transpose())
-            }
+                        .transpose()
+                }),
         };
         match result {
             Ok(Some(number)) => Ok(PivotMeasure::Number(number)),
@@ -641,31 +676,42 @@ impl PivotComputed {
         let mut row_ids = HashMap::<Vec<usize>, usize>::new();
         let mut column_ids = HashMap::<Vec<usize>, usize>::new();
         let needs_parent_rollups = spec.subtotals
-            && spec.values.iter().any(|value| value.aggregate != Aggregate::Sum)
+            && spec
+                .values
+                .iter()
+                .any(|value| value.aggregate != Aggregate::Sum)
             && (bound.rows.len() > 1 || bound.columns.len() > 1);
         let mut row_prefixes: Vec<HashMap<Vec<usize>, usize>> = if needs_parent_rollups {
             (1..bound.rows.len()).map(|_| HashMap::new()).collect()
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         let mut column_prefixes: Vec<HashMap<Vec<usize>, usize>> = if needs_parent_rollups {
             (1..bound.columns.len()).map(|_| HashMap::new()).collect()
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         let mut row_parents = Vec::<Vec<usize>>::new();
         let mut column_parents = Vec::<Vec<usize>>::new();
         let mut row_key = Vec::with_capacity(bound.rows.len());
         let mut column_key = Vec::with_capacity(bound.columns.len());
         let mut row_scopes = if needs_parent_rollups {
             Vec::with_capacity(bound.rows.len() + 1)
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         let mut column_scopes = if needs_parent_rollups {
             Vec::with_capacity(bound.columns.len() + 1)
-        } else { Vec::new() };
+        } else {
+            Vec::new()
+        };
         // Only an emitted grand-axis event consumes the corresponding
         // source-order rollup. An unrequested variance total must not turn a
         // settled leaf into an unrelated NumericPolicy refusal.
         let needed_row_rollups = !spec.columns.is_empty() && spec.row_grand_totals;
         let needed_column_rollups = !spec.columns.is_empty() && spec.column_grand_totals;
-        let needed_grand_rollups = spec.column_grand_totals
-            && (spec.columns.is_empty() || spec.row_grand_totals);
+        let needed_grand_rollups =
+            spec.column_grand_totals && (spec.columns.is_empty() || spec.row_grand_totals);
         let mut groups = HashMap::<(usize, usize, usize), Group>::new();
         let mut row_rollups = HashMap::<(usize, usize), Group>::new();
         let mut column_rollups = HashMap::<(usize, usize), Group>::new();
@@ -711,14 +757,20 @@ impl PivotComputed {
             } else {
                 let id = row_tuples.len();
                 if needs_parent_rollups {
-                    let parents = row_prefixes.iter_mut().enumerate().map(|(level, prefixes)| {
-                        let prefix = &row_key[..=level];
-                        if let Some(&id) = prefixes.get(prefix) { id } else {
-                            let id = prefixes.len();
-                            prefixes.insert(prefix.to_vec(), id);
-                            id
-                        }
-                    }).collect();
+                    let parents = row_prefixes
+                        .iter_mut()
+                        .enumerate()
+                        .map(|(level, prefixes)| {
+                            let prefix = &row_key[..=level];
+                            if let Some(&id) = prefixes.get(prefix) {
+                                id
+                            } else {
+                                let id = prefixes.len();
+                                prefixes.insert(prefix.to_vec(), id);
+                                id
+                            }
+                        })
+                        .collect();
                     row_parents.push(parents);
                 }
                 let tuple = row_key.clone();
@@ -732,14 +784,20 @@ impl PivotComputed {
             } else {
                 let id = column_tuples.len();
                 if needs_parent_rollups {
-                    let parents = column_prefixes.iter_mut().enumerate().map(|(level, prefixes)| {
-                        let prefix = &column_key[..=level];
-                        if let Some(&id) = prefixes.get(prefix) { id } else {
-                            let id = prefixes.len();
-                            prefixes.insert(prefix.to_vec(), id);
-                            id
-                        }
-                    }).collect();
+                    let parents = column_prefixes
+                        .iter_mut()
+                        .enumerate()
+                        .map(|(level, prefixes)| {
+                            let prefix = &column_key[..=level];
+                            if let Some(&id) = prefixes.get(prefix) {
+                                id
+                            } else {
+                                let id = prefixes.len();
+                                prefixes.insert(prefix.to_vec(), id);
+                                id
+                            }
+                        })
+                        .collect();
                     column_parents.push(parents);
                 }
                 let tuple = column_key.clone();
@@ -751,25 +809,36 @@ impl PivotComputed {
             // Subtotal/grand events can only enlarge it.
             if row_tuples.len() != previous_rows || column_tuples.len() != previous_columns {
                 let rows = u32::try_from(row_tuples.len()).map_err(|_| Error::InvalidRecord {
-                    path: "$.pivot.rows".into(), reason: "expected bounded row items".into(),
+                    path: "$.pivot.rows".into(),
+                    reason: "expected bounded row items".into(),
                 })?;
-                let columns = u32::try_from(column_tuples.len()).map_err(|_| Error::InvalidRecord {
-                    path: "$.pivot.columns".into(), reason: "expected bounded column items".into(),
-                })?;
+                let columns =
+                    u32::try_from(column_tuples.len()).map_err(|_| Error::InvalidRecord {
+                        path: "$.pivot.columns".into(),
+                        reason: "expected bounded column items".into(),
+                    })?;
                 super::layout::geometry(spec, CellRef::new(0, 0), rows, columns)?;
             }
             if needs_parent_rollups {
                 row_scopes.clear();
                 row_scopes.push((bound.rows.len(), row_id));
-                row_scopes.extend(row_parents[row_id].iter().enumerate()
-                    .map(|(level, &id)| (level + 1, id)));
+                row_scopes.extend(
+                    row_parents[row_id]
+                        .iter()
+                        .enumerate()
+                        .map(|(level, &id)| (level + 1, id)),
+                );
                 if spec.column_grand_totals && !bound.rows.is_empty() {
                     row_scopes.push((0, 0));
                 }
                 column_scopes.clear();
                 column_scopes.push((bound.columns.len(), column_id));
-                column_scopes.extend(column_parents[column_id].iter().enumerate()
-                    .map(|(level, &id)| (level + 1, id)));
+                column_scopes.extend(
+                    column_parents[column_id]
+                        .iter()
+                        .enumerate()
+                        .map(|(level, &id)| (level + 1, id)),
+                );
                 if spec.row_grand_totals && !spec.columns.is_empty() {
                     column_scopes.push((0, 0));
                 }
@@ -791,11 +860,19 @@ impl PivotComputed {
                     for &(row_depth, row_group) in &row_scopes {
                         for &(column_depth, column_group) in &column_scopes {
                             let row_parent = row_depth > 0 && row_depth < bound.rows.len();
-                            let column_parent = column_depth > 0 && column_depth < bound.columns.len();
+                            let column_parent =
+                                column_depth > 0 && column_depth < bound.columns.len();
                             if row_parent || column_parent {
-                                parent_rollups.entry((row_depth, row_group, column_depth,
-                                    column_group, value_index))
-                                    .or_insert_with(|| Group::new(aggregate)).push(input);
+                                parent_rollups
+                                    .entry((
+                                        row_depth,
+                                        row_group,
+                                        column_depth,
+                                        column_group,
+                                        value_index,
+                                    ))
+                                    .or_insert_with(|| Group::new(aggregate))
+                                    .push(input);
                             }
                         }
                     }
@@ -848,9 +925,17 @@ impl PivotComputed {
         }
         let mut settled_parents = HashMap::with_capacity(parent_rollups.len());
         for (key, group) in parent_rollups {
-            settled_parents.insert(key, group.finish(format_smolstr!(
-                "$.pivot.parentTotals[{},{},{},{},{}]", key.0, key.1, key.2, key.3, key.4
-            ))?);
+            settled_parents.insert(
+                key,
+                group.finish(format_smolstr!(
+                    "$.pivot.parentTotals[{},{},{},{},{}]",
+                    key.0,
+                    key.1,
+                    key.2,
+                    key.3,
+                    key.4
+                ))?,
+            );
         }
         Ok(Self {
             row_items,
@@ -946,22 +1031,32 @@ pub(crate) fn field_info(source: &PivotSource, sheet: &Sheet) -> Result<Vec<Pivo
                 Group::input(cell, raw, system, at)?,
                 ValueInput::Absent | ValueInput::Number(_)
             );
-            dictionary.intern(
-                cell,
-                raw,
-                at,
-            )?;
+            dictionary.intern(cell, raw, at)?;
         }
     }
-    labels.into_iter().zip(items).zip(numeric).map(|((name, items), numeric)| {
-        Ok(PivotFieldInfo {
-            name,
-            numeric,
-            aggregate: if numeric { Aggregate::Sum } else { Aggregate::Count },
-            items: u64::try_from(items.items().len())
-                .map_err(|_| invalid("$.source.range", "a bounded item count", items.items().len()))?,
+    labels
+        .into_iter()
+        .zip(items)
+        .zip(numeric)
+        .map(|((name, items), numeric)| {
+            Ok(PivotFieldInfo {
+                name,
+                numeric,
+                aggregate: if numeric {
+                    Aggregate::Sum
+                } else {
+                    Aggregate::Count
+                },
+                items: u64::try_from(items.items().len()).map_err(|_| {
+                    invalid(
+                        "$.source.range",
+                        "a bounded item count",
+                        items.items().len(),
+                    )
+                })?,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 #[cfg(feature = "internals")]

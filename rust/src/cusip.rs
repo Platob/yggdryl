@@ -11,45 +11,54 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-/// One validated CUSIP securities identifier.
+/// One CUSIP securities identifier, held by its shape.
 ///
 /// Nine bytes: six of issuer, two of issue and one check digit, which is
 /// the modulus-10 "double-add-double" digit of the eight before it read
 /// with each letter as ten plus its alphabet position - every second
-/// character doubled, the digits of each product summed. A spelling whose
-/// check digit does not close it is refused for the reason an ISIN's is: an
-/// identifier that fails its own checksum is a typo, and a typo typed as a
-/// security joins to the wrong one.
+/// character doubled, the digits of each product summed. The shape is what
+/// [`Cusip::new`] admits; whether the digit closes the identifier
+/// ([`Cusip::is_closed`]) is the reading its [`rank`](CodeValue::rank) counts,
+/// so a typo is a value of rank zero - which every merge replaces by a
+/// closing one whatever the order - rather than a refusal, and a derivation
+/// that needs the identifier to be real asks `is_closed` first.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct Cusip(SmolStr);
 
 impl Cusip {
-    /// Validate and construct a CUSIP.
+    /// Validate and construct a CUSIP: nine ASCII bytes of the identifier's
+    /// shape, upper-cased.
     ///
     /// Lower case is read as the upper case it spells, because the
     /// identifier is case-insensitive by construction: the check digit
-    /// reads a letter by its position, which case does not change.
+    /// reads a letter by its position, which case does not change. The
+    /// check digit is admitted as stated - an identifier it does not close
+    /// is a value of rank zero, never a refusal.
     ///
     /// ```
-    /// use yggdryl::Cusip;
+    /// use yggdryl::{CodeValue, Cusip};
     ///
     /// let apple = Cusip::new("037833100").unwrap();
     /// assert_eq!(apple.as_str(), "037833100");
     /// assert_eq!(apple.issuer(), "037833");
     /// assert_eq!(apple.issue(), "10");
     /// assert_eq!(apple.check_digit(), 0);
+    /// assert!(apple.is_real());
     /// assert_eq!(Cusip::new("38259p508").unwrap().as_str(), "38259P508");
-    /// // One digit off is a typo, not a security.
-    /// assert!(Cusip::new("037833101").is_err());
+    /// // One digit off is a typo: an identifier that does not close, and
+    /// // ranks below one that does.
+    /// let typo = Cusip::new("037833101").unwrap();
+    /// assert!(!Cusip::is_closed(typo.as_str()));
+    /// assert_eq!(typo.rank(), 0);
     /// assert!(Cusip::new("03783310").is_err());
     /// ```
     ///
     /// # Errors
     ///
     /// Returns an error when the text is not nine ASCII bytes of the
-    /// identifier's shape, or when its check digit does not close it.
+    /// identifier's shape: eight alphanumerics and a closing digit.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
         let value = crate::ascii_text(CUSIP_WIDTH, value.as_ref().as_bytes())?;
         let mut bytes = [0_u8; CUSIP_WIDTH];
@@ -66,7 +75,7 @@ impl Cusip {
         Ok(Self(SmolStr::new(folded)))
     }
 
-    /// Borrow the validated identifier.
+    /// Borrow the identifier.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
@@ -96,26 +105,37 @@ impl Cusip {
         self.as_str().as_bytes()[8] - b'0'
     }
 
-    /// Whether `text` spells an identifier this type would accept, in
-    /// either case.
-    #[must_use]
-    pub fn is_valid(text: &str) -> bool {
-        text.len() == CUSIP_WIDTH
-            && text.is_ascii()
-            && Self::refusal(&text.to_ascii_uppercase()).is_none()
-    }
-
     /// Whether `text` is an identifier exactly as this type stores it:
-    /// upper case, and closed by its check digit.
+    /// upper case, and of the shape [`Self::new`] admits.
     ///
     /// What a column holds is the canonical spelling, so bytes arriving
-    /// through a cast are held to it rather than folded on every read.
+    /// through a cast are held to it rather than folded on every read. This
+    /// is the strict question about the spelling and says nothing of the
+    /// check digit, which is [`Self::is_closed`]' question.
     #[must_use]
     pub fn is_canonical(text: &str) -> bool {
         text.len() == CUSIP_WIDTH
             && text.is_ascii()
             && !text.bytes().any(|byte| byte.is_ascii_lowercase())
             && Self::refusal(text).is_none()
+    }
+
+    /// Whether `text`, upper case, is an identifier its check digit closes:
+    /// the digit of the eight leading characters is the ninth. Lower case
+    /// closes nothing.
+    ///
+    /// ```
+    /// use yggdryl::Cusip;
+    ///
+    /// assert!(Cusip::is_closed("037833100"));
+    /// assert!(!Cusip::is_closed("037833101"));
+    /// ```
+    #[must_use]
+    pub fn is_closed(text: &str) -> bool {
+        let bytes = text.as_bytes();
+        bytes.len() == CUSIP_WIDTH
+            && bytes[8].is_ascii_digit()
+            && Self::closing_digit(&text[..8]) == Some(bytes[8] - b'0')
     }
 
     /// The check digit that closes eight leading characters, or `None`
@@ -142,8 +162,8 @@ impl Cusip {
         u8::try_from((10 - sum % 10) % 10).ok()
     }
 
-    /// Why an upper-cased, nine-byte spelling is not an identifier, or
-    /// nothing.
+    /// Why an upper-cased, nine-byte spelling is not an identifier's
+    /// shape, or nothing.
     fn refusal(folded: &str) -> Option<&'static str> {
         let bytes = folded.as_bytes();
         if bytes.len() != CUSIP_WIDTH {
@@ -155,10 +175,12 @@ impl Cusip {
         if !bytes[8].is_ascii_digit() {
             return Some("expected a closing check digit");
         }
-        match Self::closing_digit(&folded[..8]) {
-            Some(digit) if digit == bytes[8] - b'0' => None,
-            _ => Some("the check digit does not close the identifier"),
-        }
+        None
+    }
+
+    /// [`CodeValue::rank`]: one where the held identifier closes.
+    fn ranked(&self) -> u8 {
+        u8::from(Self::is_closed(self.as_str()))
     }
 }
 
@@ -168,7 +190,13 @@ impl fmt::Display for Cusip {
     }
 }
 
-code_value!(Cusip, Cusip, CUSIP_WIDTH);
+code_value!(
+    Cusip,
+    Cusip,
+    CUSIP_WIDTH,
+    rank = Cusip::ranked,
+    max_rank = 1
+);
 
 /// The Arrow extension name of the CUSIP securities identifier.
 pub(crate) const CUSIP_EXTENSION_NAME: &str = "yggdryl.cusip";

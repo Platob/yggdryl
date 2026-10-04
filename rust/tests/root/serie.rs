@@ -889,7 +889,7 @@ fn a_cell_three_levels_deep_is_written_in_place_and_a_child_is_replaced_whole() 
 }
 
 #[test]
-fn a_slice_is_zero_copy_for_a_column_and_a_copy_for_a_run() {
+fn a_slice_is_zero_copy_for_a_column_and_a_run() {
     let column = column();
     let window = column.slice(1, 2).unwrap();
     assert_eq!(window.as_int64().unwrap().values(), &[126, 127]);
@@ -909,10 +909,53 @@ fn a_slice_is_zero_copy_for_a_column_and_a_copy_for_a_run() {
     assert_eq!(second.child("id").map(Serie::len), Some(1));
     assert_eq!(second.scalar(0).unwrap(), quotes.scalar(1).unwrap());
 
+    // A run's window shares its values: one row in, the same allocation.
     let run = run();
     let window = run.slice(1, 2).unwrap();
     assert_eq!(window.rows().as_ref(), &run.rows()[1..]);
+    let (Some(held), Some(viewed)) = (run.as_slice(), window.as_slice()) else {
+        panic!("both are runs");
+    };
+    assert!(std::ptr::eq(viewed.as_ptr(), held.as_ptr().wrapping_add(1)));
     assert!(run.slice(3, 1).is_err());
+    assert!(window.slice(1, 2).is_err(), "refused against the window");
+}
+
+#[test]
+fn a_slice_of_the_whole_serie_is_the_serie() {
+    // Refused first, exactly as any other window past the end.
+    assert!(column().slice(0, 4).is_err());
+    assert!(run().slice(0, 4).is_err());
+
+    // A column's whole window is the same leaf, not a new one over it.
+    let column = column();
+    let whole = column.slice(0, 3).unwrap();
+    assert!(std::ptr::eq(
+        whole.as_int64().unwrap(),
+        column.as_int64().unwrap()
+    ));
+    assert_eq!(whole, column);
+    let quotes = quotes();
+    let whole = quotes.slice(0, quotes.len()).unwrap();
+    assert!(std::ptr::eq(
+        whole.as_struct().unwrap(),
+        quotes.as_struct().unwrap()
+    ));
+
+    // A run's whole window is the run, its values lent as they are.
+    let run = run();
+    let whole = run.slice(0, 3).unwrap();
+    let (Some(held), Some(viewed)) = (run.as_slice(), whole.as_slice()) else {
+        panic!("both are runs");
+    };
+    assert!(std::ptr::eq(viewed, held));
+
+    // An empty serie's whole window is itself too.
+    let empty = column.slice(3, 0).unwrap();
+    assert!(std::ptr::eq(
+        empty.slice(0, 0).unwrap().as_int64().unwrap(),
+        empty.as_int64().unwrap()
+    ));
 }
 
 #[test]

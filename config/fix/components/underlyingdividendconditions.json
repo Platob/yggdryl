@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nounderlyingdividendperiods",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingdividendperiods",
-          "FIX:tag": "42862"
-        }
-      },
-      {
         "name": "underlyingdividendperiods",
         "dtype": {
           "type": "null"

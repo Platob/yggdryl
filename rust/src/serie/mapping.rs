@@ -20,6 +20,7 @@ use arrow_buffer::{ArrowNativeType, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
+use crate::spill::Backing;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -60,6 +61,9 @@ pub struct MapSerie {
     offsets: OffsetBuffer<i32>,
     entries: Serie,
     nulls: Option<NullBuffer>,
+    /// Where the cut and the validity live; the entries answer for their
+    /// own buffers.
+    backing: Backing,
 }
 
 impl MapSerie {
@@ -75,12 +79,21 @@ impl MapSerie {
             offsets,
             entries,
             nulls,
+            backing: Backing::Heap,
         }
     }
 
     /// Borrow the entries column: a record column of the entries field.
     pub const fn entries(&self) -> &Serie {
         &self.entries
+    }
+
+    /// Borrow the entries column mutably.
+    ///
+    /// The caller keeps its field and its length - it writes nothing that
+    /// changes either - so the cut still ends at the entries.
+    pub(crate) const fn entries_mut(&mut self) -> &mut Serie {
+        &mut self.entries
     }
 
     /// Borrow the keys column, the entries' first child.
@@ -101,6 +114,29 @@ impl MapSerie {
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
+    }
+
+    /// Where this column's own cut and validity live; the entries answer
+    /// for their own buffers.
+    pub(crate) const fn backing(&self) -> &Backing {
+        &self.backing
+    }
+
+    /// State where the whole unit lives: this column's cut and validity,
+    /// and the entries column below them.
+    pub(crate) fn set_backing(&mut self, backing: Backing) {
+        self.entries.set_backing(backing);
+        self.backing = backing;
+    }
+
+    /// The bytes this column's own cut and validity span as its slice
+    /// counts them, and nothing of the entries'.
+    pub(crate) fn own_size(&self) -> usize {
+        self.offsets.len() * std::mem::size_of::<i32>()
+            + self
+                .nulls
+                .as_ref()
+                .map_or(0, |nulls| nulls.len().div_ceil(8))
     }
 
     /// Whether every row's keys are sorted, as the field declares.
@@ -159,6 +195,7 @@ impl MapSerie {
         self.offsets = offsets;
         self.entries.write(replaced, entries);
         self.nulls = layout::splice_nulls(self.nulls.take(), len, range, &present);
+        self.backing = Backing::Heap;
     }
 
     /// Append `other`'s cut and entries, whose field agrees with this one's,
@@ -184,6 +221,7 @@ impl MapSerie {
             .map(|row| other.nulls.as_ref().is_none_or(|nulls| nulls.is_valid(row)))
             .collect();
         self.nulls = layout::splice_nulls(self.nulls.take(), len, len..len, &present);
+        self.backing = Backing::Heap;
         true
     }
 }
@@ -236,13 +274,17 @@ impl SerieValue for MapSerie {
             .iter()
             .map(|held| *held - first)
             .collect();
-        Ok(Self::new(
-            Arc::clone(&self.field),
-            OffsetBuffer::new(ScalarBuffer::from(rebased)),
-            self.entries
+        Ok(Self {
+            field: Arc::clone(&self.field),
+            offsets: OffsetBuffer::new(ScalarBuffer::from(rebased)),
+            entries: self
+                .entries
                 .slice(first.as_usize(), (last - first).as_usize())?,
-            self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
-        ))
+            nulls: self.nulls.as_ref().map(|nulls| nulls.slice(offset, length)),
+            // The rebased cut is the heap's whatever the whole was, so this
+            // level is resident; the entries keep where they lie.
+            backing: Backing::Heap,
+        })
     }
 
     fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()> {
@@ -254,6 +296,15 @@ impl SerieValue for MapSerie {
         self.check(&range, &canonical)?;
         self.write(range, canonical);
         Ok(())
+    }
+
+    fn resident_size(&self) -> usize {
+        let own = if self.backing().is_mapped() {
+            0
+        } else {
+            self.own_size()
+        };
+        own + self.entries.resident_size()
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
@@ -289,7 +340,7 @@ impl SerieValue for MapSerie {
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        super::Leaf::narrow(value)
+        super::Leaf::narrow_laid(value)
     }
 }
 

@@ -15,7 +15,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `commit`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, the market data it is, what a parse splits off it, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
-| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books - each execution and each quoted side a parse split off folded once - or back to the wire under bounded Arrow batches |
+| [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `book_arrow_reader`, `market_data`, `market_arrow_reader`, `market_data_arrow_reader`, `write_arrow_reader`: a capture streamed through a dictionary, into books of its orders, quotes and `W`/`X` entries - a fill moving its order's or quote's entry - or back to the wire under bounded Arrow batches |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, what a parse fills in for a message, and the [warnings](capture.md#warnings) it says instead of failing: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph/event.md#lifecycle-walk)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `yggdryl`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
@@ -212,7 +212,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `identifiers` | `FIX:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
 | `codeset` | `FIX:codeset` | one name | the [code set](registry.md#a-field-names-the-code-set-it-reads-by) this field draws its values from; the dictionary holds the members under that name, and a registry refuses a field naming a set it does not hold |
-| `counter` | `FIX:counter` | `i32` | on a Serie/LargeSerie group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
+| `counter` | `FIX:counter` | `i32` | on a group, the NumInGroup tag that frames it on the wire, written from the group's length and never a field beside it; on a crate Map group, its own tag |
 | `component` | `FIX:component` | name | component reference, including a group's occurrence |
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
@@ -222,7 +222,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## A message type is filed under one category
 
-The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order, a quote or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)); a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
+The committed dictionary files every standard message type under one [`MarketDataKind`](../types/enum/marketdatakind.md) member, written by `scripts/generate_fix_dictionary.py` as the message definition's `FIX:msgcat`; a message whose type is filed under none is `UNKN`. An order or an execution message stores its cross code under its side ([sided](../types/enum/marketdatakind.md#sided-kinds-and-batches)), and every other message - a quote, which holds its bid and its offer and tags a side, among them - under side `0`; a batch message is split at the parse into one message per entry, filed under the batch's item ([Message](message.md#a-batch-splits-per-entry)).
 
 | Category | `MsgType(35)` |
 | --- | --- |
@@ -468,17 +468,18 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 ## Nesting needs no second type
 
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate Serie of the
-`Party` Struct, linked to that count through `FIX:counter`. Fields, components
-and groups are the three registry categories, a message being a component that
-carries `FIX:msgtype`.
+`Party` Struct, linked to that field through `FIX:counter`, which only frames the
+group on the wire. No component, message, row or entry lists the counter beside
+the group: the group's length is its count. Fields, components and groups are
+the three registry categories, a message being a component that carries
+`FIX:msgtype`.
 
 The crate's `metadata(65035)` is also a group: a nullable, sorted-key
 `map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
 separate scalar counter and no invented numeric tags for its key or value. A
 parse fills it from the
 [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
-a bridge wrote, and a row from every key no dictionary resolved, while
-ordinary Serie/LargeSerie groups keep their existing counter rules; the names
+a bridge wrote, and a row from every key no dictionary resolved; the names
 a message goes by are its [identifiers](message.md#the-identifier-maps).
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)

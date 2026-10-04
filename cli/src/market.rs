@@ -28,7 +28,7 @@ use yggdryl::{
     Error, FixCodec, FixRegistry, IOBase, IOKind, IOMedia, Result, Scheme, Timezone, Url,
 };
 
-use crate::{location, style};
+use crate::{location, style, timeout};
 
 /// One display file the binary embeds: the name it is served under below
 /// `--path`, its bytes and its `Content-Type`.
@@ -131,7 +131,11 @@ pub struct Serve {
     path: String,
 
     /// The grid a capture's books are folded on before they land, in
-    /// milliseconds; zero folds one book per event.
+    /// milliseconds: a book lands whole - every entry alive - at every grid
+    /// tick holding one and at a full refresh, and as its deltas alone at
+    /// every other event, its first appearance included, which follows the
+    /// empty book. Zero is no grid, so the book at an instant is rebuilt from
+    /// its first appearance or its last full refresh, however far back.
     #[arg(long, default_value_t = 0, value_name = "MILLIS")]
     snapshot_millis: u64,
 
@@ -191,16 +195,17 @@ pub struct Serve {
     #[arg(long, value_name = "PREFIX")]
     path_prefix: Option<String>,
 
-    /// Seconds a connection may stay quiet, or one request head may take to
-    /// arrive whole, before it is closed, from 1 to 86400 (one day); keep it
-    /// above the proxy's own keep-alive timeout.
+    /// How long a connection may stay quiet, or one request head may take to
+    /// arrive whole, before it is closed: seconds, with a fraction and an
+    /// optional unit (`30`, `2.5`, `1500ms`), above zero and at most 86400
+    /// (one day); keep it above the proxy's own keep-alive timeout.
     #[arg(
         long,
-        default_value_t = 30,
+        default_value = "30",
         value_name = "SECONDS",
-        value_parser = clap::value_parser!(u64).range(1..=ServerOptions::MAX_TIMEOUT.as_secs())
+        value_parser = timeout::read_timeout
     )]
-    read_timeout: u64,
+    read_timeout: Duration,
 }
 
 /// Run one `market` verb.
@@ -379,7 +384,7 @@ impl Serve {
     fn server_options(&self) -> Result<ServerOptions> {
         let mut options = ServerOptions::default()
             .with_max_body_size(self.max_body)
-            .with_read_timeout(Duration::from_secs(self.read_timeout))
+            .with_read_timeout(self.read_timeout)
             .with_trusted_proxies(&self.trusted_proxies)?;
         if !self.forwarded_headers.is_empty() {
             options = options.with_forwarded_headers(self.forwarded_headers.iter().copied());
@@ -403,14 +408,14 @@ impl Serve {
 /// location as one file. Served with no capture, a folder holding nothing
 /// is a table holding no book, and reading it creates nothing.
 fn resource(location: &str) -> Result<Holder> {
-    if location.contains("://") {
-        return location::folder(location);
+    let url = Url::from_location(location)?;
+    if location::is_place(&url)? {
+        let held = location::from_url(&url)?;
+        if !matches!(held.kind(), IOKind::Unknown) {
+            return Ok(held);
+        }
     }
-    let held = Holder::local(location)?;
-    if matches!(held.kind(), IOKind::Unknown) {
-        return location::folder(location);
-    }
-    Ok(held)
+    location::folder_of(&url)
 }
 
 /// `--path` spelled as a route is, by the server's one path grammar - the
@@ -474,12 +479,12 @@ fn land(table: &mut Holder, books: Vec<BookEvent>) -> Result<()> {
 /// `decimal(20, 0)` - and every read casts the rows back onto the row field.
 #[cfg(feature = "iceberg")]
 fn prepared(location: &str) -> Result<bool> {
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
 
     if !resource(location)?.is_container() {
         return Ok(false);
     }
-    if Table::locate(location::folder(location)?)?.is_some() {
+    if IcebergTable::locate(location::folder(location)?)?.is_some() {
         return Ok(false);
     }
     if location::folder(location)?
@@ -489,7 +494,7 @@ fn prepared(location: &str) -> Result<bool> {
     {
         return Ok(false);
     }
-    Table::create(
+    IcebergTable::create(
         location::folder(location)?,
         FormatVersion::V2,
         MarketData::field()?.into_scheme_compat(&Scheme::ICEBERG)?,

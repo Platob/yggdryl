@@ -19,6 +19,8 @@ use std::str::FromStr;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::Headers;
+use crate::boolean::bool_of;
+use crate::integer::{integer_from_scalar_as, integer_from_text_as};
 use crate::{Error, FieldPath, FieldSegment, Result, Scalar, Url};
 
 /// What a parse failure names itself as.
@@ -243,9 +245,9 @@ impl Pagination {
                 }
                 if let Some(total) = total {
                     let stated = body
-                        .and_then(|body| text_at_path(body, total).transpose())
+                        .and_then(|body| scalar_at_path(body, total).transpose())
                         .transpose()?
-                        .and_then(|text| text.parse::<u64>().ok());
+                        .and_then(|found| integer_from_scalar_as::<u64>(&found));
                     if stated.is_some_and(|total| next >= total) {
                         return Ok(None);
                     }
@@ -373,7 +375,7 @@ impl FromStr for Pagination {
                     ));
                 };
                 let size_at = argument_at + parameter.len() + 1;
-                let page_size = size.trim().parse::<u64>().map_err(|_| {
+                let page_size = integer_from_text_as::<u64>(size).ok_or_else(|| {
                     parse_error(size_at, "a positive page size after the parameter")
                 })?;
                 if page_size == 0 {
@@ -400,7 +402,7 @@ impl FromStr for Pagination {
                     ));
                 };
                 let start_at = argument_at + parameter.len() + 1;
-                let start = start.trim().parse::<u64>().map_err(|_| {
+                let start = integer_from_text_as::<u64>(start).ok_or_else(|| {
                     parse_error(start_at, "the first page number after the parameter")
                 })?;
                 Ok(Self::Page {
@@ -492,14 +494,15 @@ fn auto_next(url: &Url, headers: &Headers, body: Option<&Scalar>) -> Result<Opti
     Ok(None)
 }
 
-/// Whether `body` states `has_more` or `hasMore` as `false`.
+/// Whether `body` states `has_more` or `hasMore` as `false`: a boolean, or
+/// a string the one boolean table reads as false (`false`, `no`, `0`).
 fn has_more_is_false(body: Option<&Scalar>) -> bool {
     let Some(body) = body else {
         return false;
     };
     HAS_MORE_PATHS
         .iter()
-        .any(|segments| value_at(body, segments).and_then(Scalar::as_bool) == Some(false))
+        .any(|segments| value_at(body, segments).and_then(bool_of) == Some(false))
 }
 
 /// `text` resolved against `url`; `None` when empty or the same page.
@@ -549,7 +552,7 @@ fn url_parameter_count(url: &Url, name: &str) -> Result<Option<u64>> {
     Ok(url
         .parameters(true)?
         .get(name)
-        .and_then(|value| value.trim().parse::<u64>().ok()))
+        .and_then(integer_from_text_as::<u64>))
 }
 
 /// Whether a header value is a URL rather than a token: it names a scheme
@@ -607,6 +610,19 @@ fn entries_of(value: &Scalar) -> Box<dyn Iterator<Item = (&str, &Scalar)> + '_> 
 ///
 /// A range or filter segment, which no page document is walked by.
 fn text_at_path(body: &Scalar, path: &FieldPath) -> Result<Option<String>> {
+    Ok(scalar_at_path(body, path)?.and_then(|found| text_of(&found)))
+}
+
+/// The value `body` holds at a caller's path, `None` where the path does not
+/// resolve; a null at the end of it is the null.
+///
+/// # Errors
+///
+/// As [`text_at_path`].
+fn scalar_at_path<'body>(
+    body: &'body Scalar,
+    path: &FieldPath,
+) -> Result<Option<Cow<'body, Scalar>>> {
     let mut current = Cow::Borrowed(body);
     for segment in path.segments() {
         let stepped = match (segment, &current) {
@@ -643,7 +659,7 @@ fn text_at_path(body: &Scalar, path: &FieldPath) -> Result<Option<String>> {
             None => return Ok(None),
         }
     }
-    Ok(text_of(&current))
+    Ok(Some(current))
 }
 
 /// A scalar as the text a URL or a query parameter carries: a string as it

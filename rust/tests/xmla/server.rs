@@ -18,10 +18,12 @@ use yggdryl::http::{
 use yggdryl::media::RecordOptions;
 use yggdryl::soap::Envelope;
 use yggdryl::xmla::{
-    Catalog, Discover, Execute, PropertyList, Request, RequestType, Response, Service,
-    ServiceOptions, XmlaError,
+    Discover, Execute, PropertyList, Request, RequestType, Response, Service, ServiceOptions,
+    XmlaError,
 };
-use yggdryl::{DataType, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url};
+use yggdryl::{
+    DataType, FolderCatalog, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url,
+};
 
 /// A fresh catalog folder, named after `label`, holding `trades` with two
 /// rows.
@@ -76,10 +78,12 @@ fn running_with(
     service_options: ServiceOptions,
 ) -> (Server, Url, Arc<Service>) {
     let root = catalog_root(label);
-    let service = Arc::new(Service::new(service_options).with_catalog(Catalog::new(
-        "market",
-        Holder::folder(&root).expect("holds"),
-    )));
+    let service = Arc::new(
+        Service::new(service_options).with_catalog(FolderCatalog::bound(
+            "market",
+            Holder::folder(&root).expect("holds"),
+        )),
+    );
     let server = Server::bind_with("127.0.0.1:0", options).expect("a loopback port");
     let endpoint = Arc::clone(&service)
         .route(&server, "/xmla")
@@ -189,7 +193,7 @@ fn receive<R: BufRead>(reader: &mut R) -> (u16, Vec<(String, String)>, Vec<u8>) 
 fn route_answers_the_endpoint_url_and_refuses_a_path_with_a_query() {
     let root = catalog_root("route");
     let service = Arc::new(
-        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
             "market",
             Holder::folder(&root).expect("holds"),
         )),
@@ -318,6 +322,53 @@ fn a_non_xml_content_type_is_a_client_fault_under_the_negotiation_header() {
     let fault = envelope.fault().expect("a fault");
     let errors = XmlaError::from_fault(fault);
     assert_eq!(errors.first().map(XmlaError::code), Some(1));
+}
+
+#[test]
+fn a_content_type_is_read_as_a_media_type_never_searched_for_xml() {
+    let (_server, endpoint, _service) = running("media-type");
+    let refusal = "expected an XML content type for a SOAP message";
+    let description = |content_type: &str| {
+        let response = HttpRequest::post(&endpoint.to_string(), "<a/>")
+            .expect("a request builds")
+            .with_header("content-type", content_type)
+            .expect("a header")
+            .send()
+            .expect("the server answers");
+        assert_eq!(response.status(), Status::OK, "{content_type}");
+        let body = response.bytes().expect("a body");
+        let envelope = Envelope::from_bytes(&body).expect("an envelope");
+        let fault = envelope.fault().expect("a fault");
+        XmlaError::from_fault(fault)
+            .first()
+            .map(|error| error.description().to_owned())
+            .unwrap_or_default()
+    };
+    // A media type is case-insensitive (RFC 9110), and `application/xmla+xml`
+    // and any `+xml` suffix are XML's: the body earns whatever its parse says,
+    // never the content type's refusal.
+    for content_type in [
+        "text/xml",
+        "Text/XML",
+        "APPLICATION/XML; charset=utf-8",
+        "application/soap+xml; charset=utf-8",
+        "application/xmla+xml",
+        "application/x-foo+xml",
+    ] {
+        let description = description(content_type);
+        assert!(
+            !description.contains(refusal),
+            "{content_type}: {description}"
+        );
+    }
+    // A substring of the word is no media type of XML's.
+    for content_type in ["text/plain", "text/xmlish", "application/x-xmlfoo", "xml"] {
+        let description = description(content_type);
+        assert!(
+            description.contains(refusal),
+            "{content_type}: {description}"
+        );
+    }
 }
 
 #[test]
@@ -548,7 +599,7 @@ fn a_trace_writes_each_exchange_as_it_went_over_the_wire_and_the_request_replays
     ));
     let _ = std::fs::remove_dir_all(&trace);
     let service = Arc::new(
-        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        Service::new(ServiceOptions::new()).with_catalog(FolderCatalog::bound(
             "market",
             Holder::folder(&root).expect("holds"),
         )),

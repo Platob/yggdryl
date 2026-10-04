@@ -4,7 +4,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Result};
 
-use super::{PivotSpec, BLANK_CAPTION};
+use super::{BLANK_CAPTION, PivotSpec};
 use crate::excel::{CellRange, CellRef, MAX_COLUMNS, MAX_EDITED_CELLS, MAX_ROWS};
 
 /// The output rectangle and the zero-based location attributes written to OOXML.
@@ -62,7 +62,8 @@ pub fn geometry(
     let data_columns = if columns == 0 {
         values
     } else {
-        rendered_column_groups.checked_mul(values)
+        rendered_column_groups
+            .checked_mul(values)
             .ok_or_else(|| refused("data columns overflow"))?
     };
     let width = rows
@@ -112,7 +113,10 @@ use super::compute::{PivotComputed, PivotItem};
 use std::cmp::Ordering;
 
 fn display_refused(field: &str, reason: &'static str) -> Error {
-    Error::InvalidRecord { path: field.into(), reason: reason.into() }
+    Error::InvalidRecord {
+        path: field.into(),
+        reason: reason.into(),
+    }
 }
 
 /// Cache IDs stay in source insertion order. These ordinals and event streams
@@ -132,8 +136,15 @@ pub struct PivotDisplay {
 /// rows or a dense grid; level is the parent field whose run just closed.
 #[derive(Clone, Copy, Debug)]
 pub enum PivotEvent {
-    Leaf { id: usize, first_new: usize },
-    Subtotal { level: usize, from: usize, to: usize },
+    Leaf {
+        id: usize,
+        first_new: usize,
+    },
+    Subtotal {
+        level: usize,
+        from: usize,
+        to: usize,
+    },
     Grand,
 }
 
@@ -158,7 +169,10 @@ fn visible_items(
         match item {
             PivotItem::Blank => continue,
             PivotItem::Text(text) if !text.is_ascii() => {
-                return Err(display_refused(field, "non-ASCII collation has no selected locale"));
+                return Err(display_refused(
+                    field,
+                    "non-ASCII collation has no selected locale",
+                ));
             }
             PivotItem::Error(_) if item.authored_error_label().is_none() => {
                 return Err(display_refused(field, "an authored classic error heading"));
@@ -218,7 +232,12 @@ fn visible_items(
 
 /// Emit one event per leaf and one per closed parent run. A singleton axis
 /// has no parent level, so the subtotals flag is a no-op for that axis.
-fn events(sorted: &[usize], tuples: &[Vec<usize>], subtotals: bool, grand: bool) -> Vec<PivotEvent> {
+fn events(
+    sorted: &[usize],
+    tuples: &[Vec<usize>],
+    subtotals: bool,
+    grand: bool,
+) -> Vec<PivotEvent> {
     let depth = tuples.first().map_or(0, Vec::len);
     let parents = depth.saturating_sub(1);
     let mut starts = vec![0; parents];
@@ -226,12 +245,20 @@ fn events(sorted: &[usize], tuples: &[Vec<usize>], subtotals: bool, grand: bool)
     let mut prior: Option<usize> = None;
     for (position, &id) in sorted.iter().enumerate() {
         let first_new = prior.map_or(0, |old| {
-            tuples[old].iter().zip(&tuples[id]).take_while(|(a, b)| a == b).count()
+            tuples[old]
+                .iter()
+                .zip(&tuples[id])
+                .take_while(|(a, b)| a == b)
+                .count()
         });
         if prior.is_some() {
             for level in (first_new..parents).rev() {
                 if subtotals {
-                    result.push(PivotEvent::Subtotal { level, from: starts[level], to: position });
+                    result.push(PivotEvent::Subtotal {
+                        level,
+                        from: starts[level],
+                        to: position,
+                    });
                 }
             }
         }
@@ -243,7 +270,11 @@ fn events(sorted: &[usize], tuples: &[Vec<usize>], subtotals: bool, grand: bool)
     }
     if !sorted.is_empty() && subtotals {
         for level in (0..parents).rev() {
-            result.push(PivotEvent::Subtotal { level, from: starts[level], to: sorted.len() });
+            result.push(PivotEvent::Subtotal {
+                level,
+                from: starts[level],
+                to: sorted.len(),
+            });
         }
     }
     if grand {
@@ -258,37 +289,60 @@ impl PivotDisplay {
         let mut row_fields = Vec::with_capacity(spec.rows.len());
         let mut row_rank = Vec::with_capacity(spec.rows.len());
         for (index, (axis, items)) in spec.rows.iter().zip(&computed.row_items).enumerate() {
-            let (visible, rank) = visible_items(items.items(), axis.order, &format!("$.rows[{index}]"))?;
+            let (visible, rank) =
+                visible_items(items.items(), axis.order, &format!("$.rows[{index}]"))?;
             row_fields.push(visible);
             row_rank.push(rank);
         }
         let mut column_fields = Vec::with_capacity(spec.columns.len());
         let mut column_rank = Vec::with_capacity(spec.columns.len());
         for (index, (axis, items)) in spec.columns.iter().zip(&computed.column_items).enumerate() {
-            let (visible, rank) = visible_items(items.items(), axis.order, &format!("$.columns[{index}]"))?;
+            let (visible, rank) =
+                visible_items(items.items(), axis.order, &format!("$.columns[{index}]"))?;
             column_fields.push(visible);
             column_rank.push(rank);
         }
         let mut rows: Vec<usize> = (0..computed.row_tuples.len()).collect();
         rows.sort_by(|&left, &right| {
-            computed.row_tuples[left].iter().zip(&computed.row_tuples[right])
-                .enumerate().map(|(field, (&a, &b))| row_rank[field][a].cmp(&row_rank[field][b]))
-                .find(|ord| !ord.is_eq()).unwrap_or(Ordering::Equal)
+            computed.row_tuples[left]
+                .iter()
+                .zip(&computed.row_tuples[right])
+                .enumerate()
+                .map(|(field, (&a, &b))| row_rank[field][a].cmp(&row_rank[field][b]))
+                .find(|ord| !ord.is_eq())
+                .unwrap_or(Ordering::Equal)
         });
         let mut columns: Vec<usize> = (0..computed.column_tuples.len()).collect();
         columns.sort_by(|&left, &right| {
-            computed.column_tuples[left].iter().zip(&computed.column_tuples[right])
-                .enumerate().map(|(field, (&a, &b))| column_rank[field][a].cmp(&column_rank[field][b]))
-                .find(|ord| !ord.is_eq()).unwrap_or(Ordering::Equal)
+            computed.column_tuples[left]
+                .iter()
+                .zip(&computed.column_tuples[right])
+                .enumerate()
+                .map(|(field, (&a, &b))| column_rank[field][a].cmp(&column_rank[field][b]))
+                .find(|ord| !ord.is_eq())
+                .unwrap_or(Ordering::Equal)
         });
-        let row_events = events(&rows, &computed.row_tuples, spec.subtotals, spec.column_grand_totals);
+        let row_events = events(
+            &rows,
+            &computed.row_tuples,
+            spec.subtotals,
+            spec.column_grand_totals,
+        );
         let column_events = events(
-            &columns, &computed.column_tuples, spec.subtotals && !spec.columns.is_empty(),
+            &columns,
+            &computed.column_tuples,
+            spec.subtotals && !spec.columns.is_empty(),
             spec.row_grand_totals && !spec.columns.is_empty(),
         );
         Ok(Self {
-            row_fields, column_fields, row_rank, column_rank, rows, columns,
-            row_events, column_events,
+            row_fields,
+            column_fields,
+            row_rank,
+            column_rank,
+            rows,
+            columns,
+            row_events,
+            column_events,
         })
     }
 }

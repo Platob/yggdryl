@@ -376,7 +376,10 @@ impl Drop for CellMut<'_> {
         self.cell.move_to(self.reference);
         if self.checked_serial {
             if let Some(text) = CellExtra::calculation_text(self.cell) {
-                self.extras.entry(self.reference).or_default().calculation_text = Some(text);
+                self.extras
+                    .entry(self.reference)
+                    .or_default()
+                    .calculation_text = Some(text);
             }
         }
         if let Some((bits, original)) = self.saved_serial.take() {
@@ -552,18 +555,23 @@ impl CellExtra {
     /// Lend the intake spelling when retained; forgotten mutation guards
     /// invalidate it before mutation, so the fallback remains current.
     fn text<'a>(cell: &'a Cell, extra: Option<&'a Self>) -> std::borrow::Cow<'a, str> {
-        extra.and_then(|extra| extra.calculation_text.as_ref())
-            .map_or_else(|| cell.text(), |text| std::borrow::Cow::Borrowed(text.as_str()))
+        extra
+            .and_then(|extra| extra.calculation_text.as_ref())
+            .map_or_else(
+                || cell.text(),
+                |text| std::borrow::Cow::Borrowed(text.as_str()),
+            )
     }
 
     /// Native strings already lend their storage. Authored typed text needs
     /// one shared display spelling; formula caches are native scalar results.
     fn calculation_text(cell: &Cell) -> Option<crate::Str> {
-        (cell.formula().is_none() && cell.error().is_none() && cell.kind().is_text()
+        (cell.formula().is_none()
+            && cell.error().is_none()
+            && cell.kind().is_text()
             && !matches!(cell.value(), crate::string_scalars!(_)))
-            .then(|| crate::Str::new(cell.text()))
+        .then(|| crate::Str::new(cell.text()))
     }
-
 
     /// What `raw`, read as `cell`, states beyond its value, `None` when it
     /// states nothing.
@@ -704,8 +712,14 @@ impl PartialEq for Sheet {
             && self.state == other.state
             && self.system == other.system
             && self.rows == other.rows
-            && self.extras.iter().filter(|(_, extra)| extra.source_facts())
-                .eq(other.extras.iter().filter(|(_, extra)| extra.source_facts()))
+            && self
+                .extras
+                .iter()
+                .filter(|(_, extra)| extra.source_facts())
+                .eq(other
+                    .extras
+                    .iter()
+                    .filter(|(_, extra)| extra.source_facts()))
             && self.layout == other.layout
     }
 }
@@ -1660,7 +1674,11 @@ impl Sheet {
         };
         for cell in moved.cells() {
             let at = landed(cell.reference());
-            if moved.extras.get(&cell.reference()).is_some_and(|extra| extra.calculation_text.is_some()) {
+            if moved
+                .extras
+                .get(&cell.reference())
+                .is_some_and(|extra| extra.calculation_text.is_some())
+            {
                 // The unchanged source payload carries its shared spelling in
                 // the extra-copy loop below; do not render it a second time.
                 self.extras.remove(&at);
@@ -1699,7 +1717,9 @@ impl Sheet {
             }
             let target = landed(*at);
             if extra.calculation_text.is_none() {
-                extra.calculation_text = self.extras.get(&target)
+                extra.calculation_text = self
+                    .extras
+                    .get(&target)
                     .and_then(|held| held.calculation_text.clone());
             }
             self.extras.insert(target, extra);
@@ -2145,8 +2165,11 @@ impl Sheet {
     pub(crate) fn calculation_operand_at(&self, cell: &Cell) -> super::formula::value::Outcome {
         use super::formula::value::{Operand, Outcome};
         if cell.formula().is_none() && cell.error().is_none() && cell.kind().is_text() {
-            if let Some(text) = self.extras.get(&cell.reference())
-                .and_then(|extra| extra.calculation_text.as_ref()) {
+            if let Some(text) = self
+                .extras
+                .get(&cell.reference())
+                .and_then(|extra| extra.calculation_text.as_ref())
+            {
                 return Outcome::Computed(Operand::Text(text.clone()));
             }
         }
@@ -2223,7 +2246,13 @@ impl Sheet {
         let calculation_text = CellExtra::calculation_text(&cell);
         self.extras.remove(&at);
         if let Some(text) = calculation_text {
-            self.extras.insert(at, CellExtra { calculation_text: Some(text), ..CellExtra::default() });
+            self.extras.insert(
+                at,
+                CellExtra {
+                    calculation_text: Some(text),
+                    ..CellExtra::default()
+                },
+            );
         }
         self.changed();
         self.place(cell)

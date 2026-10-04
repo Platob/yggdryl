@@ -354,3 +354,153 @@ mod location {
         );
     }
 }
+
+/// `ArnPartition`: the partitions AWS runs, as botocore's `partitions.json`
+/// states them.
+mod partition {
+
+    use yggdryl::{Arn, ArnPartition};
+
+    /// The table, transcribed from botocore's `botocore/data/partitions.json`
+    /// (develop, October 2026): name, DNS suffix, dual-stack suffix, global
+    /// region, and regions the file lists for it.
+    const TABLE: [(&str, &str, &str, &str, &[&str]); 8] = [
+        (
+            "aws",
+            "amazonaws.com",
+            "api.aws",
+            "us-east-1",
+            &["af-south-1", "ap-east-1", "eu-west-3", "us-west-2"],
+        ),
+        (
+            "aws-cn",
+            "amazonaws.com.cn",
+            "api.amazonwebservices.com.cn",
+            "cn-northwest-1",
+            &["cn-north-1", "cn-northwest-1"],
+        ),
+        (
+            "aws-eusc",
+            "amazonaws.eu",
+            "api.amazonwebservices.eu",
+            "eusc-de-east-1",
+            &["eusc-de-east-1"],
+        ),
+        (
+            "aws-iso",
+            "c2s.ic.gov",
+            "api.aws.ic.gov",
+            "us-iso-east-1",
+            &["us-iso-east-1", "us-iso-west-1"],
+        ),
+        (
+            "aws-iso-b",
+            "sc2s.sgov.gov",
+            "api.aws.scloud",
+            "us-isob-east-1",
+            &["us-isob-east-1", "us-isob-west-1"],
+        ),
+        (
+            "aws-iso-e",
+            "cloud.adc-e.uk",
+            "api.cloud-aws.adc-e.uk",
+            "eu-isoe-west-1",
+            &["eu-isoe-west-1"],
+        ),
+        (
+            "aws-iso-f",
+            "csp.hci.ic.gov",
+            "api.aws.hci.ic.gov",
+            "us-isof-south-1",
+            &["us-isof-east-1", "us-isof-south-1"],
+        ),
+        (
+            "aws-us-gov",
+            "amazonaws.com",
+            "api.aws",
+            "us-gov-west-1",
+            &["us-gov-east-1", "us-gov-west-1"],
+        ),
+    ];
+
+    #[test]
+    fn every_partition_states_the_suffixes_and_the_global_region_botocore_lists() {
+        assert_eq!(ArnPartition::ALL.len(), TABLE.len());
+        for (partition, (name, dns, dualstack, global, regions)) in
+            ArnPartition::ALL.into_iter().zip(TABLE)
+        {
+            assert_eq!(partition.as_str(), name);
+            assert_eq!(partition.to_string(), name);
+            assert_eq!(
+                name.parse::<ArnPartition>().expect("a partition"),
+                partition
+            );
+            assert_eq!(
+                name.to_uppercase().parse::<ArnPartition>().expect("folded"),
+                partition
+            );
+            assert_eq!(partition.dns_suffix(), dns, "{name}");
+            assert_eq!(partition.dualstack_dns_suffix(), dualstack, "{name}");
+            assert_eq!(partition.global_region(), global, "{name}");
+            for region in regions {
+                assert_eq!(ArnPartition::from_region(region), partition, "{region}");
+            }
+            assert_eq!(ArnPartition::from_region(global), partition, "{global}");
+        }
+    }
+
+    #[test]
+    fn a_region_no_partition_claims_is_in_aws_and_a_name_no_partition_bears_is_refused() {
+        for region in ["mars-north-1", "", "  eu-west-3 ", "US-GOV-WEST-1"] {
+            let expected = if region.trim().eq_ignore_ascii_case("us-gov-west-1") {
+                ArnPartition::AwsUsGov
+            } else {
+                ArnPartition::Aws
+            };
+            assert_eq!(ArnPartition::from_region(region), expected, "{region:?}");
+        }
+        assert!("aws-moon".parse::<ArnPartition>().is_err());
+        assert!("".parse::<ArnPartition>().is_err());
+    }
+
+    #[test]
+    fn an_arn_names_its_partition_when_aws_runs_it() {
+        let role =
+            Arn::from_str("arn:aws-us-gov:iam::123456789012:role/lake-reader").expect("an ARN");
+        assert_eq!(ArnPartition::from_arn(&role), Some(ArnPartition::AwsUsGov));
+        let session = Arn::from_str("arn:aws:iam::0123456789012:user/Admin").expect("an ARN");
+        assert_eq!(ArnPartition::from_arn(&session), Some(ArnPartition::Aws));
+        let foreign = Arn::from_str("arn:aws-moon:iam::1:role/x").expect("an ARN AWS does not run");
+        assert_eq!(ArnPartition::from_arn(&foreign), None);
+    }
+
+    #[test]
+    fn a_service_host_is_the_standard_form_on_the_partitions_suffixes() {
+        let aws = ArnPartition::Aws;
+        assert_eq!(
+            aws.service_host("sts", "eu-west-3", false, false),
+            "sts.eu-west-3.amazonaws.com"
+        );
+        assert_eq!(
+            aws.service_host("sts", "eu-west-3", true, false),
+            "sts-fips.eu-west-3.amazonaws.com"
+        );
+        assert_eq!(
+            aws.service_host("sts", "eu-west-3", false, true),
+            "sts.eu-west-3.api.aws"
+        );
+        assert_eq!(
+            aws.service_host("sts", "eu-west-3", true, true),
+            "sts-fips.eu-west-3.api.aws"
+        );
+        let china = ArnPartition::AwsCn;
+        assert_eq!(
+            china.service_host("oidc", "cn-north-1", false, false),
+            "oidc.cn-north-1.amazonaws.com.cn"
+        );
+        assert_eq!(
+            china.service_host("sts", "cn-north-1", false, true),
+            "sts.cn-north-1.api.amazonwebservices.com.cn"
+        );
+    }
+}

@@ -27,12 +27,11 @@ use std::sync::Arc;
 
 use criterion::measurement::Measurement;
 use criterion::{BatchSize, Criterion, Throughput};
+use yggdryl::IdKey;
 use yggdryl::graph::{Event, Market};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{
-    FixCodec, FixMsg, IdSource, IdType, Identifier, Scalar, Serie, Timezone, Url, fix_schema,
-};
+use yggdryl::{FixCodec, FixMsg, IdType, Identifier, Scalar, Serie, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -341,7 +340,7 @@ pub(crate) fn stages<M: Measurement>(
             BatchSize::LargeInput,
         );
     });
-    let bloombergcode = Identifier::new(IdSource::Base, IdType::Bloomberg, "AAPL US EQUITY")
+    let bloombergcode = Identifier::new(IdKey::base(IdType::Bloomberg), "AAPL US EQUITY")
         .expect("a Bloomberg identifier");
     group.bench_function("step/insert_securityid", |bencher| {
         bencher.iter_batched(

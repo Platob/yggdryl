@@ -57,7 +57,7 @@ def test_first_class_scalars_round_trip_exactly() -> None:
     # Types JSON cannot prove use interoperable text. An explicit Field is what
     # restores bytes, decimals, and exact temporal widths.
     assert restored["bytes"] == "AP8="
-    assert restored["decimal"] == "123.4500"
+    assert restored["decimal"] == "123.45"
     assert restored["date"] == "2026-08-15"
     assert restored["time"] == "12:03:04.000005"
     assert restored["naive"] == "2026-08-15T12:03:04.000005"
@@ -81,7 +81,7 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
     # Values outside JSON's grammar use ordinary interoperable strings.
     assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
     assert '"on":"2026-08-15"' in encoded
-    assert '"price":"-10.50"' in encoded
+    assert '"price":"-10.5"' in encoded
     assert "PYTHON:" not in encoded
 
 

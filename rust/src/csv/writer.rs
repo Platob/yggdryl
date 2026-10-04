@@ -12,7 +12,6 @@
 
 use std::io::Write;
 
-use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arrow::{BatchReader, field_from_arrow_schema};
@@ -178,7 +177,8 @@ enum CellWriter {
     Text,
     /// A byte leaf, as base64.
     Bytes,
-    /// A nested value, as compact JSON keyed by the field's names.
+    /// A nested value, as the compact JSON a cast into text writes: a
+    /// struct keyed by its field's names in declaration order.
     Json,
     /// Every other leaf, as its canonical text.
     Value,
@@ -229,24 +229,9 @@ impl CellWriter {
                     path: format_smolstr!("$.{}", field.name()),
                     reason: expected_got("a byte value", value.kind()),
                 })?;
-                let len =
-                    base64::encoded_len(bytes.len(), true).ok_or_else(|| Error::InvalidRecord {
-                        path: format_smolstr!("$.{}", field.name()),
-                        reason: SmolStr::new_static("a byte value too long to spell as base64"),
-                    })?;
-                cell.resize(len, 0);
-                let written = base64::engine::general_purpose::STANDARD
-                    .encode_slice(bytes, cell)
-                    .map_err(|error| Error::InvalidRecord {
-                        path: format_smolstr!("$.{}", field.name()),
-                        reason: format_smolstr!("{error}"),
-                    })?;
-                cell.truncate(written);
+                crate::bytes::base64_into(bytes, cell);
             }
-            Self::Json => {
-                let natural = crate::text::typed::into_natural(value, field)?;
-                cell.extend_from_slice(crate::into_json_scalar(&natural)?.as_bytes());
-            }
+            Self::Json => crate::json::into_field_vec(&value, field.dtype(), cell)?,
             Self::Value => {
                 let text = crate::string::str_from_value(&value).ok_or_else(|| {
                     Error::InvalidRecord {

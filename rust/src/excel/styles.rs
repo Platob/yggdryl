@@ -511,7 +511,9 @@ impl StyleSheet {
                                 .and_then(|id| id.trim().parse::<u32>().ok());
                             let code = attribute(start, b"formatCode", position)?;
                             if let (Some(id), Some(code)) = (id, code) {
-                                sheet.codes.insert(id, SmolStr::new(super::shared_strings::decode(&code)));
+                                sheet
+                                    .codes
+                                    .insert(id, SmolStr::new(super::shared_strings::decode(&code)));
                             }
                         }
                         (Section::Fonts, b"font") => font = Some(blank_font()),
@@ -945,7 +947,11 @@ impl StyleSheet {
     /// A plain XF for a user-validated code, without parsing it again.
     pub(crate) fn intern_format(&mut self, format: FormatCode) -> Result<StyleId> {
         let style = CellStyle {
-            number_format: if format.is_general() { SmolStr::new_static("General") } else { SmolStr::new(format.code()) },
+            number_format: if format.is_general() {
+                SmolStr::new_static("General")
+            } else {
+                SmolStr::new(format.code())
+            },
             ..CellStyle::default()
         };
         self.intern_parsed(&style, Some(format))
@@ -1112,7 +1118,9 @@ impl StyleSheet {
 
     /// The OOXML number-format ID belonging to a resolved cell style.
     pub(crate) fn format_id(&self, id: StyleId) -> Option<u32> {
-        self.xfs.get(usize::from(id.as_u16())).map(|xf| xf.number_format)
+        self.xfs
+            .get(usize::from(id.as_u16()))
+            .map(|xf| xf.number_format)
     }
 
     /// The code the id `id` displays with in this part.

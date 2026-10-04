@@ -275,11 +275,17 @@ impl Rendered {
 }
 
 /// An actual rendering overflow, distinct from a legitimate hash fill token.
-struct RenderFailure { color: Option<u32> }
+struct RenderFailure {
+    color: Option<u32>,
+}
 
 impl RenderFailure {
     fn display(self) -> Rendered {
-        Rendered { color: self.color, fill: Some(('#', 0)), ..Rendered::default() }
+        Rendered {
+            color: self.color,
+            fill: Some(('#', 0)),
+            ..Rendered::default()
+        }
     }
 }
 
@@ -772,15 +778,23 @@ impl FormatCode {
         system: DateSystem,
         palette: Option<&[u32]>,
     ) -> Rendered {
-        self.render_value(value, system, palette, true).unwrap_or_else(RenderFailure::display)
+        self.render_value(value, system, palette, true)
+            .unwrap_or_else(RenderFailure::display)
     }
 
     /// TEXT shares section selection and rendering, without allocating the
     /// shorter General spellings used only by a cell's width-dependent display.
-    pub(crate) fn render_formula(&self, value: &Scalar, system: DateSystem) -> std::result::Result<SmolStr, super::cell::ExcelError> {
-        if self.code().is_empty() { return Ok(SmolStr::default()); }
+    pub(crate) fn render_formula(
+        &self,
+        value: &Scalar,
+        system: DateSystem,
+    ) -> std::result::Result<SmolStr, super::cell::ExcelError> {
+        if self.code().is_empty() {
+            return Ok(SmolStr::default());
+        }
         self.render_value(value, system, None, false)
-            .map(|rendered| rendered.text).map_err(|_| super::cell::ExcelError::Value)
+            .map(|rendered| rendered.text)
+            .map_err(|_| super::cell::ExcelError::Value)
     }
 
     fn render_value(
@@ -797,16 +811,30 @@ impl FormatCode {
             } else {
                 "FALSE"
             })),
-            crate::string_scalars!(text) => return self.render_text(text.as_str(), palette, !alternatives),
+            crate::string_scalars!(text) => {
+                return self.render_text(text.as_str(), palette, !alternatives);
+            }
             _ => match number_of(value, system) {
                 Some(number) => return self.render_number(number, system, palette, alternatives),
-                None => return self.render_text(&super::cell::cell_text(value), palette, !alternatives),
+                None => {
+                    return self.render_text(
+                        &super::cell::cell_text(value),
+                        palette,
+                        !alternatives,
+                    );
+                }
             },
         })
     }
 
     /// Render a number. A failure retains the display's section colour.
-    fn render_number(&self, value: f64, system: DateSystem, palette: Option<&[u32]>, alternatives: bool) -> std::result::Result<Rendered, RenderFailure> {
+    fn render_number(
+        &self,
+        value: f64,
+        system: DateSystem,
+        palette: Option<&[u32]>,
+        alternatives: bool,
+    ) -> std::result::Result<Rendered, RenderFailure> {
         if self.localized || !value.is_finite() {
             return Ok(general_rendered(value, alternatives));
         }
@@ -836,15 +864,25 @@ impl FormatCode {
             }
             _ => render_numeric(section, value.abs(), negative, &mut out, &mut fill),
         };
-        if !valid { return Err(RenderFailure { color }); }
+        if !valid {
+            return Err(RenderFailure { color });
+        }
         Ok(out.rendered(color, fill))
     }
     /// Text uses the existing section tokens; TEXT alone enforces the formula
     /// cell limit before copying a repeated @ source. Display stays unbounded.
-    fn render_text(&self, text: &str, palette: Option<&[u32]>, bounded: bool) -> std::result::Result<Rendered, RenderFailure> {
+    fn render_text(
+        &self,
+        text: &str,
+        palette: Option<&[u32]>,
+        bounded: bool,
+    ) -> std::result::Result<Rendered, RenderFailure> {
         let section = match self.sections.len() {
             4 => self.sections.get(3),
-            _ => self.sections.last().filter(|section| section.shape == Shape::Text),
+            _ => self
+                .sections
+                .last()
+                .filter(|section| section.shape == Shape::Text),
         };
         let Some(section) = section else {
             return Ok(Rendered::plain(SmolStr::new(text)));
@@ -852,7 +890,11 @@ impl FormatCode {
         let color = section.color.and_then(|paint| paint.rgb(palette));
         let mut out = Out::new();
         let mut fill = None;
-        let source_units = if bounded { text.encode_utf16().count() } else { 0 };
+        let source_units = if bounded {
+            text.encode_utf16().count()
+        } else {
+            0
+        };
         let mut units = 0;
         for token in section.tokens.iter() {
             let before = out.len();
@@ -872,7 +914,9 @@ impl FormatCode {
                 // A literal is bounded by the 255-character format code. It
                 // uses the sole token writer before its units are counted.
                 units += out.as_str()[before..].encode_utf16().count();
-                if units > super::cell::MAX_CELL_TEXT { return Err(RenderFailure { color }); }
+                if units > super::cell::MAX_CELL_TEXT {
+                    return Err(RenderFailure { color });
+                }
             }
         }
         Ok(out.rendered(color, fill))
@@ -1015,7 +1059,9 @@ fn general_rendered(value: f64, alternatives: bool) -> Rendered {
         return Rendered::plain(SmolStr::default());
     }
     let text = out.finish();
-    if !alternatives { return Rendered::plain(text); }
+    if !alternatives {
+        return Rendered::plain(text);
+    }
     let mut shorter = Vec::new();
     let sign = usize::from(value < 0.0);
     let mut last = text.len() - sign;
@@ -1592,8 +1638,12 @@ fn render_date(
         seconds_of_day % 60,
     );
     let calendar = system.civil_day(day);
-    let (year, month, day_of_month, weekday) =
-        (calendar.year, calendar.month, calendar.day, calendar.weekday);
+    let (year, month, day_of_month, weekday) = (
+        calendar.year,
+        calendar.month,
+        calendar.day,
+        calendar.weekday,
+    );
     for token in section.tokens.iter() {
         match token {
             Token::Date(part) => match *part {
@@ -1937,9 +1987,13 @@ impl Digits {
     /// Advance to the next nonzero decimal quantum, away from zero.
     /// The caller owns sign; this value holds only the magnitude.
     pub(crate) fn round_away(&mut self, decimals: i32) {
-        if self.is_zero() { return; }
+        if self.is_zero() {
+            return;
+        }
         let keep = self.point.saturating_add(decimals);
-        if keep >= i32::from(self.len) { return; }
+        if keep >= i32::from(self.len) {
+            return;
+        }
         if keep <= 0 {
             self.digits[0] = 1;
             self.len = 1;
@@ -1957,18 +2011,29 @@ impl Digits {
                 break;
             }
             at -= 1;
-            if self.digits[at] == 9 { self.digits[at] = 0; }
-            else { self.digits[at] += 1; break; }
+            if self.digits[at] == 9 {
+                self.digits[at] = 0;
+            } else {
+                self.digits[at] += 1;
+                break;
+            }
         }
         self.trim();
     }
 
     /// Discard decimal places toward zero without a binary multiply/divide.
     pub(crate) fn truncate(&mut self, decimals: i32) {
-        if self.is_zero() { return; }
+        if self.is_zero() {
+            return;
+        }
         let keep = self.point.saturating_add(decimals);
-        if keep >= i32::from(self.len) { return; }
-        if keep <= 0 { *self = Self::ZERO; return; }
+        if keep >= i32::from(self.len) {
+            return;
+        }
+        if keep <= 0 {
+            *self = Self::ZERO;
+            return;
+        }
         self.len = keep as u8;
         self.trim();
     }

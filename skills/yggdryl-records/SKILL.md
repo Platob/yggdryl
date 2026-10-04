@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records; Rust and Python also expose the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, CSV/TSV, Excel workbooks (.xlsx, one worksheet as records; Rust and Python also expose the Workbook/Sheet/Cell random-access model), plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_serie / write_serie / overwrite_serie / append_serie / merge_serie (a Serie, ChunkedSerie or SerieReader as one SerieSource), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, row_offset, commit_batch_num, num_threads, plan), TextOptions rowheader, iceberg IcebergTable create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -16,7 +16,7 @@ stream in which only the current batch is alive.
 Hold one model: **the options are the query.** `field` declares and casts,
 `select` projects, `filter` prunes (row groups, partition leaves, Iceberg
 manifests) and then filters rows, `max_row_size` stops pulling, `merge_by`
-keys an upsert, `commit_row_size` bounds a write. Put them on the call and the
+keys an upsert, `commit_batch_num` bounds a write. Put them on the call and the
 medium does the work before a byte is decoded.
 
 ## Choose the door
@@ -28,14 +28,15 @@ medium does the work before a byte is decoded.
 | stored schema, no rows decoded | `read_arrow_field(&options)?` | `read_arrow_field()` | `readArrowField()` |
 | row and column counts from metadata | `row_size()?`, `column_size()?` | `.row_size()`, `.column_size()` | `.rowSize()`, `.columnSize()` |
 | stream batches out | `read_arrow_reader(&options)?` -> `arrow::BatchReader` | `read_arrow_reader()` -> `pyarrow.RecordBatchReader` | `readArrowReader()` -> `BatchReader` of Arrow JS batches |
-| stream record columns out | `read_arrow(Some(&options))?` -> `SerieReader` | `read_arrow()` -> `SerieReader` | not bound |
-| rows out as native values | `read_arrow` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
+| stream record columns out | `read_serie(Some(&options))?` (`None`: the handle's own) -> `SerieReader` | `read_serie()` -> `SerieReader` | `readSerie()` -> `SerieReader` |
+| rows out as native values | `read_serie` + `serie.child(name)` / `scalar(i)` | `read_records()`, `read_records(Cls)` | `readRecords()`, `readRecords(Cls)` |
 | replace | `overwrite_arrow_reader(reader, &options)?`, `overwrite_arrow_batch` | `overwrite_arrow_reader`, `_table`, `_batch` | `overwriteArrowReader(BatchReader.from(x))`, `overwriteArrowTable`, `overwriteArrowBatch` |
 | append | `append_arrow_reader`, `append_arrow_batch` | `append_arrow_reader`, `_table`, `_batch` | `appendArrowReader`, `appendArrowTable`, `appendArrowBatch` |
 | upsert by key | `merge_arrow_reader(r, &options.with_merge_by(["id"])?)?` | `merge_arrow_table(t, merge_by=["id"])` | `mergeArrowTable(t, { mergeBy: ['id'] })` |
 | mode chosen at run time | `write_arrow_reader(r, IOMode::Append, &options)?`, `write_arrow_batch`, `write_records` | `write_arrow_table(t, "append")`, `write_arrow_reader`, `write_arrow_batch`, `write_records` | `writeArrowTable(t, 'append')`, `writeArrowReader`, `writeArrowBatch`, `writeRecords` |
 | native rows in | `overwrite_records(rows, &options)?` (rows `Into<Scalar>`) | `overwrite_records([dict or @scalar instance])` | `overwriteRecords([object], { field })` |
-| a `SerieReader` or held column in (also JSON/YAML/TOML/XML rows) | `write_arrow(SerieReader::from_serie(s)?, IOMode::Overwrite, None)?` (a document handle takes `Overwrite` only) | `write_arrow(value, "overwrite")` (document handle: overwrite only) | not bound |
+| a `Serie`, `ChunkedSerie` or `SerieReader` in (also JSON/YAML/TOML/XML rows) | `overwrite_serie(s.into(), None)?`, `append_serie`, `merge_serie`, `write_serie(s.into(), IOMode::Append, None)?` (a document handle takes `Overwrite` only) | `overwrite_serie(value)`, `append_serie`, `merge_serie`, `write_serie(value, "append")` - any columnar value | `overwriteSerie(value)`, `appendSerie`, `mergeSerie`, `writeSerie(value, 'append')` - a reader is consumed |
+| what a write did, in rows | every write door answers `IOResult { read_rows, written_rows, skipped_rows }` - `let r = handle.append_serie(s.into(), None)?` | every write returns `IOResult`: `r.read_rows`, `r.written_rows`, `r.skipped_rows`, `r.is_empty()` | every write returns `IOResult`: `r.readRows`, `r.writtenRows`, `r.skippedRows`, `r.isEmpty()` |
 | refuse values the declared field cannot convert | `options.with_field(root).with_safe(false)` | `read_arrow_reader(field=f, safe=False)` | `readArrowReader({ field, safe: false })` |
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
 | sections as one plan | `options.with_plan("select id where x > 1 limit 5")?` | `options.plan = "select ..."` | `options.withPlan('select ...')` |
@@ -51,12 +52,15 @@ medium does the work before a byte is decoded.
 | a compressed CSV | `Holder::local("trades.csv.gz")?.into_declared_media()` | `IOBase("trades.csv.gz")` | `new IOBase('trades.csv.gz')` |
 | write a partitioned folder | `Holder::folder(&root)?.overwrite_arrow_reader(r, &options)?` | `IOBase(dir).overwrite_arrow_batch(b, options=o)` | `new IOBase(dir).overwriteArrowTable(t, options)` |
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
-| derived partition column | `field.as_partition_mut().set_transform(Function::Year)?`, `root.as_transform().apply_arrow_batch(&b)?` | `field.partition.transform = "year"`, `root.partition.apply_arrow_batch(b)` | not bound |
-| Iceberg table | `Table::create(LocalFolder::new(p)?, FormatVersion::V2, schema, spec)?` | `Table.create(IOBase(p), schema, ["venue"])` | `iceberg.Table.create(p, schema, ['venue'])` |
-| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?` | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
+| derived partition column | `root.with_partition_by(["year(event) as year".parse()?])?`, `root.as_transform().apply_arrow_batch(&b)?` | `root.with_partition_by(["year(event) as year"])`, `root.transform.apply_arrow_batch(b)` | `root.withPartitionBy(['year(event) as year'])`, `Selector.fromField(root).applyArrowBatch(b)` |
+| Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
+| Iceberg table by its location alone - a folder any backend holds, or `s3tables://<bucket>/<namespace>/<table>` (a table's ARN to open one) | `IcebergTable::from_url(location, &props)?`, `::create_from_url(location, &props, None, schema, None)?`, `::open_or_create_from_url(..)?` - version and spec left out are the schema's own | `IcebergTable(location, **props)`, `IcebergTable.create(location, schema, ["venue"], **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.open(location, props)`, `.create(location, schema, ['venue'], undefined, props)`, `.openOrCreate(..)` |
+| Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
+| Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?`; through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `update_schema(&update)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
+| a column description a catalog shows (the Iceberg `doc`) | `field.set_description("..")?` before `create`; `update.update_doc(path, "..")` on a stored table | `field.set_description("..")`; `update_schema().update_doc(path, "..").commit()` | `field.setDescription('..')`; `updateSchema().updateDoc(path, '..').commit()` |
 | lazy engine scan | - | `scan_polars()`, `scan_arrow()` | - |
 | pandas / polars frames to and from a file | - | `read_pandas_frame()`, `read_polars_frame()` (whole), `read_pandas()` / `read_polars()` (lazy iterator of frames), `overwrite_pandas_frame(df)`, `append_polars_frame(df)`, `merge_pandas_frame(df, merge_by=[...])`, `write_polars(frames, mode)` | - |
 | SQL-like write/read plan | `"select ...".parse::<Plan>()?.execute()?`, `apply_arrow_reader` | `Plan("insert into ...").apply_arrow_batch(b)`, `.execute()` | `new Plan('...').applyArrowBatch(b)`, `.execute()` |
@@ -75,17 +79,25 @@ medium does the work before a byte is decoded.
 3. **Declare the `field` to cast once.** A narrower field is a projection; a
    wider one fills missing nullable columns with nulls; the cast runs in the
    same pass as the decode. A `not null` column refuses a value, a null or a
-   missing column by name - it never stores a default. A nullable declared
-   column takes a value it cannot convert as null while `safe` holds, and
-   `safe` is on by default - so a bad value vanishes silently. Pass
-   `safe=False` / `{ safe: false }` / `.with_safe(false)` (or declare the
-   column `not null`) when an unconvertible value must be refused.
+   missing column by name - it never stores a default. A `TRANSFORM:`,
+   `PARTITION:` or `DIGEST:` declaration on the field is metadata the cast
+   carries, never a column it fills. A nullable declared column takes a value
+   it cannot convert as null while `safe` holds, and `safe` is on by default -
+   so a bad value vanishes silently. Pass `safe=False` / `{ safe: false }` /
+   `.with_safe(false)` (or declare the column `not null`) when an unconvertible
+   value must be refused.
 4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
    matches null and the last arrival wins. Merge holds only the stored side in
    memory; `merge_by` absent is a refusal, never an overwrite.
-5. **Bound memory with `commit_row_size`.** Unset publishes once at the end;
-   `N` publishes every `N` rows and the committed prefix survives a later
-   failure; `0` is refused before any input is pulled.
+5. **Bound memory with `commit_batch_num`.** It counts whole batches, never
+   cutting one: `N` publishes every `N` batches and the committed prefix
+   survives a later failure; `0` is refused before any input is pulled. Unset
+   is the destination's own cadence - a file, a folder and an Iceberg table
+   publish once at the end, the table holding every partition's rows under
+   the process spill bound until then, so an overwrite of any length is one
+   snapshot. What a cadence holds is held under that bound too. Native rows
+   are cut into batches by `batch_row_size`; `num_threads` is how many
+   partition groups an Iceberg commit writes at once.
 6. **`row_size`/`column_size`/`read_arrow_field` read metadata only.** They
    answer from a footer, a stream header or the manifests; `open()` caches the
    answer until `close()`. In Python and JavaScript they - and `size()`,
@@ -128,17 +140,23 @@ medium does the work before a byte is decoded.
    not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
-14. **Plain text has a fixed shape.** A text read answers the fifteen event
-    columns (`currunix` first, `state` last), then `body`, then one column per
-    named `rowheader` capture - the row header is the only thing that lifts a
-    column out of a line. `autotype` settles each capture's datatype from the
+14. **Plain text has a fixed shape.** A text read answers the fifteen element
+    and event columns (`curruuid` first, `state` last), then `body`, then one
+    column per named `rowheader` capture that feeds no event fact - a capture
+    named `state`, `creaunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`
+    or `prevuuid` fills that event column instead, and `mtime` fills
+    `currunix` - and the row header is the only thing that lifts a column out
+    of a line. `autotype` settles each capture's datatype from the
     regex before a byte is read. An object's lines are one chain: a line whose
     own `creaunix` capture states none takes the earliest `currunix` the read
     has dated a line of its object by so far; a `creaunix` capture stands. Each
     line also states, as `prevunix`, the `currunix` the read dated the line
     before it by - none for an object's first line or after an undated one, a
     `prevunix` capture standing, each object of a folder or glob starting
-    again - and never a `prevuuid`, so no line identity moves. A folder, a
+    again - and never a `prevuuid`. A line's `currhashcode` is the XXH3-64
+    of its `body` alone, so byte-identical bodies share it; the instant, the
+    row number and the cross code tell them apart through `curruuid`. A
+    folder, a
     path ending in `/` or a glob reads leaf by leaf through
     `read_text_lines`, `row_size` and the record reads alike: every text leaf,
     each its own cross code, time, coding and row numbers, a last line ending
@@ -162,12 +180,22 @@ medium does the work before a byte is decoded.
 16. **Iceberg commits are snapshots.** `append` and metadata-only commits
     rebase on a concurrent commit; `overwrite`, `merge` and `compact` report a
     conflict instead. A merge keys on the identity partition columns plus
-    `merge_by`, so a row only ever updates its own partition. A scan decodes
-    qualifying files side by side (`read.parallelism`) and hands batches back
-    in plan order.
+    `merge_by`, so a row only ever updates its own partition. A table is
+    created from the partitioning its schema declares (`PARTITION:by`: `venue`,
+    `days(ts)`, `minutes(ts, 15)`, `truncate(name, 4) as prefix`) unless
+    `partition_by` / `partitionBy` states entries, or `[]` / `null` states
+    none, and from its `SORT:by` as the default sort order; `minutes[n]`,
+    `week` and `quarter` are this crate's own transforms, which other Iceberg
+    readers do not prune by. A scan decodes qualifying files side by side
+    (`read.parallelism`) and hands batches back in plan order; a record read
+    (`read_serie`, `read_arrow_reader`) yields partition after partition in
+    tuple order, each in the table's sort order, one partition held at once.
 17. **Folders read by their layout.** A stored `column=value` layout is
     authoritative; with none on disk, the schema's partition-marked fields
-    decide where rows go (`with_partition_fields`). The first batch to reach a
+    decide where rows go (`with_partition_fields`, or `with_partition_by` for
+    derived entries such as `years(ts)`, whose column the caller fills first
+    through the transform view - a write to a leaf or a folder only casts, where an Iceberg table computes the columns its own schema derives - and refuses a required
+    column the rows lack, by path). The first batch to reach a
     leaf performs the write's operation; later ones append.
 
 ## Pitfalls
@@ -178,6 +206,9 @@ medium does the work before a byte is decoded.
   `{ mergeBy: ['id'] }` / `with_merge_by(["id"])?`.
 - Naming a file `trades.parquet.gz` - refused ("parquet compresses"); use
   `compression="zstd(3)"` on a plain `.parquet`.
+- Naming a workbook `trades.xlsx.gz` - refused ("expected an uncompressed xlsx
+  handle") by the write, the read and `Workbook.open`; the package is already
+  deflated inside, so name it `.xlsx`.
 - Skipping rows in the host after the read: `row_offset` (`rowOffset`,
   `with_row_offset`) skips leading rows before `max_row_size` counts, and a
   plan's `offset` lands there too (`options.plan`, `withPlan`, `with_plan`,
@@ -186,10 +217,10 @@ medium does the work before a byte is decoded.
 - Calling `overwrite_records` / `read_arrow_reader` on a `.json`, `.jsonl`,
   `.yaml`, `.toml` or `.xml` handle - refused ("expected a record encoding
   this build implements"); use
-  `write_arrow` / `read_arrow` (Rust, Python) or the codecs in
+  `overwrite_serie` / `read_serie` or the codecs in
   `yggdryl-documents`.
 - Appending rows to a `.json`/`.jsonl`/`.yaml`/`.toml`/`.xml` handle with
-  `write_arrow(..., append)` - refused: a structured document is written
+  `append_serie` or `write_serie(..., append)` - refused: a structured document is written
   whole, so only `overwrite` is accepted; to accumulate rows use an
   `.arrows`, `.parquet` or `.avro` handle, or read, extend and overwrite.
 - Declaring `int32` over a column holding `"x"` and trusting the read: under
@@ -207,13 +238,22 @@ medium does the work before a byte is decoded.
   are keyword-only (`options=`).
 - Reading one leaf of a partitioned folder and expecting the partition
   columns: they live in the path; read the folder.
-- Reusing an Iceberg `Table` object after writing through another handle: it
+- Reusing an `IcebergTable` object after writing through another handle: it
   caches metadata; open the table again.
 - Collecting a Parquet read to count rows or learn the schema: `row_size`
   and `read_arrow_field` answer from the footer.
-- `commit_row_size` on an Iceberg write: every commit is a snapshot, so a
-  small `N` leaves many snapshots; expire them (`expire_snapshots`) or commit
-  once.
+- Properties beside a handle root (`IcebergTable(IOBase(p), region=..)`):
+  refused by name - a handle root is reopened as the folder at its location,
+  under the environment. Name the table by its location to open it under
+  properties.
+- Expecting format version 2 from a create by location: a version left out
+  is the `format-version` property, else the lowest that states the schema
+  (3 for a nanosecond timestamp, a variant or an unknown column). Over a
+  handle root the bindings keep 2.
+- `commit_batch_num` on an Iceberg write: every commit is a snapshot, so a
+  small `N` leaves many snapshots; expire them (`expire_snapshots`) or leave
+  it unset to commit once, the rows held under the spill bound until the
+  source ends. `write.target-file-size-bytes` cuts files, never commits.
 - Building an Arrow JS `Int64` vector from `number`s: use `bigint` (`1n`).
   Native row writes unify `number` and `bigint` rows of one column instead:
   `[{ id: 1 }, { id: 2n }]` is one `int64` column, the integral `number` read
@@ -232,7 +272,7 @@ medium does the work before a byte is decoded.
 
 ## Language references
 
-- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, Iceberg `Table`.
+- `references/rust.md` - read for Rust: traits to import, `RecordOptions` builders, batch readers, `IcebergTable`.
 - `references/python.md` - read for Python: keyword properties, pyarrow readers, dataclass rows, lazy scans.
 - `references/javascript.md` - read for Node.js: property objects, Arrow JS tables, `bigint`, copied IPC.
 - `references/formats.md` - per-encoding table: media type and suffix, settings, pushdown, feature gate, limits.
@@ -241,8 +281,8 @@ medium does the work before a byte is decoded.
 
 - Records surface (signatures, pushdown, limits, append and merge, commit cadence, lazy scans): https://platob.github.io/yggdryl/holder/#records
 - Partitions (pruning, partition columns, derived columns): https://platob.github.io/yggdryl/holder/#partitions
-- Media overview and options: https://platob.github.io/yggdryl/media/#read-and-write
-- Per format: https://platob.github.io/yggdryl/media/#arrow-ipc, https://platob.github.io/yggdryl/media/#parquet, https://platob.github.io/yggdryl/media/#avro, https://platob.github.io/yggdryl/media/#excel, https://platob.github.io/yggdryl/media/#csv, https://platob.github.io/yggdryl/media/#plain-text, https://platob.github.io/yggdryl/media/#iceberg
+- Media overview and options: https://platob.github.io/yggdryl/media/
+- Per format: https://platob.github.io/yggdryl/media/ipc/, https://platob.github.io/yggdryl/media/parquet/, https://platob.github.io/yggdryl/media/avro/, https://platob.github.io/yggdryl/media/excel/, https://platob.github.io/yggdryl/media/csv/, https://platob.github.io/yggdryl/media/text/, https://platob.github.io/yggdryl/media/iceberg/
 - Required columns and the cast rule: https://platob.github.io/yggdryl/types/cast/
 - Plans and write verbs: https://platob.github.io/yggdryl/expression/plans/
 - Sibling skills: `yggdryl-storage` (handles, backends, codings), `yggdryl-arrow` (`Serie`, `SerieReader`, casts), `yggdryl-expressions` (filter/select grammar, `Plan`), `yggdryl-uri` (hive paths, globs), `yggdryl-types` (fields, dataclasses), `yggdryl-documents` (JSON/YAML/TOML/XML).

@@ -2582,7 +2582,6 @@ fn land_at_null_records_replace_existing_values_and_round_trip_the_inverse() {
     }
 }
 
-
 #[test]
 fn apply_recalculates_dependent_cells_once_per_outer_batch() {
     use yggdryl::Timezone;
@@ -2592,7 +2591,10 @@ fn apply_recalculates_dependent_cells_once_per_outer_batch() {
         let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 911));
         book.add_sheet("Data").unwrap();
         for (address, entry) in [
-            ("A1", "1"), ("A2", "1"), ("B1", "=RAND()"), ("D1", "=A1+A2"),
+            ("A1", "1"),
+            ("A2", "1"),
+            ("B1", "=RAND()"),
+            ("D1", "=A1+A2"),
         ] {
             book.set_entry("Data", at(address), entry).unwrap();
         }
@@ -2601,10 +2603,18 @@ fn apply_recalculates_dependent_cells_once_per_outer_batch() {
     }
     let mut batched = seeded();
     let mut explicit = seeded();
-    let applied = batched.apply(Edit::Batch(vec![
-        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A1"), "2".into())] },
-        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A2"), "3".into())] },
-    ])).unwrap();
+    let applied = batched
+        .apply(Edit::Batch(vec![
+            Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("A1"), "2".into())],
+            },
+            Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("A2"), "3".into())],
+            },
+        ]))
+        .unwrap();
     explicit.set_entry("Data", at("A1"), "2").unwrap();
     explicit.set_entry("Data", at("A2"), "3").unwrap();
     assert_eq!(explicit.recalculate().unwrap().evaluated, 2);
@@ -2612,11 +2622,18 @@ fn apply_recalculates_dependent_cells_once_per_outer_batch() {
     let expected = explicit.sheet("Data").unwrap();
     assert_eq!(observed.scalar(at("D1")), Scalar::from(5.0));
     assert_eq!(observed.scalar(at("D1")), expected.scalar(at("D1")));
-    assert_eq!(observed.scalar(at("B1")).as_f64().unwrap().to_bits(),
+    assert_eq!(
+        observed.scalar(at("B1")).as_f64().unwrap().to_bits(),
         expected.scalar(at("B1")).as_f64().unwrap().to_bits(),
-        "one outer batch consumes one fixed-clock random pass");
-    assert!(applied.touched.iter().any(|(sheet, range)| sheet == "Data" && range.contains(at("D1"))),
-        "the dependent cache needs a tile invalidation receipt");
+        "one outer batch consumes one fixed-clock random pass"
+    );
+    assert!(
+        applied
+            .touched
+            .iter()
+            .any(|(sheet, range)| sheet == "Data" && range.contains(at("D1"))),
+        "the dependent cache needs a tile invalidation receipt"
+    );
 }
 
 #[test]
@@ -2626,8 +2643,9 @@ fn apply_calculation_refusal_restores_authored_cache_and_pending_state() {
 
     let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 13));
     book.add_sheet("Data").unwrap();
-    for (address, entry) in [("A1", "1"), ("B1", "=A1+1"), ("C1", "=NOW()")]
-    { book.set_entry("Data", at(address), entry).unwrap(); }
+    for (address, entry) in [("A1", "1"), ("B1", "=A1+1"), ("C1", "=NOW()")] {
+        book.set_entry("Data", at(address), entry).unwrap();
+    }
     assert_eq!(book.calculate_all().unwrap().evaluated, 2);
     let saved = book.into_package().unwrap();
     book.rebase(saved).unwrap();
@@ -2635,16 +2653,25 @@ fn apply_calculation_refusal_restores_authored_cache_and_pending_state() {
     let dirty = book.is_dirty();
     let unknown = Timezone::from_str("Mars/Olympus_Mons").unwrap();
     book.set_clock(Clock::fixed(0, unknown, 13));
-    let error = book.apply(Edit::SetEntries {
-        sheet: "Data".into(), entries: vec![(at("A1"), "2".into())],
-    }).unwrap_err();
+    let error = book
+        .apply(Edit::SetEntries {
+            sheet: "Data".into(),
+            entries: vec![(at("A1"), "2".into())],
+        })
+        .unwrap_err();
     assert!(error.to_string().contains("$.clock.timezone"), "{error}");
     assert_eq!(book.sheet("Data").unwrap(), &before);
     assert_eq!(book.is_dirty(), dirty);
     book.set_clock(Clock::fixed(0, Timezone::UTC, 13));
     let retry = book.recalculate().unwrap();
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(2.0));
-    assert!(retry.evaluated >= 2, "a failed pass must not acknowledge pending changes");
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("B1")),
+        Scalar::from(2.0)
+    );
+    assert!(
+        retry.evaluated >= 2,
+        "a failed pass must not acknowledge pending changes"
+    );
 }
 
 #[test]
@@ -2654,27 +2681,58 @@ fn journal_undo_redo_restores_volatile_caches_without_new_draws() {
 
     let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 23));
     book.add_sheet("Data").unwrap();
-    for (address, entry) in [("A1", "1"), ("B1", "=RAND()"), ("C1", "=A1+B1")]
-    { book.set_entry("Data", at(address), entry).unwrap(); }
+    for (address, entry) in [("A1", "1"), ("B1", "=RAND()"), ("C1", "=A1+B1")] {
+        book.set_entry("Data", at(address), entry).unwrap();
+    }
     assert_eq!(book.calculate_all().unwrap().evaluated, 2);
-    let before = ["B1", "C1"].map(|address| book.sheet("Data").unwrap()
-        .scalar(at(address)).as_f64().unwrap().to_bits());
+    let before = ["B1", "C1"].map(|address| {
+        book.sheet("Data")
+            .unwrap()
+            .scalar(at(address))
+            .as_f64()
+            .unwrap()
+            .to_bits()
+    });
     let mut journal = Journal::new(8, 1 << 20);
-    let mut applied = book.apply(Edit::SetEntries {
-        sheet: "Data".into(), entries: vec![(at("A1"), "2".into())],
-    }).unwrap();
-    let after = ["B1", "C1"].map(|address| book.sheet("Data").unwrap()
-        .scalar(at(address)).as_f64().unwrap().to_bits());
+    let mut applied = book
+        .apply(Edit::SetEntries {
+            sheet: "Data".into(),
+            entries: vec![(at("A1"), "2".into())],
+        })
+        .unwrap();
+    let after = ["B1", "C1"].map(|address| {
+        book.sheet("Data")
+            .unwrap()
+            .scalar(at(address))
+            .as_f64()
+            .unwrap()
+            .to_bits()
+    });
     assert_ne!(before, after);
     assert!(journal.record("edit", &mut applied));
     journal.undo(&mut book).unwrap().unwrap();
-    assert_eq!(["B1", "C1"].map(|address| book.sheet("Data").unwrap()
-        .scalar(at(address)).as_f64().unwrap().to_bits()), before);
+    assert_eq!(
+        ["B1", "C1"].map(|address| book
+            .sheet("Data")
+            .unwrap()
+            .scalar(at(address))
+            .as_f64()
+            .unwrap()
+            .to_bits()),
+        before
+    );
     journal.redo(&mut book).unwrap().unwrap();
-    assert_eq!(["B1", "C1"].map(|address| book.sheet("Data").unwrap()
-        .scalar(at(address)).as_f64().unwrap().to_bits()), after);
+    assert_eq!(
+        ["B1", "C1"].map(|address| book
+            .sheet("Data")
+            .unwrap()
+            .scalar(at(address))
+            .as_f64()
+            .unwrap()
+            .to_bits()),
+        after
+    );
 }
-
 
 #[test]
 fn apply_inverse_restores_overlapping_formula_caches_and_status() {
@@ -2683,38 +2741,82 @@ fn apply_inverse_restores_overlapping_formula_caches_and_status() {
 
     let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 57));
     book.add_sheet("Data").unwrap();
-    for (address, entry) in [("A1", "=RAND()"), ("B1", "=A1+1"),
-        ("C1", "=MYSTERY(1)"), ("D1", "=E1"), ("E1", "=D1")] {
+    for (address, entry) in [
+        ("A1", "=RAND()"),
+        ("B1", "=A1+1"),
+        ("C1", "=MYSTERY(1)"),
+        ("D1", "=E1"),
+        ("E1", "=D1"),
+    ] {
         book.set_entry("Data", at(address), entry).unwrap();
     }
     let prior_status = book.calculate_all().unwrap();
-    let prior = ["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
-        .scalar(at(cell)).as_f64().unwrap().to_bits());
-    let mut forward = book.apply(Edit::SetEntries {
-        sheet: "Data".into(), entries: vec![(at("A1"), "=RAND()*2".into())],
-    }).unwrap();
+    let prior = ["A1", "B1"].map(|cell| {
+        book.sheet("Data")
+            .unwrap()
+            .scalar(at(cell))
+            .as_f64()
+            .unwrap()
+            .to_bits()
+    });
+    let mut forward = book
+        .apply(Edit::SetEntries {
+            sheet: "Data".into(),
+            entries: vec![(at("A1"), "=RAND()*2".into())],
+        })
+        .unwrap();
     assert_eq!(forward.calc.evaluated, 2);
-    assert_eq!((forward.calc.uncomputed, forward.calc.circular_count),
-        (prior_status.uncomputed, prior_status.circular_count));
+    assert_eq!(
+        (forward.calc.uncomputed, forward.calc.circular_count),
+        (prior_status.uncomputed, prior_status.circular_count)
+    );
     let after_status = forward.calc.clone();
-    let after = ["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
-        .scalar(at(cell)).as_f64().unwrap().to_bits());
+    let after = ["A1", "B1"].map(|cell| {
+        book.sheet("Data")
+            .unwrap()
+            .scalar(at(cell))
+            .as_f64()
+            .unwrap()
+            .to_bits()
+    });
     assert_ne!(prior, after);
 
     let mut inverse = book.apply(forward.inverse.take().unwrap()).unwrap();
-    assert_eq!(inverse.calc.evaluated, 0, "inverse restores a pass without evaluation");
-    assert_eq!((inverse.calc.uncomputed, inverse.calc.circular_count),
-        (prior_status.uncomputed, prior_status.circular_count));
-    assert_eq!(["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
-        .scalar(at(cell)).as_f64().unwrap().to_bits()), prior);
+    assert_eq!(
+        inverse.calc.evaluated, 0,
+        "inverse restores a pass without evaluation"
+    );
+    assert_eq!(
+        (inverse.calc.uncomputed, inverse.calc.circular_count),
+        (prior_status.uncomputed, prior_status.circular_count)
+    );
+    assert_eq!(
+        ["A1", "B1"].map(|cell| book
+            .sheet("Data")
+            .unwrap()
+            .scalar(at(cell))
+            .as_f64()
+            .unwrap()
+            .to_bits()),
+        prior
+    );
     let redo = book.apply(inverse.inverse.take().unwrap()).unwrap();
     assert_eq!(redo.calc.evaluated, 0, "redo restores the recorded pass");
-    assert_eq!((redo.calc.uncomputed, redo.calc.circular_count),
-        (after_status.uncomputed, after_status.circular_count));
-    assert_eq!(["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
-        .scalar(at(cell)).as_f64().unwrap().to_bits()), after);
+    assert_eq!(
+        (redo.calc.uncomputed, redo.calc.circular_count),
+        (after_status.uncomputed, after_status.circular_count)
+    );
+    assert_eq!(
+        ["A1", "B1"].map(|cell| book
+            .sheet("Data")
+            .unwrap()
+            .scalar(at(cell))
+            .as_f64()
+            .unwrap()
+            .to_bits()),
+        after
+    );
 }
-
 
 #[test]
 fn apply_composed_inverse_then_fresh_edit_recalculates_the_fresh_edit() {
@@ -2723,113 +2825,260 @@ fn apply_composed_inverse_then_fresh_edit_recalculates_the_fresh_edit() {
     book.set_entry("Data", at("A1"), "2").unwrap();
     book.set_entry("Data", at("B1"), "=A1+1").unwrap();
     assert_eq!(book.calculate_all().unwrap().evaluated, 1);
-    let first = book.apply(Edit::SetEntries {
-        sheet: "Data".into(), entries: vec![(at("A1"), "4".into())],
-    }).unwrap();
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(5.0));
+    let first = book
+        .apply(Edit::SetEntries {
+            sheet: "Data".into(),
+            entries: vec![(at("A1"), "4".into())],
+        })
+        .unwrap();
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("B1")),
+        Scalar::from(5.0)
+    );
 
-    let composed = book.apply(Edit::Batch(vec![
-        first.inverse.expect("undo"),
-        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A1"), "9".into())] },
-    ])).unwrap();
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(9.0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(10.0));
-    assert_eq!(composed.calc.evaluated, 1, "the fresh edit owns one new calculation pass");
+    let composed = book
+        .apply(Edit::Batch(vec![
+            first.inverse.expect("undo"),
+            Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("A1"), "9".into())],
+            },
+        ]))
+        .unwrap();
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("A1")),
+        Scalar::from(9.0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("B1")),
+        Scalar::from(10.0)
+    );
+    assert_eq!(
+        composed.calc.evaluated, 1,
+        "the fresh edit owns one new calculation pass"
+    );
 
-    book.apply(composed.inverse.expect("composed undo")).unwrap();
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(4.0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(5.0));
+    book.apply(composed.inverse.expect("composed undo"))
+        .unwrap();
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("A1")),
+        Scalar::from(4.0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(at("B1")),
+        Scalar::from(5.0)
+    );
 }
 
 #[test]
 fn apply_calculation_receipt_with_metadata_preserves_volatile_caches() {
     use yggdryl::Timezone;
     use yggdryl::excel::Clock;
-    for visibility in [false,true] {
-        let mut book=Workbook::new().with_clock(Clock::fixed(0,Timezone::UTC,91));
-        book.add_sheet("Data").unwrap();book.add_sheet("Other").unwrap();
-        book.set_entry("Data",at("A1"),"1").unwrap();
-        book.set_entry("Data",at("B1"),"=RAND()").unwrap();
-        book.set_entry("Data",at("C1"),"=A1+B1").unwrap();
-        assert_eq!(book.calculate_all().unwrap().evaluated,2);
-        let values=|book:&Workbook| ["B1","C1"].map(|address| book.sheet("Data").unwrap().scalar(at(address)).as_f64().unwrap().to_bits());
-        let before=values(&book);
-        let changed=book.apply(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("A1"),"2".into())]}).unwrap();
-        let after=values(&book);assert_ne!(before,after);
-        let metadata=if visibility {Edit::SheetState {name:"Data".into(),state:SheetState::Hidden}}
-            else {Edit::Freeze {sheet:"Data".into(),frozen:Some(Frozen {rows:1,columns:0})}};
-        let restored=book.apply(Edit::Batch(vec![changed.inverse.unwrap(),metadata])).unwrap();
-        assert_eq!(restored.calc.evaluated,0,"metadata plus a receipt must not draw RAND again");
-        assert_eq!(values(&book),before);assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(1.0));
-        let redone=book.apply(restored.inverse.unwrap()).unwrap();
-        assert_eq!(redone.calc.evaluated,0);assert_eq!(values(&book),after);
-        assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(2.0));
+    for visibility in [false, true] {
+        let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 91));
+        book.add_sheet("Data").unwrap();
+        book.add_sheet("Other").unwrap();
+        book.set_entry("Data", at("A1"), "1").unwrap();
+        book.set_entry("Data", at("B1"), "=RAND()").unwrap();
+        book.set_entry("Data", at("C1"), "=A1+B1").unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+        let values = |book: &Workbook| {
+            ["B1", "C1"].map(|address| {
+                book.sheet("Data")
+                    .unwrap()
+                    .scalar(at(address))
+                    .as_f64()
+                    .unwrap()
+                    .to_bits()
+            })
+        };
+        let before = values(&book);
+        let changed = book
+            .apply(Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("A1"), "2".into())],
+            })
+            .unwrap();
+        let after = values(&book);
+        assert_ne!(before, after);
+        let metadata = if visibility {
+            Edit::SheetState {
+                name: "Data".into(),
+                state: SheetState::Hidden,
+            }
+        } else {
+            Edit::Freeze {
+                sheet: "Data".into(),
+                frozen: Some(Frozen {
+                    rows: 1,
+                    columns: 0,
+                }),
+            }
+        };
+        let restored = book
+            .apply(Edit::Batch(vec![changed.inverse.unwrap(), metadata]))
+            .unwrap();
+        assert_eq!(
+            restored.calc.evaluated, 0,
+            "metadata plus a receipt must not draw RAND again"
+        );
+        assert_eq!(values(&book), before);
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at("A1")),
+            Scalar::from(1.0)
+        );
+        let redone = book.apply(restored.inverse.unwrap()).unwrap();
+        assert_eq!(redone.calc.evaluated, 0);
+        assert_eq!(values(&book), after);
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at("A1")),
+            Scalar::from(2.0)
+        );
     }
 }
 
 #[test]
 fn apply_lazy_style_report_counts_only_new_cell_formats() {
-    let mut authored=Workbook::new();
-    authored.add_sheet("Data").unwrap().set_cell(at("A1"),7.0).unwrap();
-    authored.set_style("Data", &[range("A1")], &StylePatch {bold:Some(true),..StylePatch::default()}).unwrap();
-    let bytes=authored.into_bytes().unwrap();
-    for (entry,new_format) in [("8",false),("12.3456%",true)] {
+    let mut authored = Workbook::new();
+    authored
+        .add_sheet("Data")
+        .unwrap()
+        .set_cell(at("A1"), 7.0)
+        .unwrap();
+    authored
+        .set_style(
+            "Data",
+            &[range("A1")],
+            &StylePatch {
+                bold: Some(true),
+                ..StylePatch::default()
+            },
+        )
+        .unwrap();
+    let bytes = authored.into_bytes().unwrap();
+    for (entry, new_format) in [("8", false), ("12.3456%", true)] {
         // Neither reopening nor obtaining the edit may read the style part.
-        let mut book=Workbook::from_bytes(bytes.clone()).unwrap();
-        let applied=book.apply(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("B1"),entry.into())]}).unwrap();
-        assert_eq!(applied.styles,new_format,"entry={entry}: parsing existing XFs is not appending one");
+        let mut book = Workbook::from_bytes(bytes.clone()).unwrap();
+        let applied = book
+            .apply(Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("B1"), entry.into())],
+            })
+            .unwrap();
+        assert_eq!(
+            applied.styles, new_format,
+            "entry={entry}: parsing existing XFs is not appending one"
+        );
     }
 }
 
 #[test]
 fn apply_appearance_inverse_preserves_volatile_caches_and_passes() {
-    use yggdryl::excel::Clock;
     use yggdryl::Timezone;
-    let mut book=Workbook::new().with_clock(Clock::fixed(0,Timezone::UTC,1337));
+    use yggdryl::excel::Clock;
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 1337));
     book.add_sheet("Data").unwrap();
-    book.set_entry("Data",at("A1"),"=RAND()").unwrap();
-    book.set_entry("Data",at("B1"),"=A1+1").unwrap();
-    assert_eq!(book.calculate_all().unwrap().evaluated,2);
-    let before=[book.sheet("Data").unwrap().scalar(at("A1")),book.sheet("Data").unwrap().scalar(at("B1"))];
-    let applied=book.apply(Edit::SetStyle {sheet:"Data".into(),ranges:vec![range("A1")],patch:StylePatch {bold:Some(true),..StylePatch::default()}}).unwrap();
-    assert_eq!(applied.calc.evaluated,0);
-    let undone=book.apply(applied.inverse.unwrap()).unwrap();
-    assert_eq!(undone.calc.evaluated,0,"appearance undo must not draw another RAND");
-    let redone=book.apply(undone.inverse.unwrap()).unwrap();
-    assert_eq!(redone.calc.evaluated,0,"appearance redo must carry the same relevance fact");
-    assert_eq!([book.sheet("Data").unwrap().scalar(at("A1")),book.sheet("Data").unwrap().scalar(at("B1"))],before);
+    book.set_entry("Data", at("A1"), "=RAND()").unwrap();
+    book.set_entry("Data", at("B1"), "=A1+1").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+    let before = [
+        book.sheet("Data").unwrap().scalar(at("A1")),
+        book.sheet("Data").unwrap().scalar(at("B1")),
+    ];
+    let applied = book
+        .apply(Edit::SetStyle {
+            sheet: "Data".into(),
+            ranges: vec![range("A1")],
+            patch: StylePatch {
+                bold: Some(true),
+                ..StylePatch::default()
+            },
+        })
+        .unwrap();
+    assert_eq!(applied.calc.evaluated, 0);
+    let undone = book.apply(applied.inverse.unwrap()).unwrap();
+    assert_eq!(
+        undone.calc.evaluated, 0,
+        "appearance undo must not draw another RAND"
+    );
+    let redone = book.apply(undone.inverse.unwrap()).unwrap();
+    assert_eq!(
+        redone.calc.evaluated, 0,
+        "appearance redo must carry the same relevance fact"
+    );
+    assert_eq!(
+        [
+            book.sheet("Data").unwrap().scalar(at("A1")),
+            book.sheet("Data").unwrap().scalar(at("B1"))
+        ],
+        before
+    );
 }
 
 #[test]
 fn apply_failed_batch_restores_changed_cold_sheet_state() {
-    for (nested,parse_during) in [(false,false),(false,true),(true,false),(true,true)] {
-        let mut authored=Workbook::new();authored.add_sheet("Data").unwrap().set_cell(at("A1"),7.0).unwrap();authored.add_sheet("Other").unwrap();
-        let bytes=authored.into_bytes().unwrap();
-        let mut book=Workbook::from_bytes(bytes.clone()).unwrap();
-        let state=Edit::SheetState {name:"Data".into(),state:SheetState::Hidden};
-        let state=if nested {Edit::Batch(vec![state])}else{state};
-        let mut edits=vec![state];
-        if parse_during {edits.push(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("A1"),"11".into())]});}
-        edits.push(Edit::SetEntries {sheet:"Missing".into(),entries:vec![(at("A1"),"9".into())]});
-        let failure=book.apply(Edit::Batch(edits)).unwrap_err();
-        assert!(matches!(failure,Error::Absent {..}),"{failure}");
-        assert_eq!(book.sheet_state("Data"),Some(SheetState::Visible));
+    for (nested, parse_during) in [(false, false), (false, true), (true, false), (true, true)] {
+        let mut authored = Workbook::new();
+        authored
+            .add_sheet("Data")
+            .unwrap()
+            .set_cell(at("A1"), 7.0)
+            .unwrap();
+        authored.add_sheet("Other").unwrap();
+        let bytes = authored.into_bytes().unwrap();
+        let mut book = Workbook::from_bytes(bytes.clone()).unwrap();
+        let state = Edit::SheetState {
+            name: "Data".into(),
+            state: SheetState::Hidden,
+        };
+        let state = if nested {
+            Edit::Batch(vec![state])
+        } else {
+            state
+        };
+        let mut edits = vec![state];
+        if parse_during {
+            edits.push(Edit::SetEntries {
+                sheet: "Data".into(),
+                entries: vec![(at("A1"), "11".into())],
+            });
+        }
+        edits.push(Edit::SetEntries {
+            sheet: "Missing".into(),
+            entries: vec![(at("A1"), "9".into())],
+        });
+        let failure = book.apply(Edit::Batch(edits)).unwrap_err();
+        assert!(matches!(failure, Error::Absent { .. }), "{failure}");
+        assert_eq!(book.sheet_state("Data"), Some(SheetState::Visible));
         assert!(!book.is_dirty());
-        let saved=book.into_bytes().unwrap();
+        let saved = book.into_bytes().unwrap();
         // ZIP entry order is not package identity; every member payload is.
         let parts = |bytes: Vec<u8>| {
             use yggdryl::holder::{Buffer, Holder};
             use yggdryl::zip::ZipArchive;
-            let archive = std::sync::Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(bytes))));
-            archive.entries().unwrap().into_iter().map(|member| {
-                let name = member.name().to_owned();
-                let bytes = archive.read_member(&name).unwrap();
-                (name, bytes)
-            }).collect::<std::collections::BTreeMap<_, _>>()
+            let archive =
+                std::sync::Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(bytes))));
+            archive
+                .entries()
+                .unwrap()
+                .into_iter()
+                .map(|member| {
+                    let name = member.name().to_owned();
+                    let bytes = archive.read_member(&name).unwrap();
+                    (name, bytes)
+                })
+                .collect::<std::collections::BTreeMap<_, _>>()
         };
-        assert_eq!(parts(saved.clone()),parts(bytes),"failed cold metadata batch changed package members: nested={nested}, parse_during={parse_during}");
-        let reopened=Workbook::from_bytes(saved).unwrap();
-        assert_eq!(reopened.sheet_state("Data"),Some(SheetState::Visible));
-        assert_eq!(reopened.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(7.0));
+        assert_eq!(
+            parts(saved.clone()),
+            parts(bytes),
+            "failed cold metadata batch changed package members: nested={nested}, parse_during={parse_during}"
+        );
+        let reopened = Workbook::from_bytes(saved).unwrap();
+        assert_eq!(reopened.sheet_state("Data"), Some(SheetState::Visible));
+        assert_eq!(
+            reopened.sheet("Data").unwrap().scalar(at("A1")),
+            Scalar::from(7.0)
+        );
     }
 }

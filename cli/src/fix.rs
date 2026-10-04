@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use yggdryl::holder::Holder;
 use yggdryl::{
-    DataType, Field, FixCategory, FixDirection, FixMerge, FixRegistry, IOBase, IOKind, Result, Url,
+    DataType, Field, FixCategory, FixDirection, FixMerge, FixRegistry, IOKind, Result, Url,
 };
 
 use crate::{diff, quality, registry, schema, shell, style, warnings};
@@ -38,7 +38,7 @@ pub enum Command {
         #[command(subcommand)]
         command: CodesetCommand,
     },
-    /// Fold Ullink `CBlock`s into the dictionary: files, or globs of them.
+    /// Fold Ullink `CBlock`s into the dictionary: files, folders or globs of them.
     ///
     /// Every file is parsed side by side and folded into one staged
     /// dictionary in ascending URL order, which is then committed once,
@@ -50,13 +50,14 @@ pub enum Command {
     /// in a way the reader cannot keep is named with its line and column and
     /// what the reader did instead.
     #[command(
-        after_help = "Examples:\n  yggdryl fix ingest cblocks/venue.cfb --dialect venue\n  yggdryl fix ingest 'cblocks/*.cfb'\n  yggdryl fix ingest 'cblocks/**/*.cfb' --annotate\n  yggdryl fix ingest cblocks/a.cfb cblocks/b.cfb\n\nQuote a glob to have it walked here - `*` stays inside one name, `**` spans folders - or let the shell expand it; either way every file folds in one staged dictionary and one commit.\nWithout --dialect each file's own stem names its dialect (MSFIX44.cfb stamps msfix44).\nWhere two files disagree about one tag, the first in URL order is held; a coarser datatype folds under the held one (restated), and only a contradiction is passed over.\nWhat a file states in a way the reader cannot keep is named with its line and column and what the reader did instead.\n--annotate prints every one of them as a workflow warning."
+        after_help = "Examples:\n  yggdryl fix ingest cblocks/venue.cfb --dialect venue\n  yggdryl fix ingest 'cblocks/*.cfb'\n  yggdryl fix ingest 'cblocks/**/*.cfb' --annotate\n  yggdryl fix ingest cblocks/a.cfb cblocks/b.cfb\n  yggdryl fix ingest cblocks/\n\nA folder folds the .cfb files directly inside it. Quote a glob to have it walked here - `*` stays inside one name, `**` spans folders - or let the shell expand it; either way every file folds in one staged dictionary and one commit.\nWithout --dialect each file's own stem names its dialect (MSFIX44.cfb stamps msfix44).\nWhere two files disagree about one tag, the first in URL order is held; a coarser datatype folds under the held one (restated), and only a contradiction is passed over.\nWhat a file states in a way the reader cannot keep is named with its line and column and what the reader did instead; a file that cannot be folded at all is left out and named, and every other file still folds.\n--annotate prints every one of them as a workflow warning."
     )]
     Ingest {
-        /// `.cfb` files, or glob patterns such as `cblocks/*.cfb`.
+        /// `.cfb` files, folders of them, or glob patterns such as
+        /// `cblocks/*.cfb`.
         ///
-        /// A pattern matching nothing is refused, so a mistyped glob never
-        /// reads as a silent success.
+        /// A path naming nothing, and paths holding no file at all, are
+        /// refused, so a mistyped location never reads as a silent success.
         #[arg(required = true)]
         paths: Vec<PathBuf>,
         /// The dictionary name stamped on every definition the files produce.
@@ -422,19 +423,24 @@ fn sync(store: &mut registry::Store, source: &Path, annotate: bool) -> Result<()
     Ok(())
 }
 
-/// Folds every `CBlock` the paths name into the dictionary, in one fold.
+/// Folds every `CBlock` the paths hold into the dictionary, in one fold.
 ///
-/// Each path is a file or a glob. A glob the shell left alone is walked by
-/// the core - its fixed prefix descended, `*` inside one name, `**` across
-/// folders, private entries never matched - and a shell that expanded one
-/// hands over the files it matched; both arrive as one list, which the core
-/// parses side by side, folds in ascending URL order into one staged
-/// dictionary and resolves once. So a hundred files cost one load, one
-/// resolution and one commit, and where two of them disagree about one tag
-/// the first in URL order is held and the other is named.
+/// Each path is a file, a folder or a glob, handed to the core as the holder
+/// it is and nothing more: a glob the shell left alone is walked by the core,
+/// its fixed prefix descended, `*` inside one name, `**` across folders and
+/// private entries never matched; a folder gives up the `.cfb` files
+/// directly inside it, and a file is itself; a shell that expanded a glob
+/// hands over the files it matched. Every path arrives in one call, which
+/// parses the files side by side, folds them in ascending URL order into one
+/// staged dictionary and resolves once. So a hundred files cost one load,
+/// one resolution and one commit, and where two of them disagree about one
+/// tag the first in URL order is held and the other is named. A file the
+/// core cannot fold is left out and named, and every other file still folds.
 ///
-/// A path matching nothing is refused, and so is one naming anything but a
-/// file: a mistyped pattern is a mistake, never a silent success.
+/// A path naming nothing is refused, and so is a call whose paths hold no
+/// file at all: a mistyped location is a mistake, never a silent success. A
+/// location beside others that holds no file is named in a warning, and a
+/// call whose every file is left out fails once each is named.
 fn ingest(
     store: &mut registry::Store,
     paths: &[PathBuf],
@@ -446,38 +452,48 @@ fn ingest(
         paths => format!("reading {} locations", paths.len()),
     });
     progress.tick();
-    let mut files = Vec::new();
+    let mut locations = Vec::with_capacity(paths.len());
     for path in paths {
-        let located = registry::located(path)?;
-        let (root, pattern) = Url::from_path(&located)?.glob_parts()?;
-        let matched: Vec<Result<Holder>> = if let Some(pattern) = pattern {
-            Holder::folder(root.into_path()?)?
-                .glob(&pattern, false)?
-                .collect()
-        } else {
-            let held = Holder::local(&located)?;
-            let kind = held.as_io().kind();
-            if kind != IOKind::File {
-                return Err(yggdryl::Error::InvalidRecord {
-                    path: path.display().to_string().into(),
-                    reason: format!("expected a .cfb file or a glob of them, got {kind}").into(),
-                });
-            }
-            vec![Ok(held)]
-        };
-        if matched.is_empty() {
+        let held = Holder::local(registry::located(path)?)?;
+        let glob = held.as_io().url().is_some_and(Url::is_glob);
+        if !glob && held.as_io().kind() == IOKind::Unknown {
             return Err(yggdryl::Error::Absent {
-                expected: "a .cfb file the pattern matches",
+                expected: ".cfb file, a folder of them or a glob",
                 path: path.display().to_string().into(),
             });
         }
-        files.extend(matched);
+        locations.push(held);
     }
     progress.tick();
-    let merge = store.registry_mut().add_cfb_files(files, dialect)?;
+    let merge = store.registry_mut().add_cfb_files(&locations, dialect)?;
+    if merge.sources == 0 && merge.failed.is_empty() {
+        return Err(yggdryl::Error::Absent {
+            expected: ".cfb file the locations hold",
+            path: paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+                .into(),
+        });
+    }
     progress.finish(&folded(&merge, "file"));
     warnings::report(annotate);
     passed_over(&merge, annotate);
+    left_out(&merge, annotate);
+    // Every file left out folded nothing: each is named above, and the
+    // command says it failed rather than committing an unchanged store.
+    if merge.sources == 0 {
+        return Err(yggdryl::Error::Absent {
+            expected: ".cfb file that folds",
+            path: paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+                .into(),
+        });
+    }
     Ok(())
 }
 
@@ -489,13 +505,50 @@ fn folded(merge: &FixMerge, source: &str) -> String {
     } else {
         String::new()
     };
+    let failed = if merge.failed.is_empty() {
+        String::new()
+    } else {
+        format!(", {} {source}(s) left out", merge.failed.len())
+    };
     format!(
-        "{} {source}(s): {} added, {} merged{restated}, {} passed over",
+        "{} {source}(s): {} added, {} merged{restated}, {} passed over{failed}",
         merge.sources,
         merge.added,
         merge.merged,
         merge.dropped.len()
     )
+}
+
+/// Names every source a fold left out whole: one line each, or one workflow
+/// warning each under `--annotate`. A file left out contributed nothing,
+/// while every other file still folded.
+fn left_out(merge: &FixMerge, annotate: bool) {
+    if merge.failed.is_empty() {
+        return;
+    }
+    if annotate {
+        for failure in &merge.failed {
+            outln!(
+                "::warning title=fix left out::{}",
+                style::annotation(&failure.to_string())
+            );
+        }
+        return;
+    }
+    style::warn(&format!(
+        "{} file(s) left out: each contributed nothing, and every other file still folded",
+        merge.failed.len()
+    ));
+    for failure in &merge.failed {
+        let source = failure
+            .source
+            .as_deref()
+            .and_then(|source| Url::from_str(source).ok())
+            .and_then(|url| url.file_name().map(str::to_owned));
+        let mut line: Vec<String> = source.into_iter().collect();
+        line.push(failure.reason.to_string());
+        style::note(&line.join(" "));
+    }
 }
 
 /// Names every declaration a fold passed over: one line each, or one

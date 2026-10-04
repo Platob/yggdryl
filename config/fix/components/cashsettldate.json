@@ -26,17 +26,6 @@
         }
       },
       {
-        "name": "nocashsettldatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocashsettldatebusinesscenters",
-          "FIX:tag": "42214"
-        }
-      },
-      {
         "name": "cashsettldatebusinesscenters",
         "dtype": {
           "type": "null"

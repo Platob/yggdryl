@@ -7,7 +7,7 @@ ISO 3166-1 alpha-2, the two-letter country code: the narrowest of the twelve, an
 | Aspect | Rule |
 | --- | --- |
 | Owns | `country`, `CountryType`/`CountryField`, the `Country` value and `Scalar::Country` |
-| Validates | US-ASCII, no NUL, at most two bytes; the ISO listing is a declared vocabulary, never a gate |
+| Validates | US-ASCII, no NUL, at most two bytes; the ISO listing is the code's [rank](index.md#rank) and a declared vocabulary, never a gate |
 | Lazy | Nothing |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A third byte or a byte past `0x7F`, naming the width: `at most 2 bytes` |
@@ -225,16 +225,24 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 
 ## The ISO 3166 listing
 
-`StringEnum::COUNTRIES` ships with the package under the logical name `country`, and Python declares it over the width as `yggdryl.enums.COUNTRY`, over the `yggdryl.enums.Country` base a caller subclasses for a vocabulary of its own. A declared vocabulary, never a gate ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)).
+`StringEnum::COUNTRIES` ships with the package under the logical name `country`, and Python declares it over the width as `yggdryl.enums.COUNTRY`, over the `yggdryl.enums.Country` base a caller subclasses for a vocabulary of its own. A declared vocabulary, never a gate ([packed integers](index.md#packed-integers-and-the-declared-vocabulary)). `Country::is_listed` answers whether ISO 3166-1 currently assigns a value: it is the [rank](index.md#rank) - one listed, zero for the user-assigned `XX` or a code the registry does not know - which a merge reads, so a listed country replaces an unlisted one whichever leads. Rust only.
 
 === "Rust"
 
     ```rust
-    use yggdryl::StringEnum;
+    use yggdryl::{CodeValue, Country, StringEnum};
 
     let countries = StringEnum::from_logical_name("country")?;
     assert_eq!(countries.len(), StringEnum::COUNTRIES.len());
     assert_eq!(countries.get("US"), Some("US"));
+
+    // The listing is the rank a merge reads, never a gate.
+    let swiss = Country::new("CH")?;
+    assert!(swiss.is_listed() && swiss.is_real());
+    let masked = Country::new("XX")?;
+    assert!(!masked.is_listed());
+    assert_eq!(masked.rank(), 0);
+    assert_eq!(masked.merge_with(&swiss), swiss);
     ```
 
 === "Python"
@@ -266,7 +274,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 ## Edges
 
 - `at most 2 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
-- A country has no value stating none, so nothing is taken over on a [merge](index.md#the-code-family-value): this one stands.
+- A listed country replaces an unlisted one - the user-assigned `XX`, a code the registry does not know - on a [merge](index.md#the-code-family-value), whichever leads; two of one rank keep this one.
 - `country` beside [`ccy`](ccy.md) merges to `sized_ascii(8)` widening and `sized_ascii(2)` narrowing - the bounded text both fit.
 - The two letters an [ISIN](isin.md) opens with are the numbering agency's prefix, which includes international prefixes such as `XS` that no country names; `Isin::prefix` reads them as text rather than as this code.
 - The default value is the empty text, answered as a `country` scalar ([Cast](../cast.md#empty-text)).
@@ -276,7 +284,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes country:: string::listings
     ```
 
 === "Python"

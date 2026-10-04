@@ -345,17 +345,6 @@
         }
       },
       {
-        "name": "nolegpaymentscheduleratesources",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentscheduleratesources",
-          "FIX:tag": "40414"
-        }
-      },
-      {
         "name": "legpaymentscheduleratesources",
         "dtype": {
           "type": "null"
@@ -407,17 +396,6 @@
         "metadata": {
           "FIX:field": "legpaymentschedulefixingdatebusinessdayconvention",
           "FIX:tag": "40399"
-        }
-      },
-      {
-        "name": "nolegpaymentschedulefixingdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentschedulefixingdatebusinesscenters",
-          "FIX:tag": "40927"
         }
       },
       {
@@ -494,17 +472,6 @@
         "metadata": {
           "FIX:field": "legpaymentschedulefixingdateadjusted",
           "FIX:tag": "40404"
-        }
-      },
-      {
-        "name": "nolegpaymentschedulefixingdays",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentschedulefixingdays",
-          "FIX:tag": "41530"
         }
       },
       {
@@ -603,17 +570,6 @@
         "metadata": {
           "FIX:field": "legpaymentscheduleinterimexchangedatesbusinessdayconvention",
           "FIX:tag": "40408"
-        }
-      },
-      {
-        "name": "nolegpaymentscheduleinterimexchangedatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegpaymentscheduleinterimexchangedatebusinesscenters",
-          "FIX:tag": "40928"
         }
       },
       {

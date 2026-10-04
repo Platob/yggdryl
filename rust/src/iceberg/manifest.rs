@@ -34,8 +34,7 @@ use iceberg_official::spec::{
     ManifestFile as OfficialManifestFile, ManifestList as OfficialManifestList,
     ManifestMetadata as OfficialManifestMetadata, ManifestStatus as OfficialManifestStatus,
     PartitionSpec as OfficialPartitionSpec, PrimitiveLiteral as OfficialPrimitiveLiteral,
-    PrimitiveType as OfficialPrimitiveType, StructType as OfficialStructType,
-    Transform as OfficialTransform, Type as OfficialType,
+    PrimitiveType as OfficialPrimitiveType, StructType as OfficialStructType, Type as OfficialType,
 };
 use smol_str::{SmolStr, format_smolstr};
 
@@ -521,10 +520,11 @@ pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpe
 
 /// Read the original manifest metadata without applying a data-parser repair.
 ///
-/// The one rewrite is the schema's: a header spelling the v3 `unknown` or
-/// `variant` reaches the official parser as the placeholder it models, so
-/// the partition type and the spec it answers are read off the same header
-/// every other manifest has.
+/// Two header entries are rewritten for the official parser: a schema
+/// spelling the v3 `unknown` or `variant` reaches it as the placeholder it
+/// models, and a partition spec spelling one of this crate's own transforms
+/// as the reserved bucket that carries it, so the partition type and the
+/// spec it answers are read off the same header every other manifest has.
 fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestMetadata> {
     let blocks = crate::avro::read_blocks(handle)?;
     let mut metadata: std::collections::HashMap<String, Vec<u8>> = blocks
@@ -539,6 +539,12 @@ fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestM
         && let Some(bridged) = super::official::bridged_schema(&document)?
     {
         *schema = crate::json::into_bytes(&bridged)?;
+    }
+    if let Some(spec) = metadata.get_mut("partition-spec")
+        && let Ok(document) = crate::json::from_bytes(spec)
+        && let Some(bridged) = super::official::bridged_partition_spec(&document)?
+    {
+        *spec = crate::json::into_bytes(&bridged)?;
     }
     OfficialManifestMetadata::parse(&metadata).map_err(Error::from_iceberg)
 }
@@ -732,10 +738,11 @@ fn manifest_bytes<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
 /// Validate collection semantics the official reader projects into maps.
 fn parse_manifest(bytes: &[u8]) -> Result<OfficialManifest> {
     preflight_manifest_entries(bytes)?;
-    // A header spelling `unknown` or `variant` is rewritten for the official
-    // reader before anything is parsed; the UUID repair below then runs on
-    // the same view, so the two never compete.
-    let view = v3_types_official_reader_view(bytes)?;
+    // A header spelling `unknown`, `variant` or one of the crate's own
+    // transforms is rewritten for the official reader before anything is
+    // parsed; the UUID repair below then runs on the same view, so the two
+    // never compete.
+    let view = bridged_official_reader_view(bytes)?;
     let bytes = view.as_deref().unwrap_or(bytes);
     match OfficialManifest::parse_avro(bytes) {
         Ok(manifest) => Ok(manifest),
@@ -779,31 +786,116 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     official_reader_view(&schema, &metadata, &container.rows, "UUID").map(Some)
 }
 
-/// Build an in-memory official-reader view of a manifest whose header schema
-/// spells a v3 type the official model lacks.
+/// Build an in-memory official-reader view of a manifest whose header spells
+/// what the official model lacks: a v3 type in its schema, or one of this
+/// crate's own transforms in its partition spec.
 ///
-/// Only the header's `schema` text changes - the placeholder goes in where
-/// `unknown` or `variant` was - and a manifest with neither is answered
-/// `None` without being re-encoded.
-fn v3_types_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+/// Only the header's `schema` and `partition-spec` texts change - the
+/// placeholder goes in where `unknown` or `variant` was, the reserved bucket
+/// where `minutes[15]` was, `long` where a nanosecond timestamp the spec
+/// partitions on by identity was - and a manifest with none of them is
+/// answered `None` without being re-encoded. The partition tuple is read
+/// back under the header as written ([`manifest_metadata`]), so a value keeps
+/// its logical identity whatever the parser was shown.
+fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     let source = crate::holder::Buffer::from(bytes);
     let container = crate::avro::read_container(&source)?;
     let mut metadata = container.metadata;
-    let Some(encoded_schema) = metadata
-        .iter_mut()
-        .find_map(|(name, value)| (name == "schema").then_some(value))
-    else {
-        return Ok(None);
+    let header = |name: &str| {
+        metadata
+            .iter()
+            .find(|(key, _)| key.as_str() == name)
+            .and_then(|(_, value)| crate::json::from_utf8(value).ok())
     };
-    let Ok(document) = crate::json::from_utf8(encoded_schema) else {
-        return Ok(None);
+    let nanoseconds = match (header("schema"), header("partition-spec")) {
+        (Some(schema), Some(spec)) => super::official::partitions_on_nanoseconds(&schema, &spec),
+        _ => false,
     };
-    let Some(bridged) = super::official::bridged_schema(&document)? else {
+    let mut changed = false;
+    for (name, value) in &mut metadata {
+        let Ok(document) = crate::json::from_utf8(value) else {
+            continue;
+        };
+        let bridged = match name.as_str() {
+            "schema" => super::official::parser_view_schema(&document, nanoseconds)?,
+            "partition-spec" => super::official::bridged_partition_spec(&document)?,
+            _ => None,
+        };
+        if let Some(bridged) = bridged {
+            *value = SmolStr::new(crate::json::into_utf8(&bridged)?);
+            changed = true;
+        }
+    }
+    if !changed {
         return Ok(None);
-    };
-    *encoded_schema = SmolStr::new(crate::json::into_utf8(&bridged)?);
+    }
     let schema = container.schema.into_json();
-    official_reader_view(&schema, &metadata, &container.rows, "v3-type").map(Some)
+    if !nanoseconds {
+        return official_reader_view(&schema, &metadata, &container.rows, "bridged-header")
+            .map(Some);
+    }
+    // The partition field is the long the parser was told it is: the wire
+    // schema loses the logical type that would have it decode an instant
+    // where its reader schema says a count, and each row states the count.
+    let schema = without_nanosecond_logical_types(&schema)?;
+    let rows = container
+        .rows
+        .iter()
+        .map(nanosecond_partition_as_count)
+        .collect::<Result<Vec<_>>>()?;
+    official_reader_view(&schema, &metadata, &rows, "bridged-header").map(Some)
+}
+
+/// One manifest row with every nanosecond instant of its partition tuple as
+/// the count it is, which is what the long beneath it holds.
+fn nanosecond_partition_as_count(row: &Scalar) -> Result<Scalar> {
+    let Some(file) = row.get_key_str("data_file") else {
+        return Ok(row.clone());
+    };
+    let Some(partition) = file.get_key_str("partition") else {
+        return Ok(row.clone());
+    };
+    let mut rewritten = partition.clone();
+    for key in partition.keys() {
+        let Some(value) = partition.get_key_str(key) else {
+            continue;
+        };
+        if value.id() == crate::DataTypeId::DateTime64
+            && value.temporal_unit() == Some(TimeUnit::Nanosecond)
+            && let Some(count) = value.temporal_count()
+        {
+            rewritten = object_with(&rewritten, key, Scalar::from(count))?;
+        }
+    }
+    object_with(row, "data_file", object_with(file, "partition", rewritten)?)
+}
+
+/// The Avro schema with every `timestamp-nanos` and `local-timestamp-nanos`
+/// annotation removed, the long beneath each left as it is.
+fn without_nanosecond_logical_types(value: &Scalar) -> Result<Scalar> {
+    if let Some(values) = value.as_sequence() {
+        return values
+            .iter()
+            .map(without_nanosecond_logical_types)
+            .collect::<Result<Vec<_>>>()
+            .map(Scalar::from_sequence);
+    }
+    if value.as_struct().is_none() && value.as_mapping().is_none() {
+        return Ok(value.clone());
+    }
+    let nanoseconds = matches!(
+        value.get_key_str("logicalType").and_then(Scalar::as_str),
+        Some("timestamp-nanos" | "local-timestamp-nanos")
+    );
+    let mut output = value.clone();
+    for key in value.keys() {
+        if nanoseconds && key == "logicalType" {
+            output = object_without(&output, key)?;
+        } else if let Some(child) = value.get_key_str(key) {
+            output = object_with(&output, key, without_nanosecond_logical_types(child)?)?;
+        }
+    }
+    Ok(output)
 }
 
 /// Re-encode one manifest with rewritten header metadata, bounded as a read.
@@ -1430,17 +1522,10 @@ fn partition_spec_from_official(spec: &OfficialPartitionSpec) -> Result<Partitio
         .fields()
         .iter()
         .map(|field| {
-            let transform = match field.transform {
-                OfficialTransform::Identity => Transform::Identity,
-                OfficialTransform::Bucket(count) => Transform::Bucket(count),
-                OfficialTransform::Truncate(width) => Transform::Truncate(width),
-                OfficialTransform::Year => Transform::Year,
-                OfficialTransform::Month => Transform::Month,
-                OfficialTransform::Day => Transform::Day,
-                OfficialTransform::Hour => Transform::Hour,
-                OfficialTransform::Void => Transform::Void,
-                OfficialTransform::Unknown => Transform::Unknown,
-            };
+            // The header was handed to the official reader with the crate's
+            // own transforms as the reserved buckets that carry them, and
+            // this is where they come back as themselves.
+            let transform = Transform::from_official(field.transform);
             Ok(PartitionField {
                 source_id: field.source_id,
                 field_id: field.field_id,
@@ -2461,6 +2546,18 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
     handle: &H,
     with_stats: bool,
 ) -> Result<Vec<ManifestEntry>> {
+    read_planned_manifest(handle, with_stats, None)
+}
+
+/// [`read_manifest_for_plan`], keeping the bounds of the column `ordered`
+/// names whatever `with_stats` says: an ordered record read opens a
+/// partition's files by where their leading sort key starts, which the
+/// entries already read carry, so keeping it costs no call.
+pub(super) fn read_planned_manifest<H: IOBase + ?Sized>(
+    handle: &H,
+    with_stats: bool,
+    ordered: Option<i32>,
+) -> Result<Vec<ManifestEntry>> {
     let mut entries = read_manifest(handle)?;
     for entry in &mut entries {
         let file = &mut entry.data_file;
@@ -2477,8 +2574,8 @@ pub fn read_manifest_for_plan<H: IOBase + ?Sized>(
             file.null_value_counts.clear();
             // A float bound is trusted only beside a NaN count of zero.
             file.nan_value_counts.clear();
-            file.lower_bounds.clear();
-            file.upper_bounds.clear();
+            file.lower_bounds.retain(|(id, _)| Some(*id) == ordered);
+            file.upper_bounds.retain(|(id, _)| Some(*id) == ordered);
         }
     }
     Ok(entries)

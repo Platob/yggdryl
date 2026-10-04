@@ -199,14 +199,16 @@ The value is the identifier, under the market's identity. A value shorter than t
 
 ## `XXXX` states no market
 
-ISO 10383 publishes `XXXX` for "no market", so it is what a merge takes the other side over ([`merge_with`](index.md#the-code-family-value)). Rust only.
+ISO 10383 publishes `XXXX` for "no market", so it is what a merge takes the other side over: `Mic::none()` is that value and `is_none()` asks for it, the [rank](index.md#rank) zero any stated market outranks whichever leads ([`merge_with`](index.md#the-code-family-value)). The registry this crate lists is deliberately partial, so it is no rank. Rust only.
 
 ```rust
 use yggdryl::{CodeValue, Mic};
 
 assert_eq!(Mic::none().as_str(), "XXXX");
+assert!(Mic::none().is_none() && Mic::none().rank() == 0);
 assert_eq!(Mic::none().merge_with(&Mic::new("XPAR")?).as_str(), "XPAR");
-// Anything stated stands.
+assert_eq!(Mic::new("XPAR")?.merge_with(&Mic::none()).as_str(), "XPAR");
+// Two stated markets are one rank: this one stands.
 assert_eq!(Mic::new("XPAR")?.merge_with(&Mic::new("XLON")?).as_str(), "XPAR");
 ```
 

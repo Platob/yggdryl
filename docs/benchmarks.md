@@ -13,6 +13,8 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Message](fix/message.md) | the `fix/ulbridge/step/*` cases measure one `FixMsg` step each - `with_registry`, `set_text`, `insert_securityid` - one security identifier, no field written - and `entries` |
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
+| Graph | [Identifier](graph/identifier.md#performance) | `graph/identifier`: an `IdKey` spelled and read, an `Identifiers` map crossing a `Scalar` and built entry by entry, and the identifier columns of a `marketdata` batch written and read; one containerized x86_64 Linux release run |
+| Graph | [IsinRegistry](graph/isin-registry.md#performance) | `graph/isin_registry` and `fix/pipeline/decoded_lifecycle_shared_registry`: learning, filling, the snapshot stream, a load and an IPC round trip, and the lifecycle walk with a shared registry beside the walk-local one; one containerized x86_64 Linux release run |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
 | Holder | [Buffered](holder/index.md#buffered-performance) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
@@ -22,20 +24,30 @@ Results live beside the method they measure. Each page's Performance section nam
 | Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
 | Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
 | Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
-| Media | [gzip](media/index.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
-| Media | [zlib](media/index.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
-| Media | [zstd](media/index.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
-| Media | [Arrow IPC](media/index.md#arrow-ipc-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
-| Media | [Parquet](media/index.md#parquet-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Parquet against PyArrow](media/index.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
-| Media | [Parquet footer statistics](media/index.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
-| Media | [Avro](media/index.md#avro-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Avro against polars and fastavro](media/index.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
-| Media | [JSON](media/index.md#json-performance), [YAML](media/index.md#yaml-performance), [TOML](media/index.md#toml-performance), [XML](media/index.md#xml-performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML measured, no table yet |
-| Media | [YAML placeholders](media/index.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
-| Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
-| Media | [Iceberg against PyIceberg](media/index.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
+| Logging | [Logging](logging.md#performance) | The `logging` Criterion target: a disabled record on a logger and at the facade's ceiling, the `%`-style formatter and the terminal line, plain and coloured, beside a `std::fmt` baseline, an enabled facade record spelled into a sink, a repeat on a deduplicating logger, and a `FileHandler` publishing per record and per 64 KiB capacity; one release run, Linux x86_64, Intel Xeon 2.10 GHz, rustc 1.97.0 |
+| Media | [gzip](media/compression.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
+| Media | [zlib](media/compression.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
+| Media | [zstd](media/compression.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
+| Media | [Charsets](media/charsets.md#performance) | `charset_decode`, `charset_borrow`, `charset_encode` and `charset_streaming`: 1 MiB decodes beside `std::str::from_utf8`, encodes at three mixes, and the streaming doors over 16 MiB; one containerized x86_64 Linux release run |
+| Media | [Arrow IPC](media/ipc.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
+| Media | [Parquet](media/parquet.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Parquet against PyArrow](media/parquet.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
+| Media | [Parquet footer statistics](media/parquet.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
+| Media | [Avro](media/avro.md#performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Avro against polars and fastavro](media/avro.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
+| Media | [Plain text](media/text.md#records-lines-and-batches) | `text_records`, `text_lines`, `text_batch` and `text_record_framing`: 10,000 lines read as records beside the `regex` crate, decoded alone, laid into batches, and framed; one containerized x86_64 Linux release run |
+| Media | [Plain text against Python `re`](media/text.md#against-python-re) | `python/benchmarks/media/text.py`: 5,000 lines, plain and gzip, against `re` and PyArrow building seven of the columns; one containerized x86_64 Linux run |
+| Media | [CSV](media/csv.md#performance) | `media/csv`: 10,000 rows written, read under a declared field and inferred, and counted, as plain, quoted and gzip documents; one containerized x86_64 Linux release run |
+| Media | [JSON](media/json.md#rust-codec), [YAML](media/yaml.md#rust-codec), [TOML](media/toml.md#rust-codec), [XML](media/xml.md#rust-codec) | The `codec/<format>` groups of the `text` target: a record and a typed record through every door, deep, wide and many-document inputs; one containerized x86_64 Linux release run |
+| Media | [JSON](media/json.md#bindings), [YAML](media/yaml.md#bindings), [TOML](media/toml.md#bindings) bindings | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format; XML's binding rows wait for a run on that machine |
+| Media | [YAML placeholders](media/yaml.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
+| Media | [XML for Analysis](media/xmla.md#performance) | `media/xmla`: rowset documents written and read, `Discover` requests, and the provider's answers over a folder catalog of three IPC tables, on Windows x86_64; ADOMD.NET reading the served tables end to end |
+| Media | [Excel](media/excel.md#record-and-workbook-doors) | `media/excel`: 10,000 rows of five columns written and read as records, one cell through `Workbook`, a sheet into and from a `Serie`; one containerized x86_64 Linux release run |
+| Media | [Excel against openpyxl](media/excel.md#against-openpyxl) | `python/benchmarks/media/excel.py`: one workbook read and written through openpyxl and this crate at 10,000 and 100,000 rows, one cell, and a sheet's round trip; one containerized x86_64 Linux run |
+| Media | [Iceberg](media/iceberg.md#performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
+| Media | [Iceberg against PyIceberg](media/iceberg.md#against-pyiceberg) | `python/benchmarks/media/iceberg.py`: appends, opens and four scans of a 1M-row table, unpartitioned and in eight partitions, beside PyIceberg's SQLite catalog; one containerized x86_64 Linux run |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
+| Types | [Nested JSON text](types/cast.md#nested-json-text) | A struct, a serie and a map column written as JSON text and read back at 1,024 and 16,384 rows, beside Arrow's list-to-text kernel and a serde_json parse; one containerized x86_64 Linux run |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | The value model's own boundaries - enum, inference, and the `Scalar`/Arrow crossings - in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
 
@@ -52,8 +64,10 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench charset
     cargo bench --bench coding
     cargo bench --bench hashing
+    cargo bench --bench logging
     cargo bench --bench fix
     cargo bench --bench fix_allocations
+    cargo bench --bench graph
     cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
     ```
@@ -79,6 +93,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/logger.py --iterations 20000
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python python/benchmarks/graph.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
@@ -100,6 +115,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:text
     npm run --prefix node bench:hashing:xxhash
     npm run --prefix node bench:hashing:txhash
+    npm run --prefix node bench:logging
     npm run --prefix node bench:fix
     npm run --prefix node bench:graph
     ```
@@ -113,13 +129,15 @@ Results live beside the method they measure. Each page's Performance section nam
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
 | `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |
-| `media` | record round trips, text projection, Avro, Parquet, Iceberg, XML for Analysis, and pushdown |
-| `text` | natural whole-value and streaming codecs, field-directed parsing, and placeholders |
+| `media` | record round trips, text projection, Avro, Parquet, Iceberg, CSV, Excel, XML for Analysis, and pushdown |
+| `text` | natural whole-value and streaming codecs, field-directed parsing, placeholders, and plain-text records, lines and framing |
 | `uri` | URI parsing and component access |
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
 | `fix_allocations` | what each `fix/ulbridge` stage allocates per message - requests under `fix/allocations`, bytes under `fix/allocated_bytes` - counted through the test binaries' allocator, never timed |
+| `graph` | the market-data graph: book folds, candles, the `MarketView` plans, identifier keys and maps, and the ISIN registry |
 | `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
+| `logging` | what a record costs refused on a logger and at the facade's ceiling, the `%`-style formatter beside `std::fmt`, an enabled record spelled into a sink, a repeat counted and dropped on a deduplicating logger, and a file handler's publishes per record and per capacity |
 
 ## Rules
 

@@ -10,10 +10,12 @@ use yggdryl::holder::Holder;
 use yggdryl::xml::{Element, XSI_NAMESPACE};
 use yggdryl::xmla::definitions::{Definition, definition_of, definitions};
 use yggdryl::xmla::{
-    Catalog, Discover, ROWSET_NAMESPACE, Request, RequestType, Response, Rowset, SQL_NAMESPACE,
-    Service, ServiceOptions, XsdType, decode_name, encode_name,
+    Discover, ROWSET_NAMESPACE, Request, RequestType, Response, Rowset, SQL_NAMESPACE, Service,
+    ServiceOptions, XsdType, decode_name, encode_name,
 };
-use yggdryl::{DataType, Field, Scalar, Serie, StructType, TimeUnit, Timezone, Uuid};
+use yggdryl::{
+    DataType, Field, FolderCatalog, Scalar, Serie, StructType, TimeUnit, Timezone, Uuid,
+};
 
 /// One column as the specification declares it: its name, datatype and
 /// nullability, and whether a Discover may restrict the rowset by it.
@@ -1147,7 +1149,7 @@ fn a_literal_value_outside_the_specifications_width_is_refused_naming_its_column
         ("COLUMN_FLAGS", "-1"),
         ("CHARACTER_MAXIMUM_LENGTH", "4294967296"),
         ("IS_NULLABLE", "maybe"),
-        ("COLUMN_HAS_DEFAULT", "yes"),
+        ("COLUMN_HAS_DEFAULT", "perhaps"),
     ] {
         let refusal = literal_refusal(columns, &cell(column, value));
         assert!(
@@ -1978,7 +1980,7 @@ fn provider(label: &str, catalogs: &[&str]) -> Service {
         .iter()
         .fold(Service::new(ServiceOptions::new()), |service, name| {
             let root = catalog_folder(&format!("{label}-{name}"));
-            service.with_catalog(Catalog::new(
+            service.with_catalog(FolderCatalog::bound(
                 *name,
                 Holder::folder(&root).expect("the catalog holds"),
             ))

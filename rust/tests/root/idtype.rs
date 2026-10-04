@@ -7,7 +7,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use yggdryl::{Error, IdSource, IdType, Identifier, Scalar};
+use yggdryl::{DataType, Error, IdKey, IdType, Identifier, Scalar};
 
 fn located<T>(result: yggdryl::Result<T>) -> (String, String) {
     match result.err().expect("a refusal") {
@@ -22,7 +22,7 @@ fn kind(text: &str) -> IdType {
 
 /// One identifier of `text`'s type from `base`, validated by its type.
 fn id(text: &str, value: &str) -> yggdryl::Result<Identifier> {
-    Identifier::new(IdSource::Base, kind(text), value)
+    Identifier::new(IdKey::base(kind(text)), value)
 }
 
 /// The security types FIX names, each with its code, in the code set's order.
@@ -370,8 +370,90 @@ fn a_field_name_names_one_instruments_own_identifier_type() {
         "isincodes",
         "clordid",
         "account",
+        "instrumentcode",
     ] {
         assert_eq!(named(refused), None, "{refused:?} names no type");
+    }
+    // The bare spellings a bridge writes a code under name their type whole.
+    for (name, expected) in [
+        ("bbg", "bloomberg"),
+        ("BBGCode", "bloomberg"),
+        ("bbgsymbol", "bloomberg"),
+        ("BloombergTicker", "bloomberg"),
+        ("OpenFIGI", "figi"),
+        ("ReutersCode", "ric"),
+        ("reuters", "ric"),
+        ("ExchSymbol", "exchsymb"),
+        ("isinid", "isin"),
+        ("cusipid", "cusip"),
+        ("sedol_number", "sedol"),
+        ("valor_id", "valor"),
+        ("wkncode", "wkn"),
+    ] {
+        assert_eq!(named(name).as_deref(), Some(expected), "{name}");
+    }
+}
+
+/// A code-suffixed spelling of a security type - `riccode`, `bbgsymbol`,
+/// `cusipnumber` - names the type at the end of a key the way an `id`
+/// spelling does, so a bridge's `OMS_RICCODE` reads as `oms:ric` and its
+/// `ULLINK.ISINCODE` as `ullink:isin`; bare `ric` and `cfi` stay out of the
+/// end-matching, so `GENERIC` and `OMS_RIC` name nothing, a ticker spelling
+/// names no type, and another instrument's word still refuses the type.
+#[test]
+fn a_code_suffixed_security_spelling_reads_at_the_end_of_a_key() {
+    let read = |key: &str, value: &str| Identifier::from_key(key, value).map(|id| id.to_string());
+    for (key, value, expected) in [
+        ("OMS_RICCODE", "AAPL.O", "oms:ric=AAPL.O"),
+        (
+            "ULLINK.ISINCODE",
+            "US0378331005",
+            "ullink:isin=US0378331005",
+        ),
+        ("OMS_CUSIPCODE", "037833100", "oms:cusip=037833100"),
+        ("OMS_SEDOLNUMBER", "2046251", "oms:sedol=2046251"),
+        (
+            "firm.x.FIGICode",
+            "BBG000B9XRY4",
+            "firm.x:figi=BBG000B9XRY4",
+        ),
+        (
+            "OMS_BBGSYMBOL",
+            "AAPL US Equity",
+            "oms:bloomberg=AAPL US Equity",
+        ),
+        (
+            "OMS_BloombergTicker",
+            "AAPL US Equity",
+            "oms:bloomberg=AAPL US Equity",
+        ),
+        ("OMS_ReutersCode", "AAPL.O", "oms:ric=AAPL.O"),
+        ("OMS_ExchSymbol", "AAPL", "oms:exchsymb=AAPL"),
+        ("OMS_InstrumentCode", "dbi;X", "oms:instrumentid=dbi;X"),
+        ("OMS_WKNCode", "865985", "oms:wkn=865985"),
+        ("OMS_ValorNumber", "1221405", "oms:valor=1221405"),
+        ("OMS_ISINID", "US0378331005", "oms:isin=US0378331005"),
+        ("BBGCODE", "AAPL US Equity", "bloomberg=AAPL US Equity"),
+        ("BBG", "AAPL US Equity", "bloomberg=AAPL US Equity"),
+        ("OpenFIGI", "BBG000B9XRY4", "figi=BBG000B9XRY4"),
+        ("Reuters", "AAPL.O", "ric=AAPL.O"),
+        ("ExchSymbol", "AAPL", "exchsymb=AAPL"),
+        ("InstrumentCode", "dbi;X", "instrumentid=dbi;X"),
+    ] {
+        assert_eq!(read(key, value).as_deref(), Some(expected), "{key}");
+    }
+    for key in [
+        "TICKER",
+        "SYMBOL",
+        "TICKERCODE",
+        "CLIENT.SYMBOL",
+        "GENERIC",
+        "OMS_RIC",
+        "OMS_CFI",
+        "OMS_UnderlyingISINCode",
+        "FIX.LegRICCode",
+    ] {
+        assert_eq!(read(key, "AAPL.O"), None, "{key}");
     }
 }
 
@@ -424,7 +506,7 @@ fn a_currency_pair_is_the_crates_own_type_and_its_value_lands_as_the_canonical_p
     }
     let pair = id("forex", "eurusd").unwrap();
     assert_eq!(pair.kind(), "forex");
-    assert_eq!(pair.to_string(), "base:forex=EUR/USD");
+    assert_eq!(pair.to_string(), "forex=EUR/USD");
     assert_eq!(pair, id("ccypair", " EUR/USD ").unwrap());
 
     // A symbol, a pair of one currency, a stranger and a null-like value are
@@ -479,16 +561,56 @@ fn each_type_holds_its_value_to_its_own_rule() {
     let accepts = |text: &str, value: &str| id(text, value).is_ok();
     assert!(accepts("isin", "US0378331005"));
     assert!(accepts("isin", "us0378331005"));
-    assert!(
-        !accepts("isin", "US0378331006"),
-        "the check digit must close"
-    );
+    // The check digit is a rank, not a refusal: a number that does not
+    // close is held, and ranks below one that does.
+    assert!(accepts("isin", "US0378331006"));
+    assert!(!accepts("isin", "US037833100"), "the shape");
+    assert_eq!(IdType::Isin.rank("US0378331005"), 2);
+    assert_eq!(IdType::Isin.rank("US0378331006"), 1);
+    assert_eq!(IdType::Isin.rank("XX0000000001"), 0);
+    assert_eq!(IdType::Isin.max_rank(), 2);
+    assert!(IdType::Isin.is_real("US0378331005"));
+    assert!(!IdType::Isin.is_real("US0378331006"));
+    // A rank reads the text as its type does, folded: a lower-case spelling
+    // the type holds ranks as its upper-case one, whichever the code.
+    for (kind, lower, rank) in [
+        (IdType::Isin, "us0378331005", 2),
+        (IdType::Cusip, "38259p508", 1),
+        (IdType::Sedol, "b0ybkj7", 1),
+        (IdType::Figi, "bbg000blnq16", 1),
+    ] {
+        assert_eq!(kind.rank(lower), rank, "{lower}");
+        assert_eq!(
+            kind.rank(lower),
+            kind.rank(&lower.to_ascii_uppercase()),
+            "{lower}"
+        );
+    }
+    assert!(IdType::Isin.is_real("us0378331005"));
     assert!(accepts("cusip", "037833100"));
-    assert!(!accepts("cusip", "037833101"));
+    assert!(accepts("cusip", "037833101"));
+    assert_eq!(IdType::Cusip.rank("037833100"), 1);
+    assert_eq!(IdType::Cusip.rank("037833101"), 0);
     assert!(accepts("sedol", "0263494"));
-    assert!(!accepts("sedol", "0263495"));
+    assert!(accepts("sedol", "0263495"));
+    assert_eq!(IdType::Sedol.rank("0263495"), 0);
     assert!(accepts("figi", "BBG000B9XRY4"));
-    assert!(!accepts("figi", "BBG000B9XRY5"));
+    assert!(accepts("figi", "BBG000B9XRY5"));
+    assert_eq!(IdType::Figi.rank("BBG000B9XRY5"), 0);
+    assert!(!accepts("figi", "BSG000B9XRY4"), "a reserved prefix");
+    // The listed country and the detailed classification rank; every
+    // other type has nothing partial about it.
+    assert_eq!(IdType::IsoCtry.rank("CH"), 1);
+    assert_eq!(IdType::IsoCtry.rank("XX"), 0);
+    assert_eq!(IdType::IsoCcy.rank("XXX"), 0);
+    assert_eq!(IdType::IsoCcy.rank("USDT"), 1);
+    assert_eq!(IdType::Cfi.rank("ESVUFR"), 2);
+    assert_eq!(IdType::Cfi.rank("ESXXXX"), 1);
+    assert_eq!(IdType::Cfi.rank("XXXXXX"), 0);
+    assert_eq!(IdType::Cfi.max_rank(), 2);
+    assert_eq!(IdType::OrderId.rank("O-1"), 1);
+    assert_eq!(IdType::OrderId.max_rank(), 1);
+    assert!(IdType::Ric.is_real("AAPL.O"));
     assert!(accepts("wkn", "716460"));
     assert!(accepts("wkn", "BASF11"));
     assert!(accepts("wkn", "basf11"));
@@ -553,7 +675,7 @@ fn each_type_holds_its_value_to_its_own_rule() {
         "expected a wkn value, got \"BASI11\", not six of [0-9A-HJ-NP-Z]"
     );
     assert!(matches!(
-        id("isin", "US0378331006"),
+        id("isin", "US037833100"),
         Err(Error::InvalidDataType { kind: "isin", .. })
     ));
     let (path, reason) = located(id("bloomberg", &"B".repeat(33)));
@@ -562,6 +684,39 @@ fn each_type_holds_its_value_to_its_own_rule() {
         reason.contains("33 bytes, over the 32 the type allows"),
         "{reason}"
     );
+}
+
+/// `IdType::rank` and `is_real` read the text as the type stores it: every
+/// type that folds case ranks a lower-case spelling as the upper-case one,
+/// whether or not the code's own `new` folds (a CFI, an ISO currency and an
+/// ISO country do not).
+#[test]
+fn a_rank_reads_a_lower_case_spelling_as_the_upper_case_one_it_folds_to() {
+    for (kind, upper, rank) in [
+        (IdType::Isin, "US0378331005", 2),
+        (IdType::Isin, "US0378331006", 1),
+        (IdType::Isin, "XX0000000001", 0),
+        (IdType::Cusip, "38259P508", 1),
+        (IdType::Cusip, "38259P509", 0),
+        (IdType::Sedol, "B0YBKJ7", 1),
+        (IdType::Sedol, "B0YBKJ8", 0),
+        (IdType::Figi, "BBG000BLNQ16", 1),
+        (IdType::Figi, "BBG000BLNQ15", 0),
+        (IdType::Cfi, "ESVUFR", 2),
+        (IdType::Cfi, "ESXXXX", 1),
+        (IdType::Cfi, "XXXXXX", 0),
+        (IdType::IsoCcy, "USDT", 1),
+        (IdType::IsoCcy, "XXX", 0),
+        (IdType::IsoCtry, "CH", 1),
+        (IdType::IsoCtry, "XX", 0),
+    ] {
+        let lower = upper.to_ascii_lowercase();
+        assert_eq!(kind.rank(upper), rank, "{kind} {upper}");
+        assert_eq!(kind.rank(&lower), rank, "{kind} {lower}");
+        assert_eq!(kind.is_real(&lower), kind.is_real(upper), "{kind} {lower}");
+    }
+    // A type that does not fold case keeps its text as it is.
+    assert_eq!(IdType::Ric.rank("aapl.o"), 1);
 }
 
 #[test]
@@ -579,13 +734,12 @@ fn a_ric_holds_its_value_to_the_ric_rule() {
     );
     assert_eq!(
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("5").unwrap(),
+            IdKey::base(IdType::from_security_source("5").unwrap()),
             "AAPL.OQ"
         )
         .unwrap()
         .to_string(),
-        "base:ric=AAPL.OQ"
+        "ric=AAPL.OQ"
     );
 
     // An inner space splits the token, which another type would hold.
@@ -604,58 +758,53 @@ fn a_ric_holds_its_value_to_the_ric_rule() {
 #[test]
 fn a_security_identifier_reads_its_type_and_holds_its_value_canonically() {
     let apple = id("isin", " us0378331005 ").unwrap();
-    assert_eq!(apple.to_string(), "base:isin=US0378331005");
+    assert_eq!(apple.to_string(), "isin=US0378331005");
     assert_eq!(apple.kind(), "isin");
     assert_eq!(apple.src(), "base");
     assert_eq!(apple.value(), "US0378331005");
     assert_eq!(
         apple,
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("4").unwrap(),
+            IdKey::base(IdType::from_security_source("4").unwrap()),
             "US0378331005"
         )
         .unwrap()
     );
     assert_eq!(apple, id("ISINNumber", "US0378331005").unwrap());
     assert_eq!(
-        Identifier::new(IdSource::Fix, IdType::Isin, "US0378331005")
-            .unwrap()
-            .src(),
-        "fix",
+        Identifier::new(
+            IdKey::new("ullink".parse().unwrap(), IdType::Isin),
+            "US0378331005"
+        )
+        .unwrap()
+        .src(),
+        "ullink",
         "the source is whoever stated it"
     );
     assert_eq!(
         id("cusip", "037833100").unwrap().to_string(),
-        "base:cusip=037833100"
+        "cusip=037833100"
     );
-    assert_eq!(
-        id("sedol", "b4bnmy3").unwrap().to_string(),
-        "base:sedol=B4BNMY3"
-    );
-    assert_eq!(
-        id("valor", "3886335").unwrap().to_string(),
-        "base:valor=3886335"
-    );
+    assert_eq!(id("sedol", "b4bnmy3").unwrap().to_string(), "sedol=B4BNMY3");
+    assert_eq!(id("valor", "3886335").unwrap().to_string(), "valor=3886335");
     assert_eq!(
         id("A", "aapl us Equity").unwrap().to_string(),
-        "base:a=aapl us Equity",
+        "a=aapl us Equity",
         "a bare letter is a word to a parse: a code is read by from_security_source"
     );
     assert_eq!(
         Identifier::new(
-            IdSource::Base,
-            IdType::from_security_source("A").unwrap(),
+            IdKey::base(IdType::from_security_source("A").unwrap()),
             "aapl us Equity"
         )
         .unwrap()
         .to_string(),
-        "base:bloomberg=aapl us Equity"
+        "bloomberg=aapl us Equity"
     );
 
     // A type no member names is kept, folded as every type is.
     let house = id("house-key", "hk-1").unwrap();
-    assert_eq!(house.to_string(), "base:housekey=hk-1");
+    assert_eq!(house.to_string(), "housekey=hk-1");
     assert_eq!(house.value(), "hk-1");
     assert_eq!(
         id(&"K".repeat(64), "c").unwrap().kind().as_str(),
@@ -886,6 +1035,7 @@ fn a_type_is_a_security_a_party_or_neither() {
         IdType::ExecutingTrader,
         IdType::OrderOriginationTrader,
         IdType::ContraTrader,
+        IdType::ClearingOrganization,
         IdType::DeskId,
         IdType::Algorithm,
     ] {
@@ -927,7 +1077,14 @@ fn a_type_is_a_security_a_party_or_neither() {
             .iter()
             .filter(|known| known.is_party())
             .count(),
-        3 + 20
+        3 + 21
+    );
+    // `PartyRole(452)` `21`'s name is the party role, never the security
+    // type `SecurityIDSource(22)` `H` names in full.
+    assert_eq!(kind("ClearingOrganization"), IdType::ClearingOrganization);
+    assert_eq!(
+        kind("Clearing House Clearing Organization"),
+        IdType::ClearingHouse
     );
 }
 
@@ -1029,7 +1186,13 @@ fn every_fix_security_source_reads_by_its_code_and_its_name() {
         );
     }
     // A member naming another kind of identifier is no source.
-    for other in ["ClOrdID", "Account", "Exchange", "Party"] {
+    for other in [
+        "ClOrdID",
+        "Account",
+        "Exchange",
+        "ClearingOrganization",
+        "Party",
+    ] {
         let (path, reason) = located(IdType::from_security_source(other));
         assert_eq!(path, other.to_ascii_lowercase(), "{other}");
         assert!(reason.contains("a security identifier type"), "{reason}");
@@ -1047,5 +1210,62 @@ fn every_fix_security_source_reads_by_its_code_and_its_name() {
             IdType::from_security_source(refused).is_err(),
             "{refused:?}"
         );
+    }
+}
+
+#[test]
+fn a_listing_type_and_the_datatype_a_column_of_each_type_declares() {
+    for listing in [
+        IdType::Ric,
+        IdType::Bloomberg,
+        IdType::ExchSymb,
+        IdType::Cta,
+        IdType::Sedol,
+        IdType::Figi,
+        IdType::MktAssigned,
+        IdType::Fim,
+        IdType::Umtf,
+        IdType::InstrumentId,
+    ] {
+        assert!(listing.is_listing(), "{listing}");
+    }
+    for instrument in [
+        IdType::Isin,
+        IdType::Cusip,
+        IdType::Valor,
+        IdType::Wkn,
+        IdType::Cfi,
+        IdType::ClOrdId,
+        kind("housecode"),
+    ] {
+        assert!(!instrument.is_listing(), "{instrument}");
+    }
+    for (known, dtype) in [
+        (IdType::Isin, DataType::isin()),
+        (IdType::Cusip, DataType::cusip()),
+        (IdType::Sedol, DataType::sedol()),
+        (IdType::Figi, DataType::figi()),
+        (IdType::Ric, DataType::ric()),
+        (IdType::Bloomberg, DataType::bbg()),
+        (IdType::IsoCcy, DataType::ccy()),
+        (IdType::IsoCtry, DataType::country()),
+        (IdType::Cfi, DataType::cfi()),
+        (IdType::Forex, DataType::forex()),
+        (IdType::Valor, DataType::utf8()),
+        (IdType::OrderId, DataType::utf8()),
+        (kind("housecode"), DataType::utf8()),
+    ] {
+        assert_eq!(known.value_dtype(), dtype, "{known}");
+    }
+    // A market view's column names its type.
+    for (column, expected) in [
+        ("isincode", IdType::Isin),
+        ("riccode", IdType::Ric),
+        ("cficode", IdType::Cfi),
+        ("forexcode", IdType::Forex),
+        ("bloombergcode", IdType::Bloomberg),
+        ("figicode", IdType::Figi),
+    ] {
+        assert_eq!(kind(column), expected, "{column}");
     }
 }

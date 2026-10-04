@@ -10,11 +10,16 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-/// One validated Financial Instrument Global Identifier.
+/// One Financial Instrument Global Identifier, held by its shape.
 ///
-/// A FIGI is twelve ASCII characters: two consonants, `G`, eight consonants
-/// or digits, and one decimal check digit. Lowercase input is normalized once
-/// at construction; the stored spelling is uppercase and fits inline in the
+/// A FIGI is twelve ASCII characters: two consonants outside the prefixes
+/// the standard reserves against an ISIN's, `G`, eight consonants or
+/// digits, and one decimal check digit. The shape is what [`Figi::new`]
+/// admits; whether the digit closes the identifier ([`Figi::is_closed`]) is the
+/// reading its [`rank`](CodeValue::rank) counts, so a typo is a value of
+/// rank zero - which every merge replaces by a closing one whatever the
+/// order - rather than a refusal. Lowercase input is normalized once at
+/// construction; the stored spelling is uppercase and fits inline in the
 /// crate's compact string.
 #[repr(transparent)]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -32,23 +37,30 @@ impl<'de> Deserialize<'de> for Figi {
 }
 
 impl Figi {
-    /// Validate and construct a Financial Instrument Global Identifier.
+    /// Validate and construct a Financial Instrument Global Identifier:
+    /// twelve ASCII bytes of the standard's shape, upper-cased, the check
+    /// digit admitted as stated.
     ///
     /// ```
-    /// use yggdryl::Figi;
+    /// use yggdryl::{CodeValue, Figi};
     ///
     /// let figi = Figi::new("BBG000BLNQ16").unwrap();
     /// assert_eq!(figi.as_str(), "BBG000BLNQ16");
     /// assert_eq!(Figi::new("bbg000blnq16").unwrap(), figi);
     /// assert_eq!(figi.check_digit(), 6);
-    /// assert!(Figi::new("BBG000BLNQ15").is_err());
+    /// assert!(figi.is_real());
+    /// // One digit off is a typo: an identifier that does not close, and
+    /// // ranks below one that does.
+    /// let typo = Figi::new("BBG000BLNQ15").unwrap();
+    /// assert!(!Figi::is_closed(typo.as_str()));
+    /// assert_eq!(typo.rank(), 0);
+    /// assert!(Figi::new("BSG000BLNQ16").is_err(), "a reserved prefix");
     /// ```
     ///
     /// # Errors
     ///
     /// Returns an error when the text is not twelve ASCII bytes of the
-    /// standard's shape, uses a reserved prefix, or its check digit does not
-    /// close the identifier.
+    /// standard's shape, or uses a reserved prefix.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
         let value = crate::ascii_text(FIGI_WIDTH, value.as_ref().as_bytes())?;
         let mut bytes = [0_u8; FIGI_WIDTH];
@@ -83,27 +95,40 @@ impl Figi {
         self.as_str().as_bytes()[FIGI_WIDTH - 1] - b'0'
     }
 
-    /// Whether `text` is a FIGI this type accepts, in either ASCII case.
-    #[must_use]
-    pub fn is_valid(text: &str) -> bool {
-        if text.len() != FIGI_WIDTH || !text.is_ascii() {
-            return false;
-        }
-        let mut bytes = [0_u8; FIGI_WIDTH];
-        for (target, byte) in bytes.iter_mut().zip(text.bytes()) {
-            *target = byte.to_ascii_uppercase();
-        }
-        let folded = std::str::from_utf8(&bytes).expect("validated ASCII");
-        Self::refusal(folded).is_none()
-    }
-
-    /// Whether `text` is exactly the uppercase spelling this type stores.
+    /// Whether `text` is exactly the uppercase spelling this type stores:
+    /// upper case, and of the shape [`Self::new`] admits.
+    ///
+    /// The strict question about the spelling, which says nothing of the
+    /// check digit - [`Self::is_closed`]' question.
     #[must_use]
     pub fn is_canonical(text: &str) -> bool {
         text.len() == FIGI_WIDTH
             && text.is_ascii()
             && !text.bytes().any(|byte| byte.is_ascii_lowercase())
             && Self::refusal(text).is_none()
+    }
+
+    /// Whether `text`, upper case, is an identifier its check digit closes:
+    /// the digit of the eleven leading characters is the twelfth. Lower
+    /// case closes nothing.
+    ///
+    /// ```
+    /// use yggdryl::Figi;
+    ///
+    /// assert!(Figi::is_closed("BBG000BLNQ16"));
+    /// assert!(!Figi::is_closed("BBG000BLNQ15"));
+    /// ```
+    #[must_use]
+    pub fn is_closed(text: &str) -> bool {
+        let bytes = text.as_bytes();
+        bytes.len() == FIGI_WIDTH
+            && bytes[FIGI_WIDTH - 1].is_ascii_digit()
+            && Self::closing_digit(&text[..FIGI_WIDTH - 1]) == Some(bytes[FIGI_WIDTH - 1] - b'0')
+    }
+
+    /// [`CodeValue::rank`]: one where the held identifier closes.
+    fn ranked(&self) -> u8 {
+        u8::from(Self::is_closed(self.as_str()))
     }
 
     /// The check digit for eleven leading FIGI characters.
@@ -178,10 +203,7 @@ impl Figi {
         if !bytes[11].is_ascii_digit() {
             return Some("expected a closing check digit");
         }
-        match Self::closing_digit(&folded[..11]) {
-            Some(digit) if digit == bytes[11] - b'0' => None,
-            _ => Some("the check digit does not close the identifier"),
-        }
+        None
     }
 }
 
@@ -191,7 +213,7 @@ impl fmt::Display for Figi {
     }
 }
 
-code_value!(Figi, Figi, FIGI_WIDTH);
+code_value!(Figi, Figi, FIGI_WIDTH, rank = Figi::ranked, max_rank = 1);
 
 /// The Arrow extension name of a Financial Instrument Global Identifier.
 pub(crate) const FIGI_EXTENSION_NAME: &str = "yggdryl.figi";

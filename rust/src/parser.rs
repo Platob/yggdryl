@@ -688,13 +688,18 @@ mod field {
     }
 
     fn parse_bool(value: &str, position: usize) -> Result<bool> {
-        if value.trim().eq_ignore_ascii_case("true") {
-            Ok(true)
-        } else if value.trim().eq_ignore_ascii_case("false") {
-            Ok(false)
-        } else {
-            Err(field_parse_error(position, "expected `true` or `false`"))
-        }
+        crate::boolean::bool_from_text(value).ok_or_else(|| {
+            field_parse_error(
+                position,
+                crate::text::expected_got(
+                    crate::boolean::BOOLEAN_SPELLINGS,
+                    format_args!(
+                        "{:?}",
+                        crate::text::elide_to(value, crate::text::ERROR_TEXT_LIMIT)
+                    ),
+                ),
+            )
+        })
     }
 
     fn parse_dtype(value: &str, position: usize) -> Result<DataType> {
@@ -1683,21 +1688,32 @@ impl<'a> Parser<'a> {
         let token = self
             .next()
             .ok_or_else(|| self.error_here(format_smolstr!("expected {label}")))?;
-        match token.kind {
-            TokenKind::Word(value) | TokenKind::Quoted(value)
-                if value.eq_ignore_ascii_case("true") || value == "1" =>
-            {
-                Ok(true)
+        // A signed digit run is an `Integer` token whose text is gone, so the
+        // two it can be read as are the only ones read here.
+        let read = match &token.kind {
+            TokenKind::Word(value) | TokenKind::Quoted(value) => {
+                crate::boolean::bool_from_text(value)
             }
-            TokenKind::Word(value) | TokenKind::Quoted(value)
-                if value.eq_ignore_ascii_case("false") || value == "0" =>
-            {
-                Ok(false)
-            }
-            TokenKind::Integer(1) => Ok(true),
-            TokenKind::Integer(0) => Ok(false),
-            _ => Err(self.error_at(token.start, format_smolstr!("expected {label} boolean"))),
-        }
+            TokenKind::Integer(1) => Some(true),
+            TokenKind::Integer(0) => Some(false),
+            _ => None,
+        };
+        read.ok_or_else(|| {
+            let found = self.source.get(token.start..token.end).unwrap_or_default();
+            self.error_at(
+                token.start,
+                format_smolstr!(
+                    "{label}: {}",
+                    crate::text::expected_got(
+                        crate::boolean::BOOLEAN_SPELLINGS,
+                        format_args!(
+                            "{:?}",
+                            crate::text::elide_to(found, crate::text::ERROR_TEXT_LIMIT)
+                        ),
+                    )
+                ),
+            )
+        })
     }
 
     pub(crate) fn parse_i32(&mut self, label: &str) -> Result<i32> {
@@ -2184,6 +2200,38 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
         }
     }
     folded(left).eq(folded(right))
+}
+
+/// One spelling's [`folded`] form as a number: XXH64 over its UTF-8, so
+/// two spellings [`folds_equal`] calls one always answer one digest, and an
+/// index keyed by it confirms each hit with [`folds_equal`] rather than
+/// trusting the number.
+///
+/// An ASCII spelling folds one byte to one byte and is fed in stack chunks;
+/// any other is fed character by character, because one character can fold
+/// to several. The registry's own name key lowercases ASCII alone and is no
+/// substitute: `ÉTAT` and `état` are one fold and two of its keys.
+pub(crate) fn fold_digest(value: &str) -> u64 {
+    let mut state = crate::xxhash::Xxh64::new();
+    if value.is_ascii() {
+        let mut chunk = [0_u8; 64];
+        let mut held = 0;
+        for byte in value.bytes().filter(|byte| !is_dropped(*byte)) {
+            chunk[held] = byte.to_ascii_lowercase();
+            held += 1;
+            if held == chunk.len() {
+                state.write_bytes(&chunk);
+                held = 0;
+            }
+        }
+        state.write_bytes(&chunk[..held]);
+    } else {
+        let mut character_bytes = [0_u8; 4];
+        for character in folded(value) {
+            state.write_bytes(character.encode_utf8(&mut character_bytes).as_bytes());
+        }
+    }
+    state.as_u64()
 }
 
 pub(crate) fn normalized(value: &str) -> String {

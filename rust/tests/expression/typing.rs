@@ -413,3 +413,165 @@ fn sqrt_resolves_numeric_and_encoded_null_to_float64() {
         assert!(error.to_string().contains("expected a number for sqrt"));
     }
 }
+
+/// The seven epoch functions type by the period they floor to: a date takes
+/// a period of a day or longer, a timestamp every period, and nothing else
+/// takes one; `minutes(x, n)` takes its step as a positive whole literal.
+mod epoch_functions {
+    use yggdryl::{DataType, Field, Scalar, Selector, StructType, Term, TimeUnit, Timezone};
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::date32().nullable_field("d"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("t"),
+            DataType::utf8().nullable_field("s"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    fn typed(text: &str) -> yggdryl::Result<Field> {
+        let selector: Selector = text.parse()?;
+        let field = selector.apply_field(&schema())?;
+        Ok(field.fields()[0].clone())
+    }
+
+    #[test]
+    fn a_period_answers_int32_and_the_day_a_date() {
+        for text in [
+            "years(d)",
+            "quarters(d)",
+            "months(d)",
+            "weeks(d)",
+            "years(t)",
+            "quarters(t)",
+            "months(t)",
+            "weeks(t)",
+            "hours(t)",
+            "minutes(t, 1)",
+            "minutes(t, 15)",
+            "minutes(t, 30)",
+            "minutes(t, 4294967295)",
+        ] {
+            let field = typed(text).unwrap();
+            assert_eq!(field.dtype(), &DataType::Int32, "{text}");
+        }
+        assert_eq!(typed("days(d)").unwrap().dtype(), &DataType::date32());
+        assert_eq!(typed("days(t)").unwrap().dtype(), &DataType::date32());
+        // A nullable argument makes a nullable answer; a required one does not.
+        assert!(typed("weeks(d)").unwrap().is_nullable());
+        assert!(!typed("weeks(t)").unwrap().is_nullable());
+    }
+
+    /// A period past `int32` answers null, so the column of a function over
+    /// a required source is nullable exactly where the source's count
+    /// reaches one: never over a `date32` or nanoseconds, from `hours` on
+    /// over microseconds, from `months` on over milliseconds and a `date64`,
+    /// and for every period over seconds.
+    #[test]
+    fn a_required_source_types_a_nullable_period_where_its_count_passes_int32() {
+        let instant = |unit| DataType::DateTime64 {
+            unit,
+            timezone: Timezone::UTC,
+        };
+        let root = StructType::from_fields([
+            DataType::date32().required_field("d32"),
+            DataType::date64().required_field("d64"),
+            instant(TimeUnit::Second).required_field("s"),
+            instant(TimeUnit::Millisecond).required_field("ms"),
+            instant(TimeUnit::Microsecond).required_field("us"),
+            instant(TimeUnit::Nanosecond).required_field("ns"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let nullable = |text: &str| {
+            let selector: Selector = text.parse().unwrap();
+            selector.apply_field(&root).unwrap().fields()[0].is_nullable()
+        };
+        let periods = [
+            "years", "quarters", "months", "weeks", "days", "hours", "minutes",
+        ];
+        // Per source, the first period (in the order above) whose column is
+        // nullable; every coarser one is required.
+        for (column, first_nullable) in [
+            ("d32", None),
+            ("d64", Some("months")),
+            ("s", Some("years")),
+            ("ms", Some("months")),
+            ("us", Some("hours")),
+            ("ns", None),
+        ] {
+            let mut reached = false;
+            for period in periods {
+                if column.starts_with('d') && matches!(period, "hours" | "minutes") {
+                    continue;
+                }
+                reached |= Some(period) == first_nullable;
+                let text = if period == "minutes" {
+                    format!("minutes({column}, 1)")
+                } else {
+                    format!("{period}({column})")
+                };
+                assert_eq!(nullable(&text), reached, "{text}");
+            }
+        }
+        // A wider step brings a fine source back inside `int32`.
+        assert!(nullable("minutes(us, 1)"));
+        assert!(!nullable("minutes(us, 4294967295)"));
+    }
+
+    #[test]
+    fn a_sub_day_period_over_a_date_and_any_period_over_text_are_refused() {
+        for (text, expected) in [
+            ("hours(d)", "a timestamp"),
+            ("minutes(d, 15)", "a timestamp"),
+            ("minutes(d, 30)", "a timestamp"),
+            ("years(s)", "a date or a timestamp"),
+            ("days(s)", "a date or a timestamp"),
+            ("minutes(s, 15)", "a timestamp"),
+        ] {
+            let error = typed(text).unwrap_err().to_string();
+            assert!(error.contains(expected), "{text}: {error}");
+            assert!(
+                error.contains(&text[..text.find('(').unwrap()]),
+                "{text}: {error}"
+            );
+        }
+        for text in ["years()", "years(d, t)", "minutes(t)", "minutes(t, 15, 1)"] {
+            assert!(typed(text).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_minutes_step_is_a_positive_whole_literal() {
+        for (text, named) in [
+            ("minutes(t, 0)", "got 0"),
+            ("minutes(t, 'x')", "got 'x'"),
+            ("minutes(t, -15)", "got -15"),
+            ("minutes(t, 4294967296)", "got 4294967296"),
+            ("minutes(t, 1.5)", "got 1.5"),
+            ("minutes(t, null)", "got null"),
+            ("minutes(t, d)", "a literal"),
+        ] {
+            let error = typed(text).unwrap_err().to_string();
+            assert!(error.contains("minutes(x, n)"), "{text}: {error}");
+            assert!(error.contains(named), "{text}: {error}");
+        }
+        // A parameter is a literal once it is supplied.
+        let term: Term = "minutes(t, :step)".parse().unwrap();
+        let bound = term
+            .bind_with(&schema(), &[("step", Scalar::from(15_i64))])
+            .unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Int32);
+        assert!(
+            term.bind_with(&schema(), &[("step", Scalar::from(0_i64))])
+                .is_err()
+        );
+    }
+}

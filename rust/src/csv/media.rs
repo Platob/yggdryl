@@ -202,7 +202,6 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
                 batch_row_size,
                 options.batch_byte_size(),
                 None,
-                None,
             )
         }
         None => {
@@ -509,7 +508,7 @@ impl<H: IOBase> IOMedia for Csv<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::overwrite_arrow_reader_default(self, batches, options)
@@ -525,13 +524,21 @@ impl<H: IOBase> IOMedia for Csv<H> {
         crate::iobase::leaf_writer(self, batches, options)
     }
 
-    fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+    fn append_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
 
-    fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+    fn merge_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::merge_arrow_reader_default(self, batches, options)

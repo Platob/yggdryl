@@ -156,9 +156,7 @@ fn catalog() -> FixRegistry {
     registry.insert(group).unwrap();
     let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
-    let mut counter = registry.field(453).unwrap().clone();
-    counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructType::from_fields([counter, group])
+    let mut message = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("NewOrderSingle");
@@ -914,7 +912,11 @@ fn a_folded_code_set_name_collision_refuses_atomically() {
             ],
         )
         .unwrap_err();
-    assert!(matches!(error, yggdryl::Error::Parse { .. }), "{error}");
+    assert!(
+        matches!(error, yggdryl::Error::InvalidRecord { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("good_till_date"), "{error}");
     assert_eq!(registry, before);
     assert_eq!(
         registry
@@ -952,6 +954,40 @@ fn replacing_a_code_set_forgets_warm_typed_parse_memos() {
         .unwrap()
         .unwrap();
     assert_eq!(message.by_tag(448).unwrap().as_str(), Some("D"));
+}
+
+#[test]
+fn replacing_the_party_role_set_reads_a_warm_party_by_its_new_word() {
+    use yggdryl::graph::Operation;
+
+    let wire = b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=1|448=BROKER|447=D|452=1|10=0|";
+    let parse = |registry: &std::sync::Arc<FixRegistry>| {
+        super::fixed_codec(std::sync::Arc::clone(registry))
+            .parse_line(wire)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .get_partyids()
+            .clone()
+    };
+    let mut registry = std::sync::Arc::new(committed_registry().as_ref().clone());
+    let warm = parse(&registry);
+    assert_eq!(warm.get(&IdType::ExecutingFirm), Some("BROKER"));
+    assert_eq!(std::sync::Arc::strong_count(&registry), 1);
+    let set = registry
+        .codeset_of(registry.field(452).unwrap())
+        .unwrap()
+        .name()
+        .to_owned();
+    // The registry is mutated in place, so the memo that read `1` as
+    // `ExecutingFirm` is the one the next parse asks.
+    std::sync::Arc::make_mut(&mut registry)
+        .set_codeset(&set, &[FixCode::new("ClearingFirm", "1")])
+        .unwrap();
+    let replaced = parse(&registry);
+    assert_eq!(replaced.get(&IdType::ClearingFirm), Some("BROKER"));
+    assert_eq!(replaced.get(&IdType::ExecutingFirm), None);
 }
 
 #[test]
@@ -3267,10 +3303,75 @@ mod committed {
     /// `exchangeclientorderid` on `SecondaryClOrdID(526)` and `omsuserid` on
     /// `Username(553)` - with the crate's dump written again. No count of the
     /// census below moved.
+    /// It last moved when the description of `exprunix` (65010) came to say
+    /// what the deadline is now read from - `ExpireTime`, else
+    /// `ValidUntilTime`, else the end of the day `ExpireDate` names, with
+    /// `MaturityDate` the instrument's and no deadline - the crate's field
+    /// shard written again over that one text. No count of the census below
+    /// moved.
+    /// It last moved when the description of `forexcode` (65046) came to say
+    /// how the view reads back - the pair `get` answered when the row was
+    /// written, which a row with no `securityids` column states nothing of
+    /// where the reading answers it, reads as the detection where it is the
+    /// pair the symbol names, and states from `base`, leading its type,
+    /// otherwise - in place of "row-stated when written", the crate's field
+    /// shard written again over that one text. No count of the census below
+    /// moved.
+    /// It last moved when `CFICode(461)` took the bridge spelling
+    /// `detailedcficode` among its `FIX:names`, a second statement of it
+    /// folded into it where the two describe one instrument; when the three
+    /// identifier columns of the fixed row - `securityids`, `identifiers`,
+    /// `partyids` - became one sorted `map<utf8, utf8>` from the identifier
+    /// key, a base key spelled as its type alone, to the value, in place of
+    /// a map onto a `struct<src, type, value>` named per column; and when
+    /// the description of `forexcode` (65046) came to say a code read back
+    /// replaces its type's answer, the base key, in place of being stated
+    /// from `base`, leading its type - the dictionary regenerated and the
+    /// crate's dump written again. No count of the census below moved.
+    /// It last moved when quotes stopped being sided and their parse stopped
+    /// splitting them by side: the description of `crosscode` (65003) came
+    /// to say a code is stored after the side an order or an execution
+    /// takes, side `0` on every other kind - a quote, whose side is a tag,
+    /// among them: `14:0:Q-1` - and the descriptions of `spotrate` (65026)
+    /// and `forwardpoints` (65027) dropped the sided quote's `BidSpotRate`,
+    /// `OfferSpotRate`, `BidForwardPoints` and `OfferForwardPoints` they no
+    /// longer read, the crate's field shard and the fixed row component
+    /// written again over those three texts. No count of the census below
+    /// moved.
+    /// It last moved when a row came to hold each arrival once: the
+    /// description of `metadata` (65035) came to say it holds what no field
+    /// and no identifier map holds - a key a map holds with its value, a
+    /// bridge's `TECH.CLIENTID`, its `PARENTORDERID`, rides `fixentries`
+    /// under `0:key` as it arrived instead - `securityids` (65020) named the
+    /// keyed aliases a bridge states - `ISINCODE`, `OMS_RICCODE`,
+    /// `SEDOL_CODE` - `identifiers` (65038) and `partyids` (65039) the keys
+    /// no dictionary resolved whose names spell one, each riding
+    /// `fixentries` the same way, and the fixed row's `fixentries` member
+    /// the `0:key` entries it carries: the crate's field shard, the
+    /// `metadata` group and the fixed row component written again over
+    /// those five texts. No count of the census below moved.
+    /// It last moved when a group became its list alone: no component,
+    /// message or occurrence lists a NumInGroup counter beside the group it
+    /// counts - 1219 counter members gone, `NoPartySubIDs(802)` from `Party`
+    /// among them, the group's `FIX:counter` the one place its tag stands -
+    /// and the fixed row dropped `notrdregtimestamps` and
+    /// `noregulatorytradeids`, the dictionary regenerated and the crate's dump
+    /// written again. No count of the census below moved: the counters are
+    /// still the dictionary's own fields.
+    /// It last moved when a place came to be never absent: `seqnum` (65014)
+    /// is required - the field and the fixed row's member both - and its
+    /// description says zero is the first place rather than a null, the
+    /// crate's field shard and the fixed row component written again over
+    /// that one field. No count of the census below moved.
+    /// It last moved when a cross code came to be never absent: `crosscode`
+    /// (65003) is required - the field and the fixed row's member both, a
+    /// message naming none stating the empty text rather than a null - the
+    /// crate's field shard and the fixed row component written again over
+    /// that one flag. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 9_043_431_446_917_212_413);
+        assert_eq!(registry.stable_hash(), 12_622_587_116_294_776_451);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

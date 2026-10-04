@@ -3,10 +3,10 @@ use std::hint::black_box;
 use criterion::{BatchSize, Criterion, Throughput};
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, ExecutionEvent, Market,
-    MarketData, Ohlc, Operation, QuoteEvent,
+    BookEvent, Candle, CandleIterator, CandleOptions, Element, Event, Market, MarketData, Ohlc,
+    QuoteEvent,
 };
-use yggdryl::{Decimal, IdSource, IdType, Identifier, Side, State, Timezone};
+use yggdryl::{Decimal, Side, State, Timezone};
 
 /// Nanoseconds in one second.
 const SECOND: i64 = 1_000_000_000;
@@ -46,44 +46,6 @@ fn books(count: usize) -> Vec<BookEvent> {
         .collect()
 }
 
-/// One fill of 10 at `unix` whose `EXECID` is `index`'s, spelled past
-/// `SmolStr`'s inline width as a venue's long identifiers are.
-fn fill(unix: i64, index: usize) -> MarketData {
-    let mut event = ExecutionEvent::at(unix);
-    event.set_crosscode(format!("F-{index}"));
-    event.set_ticker(Some(SmolStr::new("BENCH")), true);
-    event.set_side(Side::read("Buy").expect("a shipped side"), true);
-    event.set_lastqty(Some(Decimal::from_int(10)), true);
-    event.set_state(State::read("Filled").expect("the shipped filled state"));
-    event
-        .insert_identifier(
-            Identifier::new(
-                IdSource::Fix,
-                IdType::ExecId,
-                &format!("BENCH-EXECUTION-IDENTIFIER-{index:08}"),
-            )
-            .expect("an identifier"),
-        )
-        .expect("an identifier the map holds");
-    event.finalize();
-    MarketData::from(event)
-}
-
-/// [`books`] each carrying two fills: one of its own and the one before it
-/// delivered again, so every other statement is of a trade already counted.
-fn traded_books(count: usize) -> Vec<BookEvent> {
-    books(count)
-        .into_iter()
-        .enumerate()
-        .map(|(index, mut book)| {
-            let unix = book.get_currunix();
-            book.add_operations([fill(unix, index), fill(unix, index.saturating_sub(1))])
-                .expect("two executions");
-            book
-        })
-        .collect()
-}
-
 /// One candle per book, as `arrow_reader` lays them out.
 fn candles(count: usize) -> Vec<Candle> {
     (0..count)
@@ -101,8 +63,6 @@ fn candles(count: usize) -> Vec<Candle> {
                 bidqty: Some(Decimal::from_int(10)),
                 askqty: Some(Decimal::from_int(10)),
                 books: 1,
-                executions: 0,
-                volume: Decimal::ZERO,
             }
         })
         .collect()
@@ -138,21 +98,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             );
         });
     }
-    // Two executions a book, one a trade of its own and one a statement
-    // of the trade before: what counting each trade once costs the fold.
-    let traded = traded_books(count);
-    let minutes = CandleOptions::from_spelling("1m").expect("a shipped spelling");
-    group.bench_function(format!("fold_executions_{count}"), |bencher| {
-        bencher.iter_batched(
-            || traded.clone(),
-            |books| {
-                CandleIterator::new(books.into_iter().map(Ok), minutes.clone())
-                    .map(|candle| candle.expect("a sorted stream"))
-                    .collect::<Vec<_>>()
-            },
-            BatchSize::LargeInput,
-        );
-    });
     // One candle per book: every bucket edge computed once per candle.
     let seconds = CandleOptions::from_spelling("1s").expect("a shipped spelling");
     group.bench_function(format!("fold_per_book_{count}"), |bencher| {

@@ -493,7 +493,6 @@ pub(super) fn batch_reader(
         options.batch_row_size(),
         options.batch_byte_size(),
         None,
-        None,
     )
 }
 

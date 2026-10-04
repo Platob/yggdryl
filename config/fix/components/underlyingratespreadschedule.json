@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nounderlyingratespreadsteps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nounderlyingratespreadsteps",
-          "FIX:tag": "43005"
-        }
-      },
-      {
         "name": "underlyingratespreadsteps",
         "dtype": {
           "type": "null"

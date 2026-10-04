@@ -223,12 +223,23 @@ impl DependencyIndex {
         registration.active = false;
     }
 
-    fn reactivate(&mut self, id: &RegistrationId, sheet: SheetKey, range: CellRange, strict: bool) -> bool {
+    fn reactivate(
+        &mut self,
+        id: &RegistrationId,
+        sheet: SheetKey,
+        range: CellRange,
+        strict: bool,
+    ) -> bool {
         debug_assert_eq!(id.owner, self.owner);
         let Slot::Live(registration) = &mut self.slots[id.slot] else {
             unreachable!("the node owns this retained registration")
         };
-        if registration.sheet != sheet || registration.range != range || registration.strict != strict { return false; }
+        if registration.sheet != sheet
+            || registration.range != range
+            || registration.strict != strict
+        {
+            return false;
+        }
         registration.active = true;
         true
     }
@@ -341,8 +352,10 @@ impl Iterator for Dependents<'_> {
                 let Slot::Live(registration) = &self.index.slots[*id] else {
                     unreachable!("buckets contain only live registrations")
                 };
-                if registration.active && (!self.strict_only || registration.strict)
-                    && registration.range.contains(self.at) {
+                if registration.active
+                    && (!self.strict_only || registration.strict)
+                    && registration.range.contains(self.at)
+                {
                     return Some(registration.dependent);
                 }
                 continue;
@@ -687,7 +700,12 @@ impl Graph {
     }
 
     fn degrees(&self, pass: &mut Schedule) -> Result<()> {
-        let Schedule { work, ready, ordered, .. } = pass;
+        let Schedule {
+            work,
+            ready,
+            ordered,
+            ..
+        } = pass;
         for at in 0..work.nodes.len() {
             let address = self.node(work.nodes[at].id).address;
             for next in self.index.dependents(address.0, address.1) {
@@ -712,7 +730,9 @@ impl Graph {
                 .enumerate()
                 .filter_map(|(at, node)| (node.remaining == 0).then_some(at)),
         );
-        ready.make_contiguous().sort_unstable_by_key(|&at| self.node(work.nodes[at].id).address);
+        ready
+            .make_contiguous()
+            .sort_unstable_by_key(|&at| self.node(work.nodes[at].id).address);
         ordered.reserve(work.nodes.len());
         pass.owner = self.index.owner;
         pass.revision = self.revision;
@@ -720,7 +740,12 @@ impl Graph {
     }
 
     fn classify(&self, pass: &mut Schedule) {
-        let Schedule { work, circular, blocked, .. } = pass;
+        let Schedule {
+            work,
+            circular,
+            blocked,
+            ..
+        } = pass;
         work.classify(self);
         for node in &work.nodes {
             if node.remaining != 0 {
@@ -756,7 +781,9 @@ impl Graph {
             let NodeSlot::Live(node) = &mut self.nodes[id] else {
                 unreachable!("dirty work names live nodes")
             };
-            for handle in &node.precedents[node.fixed..] { self.index.deactivate(handle); }
+            for handle in &node.precedents[node.fixed..] {
+                self.index.deactivate(handle);
+            }
             node.used = node.fixed;
         }
         self.degrees(pass)
@@ -800,17 +827,30 @@ impl Graph {
         self.admit_mode(pass, address, sheet, range, cells, true)
     }
 
-    pub(crate) fn watch(&mut self, pass: &mut Schedule, address: Address,
-        sheet: SheetKey, range: CellRange) -> Result<()> {
+    pub(crate) fn watch(
+        &mut self,
+        pass: &mut Schedule,
+        address: Address,
+        sheet: SheetKey,
+        range: CellRange,
+    ) -> Result<()> {
         self.admit_mode(pass, address, sheet, range, std::iter::empty(), false)
     }
 
-    fn admit_mode(&mut self, pass: &mut Schedule, address: Address,
-        sheet: SheetKey, range: CellRange, cells: impl Iterator<Item = CellRef>,
-        strict: bool) -> Result<()> {
+    fn admit_mode(
+        &mut self,
+        pass: &mut Schedule,
+        address: Address,
+        sheet: SheetKey,
+        range: CellRange,
+        cells: impl Iterator<Item = CellRef>,
+        strict: bool,
+    ) -> Result<()> {
         self.check_pass(pass)?;
         DependencyIndex::check(sheet, range)?;
-        let at = self.scheduled_index(pass, address).expect("only scheduled roots admit reads");
+        let at = self
+            .scheduled_index(pass, address)
+            .expect("only scheduled roots admit reads");
         let mut added = 0usize;
         for cell in cells {
             if let Some(source) = self.scheduled_index(pass, (sheet, cell))
@@ -822,10 +862,13 @@ impl Graph {
                 })?;
             }
         }
-        let remaining = pass.work.nodes[at].remaining.checked_add(added).ok_or_else(|| Error::InvalidRecord {
-            path: "$.formula.calculation.dependencies".into(),
-            reason: "expected a usize dependency count, got overflow".into(),
-        })?;
+        let remaining = pass.work.nodes[at]
+            .remaining
+            .checked_add(added)
+            .ok_or_else(|| Error::InvalidRecord {
+                path: "$.formula.calculation.dependencies".into(),
+                reason: "expected a usize dependency count, got overflow".into(),
+            })?;
         let id = pass.work.nodes[at].id;
         // Ordinal reuse is O(1), without a second rectangle lookup index.
         // A changed branch replaces only the mismatching slot; an unused
@@ -849,24 +892,34 @@ impl Graph {
     }
 
     fn complete_edges(&self, pass: &mut Schedule, address: Address) {
-        let at = self.scheduled_index(pass, address).expect("a runnable root belongs to its pass");
+        let at = self
+            .scheduled_index(pass, address)
+            .expect("a runnable root belongs to its pass");
         debug_assert!(!pass.work.nodes[at].finished);
         pass.work.nodes[at].finished = true;
         pass.ordered.push(address);
         for next in self.index.dependents(address.0, address.1) {
             let following = pass.work.positions[&next];
-            if pass.work.nodes[following].finished { continue; }
+            if pass.work.nodes[following].finished {
+                continue;
+            }
             let degree = &mut pass.work.nodes[following].remaining;
             debug_assert!(*degree != 0);
             *degree -= 1;
-            if *degree == 0 { pass.ready.push_back(following); }
+            if *degree == 0 {
+                pass.ready.push_back(following);
+            }
         }
     }
 
     pub(crate) fn complete(&mut self, pass: &mut Schedule, address: Address, volatile: bool) {
         self.complete_edges(pass, address);
         let id = self.addresses[&address];
-        if volatile { self.volatile.insert(id); } else { self.volatile.remove(&id); }
+        if volatile {
+            self.volatile.insert(id);
+        } else {
+            self.volatile.remove(&id);
+        }
     }
 
     /// Classify only the final active residue, never the old branch graph.
@@ -1132,22 +1185,40 @@ pub mod internals {
         /// Start an incremental scheduling pass that admits selected reads.
         pub fn begin(&mut self, full: bool) -> crate::Result<Pass> {
             let mut pass = super::Schedule::default();
-            self.0.begin(if full { super::PassKind::Full } else { super::PassKind::Incremental }, &mut pass)?;
+            self.0.begin(
+                if full {
+                    super::PassKind::Full
+                } else {
+                    super::PassKind::Incremental
+                },
+                &mut pass,
+            )?;
             Ok(Pass(pass))
         }
         /// Take one ready formula or suspended continuation.
-        pub fn next(&self, pass: &mut Pass) -> Option<(SheetKey, CellRef)> { self.0.next(&mut pass.0) }
+        pub fn next(&self, pass: &mut Pass) -> Option<(SheetKey, CellRef)> {
+            self.0.next(&mut pass.0)
+        }
         /// Admit a selected rectangle using its sparse source-cell coordinates.
-        pub fn admit(&mut self, pass: &mut Pass, address: (SheetKey, CellRef), sheet: SheetKey,
-            range: CellRange, cells: &[CellRef]) -> crate::Result<()> {
-            self.0.admit(&mut pass.0, address, sheet, range, cells.iter().copied())
+        pub fn admit(
+            &mut self,
+            pass: &mut Pass,
+            address: (SheetKey, CellRef),
+            sheet: SheetKey,
+            range: CellRange,
+            cells: &[CellRef],
+        ) -> crate::Result<()> {
+            self.0
+                .admit(&mut pass.0, address, sheet, range, cells.iter().copied())
         }
         /// Finish the root once after all of its reached reads are ready.
         pub fn complete(&mut self, pass: &mut Pass, address: (SheetKey, CellRef)) {
             self.0.complete(&mut pass.0, address, false);
         }
         /// Classify the final active residue without guessing old branches.
-        pub fn finish(&self, pass: &mut Pass) { self.0.finish(&mut pass.0); }
+        pub fn finish(&self, pass: &mut Pass) {
+            self.0.finish(&mut pass.0);
+        }
         /// Replace one node using already-resolved rectangles.
         pub fn set(
             &mut self,

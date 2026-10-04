@@ -312,8 +312,10 @@ impl S3Options {
     ///
     /// The name after the prefix is matched the way
     /// [`Self::with_properties`] matches one, so a deployment that spells its
-    /// configuration `TRADING_ENDPOINT` and `TRADING_SSE_TYPE` gets every knob
-    /// rather than the handful someone remembered to wire up.
+    /// configuration `TRADING_REGION` and `TRADING_SSE_TYPE` gets every knob
+    /// rather than the handful someone remembered to wire up - every knob but
+    /// an endpoint, which no prefix sweeps
+    /// ([`Self::environment_properties`]).
     ///
     /// [`Self::with_properties`]: Self::with_properties
     #[must_use]

@@ -48,17 +48,6 @@
         }
       },
       {
-        "name": "nosecurityaltid",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecurityaltid",
-          "FIX:tag": "454"
-        }
-      },
-      {
         "name": "secaltids",
         "dtype": {
           "type": "null"
@@ -377,17 +366,6 @@
         }
       },
       {
-        "name": "nosecondaryassetclasses",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nosecondaryassetclasses",
-          "FIX:tag": "1976"
-        }
-      },
-      {
         "name": "secondaryassetclasses",
         "dtype": {
           "type": "null"
@@ -395,17 +373,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "secondaryassetclasses"
-        }
-      },
-      {
-        "name": "noassetattributes",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noassetattributes",
-          "FIX:tag": "2304"
         }
       },
       {
@@ -1639,17 +1606,6 @@
         }
       },
       {
-        "name": "noevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noevents",
-          "FIX:tag": "864"
-        }
-      },
-      {
         "name": "events",
         "dtype": {
           "type": "null"
@@ -1682,17 +1638,6 @@
         }
       },
       {
-        "name": "noinstrumentparties",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noinstrumentparties",
-          "FIX:tag": "1018"
-        }
-      },
-      {
         "name": "instrumentparties",
         "dtype": {
           "type": "null"
@@ -1711,17 +1656,6 @@
         "metadata": {
           "FIX:field": "shortsalerestriction",
           "FIX:tag": "1687"
-        }
-      },
-      {
-        "name": "nocomplexevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocomplexevents",
-          "FIX:tag": "1483"
         }
       },
       {
@@ -1874,17 +1808,6 @@
         }
       },
       {
-        "name": "nostreams",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nostreams",
-          "FIX:tag": "40049"
-        }
-      },
-      {
         "name": "streams",
         "dtype": {
           "type": "null"
@@ -1892,17 +1815,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "streams"
-        }
-      },
-      {
-        "name": "noprovisions",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noprovisions",
-          "FIX:tag": "40090"
         }
       },
       {
@@ -1916,17 +1828,6 @@
         }
       },
       {
-        "name": "noadditionalterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noadditionalterms",
-          "FIX:tag": "40019"
-        }
-      },
-      {
         "name": "additionalterms",
         "dtype": {
           "type": "null"
@@ -1934,17 +1835,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "additionalterms"
-        }
-      },
-      {
-        "name": "noprotectionterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noprotectionterms",
-          "FIX:tag": "40181"
         }
       },
       {
@@ -1958,17 +1848,6 @@
         }
       },
       {
-        "name": "nocashsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nocashsettlterms",
-          "FIX:tag": "40022"
-        }
-      },
-      {
         "name": "cashsettlterms",
         "dtype": {
           "type": "null"
@@ -1979,17 +1858,6 @@
         }
       },
       {
-        "name": "nophysicalsettlterms",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nophysicalsettlterms",
-          "FIX:tag": "40204"
-        }
-      },
-      {
         "name": "physicalsettlterms",
         "dtype": {
           "type": "null"
@@ -1997,17 +1865,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "physicalsettlterms"
-        }
-      },
-      {
-        "name": "noextraordinaryevents",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noextraordinaryevents",
-          "FIX:tag": "42296"
         }
       },
       {

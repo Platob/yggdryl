@@ -18,7 +18,7 @@ use super::client::{Answer, Wire};
 use super::wire::{RequestHead, parse_request, render_request};
 use super::{
     Authorization, ContentRange, Headers, HttpVersion, Method, Pages, Pagination, Response,
-    Session, StatsSnapshot, Stream, range_header,
+    Session, StatsSnapshot, Status, Stream, range_header,
 };
 use crate::holder::Holder;
 use crate::uri::Parameters;
@@ -148,6 +148,112 @@ struct Meta {
     mtime: Option<i64>,
 }
 
+/// One attempt of a request: what a request's own hooks are shown of it.
+///
+/// [`Request::with_attempt_headers`] is shown the attempt as it is about to
+/// go out, so what it makes - a proof, a signature - covers what is really
+/// sent: the hop's method and URL, the headers already on it, and the body.
+#[derive(Clone, Copy)]
+pub struct Attempt<'a> {
+    number: u32,
+    method: Method,
+    url: &'a Url,
+    headers: &'a Headers,
+    body: Option<&'a [u8]>,
+    streamed: bool,
+}
+
+impl<'a> Attempt<'a> {
+    /// The view of attempt `number` of `method` at `url`.
+    pub(crate) const fn new(
+        number: u32,
+        method: Method,
+        url: &'a Url,
+        headers: &'a Headers,
+        body: Option<&'a [u8]>,
+        streamed: bool,
+    ) -> Self {
+        Self {
+            number,
+            method,
+            url,
+            headers,
+            body,
+            streamed,
+        }
+    }
+
+    /// The attempt's number within one hop, from 1: a redirect hop starts
+    /// again at 1.
+    #[must_use]
+    pub const fn number(&self) -> u32 {
+        self.number
+    }
+
+    /// The method of the hop: a redirect may have rewritten the request's.
+    #[must_use]
+    pub const fn method(&self) -> Method {
+        self.method
+    }
+
+    /// The URL of the hop, query included.
+    #[must_use]
+    pub const fn url(&self) -> &'a Url {
+        self.url
+    }
+
+    /// The headers the attempt carries: the request's own over the
+    /// session's defaults, the credential, the cookies, and whatever a hook
+    /// already added.
+    #[must_use]
+    pub const fn headers(&self) -> &'a Headers {
+        self.headers
+    }
+
+    /// The body, when its bytes are in hand: `None` for a request with no
+    /// body, and for one [streamed](Self::is_streamed) from a reader.
+    #[must_use]
+    pub const fn body(&self) -> Option<&'a [u8]> {
+        self.body
+    }
+
+    /// Whether the body is read from the caller's reader as it is sent
+    /// ([`Request::send_reader`]), so nothing can read it beforehand.
+    #[must_use]
+    pub const fn is_streamed(&self) -> bool {
+        self.streamed
+    }
+}
+
+impl std::fmt::Debug for Attempt<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Header values may be credentials: the names are what is rendered.
+        formatter
+            .debug_struct("Attempt")
+            .field("number", &self.number)
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("headers", &self.headers.len())
+            .field("body_len", &self.body.map(<[u8]>::len))
+            .field("streamed", &self.streamed)
+            .finish()
+    }
+}
+
+/// The headers one attempt of a request adds over its own, computed from the
+/// attempt as it is about to go out.
+pub(crate) type AttemptHeaders = dyn Fn(&Attempt<'_>) -> Result<Headers> + Send + Sync;
+
+/// Whether a refused attempt goes out once more: the attempt as it was sent,
+/// and the status, the headers and the first bytes of the body it was
+/// answered with.
+pub(crate) type ResendOn =
+    dyn Fn(&Attempt<'_>, Status, &Headers, &[u8]) -> Result<bool> + Send + Sync;
+
+/// Whether an answer the client would not retry by its status alone is
+/// asked for again: its status, its headers and the first bytes of its body.
+pub(crate) type RetryOn = dyn Fn(Status, &Headers, &[u8]) -> bool + Send + Sync;
+
 /// The staged value and whether the server has seen it.
 struct Stage {
     bytes: Vec<u8>,
@@ -197,6 +303,16 @@ pub struct Request {
     authorization: Option<Authorization>,
     timeout: Option<Duration>,
     follow_redirects: Option<bool>,
+    /// Whether the request may go out again after a server may have seen
+    /// it, when the caller says so rather than the method.
+    idempotent: Option<bool>,
+    max_attempts: Option<u32>,
+    connect_timeout: Option<Duration>,
+    deadline: Option<Duration>,
+    direct: bool,
+    attempt_headers: Option<Arc<AttemptHeaders>>,
+    retry_on: Option<Arc<RetryOn>>,
+    resend_on: Option<Arc<ResendOn>>,
     pagination: Option<Pagination>,
     records: Option<FieldPath>,
     /// An explicit media type overrides what a response taught and what the
@@ -222,6 +338,14 @@ impl Clone for Request {
             authorization: self.authorization.clone(),
             timeout: self.timeout,
             follow_redirects: self.follow_redirects,
+            idempotent: self.idempotent,
+            max_attempts: self.max_attempts,
+            connect_timeout: self.connect_timeout,
+            deadline: self.deadline,
+            direct: self.direct,
+            attempt_headers: self.attempt_headers.clone(),
+            retry_on: self.retry_on.clone(),
+            resend_on: self.resend_on.clone(),
             pagination: self.pagination.clone(),
             records: self.records.clone(),
             declared: self.declared.clone(),
@@ -234,13 +358,23 @@ impl Clone for Request {
 
 impl std::fmt::Debug for Request {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("Request")
+        let mut debug = formatter.debug_struct("Request");
+        debug
             .field("method", &self.method)
             .field("url", &self.url)
             .field("headers", &self.headers)
-            .field("body_len", &self.body.len())
-            .finish_non_exhaustive()
+            .field("body_len", &self.body.len());
+        // A hook is code: it is named, never rendered.
+        if self.attempt_headers.is_some() {
+            debug.field("attempt_headers", &format_args!("<attempt headers>"));
+        }
+        if self.retry_on.is_some() {
+            debug.field("retry_on", &format_args!("<retry rule>"));
+        }
+        if self.resend_on.is_some() {
+            debug.field("resend_on", &format_args!("<resend rule>"));
+        }
+        debug.finish_non_exhaustive()
     }
 }
 
@@ -258,6 +392,14 @@ impl Request {
             authorization: None,
             timeout: None,
             follow_redirects: None,
+            idempotent: None,
+            max_attempts: None,
+            connect_timeout: None,
+            deadline: None,
+            direct: false,
+            attempt_headers: None,
+            retry_on: None,
+            resend_on: None,
             pagination: None,
             records: None,
             declared: None,
@@ -511,6 +653,187 @@ impl Request {
         self
     }
 
+    /// Whether the request can do no harm twice, in place of what its
+    /// method says.
+    ///
+    /// The caller attests it: a `POST` whose service documents it idempotent,
+    /// such as an OAuth token refresh within its validity or a poll, is
+    /// retried after the server may have seen it, as a `GET` is; `false`
+    /// keeps a `GET` from going out twice. The retry budget, the attempts and the
+    /// `Retry-After` rules are the ones every retry reads, and a request
+    /// sent with [`Self::send_reader`] is never retried whatever this says.
+    ///
+    /// ```
+    /// use yggdryl::http::Request;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let refresh = Request::post("https://oauth.example.com/token", "grant_type=refresh_token")?
+    ///     .with_idempotent(true);
+    /// assert_eq!(refresh.idempotent(), Some(true));
+    /// assert_eq!(Request::get("https://example.com/")?.idempotent(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_idempotent(mut self, idempotent: bool) -> Self {
+        self.idempotent = Some(idempotent);
+        self
+    }
+
+    /// Headers computed for each attempt, merged over everything else the
+    /// attempt carries - the request's own headers, the session's, the
+    /// credential - a name both state taking the hook's value.
+    ///
+    /// `headers` is called at the top of every attempt with the [`Attempt`]
+    /// as it is about to go out - its number from 1, the method and URL of
+    /// the hop it goes to, the headers already on it and the body - so a
+    /// value that must be fresh per attempt, or must cover what is sent - a
+    /// DPoP proof with its own `jti` and `iat`, a signature over the instant
+    /// and the payload - is made for each one. A body streamed by
+    /// [`Self::send_reader`] cannot be read beforehand: the attempt says so
+    /// ([`Attempt::is_streamed`]) and shows none. An error the hook returns
+    /// is the request's error, and is never retried.
+    ///
+    /// What it makes is a credential for the origin the request names: a
+    /// redirect followed inside that origin calls it for the hop, and one
+    /// followed to another origin does not, so nothing it would make is
+    /// sent there - as the `Authorization` the caller stated is not.
+    ///
+    /// ```
+    /// use yggdryl::http::{Headers, Request};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let request =
+    ///     Request::get("https://api.example.com/v1/orders")?.with_attempt_headers(|attempt| {
+    ///         let mut headers = Headers::new();
+    ///         let sent = format!(
+    ///             "{} {} {} {}",
+    ///             attempt.number(),
+    ///             attempt.method(),
+    ///             attempt.url(),
+    ///             attempt.body().map_or(0, <[u8]>::len),
+    ///         );
+    ///         headers.insert("x-attempt", &sent)?;
+    ///         Ok(headers)
+    ///     });
+    /// assert!(format!("{request:?}").contains("<attempt headers>"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_attempt_headers(
+        mut self,
+        headers: impl Fn(&Attempt<'_>) -> Result<Headers> + Send + Sync + 'static,
+    ) -> Self {
+        self.attempt_headers = Some(Arc::new(headers));
+        self
+    }
+
+    /// Whether an attempt the server refused goes out once more, whatever
+    /// its method.
+    ///
+    /// A `4xx` answer hands `rule` the attempt as it was sent - the headers
+    /// its hook made included - and the status, the headers and at most
+    /// 64 KiB of the body it was answered with. `true` says the refusal
+    /// proves the server did nothing and another attempt would go out
+    /// differently - signed by another key, say - so the request is sent
+    /// again at once: no pause, nothing drawn from the retry budget, and at
+    /// most once per hop. That is what separates it from
+    /// [`Self::with_retry_on`], which asks the same request again later and
+    /// only when it is idempotent. An error the rule returns is the
+    /// request's; an answer not sent again is handed back whole. A body
+    /// streamed by [`Self::send_reader`] is never sent again.
+    #[must_use]
+    pub(crate) fn with_resend_on(
+        mut self,
+        rule: impl Fn(&Attempt<'_>, Status, &Headers, &[u8]) -> Result<bool> + Send + Sync + 'static,
+    ) -> Self {
+        self.resend_on = Some(Arc::new(rule));
+        self
+    }
+
+    /// How many times this request is attempted, in place of the client's
+    /// `max_attempts`; zero is one.
+    ///
+    /// Every retry beyond the first attempt is still paid for out of the
+    /// client's one retry budget, so a request asking for more attempts than
+    /// the client grants others cannot retry past what the client's other
+    /// requests have left it.
+    #[must_use]
+    pub fn with_max_attempts(mut self, attempts: u32) -> Self {
+        self.max_attempts = Some(attempts.max(1));
+        self
+    }
+
+    /// The bound on establishing this request's connection - the socket,
+    /// and the TLS handshake over it - in place of the pool's.
+    ///
+    /// A connection already open in the pool is reused and waits for
+    /// nothing; the bound is spent only where one is opened.
+    #[must_use]
+    pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = Some(timeout);
+        self
+    }
+
+    /// One bound on the whole of one attempt: resolving, connecting,
+    /// sending, the answer's head and its body together, beside the
+    /// per-phase bound [`Self::with_timeout`] sets.
+    ///
+    /// An attempt that runs out is a timeout the retry rules read as any
+    /// other, so an idempotent request is attempted again under a fresh
+    /// deadline; a body read past it fails as a cut transfer.
+    #[must_use]
+    pub fn with_deadline(mut self, deadline: Duration) -> Self {
+        self.deadline = Some(deadline);
+        self
+    }
+
+    /// Ask `rule` whether an answer is worth another attempt when its status
+    /// alone does not say so.
+    ///
+    /// For an idempotent request - declared with [`Self::with_idempotent`]
+    /// or by its method - whose answer is not a success and not a status the
+    /// client retries anyway ([`Status::is_retryable`]), the client reads at
+    /// most 64 KiB of the body and hands `rule` the status, the headers and
+    /// those bytes; `true` retries under the budget, the attempts, the
+    /// backoff and the `Retry-After` rules every retry reads. An answer not
+    /// retried is handed back with its body whole, the bytes the rule read
+    /// in front of the rest. A service that answers throttling as `400` with
+    /// a code in its body - AWS STS's `Throttling` - is read this way.
+    ///
+    /// ```
+    /// use yggdryl::http::Request;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let request = Request::post("https://sts.amazonaws.com/", "Action=GetCallerIdentity")?
+    ///     .with_idempotent(true)
+    ///     .with_retry_on(|status, _headers, body| {
+    ///         status.code() == 400 && body.windows(10).any(|code| code == b"Throttling")
+    ///     });
+    /// assert!(format!("{request:?}").contains("<retry rule>"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_retry_on(
+        mut self,
+        rule: impl Fn(Status, &Headers, &[u8]) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.retry_on = Some(Arc::new(rule));
+        self
+    }
+
+    /// Whether this request goes to its server directly, never through a
+    /// proxy, whatever the options or the environment name: a link-local
+    /// metadata endpoint is reached from the host itself, and a proxy
+    /// between would answer for another.
+    #[must_use]
+    pub fn with_direct(mut self, direct: bool) -> Self {
+        self.direct = direct;
+        self
+    }
+
     /// How the next page is found, in place of the session's.
     #[must_use]
     pub fn with_pagination(mut self, pagination: Pagination) -> Self {
@@ -577,6 +900,68 @@ impl Request {
         self.follow_redirects
     }
 
+    /// Whether the caller declared the request idempotent, or not; `None`
+    /// when its method decides.
+    #[must_use]
+    pub fn idempotent(&self) -> Option<bool> {
+        self.idempotent
+    }
+
+    /// How many times this request is attempted, when it says rather than
+    /// the client.
+    #[must_use]
+    pub fn max_attempts(&self) -> Option<u32> {
+        self.max_attempts
+    }
+
+    /// The bound on establishing this request's connection, when it states
+    /// one rather than the pool.
+    #[must_use]
+    pub fn connect_timeout(&self) -> Option<Duration> {
+        self.connect_timeout
+    }
+
+    /// The bound on the whole of one attempt, when the request states one.
+    #[must_use]
+    pub fn deadline(&self) -> Option<Duration> {
+        self.deadline
+    }
+
+    /// Whether this request never goes through a proxy.
+    #[must_use]
+    pub fn is_direct(&self) -> bool {
+        self.direct
+    }
+
+    /// One hop of this request as it goes on the wire: `method` at `url`
+    /// with the complete `headers` and `body`, each phase bounded by
+    /// `timeout`, under the attempts, bounds, proxy choice and hooks the
+    /// request states for itself.
+    pub(crate) fn wire<'a>(
+        &'a self,
+        method: Method,
+        url: &'a Url,
+        headers: &'a Headers,
+        body: Option<&'a [u8]>,
+        timeout: Duration,
+    ) -> Wire<'a> {
+        Wire {
+            method,
+            url,
+            headers,
+            body,
+            timeout,
+            idempotent: self.idempotent.unwrap_or(method.is_idempotent()),
+            max_attempts: self.max_attempts,
+            connect_timeout: self.connect_timeout,
+            deadline: self.deadline,
+            direct: self.direct,
+            attempt_headers: self.attempt_headers.as_deref(),
+            retry_on: self.retry_on.as_deref(),
+            resend_on: self.resend_on.as_deref(),
+        }
+    }
+
     /// Send, reading the whole body into memory, bounded by the session's
     /// `max_body_size`.
     ///
@@ -598,8 +983,9 @@ impl Request {
 
     /// Send with the body streamed from `reader`, `length` bytes long.
     ///
-    /// A reader cannot be read twice, so nothing is retried and no redirect
-    /// is followed: the answer is the first server's.
+    /// A reader cannot be read twice, so nothing is retried - whatever
+    /// [`Self::with_idempotent`] says - and no redirect is followed: the
+    /// answer is the first server's.
     ///
     /// # Errors
     ///
@@ -607,14 +993,14 @@ impl Request {
     pub fn send_reader(&self, reader: &mut dyn Read, length: u64) -> Result<Response> {
         let started = std::time::Instant::now();
         let headers = self.session.headers_for(self, &self.url, false)?;
-        let wire = Wire {
-            method: self.method,
-            url: &self.url,
-            headers: &headers,
-            body: None,
-            timeout: self.timeout.unwrap_or(self.session.options().timeout()),
-            idempotent: false,
-        };
+        let mut wire = self.wire(
+            self.method,
+            &self.url,
+            &headers,
+            None,
+            self.timeout.unwrap_or(self.session.options().timeout()),
+        );
+        wire.idempotent = false;
         let answer = self
             .session
             .client_ref()
@@ -1328,7 +1714,7 @@ impl crate::IOMedia for Request {
     /// column per page; one of a single page is the record column its rows
     /// parse into, read off the page already fetched; every other resource
     /// answers what [`crate::IOMedia::read_arrow_reader`] produces.
-    fn read_arrow(
+    fn read_serie(
         &self,
         options: Option<&crate::media::RecordOptions>,
     ) -> Result<crate::SerieReader> {
@@ -1440,12 +1826,19 @@ fn rows_at(body: &Scalar, path: &FieldPath) -> Option<usize> {
 }
 
 /// The `Host` header a URL asks for: the host, with the port when it is
-/// not the scheme's default.
-fn host_header(url: &Url) -> String {
+/// not the scheme's default - an IPv6 literal in its brackets, as RFC 3986
+/// writes it and the transport sends it, so a signature over this host is
+/// a signature over the one sent.
+pub(crate) fn host_header(url: &Url) -> String {
     let host = url.hostname().unwrap_or_default();
+    let host = if host.contains(':') {
+        format!("[{host}]")
+    } else {
+        host.to_owned()
+    };
     match url.authority().port() {
         Some(port) if Some(port) != url.default_port() => format!("{host}:{port}"),
-        _ => host.to_owned(),
+        _ => host,
     }
 }
 

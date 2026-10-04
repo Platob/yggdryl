@@ -279,6 +279,13 @@ fn serve_refuses_a_forwarded_field_or_a_read_timeout_it_cannot_honour() {
         ("--read-timeout", "86401", "read-timeout"),
         ("--read-timeout", "18446744073709551615", "read-timeout"),
         ("--read-timeout", "0", "read-timeout"),
+        ("--read-timeout", "0s", "read-timeout"),
+        ("--read-timeout", "0.0", "read-timeout"),
+        ("--read-timeout", "86400.5", "read-timeout"),
+        ("--read-timeout", "1e30", "read-timeout"),
+        ("--read-timeout", "1m", "read-timeout"),
+        ("--read-timeout", "soon", "read-timeout"),
+        ("--read-timeout", "", "read-timeout"),
     ] {
         let output = command()
             .args(["xmla", "serve", "--bind", "127.0.0.1:0", flag, value])
@@ -289,6 +296,99 @@ fn serve_refuses_a_forwarded_field_or_a_read_timeout_it_cannot_honour() {
         let text = String::from_utf8_lossy(&output.stderr);
         assert!(text.contains(named), "{flag} {value}: {text}");
         assert!(output.stdout.is_empty(), "nothing bound: {flag} {value}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn serve_reads_a_read_timeout_in_every_spelling_the_core_reads_a_length_of_time() {
+    let root = catalog_root();
+    for value in ["30", "2.5", "0.5", "30s", "1500ms", "+45", " 45 "] {
+        let mut serve = command();
+        serve
+            .args(["xmla", "serve", "--bind", "127.0.0.1:0", "--read-timeout"])
+            .arg(value)
+            .arg(root.to_str().expect("a UTF-8 path"));
+        let (served, endpoint) = started(serve);
+        assert!(
+            endpoint.starts_with("http://127.0.0.1:"),
+            "{value:?}: {endpoint}"
+        );
+        drop(served);
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The endpoint line and the one catalog note `serve` prints once it is bound.
+fn endpoint_and_note(mut command: Command) -> (Served, String, String) {
+    let mut child = command.spawn().expect("the provider starts");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let served = Served(child);
+    let mut lines = BufReader::new(stdout);
+    let mut endpoint = String::new();
+    lines.read_line(&mut endpoint).expect("the endpoint line");
+    let mut note = String::new();
+    if endpoint.starts_with("http://") {
+        lines.read_line(&mut note).expect("the catalog note");
+    }
+    (served, endpoint.trim().to_owned(), note.trim().to_owned())
+}
+
+#[test]
+fn serve_reads_a_location_as_python_and_node_read_one() {
+    let root = catalog_root();
+    // `file:/path` is the URL Java's `File.toURI()` writes: one reading with
+    // `file:///path`, never a folder of that name under the working directory.
+    for spelled in [
+        format!("market=file:{}", root.display()),
+        format!("market=file://{}", root.display()),
+    ] {
+        let mut serve = command();
+        serve
+            .args(["xmla", "serve", "--bind", "127.0.0.1:0"])
+            .arg(&spelled);
+        let (served, endpoint, note) = endpoint_and_note(serve);
+        assert!(
+            endpoint.starts_with("http://127.0.0.1:"),
+            "{spelled}: {endpoint}"
+        );
+        assert!(
+            note.contains(&format!("catalog market over file://{}", root.display())),
+            "{spelled}: {note}"
+        );
+        drop(served);
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn serve_refuses_text_with_a_scheme_that_is_no_url_rather_than_reading_it_as_a_folder() {
+    let root = catalog_root();
+    for spelled in [
+        "s3:/bucket/market",
+        "trades:2026",
+        "mailto:desk@example.com",
+    ] {
+        let output = command()
+            .args(["xmla", "serve", "--bind", "127.0.0.1:0", "--trace"])
+            .arg(spelled)
+            .arg(root.to_str().expect("a UTF-8 path"))
+            .output()
+            .expect("the process runs");
+        assert!(!output.status.success(), "{spelled}");
+        let text =
+            String::from_utf8_lossy(&output.stdout) + String::from_utf8_lossy(&output.stderr);
+        assert!(!text.contains("http://"), "{spelled}: {text}");
+        let output = command()
+            .args(["xmla", "serve", "--bind", "127.0.0.1:0"])
+            .arg(spelled)
+            .output()
+            .expect("the process runs");
+        assert!(!output.status.success(), "{spelled}");
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains('\u{2717}'),
+            "{spelled}"
+        );
     }
     let _ = std::fs::remove_dir_all(&root);
 }

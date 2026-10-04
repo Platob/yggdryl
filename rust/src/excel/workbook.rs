@@ -43,12 +43,15 @@ use super::edit::{
 use super::entry::Entry;
 use super::format::{FormatCode, Rendered};
 use super::formula::Formula;
+use super::formula::aggregate::Aggregate;
 use super::formula::value::NameId;
 use super::names::DefinedName;
 use super::package::{self, Insertion, NamespaceFamily, RelationshipKind, Relationships};
 use super::parser::SheetRows;
-use super::pivot::{AxisField, ItemOrder, PivotFieldInfo, PivotIdentity, PivotSource, PivotSpec, PivotTable, ValueField};
-use super::formula::aggregate::Aggregate;
+use super::pivot::{
+    AxisField, ItemOrder, PivotFieldInfo, PivotIdentity, PivotSource, PivotSpec, PivotTable,
+    ValueField,
+};
 use super::shared_strings::{SharedStrings, SharedStringsWriter};
 use super::sheet::{ChangeMark, Sheet, SheetState, validate_sheet_name};
 use super::shift::{self, Axis, Band, Host, Rewriter, Shift, adjust_range, range_text};
@@ -371,18 +374,27 @@ impl<'w> ReferenceResolver<'w> {
 
     fn binding(&self, id: NameId, host: ReferenceHost<'w>) -> ResolvedReference<'w> {
         let name = &self.book.stated.names[id.0];
-        if name.scope().is_some_and(|key| !self.book.slots.iter().any(|slot| slot.key == key)) {
+        if name
+            .scope()
+            .is_some_and(|key| !self.book.slots.iter().any(|slot| slot.key == key))
+        {
             return ResolvedReference::Error(super::cell::ExcelError::Ref);
         }
         ResolvedReference::Name(NameBinding {
             id,
             // Wire relative names are anchored to the consuming cell, not a
             // saved active selection. Their own scope selects only the name.
-            host: ReferenceHost { name: Some(id), ..host },
+            host: ReferenceHost {
+                name: Some(id),
+                ..host
+            },
         })
     }
 
-    fn name_expression(&self, name: NameId) -> std::result::Result<&'w super::formula::parser::Expr, super::formula::shape::Held> {
+    fn name_expression(
+        &self,
+        name: NameId,
+    ) -> std::result::Result<&'w super::formula::parser::Expr, super::formula::shape::Held> {
         self.book.stated.names[name.0].formula().expression()
     }
 
@@ -464,14 +476,24 @@ impl<'w> ReferenceResolver<'w> {
 
 #[derive(Debug)]
 enum DependencyFrame {
-    Node { name: Option<NameId>, id: usize, usage: super::formula::parser::ReferenceUse },
-    LeaveName { name: NameId, usage: super::formula::parser::ReferenceUse },
+    Node {
+        name: Option<NameId>,
+        id: usize,
+        usage: super::formula::parser::ReferenceUse,
+    },
+    LeaveName {
+        name: NameId,
+        usage: super::formula::parser::ReferenceUse,
+    },
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ReadShape {
     Area(ReferenceArea),
-    Union(super::formula::value::ReferenceId, super::formula::value::ReferenceId),
+    Union(
+        super::formula::value::ReferenceId,
+        super::formula::value::ReferenceId,
+    ),
 }
 
 #[derive(Debug)]
@@ -484,14 +506,24 @@ struct ReadArea {
 
 impl ReadArea {
     fn area(area: ReferenceArea) -> Self {
-        Self { shape: ReadShape::Area(area), scalar: false, range: false,
-            subtotal: [false; 2] }
+        Self {
+            shape: ReadShape::Area(area),
+            scalar: false,
+            range: false,
+            subtotal: [false; 2],
+        }
     }
 
-    fn union(left: super::formula::value::ReferenceId,
-        right: super::formula::value::ReferenceId) -> Self {
-        Self { shape: ReadShape::Union(left, right), scalar: false, range: false,
-            subtotal: [false; 2] }
+    fn union(
+        left: super::formula::value::ReferenceId,
+        right: super::formula::value::ReferenceId,
+    ) -> Self {
+        Self {
+            shape: ReadShape::Union(left, right),
+            scalar: false,
+            range: false,
+            subtotal: [false; 2],
+        }
     }
 }
 
@@ -577,7 +609,9 @@ impl Calculation {
         self.active_names.clear();
         self.completed_names.clear();
         #[cfg(feature = "internals")]
-        { self.dependency_nodes = 0; }
+        {
+            self.dependency_nodes = 0;
+        }
         let mut volatile = false;
         let mut selective = false;
         let slot = &resolver.book.slots[tab];
@@ -591,7 +625,11 @@ impl Calculation {
                 .expect("register receives formulas")
                 .expression()
             {
-                self.stack.push(DependencyFrame::Node { name: None, id: expression.root, usage: ReferenceUse::Scalar });
+                self.stack.push(DependencyFrame::Node {
+                    name: None,
+                    id: expression.root,
+                    usage: ReferenceUse::Scalar,
+                });
                 while let Some(frame) = self.stack.pop() {
                     let (name, id, usage) = match frame {
                         DependencyFrame::Node { name, id, usage } => (name, id, usage),
@@ -602,11 +640,15 @@ impl Calculation {
                         }
                     };
                     let arena = match name {
-                        Some(name) => resolver.name_expression(name).expect("entry proved the immutable name arena"),
+                        Some(name) => resolver
+                            .name_expression(name)
+                            .expect("entry proved the immutable name arena"),
                         None => expression,
                     };
                     #[cfg(feature = "internals")]
-                    { self.dependency_nodes += 1; }
+                    {
+                        self.dependency_nodes += 1;
+                    }
                     let node = &arena.nodes[id];
                     if let Node::Call {
                         function: Some(function),
@@ -620,8 +662,11 @@ impl Calculation {
                             if let Node::Reference(reference) = node {
                                 match resolver.resolve(ReferenceHost { name, ..host }, reference)? {
                                     ResolvedReference::Range(range) => {
-                                        if let Ok(Some(area)) = range.descriptor().selected(usage, host.at) {
-                                            self.precedents.extend(area.view(resolver.book).areas());
+                                        if let Ok(Some(area)) =
+                                            range.descriptor().selected(usage, host.at)
+                                        {
+                                            self.precedents
+                                                .extend(area.view(resolver.book).areas());
                                         }
                                     }
                                     ResolvedReference::Name(binding) => {
@@ -629,8 +674,15 @@ impl Calculation {
                                             && let Ok(named) = binding.expression()
                                             && self.active_names.insert(binding.id)
                                         {
-                                            self.stack.push(DependencyFrame::LeaveName { name: binding.id, usage });
-                                            self.stack.push(DependencyFrame::Node { name: Some(binding.id), id: named.root, usage });
+                                            self.stack.push(DependencyFrame::LeaveName {
+                                                name: binding.id,
+                                                usage,
+                                            });
+                                            self.stack.push(DependencyFrame::Node {
+                                                name: Some(binding.id),
+                                                id: named.root,
+                                                usage,
+                                            });
                                         }
                                     }
                                     ResolvedReference::Error(_) | ResolvedReference::Held(_) => {}
@@ -638,16 +690,27 @@ impl Calculation {
                             }
                         }
                         EvaluationPolicy::Strict(children) => {
-                            selective |= matches!(&children, super::formula::parser::Children::MixedCall { dynamic: true, .. }
-                                | super::formula::parser::Children::GeometryPair(_, _));
+                            selective |= matches!(
+                                &children,
+                                super::formula::parser::Children::MixedCall { dynamic: true, .. }
+                                    | super::formula::parser::Children::GeometryPair(_, _)
+                            );
                             children.visit_references(usage, |child, usage| {
-                                self.stack.push(DependencyFrame::Node { name, id: child, usage })
+                                self.stack.push(DependencyFrame::Node {
+                                    name,
+                                    id: child,
+                                    usage,
+                                })
                             });
                         }
                         EvaluationPolicy::Select(selection) => {
                             selective = true;
                             selection.visit_inputs_reverse(|input, usage| {
-                                self.stack.push(DependencyFrame::Node { name, id: input, usage });
+                                self.stack.push(DependencyFrame::Node {
+                                    name,
+                                    id: input,
+                                    usage,
+                                });
                             });
                         }
                         EvaluationPolicy::Held => {}
@@ -655,8 +718,12 @@ impl Calculation {
                 }
             }
         }
-        self.graph
-            .set((slot.key, cell.reference()), &self.precedents, volatile, selective)
+        self.graph.set(
+            (slot.key, cell.reference()),
+            &self.precedents,
+            volatile,
+            selective,
+        )
     }
 
     fn synchronize(&mut self, resolver: &ReferenceResolver<'_>, rebuild: bool) -> Result<()> {
@@ -735,7 +802,9 @@ impl Calculation {
         self.replacements.clear();
         let mut report = super::formula::Recalculation::default();
         while let Some((key, at)) = self.graph.next(&mut self.schedule) {
-            let index = self.graph.scheduled_index(&self.schedule, (key, at))
+            let index = self
+                .graph
+                .scheduled_index(&self.schedule, (key, at))
                 .expect("the next root belongs to this pass");
             let tab = self.tabs[&key];
             let slot = &resolver.book.slots[tab];
@@ -746,7 +815,11 @@ impl Calculation {
             let formula = cell
                 .formula()
                 .expect("the synchronized node is still a formula");
-            let expression = if sheet.scalar_formula_at(at) { formula.expression().ok() } else { None };
+            let expression = if sheet.scalar_formula_at(at) {
+                formula.expression().ok()
+            } else {
+                None
+            };
             let resumed = self.suspended.remove(&index);
             let random = if let Some(mut held) = resumed {
                 std::mem::swap(&mut self.evaluator, &mut held.evaluator);
@@ -757,13 +830,17 @@ impl Calculation {
                 random
             } else {
                 self.areas.clear();
-                if let Some(expression) = expression { self.evaluator.begin(expression); }
+                if let Some(expression) = expression {
+                    self.evaluator.begin(expression);
+                }
                 None
             };
             let mut context = CalculationContext {
                 resolver,
                 root: expression,
-                host: resolver.host_at(tab, at).expect("a synchronized host is in grid"),
+                host: resolver
+                    .host_at(tab, at)
+                    .expect("a synchronized host is in grid"),
                 selective: self.graph.selective((key, at)),
                 graph: &mut self.graph,
                 schedule: &mut self.schedule,
@@ -776,11 +853,15 @@ impl Calculation {
                 random_sheet: key.0,
             };
             let result = if !sheet.scalar_formula_at(at) {
-                Ok(Evaluation::Complete(Outcome::Uncomputed(Unevaluated::Array)))
+                Ok(Evaluation::Complete(Outcome::Uncomputed(
+                    Unevaluated::Array,
+                )))
             } else {
                 match formula.expression() {
                     Ok(expression) => self.evaluator.resume(expression, &mut context),
-                    Err(reason) => Ok(Evaluation::Complete(Outcome::Uncomputed(Unevaluated::Held(reason)))),
+                    Err(reason) => Ok(Evaluation::Complete(Outcome::Uncomputed(
+                        Unevaluated::Held(reason),
+                    ))),
                 }
             };
             let random = context.random;
@@ -867,8 +948,10 @@ struct CalculationContext<'a, 'w> {
 impl CalculationContext<'_, '_> {
     /// Flatten an arena DAG into ordered rectangle identities. Duplicate and
     /// overlapping leaves remain separate, as Excel's union fold requires.
-    fn collect_areas(&mut self, root: super::formula::value::ReferenceId)
-        -> std::result::Result<(), super::formula::value::Unevaluated> {
+    fn collect_areas(
+        &mut self,
+        root: super::formula::value::ReferenceId,
+    ) -> std::result::Result<(), super::formula::value::Unevaluated> {
         self.area_stack.clear();
         self.area_stack.push(root);
         while let Some(id) = self.area_stack.pop() {
@@ -899,38 +982,57 @@ impl CalculationContext<'_, '_> {
         use super::formula::eval::{RangeProgress, RangeRead};
         use super::formula::value::{Operand, Outcome};
         let dynamic = read == RangeRead::Lookup;
-        let dense = matches!(read, RangeRead::ValuesWithBlanks | RangeRead::BlankPresence
-            | RangeRead::NumericDense | RangeRead::Lookup);
+        let dense = matches!(
+            read,
+            RangeRead::ValuesWithBlanks
+                | RangeRead::BlankPresence
+                | RangeRead::NumericDense
+                | RangeRead::Lookup
+        );
         let start = area.range.start();
         let end = area.range.end();
         let width = u64::from(end.column() - start.column()) + 1;
         let length = area.range.cell_count();
         debug_assert!(from <= length);
-        if from == length { return Ok(RangeProgress::Complete); }
-        debug_assert!(!dynamic || (area.geometry().is_some()
-            && (area.range.row_size() == 1 || area.range.column_size() == 1)));
-        let first = if from == 0 { start }
-            else if area.range.column_size() == 1 { CellRef::new(start.row() + from as u32, start.column()) }
-            else if area.range.row_size() == 1 { CellRef::new(start.row(), start.column() + from as u32) }
-            else { start };
+        if from == length {
+            return Ok(RangeProgress::Complete);
+        }
+        debug_assert!(
+            !dynamic
+                || (area.geometry().is_some()
+                    && (area.range.row_size() == 1 || area.range.column_size() == 1))
+        );
+        let first = if from == 0 {
+            start
+        } else if area.range.column_size() == 1 {
+            CellRef::new(start.row() + from as u32, start.column())
+        } else if area.range.row_size() == 1 {
+            CellRef::new(start.row(), start.column() + from as u32)
+        } else {
+            start
+        };
         // A row-major 2D suffix is one partial row followed by full rows.
         // One bounding rectangle would omit earlier columns on later rows.
-        let (remaining, tail) = if from > 0 && area.range.column_size() > 1
-            && area.range.row_size() > 1 {
-            let row = start.row() + (from / width) as u32;
-            let column = start.column() + (from % width) as u32;
-            (CellRange::new(CellRef::new(row, column), CellRef::new(row, end.column())),
-             (row < end.row()).then(|| CellRange::new(
-                 CellRef::new(row + 1, start.column()), end)))
-        } else {
-            (CellRange::new(first, end), None)
-        };
+        let (remaining, tail) =
+            if from > 0 && area.range.column_size() > 1 && area.range.row_size() > 1 {
+                let row = start.row() + (from / width) as u32;
+                let column = start.column() + (from % width) as u32;
+                (
+                    CellRange::new(CellRef::new(row, column), CellRef::new(row, end.column())),
+                    (row < end.row())
+                        .then(|| CellRange::new(CellRef::new(row + 1, start.column()), end)),
+                )
+            } else {
+                (CellRange::new(first, end), None)
+            };
         let dependent = (self.resolver.book.slots[self.host.tab].key, self.host.at);
         for slot in &self.resolver.book.slots[area.first_tab..area.end_tab] {
             let mut next = from;
             let sheet = slot.parsed.get().expect("the resolver parsed worksheets");
-            for cell in sheet.cells_in(remaining)
-                .chain(tail.into_iter().flat_map(|range| sheet.cells_in(range))) {
+            for cell in sheet
+                .cells_in(remaining)
+                .chain(tail.into_iter().flat_map(|range| sheet.cells_in(range)))
+            {
                 let at = cell.reference();
                 let position = u64::from(at.row() - start.row()) * width
                     + u64::from(at.column() - start.column());
@@ -938,14 +1040,30 @@ impl CalculationContext<'_, '_> {
                     let blank = position - next;
                     next = position;
                     if visit(Outcome::Computed(Operand::Blank), blank).is_break() {
-                        if dynamic { Self::admit_lookup_prefix(&mut *self.graph, &mut *self.schedule, dependent, slot.key, area, next)?; }
+                        if dynamic {
+                            Self::admit_lookup_prefix(
+                                &mut *self.graph,
+                                &mut *self.schedule,
+                                dependent,
+                                slot.key,
+                                area,
+                                next,
+                            )?;
+                        }
                         return Ok(RangeProgress::Complete);
                     }
                 }
                 if dynamic {
-                    if cell.formula().is_some() && self.graph.pending(self.schedule, (slot.key, at)) {
+                    if cell.formula().is_some() && self.graph.pending(self.schedule, (slot.key, at))
+                    {
                         let point = CellRange::new(at, at);
-                        self.graph.admit(self.schedule, dependent, slot.key, point, std::iter::once(at))?;
+                        self.graph.admit(
+                            self.schedule,
+                            dependent,
+                            slot.key,
+                            point,
+                            std::iter::once(at),
+                        )?;
                         return Ok(RangeProgress::Paused(position));
                     }
                 }
@@ -957,7 +1075,16 @@ impl CalculationContext<'_, '_> {
                 }
                 if let Some(value) = self.read(slot, at, Some(cell), read) {
                     if visit(value, 1).is_break() {
-                        if dynamic { Self::admit_lookup_prefix(&mut *self.graph, &mut *self.schedule, dependent, slot.key, area, next)?; }
+                        if dynamic {
+                            Self::admit_lookup_prefix(
+                                &mut *self.graph,
+                                &mut *self.schedule,
+                                dependent,
+                                slot.key,
+                                area,
+                                next,
+                            )?;
+                        }
                         return Ok(RangeProgress::Complete);
                     }
                 }
@@ -966,20 +1093,41 @@ impl CalculationContext<'_, '_> {
                 let blank = length - next;
                 next = length;
                 if visit(Outcome::Computed(Operand::Blank), blank).is_break() {
-                    if dynamic { Self::admit_lookup_prefix(&mut *self.graph, &mut *self.schedule, dependent, slot.key, area, next)?; }
+                    if dynamic {
+                        Self::admit_lookup_prefix(
+                            &mut *self.graph,
+                            &mut *self.schedule,
+                            dependent,
+                            slot.key,
+                            area,
+                            next,
+                        )?;
+                    }
                     return Ok(RangeProgress::Complete);
                 }
             }
         }
-        if dynamic { Self::admit_lookup_prefix(&mut *self.graph, &mut *self.schedule, dependent,
-            self.resolver.book.slots[area.first_tab].key, area, length)?; }
+        if dynamic {
+            Self::admit_lookup_prefix(
+                &mut *self.graph,
+                &mut *self.schedule,
+                dependent,
+                self.resolver.book.slots[area.first_tab].key,
+                area,
+                length,
+            )?;
+        }
         Ok(RangeProgress::Complete)
     }
     fn subtotal_value_source(slot: &Slot, at: CellRef, cell: &Cell, exclude_hidden: bool) -> bool {
         let sheet = slot.parsed.get().expect("the resolver parsed worksheets");
         !(exclude_hidden && sheet.is_row_hidden(at.row())
-            || cell.formula().is_some_and(|formula| formula.expression().ok()
-                .is_some_and(|expr| expr.has_subtotal)))
+            || cell.formula().is_some_and(|formula| {
+                formula
+                    .expression()
+                    .ok()
+                    .is_some_and(|expr| expr.has_subtotal)
+            }))
     }
 
     fn read(
@@ -998,27 +1146,36 @@ impl CalculationContext<'_, '_> {
         if let Some(index) = self.graph.scheduled_index(self.schedule, address) {
             return match &self.outcomes[index] {
                 Some(Outcome::Computed(Operand::Blank)) if mode == RangeRead::AggregateA => None,
-                Some(Outcome::Computed(Operand::Text(_))) if mode == RangeRead::AggregateA =>
-                    Some(Outcome::Computed(Operand::Number(0.0))),
-                Some(Outcome::Computed(Operand::Boolean(value))) if mode == RangeRead::AggregateA =>
-                    Some(Outcome::Computed(Operand::Number(f64::from(*value as u8)))),
-                Some(Outcome::Computed(Operand::Blank | Operand::Text(_)
-                    | Operand::Boolean(_))) if mode == RangeRead::NumericDense =>
-                    Some(Outcome::Computed(Operand::Blank)),
+                Some(Outcome::Computed(Operand::Text(_))) if mode == RangeRead::AggregateA => {
+                    Some(Outcome::Computed(Operand::Number(0.0)))
+                }
+                Some(Outcome::Computed(Operand::Boolean(value)))
+                    if mode == RangeRead::AggregateA =>
+                {
+                    Some(Outcome::Computed(Operand::Number(f64::from(*value as u8))))
+                }
+                Some(Outcome::Computed(
+                    Operand::Blank | Operand::Text(_) | Operand::Boolean(_),
+                )) if mode == RangeRead::NumericDense => Some(Outcome::Computed(Operand::Blank)),
                 Some(Outcome::Computed(operand)) if mode == RangeRead::BlankPresence => {
                     let blank = matches!(operand, Operand::Blank)
                         || matches!(operand, Operand::Text(text) if text.as_str().is_empty());
-                    Some(Outcome::Computed(if blank { Operand::Blank }
-                        else { Operand::Boolean(true) }))
+                    Some(Outcome::Computed(if blank {
+                        Operand::Blank
+                    } else {
+                        Operand::Boolean(true)
+                    }))
                 }
                 Some(Outcome::Computed(Operand::Blank)) if mode == RangeRead::Presence => None,
                 Some(Outcome::Computed(_)) if mode == RangeRead::Presence => {
                     Some(Outcome::Computed(Operand::Boolean(true)))
                 }
                 Some(Outcome::Computed(Operand::Blank | Operand::Text(_)))
-                    if !mode.includes_values() => None,
-                Some(Outcome::Computed(Operand::Boolean(_)))
-                    if mode == RangeRead::Numbers => None,
+                    if !mode.includes_values() =>
+                {
+                    None
+                }
+                Some(Outcome::Computed(Operand::Boolean(_))) if mode == RangeRead::Numbers => None,
                 Some(outcome) => Some(outcome.clone()),
                 None => Some(Outcome::Uncomputed(Unevaluated::Reference)),
             };
@@ -1037,10 +1194,14 @@ impl CalculationContext<'_, '_> {
         if mode == RangeRead::NumericDense {
             return Some(match cell {
                 None => Outcome::Computed(Operand::Blank),
-                Some(cell) if cell.error().is_none()
-                    && (cell.value().is_null() || cell.kind().is_text()
-                        || cell.value().as_bool().is_some()) =>
-                    Outcome::Computed(Operand::Blank),
+                Some(cell)
+                    if cell.error().is_none()
+                        && (cell.value().is_null()
+                            || cell.kind().is_text()
+                            || cell.value().as_bool().is_some()) =>
+                {
+                    Outcome::Computed(Operand::Blank)
+                }
                 Some(cell) => sheet.calculation_operand_at(cell),
             });
         }
@@ -1050,20 +1211,27 @@ impl CalculationContext<'_, '_> {
                     return Some(sheet.calculation_operand_at(cell));
                 }
             }
-            let blank = cell.is_none_or(|cell| cell.error().is_none()
-                && (cell.value().is_null()
-                    || cell.value().as_str().is_some_and(str::is_empty)));
-            return Some(Outcome::Computed(if blank { Operand::Blank }
-                else { Operand::Boolean(true) }));
+            let blank = cell.is_none_or(|cell| {
+                cell.error().is_none()
+                    && (cell.value().is_null() || cell.value().as_str().is_some_and(str::is_empty))
+            });
+            return Some(Outcome::Computed(if blank {
+                Operand::Blank
+            } else {
+                Operand::Boolean(true)
+            }));
         }
         if mode == RangeRead::Presence {
-            return cell.filter(|cell| cell.error().is_some() || !cell.value().is_null())
+            return cell
+                .filter(|cell| cell.error().is_some() || !cell.value().is_null())
                 .map(|_| Outcome::Computed(Operand::Boolean(true)));
         }
         if mode == RangeRead::AggregateA {
             let cell = cell?;
             if cell.error().is_none() {
-                if cell.value().is_null() { return None; }
+                if cell.value().is_null() {
+                    return None;
+                }
                 if cell.kind().is_text() {
                     return Some(Outcome::Computed(Operand::Number(0.0)));
                 }
@@ -1093,10 +1261,14 @@ impl CalculationContext<'_, '_> {
     fn admit_lookup_prefix(
         graph: &mut super::formula::graph::Graph,
         schedule: &mut super::formula::graph::Schedule,
-        dependent: (SheetKey, CellRef), source: SheetKey,
-        area: ReferenceArea, count: u64,
+        dependent: (SheetKey, CellRef),
+        source: SheetKey,
+        area: ReferenceArea,
+        count: u64,
     ) -> Result<()> {
-        if count == 0 { return Ok(()); }
+        if count == 0 {
+            return Ok(());
+        }
         let start = area.range.start();
         let last = if area.range.column_size() == 1 {
             CellRef::new(start.row() + count as u32 - 1, start.column())
@@ -1122,7 +1294,8 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
     }
 
     fn random_u64(&mut self) -> u64 {
-        self.clock.draw(&mut self.random, self.random_sheet, self.host.at)
+        self.clock
+            .draw(&mut self.random, self.random_sheet, self.host.at)
     }
 
     fn reference(
@@ -1132,38 +1305,51 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
     ) -> Result<super::formula::eval::ReferenceResult> {
         use super::formula::eval::ReferenceResult;
         use super::formula::value::{Operand, Outcome, ReferenceId, Unevaluated};
-        Ok(match self.resolver.resolve(ReferenceHost { name, ..self.host }, reference)? {
-            ResolvedReference::Range(range) => {
-                let id = ReferenceId(self.areas.len());
-                if self.areas.len() == super::formula::MAX_FORMULA_LENGTH {
-                    return Ok(ReferenceResult::Value(Outcome::Uncomputed(
-                        Unevaluated::ReferenceComplexity)));
+        Ok(
+            match self
+                .resolver
+                .resolve(ReferenceHost { name, ..self.host }, reference)?
+            {
+                ResolvedReference::Range(range) => {
+                    let id = ReferenceId(self.areas.len());
+                    if self.areas.len() == super::formula::MAX_FORMULA_LENGTH {
+                        return Ok(ReferenceResult::Value(Outcome::Uncomputed(
+                            Unevaluated::ReferenceComplexity,
+                        )));
+                    }
+                    self.areas.push(ReadArea::area(range.descriptor()));
+                    ReferenceResult::Value(Outcome::Computed(Operand::Reference(id)))
                 }
-                self.areas.push(ReadArea::area(range.descriptor()));
-                ReferenceResult::Value(Outcome::Computed(Operand::Reference(id)))
-            }
-            ResolvedReference::Error(error) => ReferenceResult::Value(Outcome::Computed(Operand::Error(error))),
-            ResolvedReference::Held(reason) => {
-                let reason = match reason {
-                    ReferenceHeld::Shape(reason) => Unevaluated::Held(reason),
-                    ReferenceHeld::NameAnchor => Unevaluated::ReferenceAnchor,
-                    ReferenceHeld::NameScope => Unevaluated::ReferenceScope,
-                    ReferenceHeld::NonWorksheet => Unevaluated::ReferenceNonWorksheet,
-                };
-                ReferenceResult::Value(Outcome::Uncomputed(reason))
+                ResolvedReference::Error(error) => {
+                    ReferenceResult::Value(Outcome::Computed(Operand::Error(error)))
+                }
+                ResolvedReference::Held(reason) => {
+                    let reason = match reason {
+                        ReferenceHeld::Shape(reason) => Unevaluated::Held(reason),
+                        ReferenceHeld::NameAnchor => Unevaluated::ReferenceAnchor,
+                        ReferenceHeld::NameScope => Unevaluated::ReferenceScope,
+                        ReferenceHeld::NonWorksheet => Unevaluated::ReferenceNonWorksheet,
+                    };
+                    ReferenceResult::Value(Outcome::Uncomputed(reason))
+                }
+                ResolvedReference::Name(binding) => ReferenceResult::Name(binding.id),
             },
-            ResolvedReference::Name(binding) => ReferenceResult::Name(binding.id),
-        })
+        )
     }
 
-    fn expression(&self, name: Option<NameId>) -> std::result::Result<&'w super::formula::parser::Expr, super::formula::shape::Held> {
+    fn expression(
+        &self,
+        name: Option<NameId>,
+    ) -> std::result::Result<&'w super::formula::parser::Expr, super::formula::shape::Held> {
         match name {
             Some(name) => self.resolver.name_expression(name),
             None => Ok(self.root.expect("an active evaluator has a parsed root")),
         }
     }
 
-    fn host(&self) -> CellRef { self.host.at }
+    fn host(&self) -> CellRef {
+        self.host.at
+    }
 
     fn reference_combine(
         &mut self,
@@ -1192,8 +1378,9 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
                 return Outcome::Uncomputed(Unevaluated::Reference);
             }
             match tab {
-                Some(previous) if previous != area.first_tab =>
-                    return Outcome::Computed(Operand::Error(ExcelError::Value)),
+                Some(previous) if previous != area.first_tab => {
+                    return Outcome::Computed(Operand::Error(ExcelError::Value));
+                }
                 None => tab = Some(area.first_tab),
                 _ => {}
             }
@@ -1214,20 +1401,31 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
                 if self.areas.len() == super::formula::MAX_FORMULA_LENGTH {
                     return Outcome::Uncomputed(Unevaluated::ReferenceComplexity);
                 }
-                let ReadShape::Area(first) = self.areas[self.area_leaves[0].0].shape else { unreachable!() };
-                let ReadShape::Area(second) = self.areas[self.area_leaves[1].0].shape else { unreachable!() };
+                let ReadShape::Area(first) = self.areas[self.area_leaves[0].0].shape else {
+                    unreachable!()
+                };
+                let ReadShape::Area(second) = self.areas[self.area_leaves[1].0].shape else {
+                    unreachable!()
+                };
                 // Native colon probes include two rectangular endpoints and
                 // an endpoint contained by the other rectangle. The result
                 // is the smallest rectangle enclosing both operands.
                 let start = CellRef::new(
                     first.range.start().row().min(second.range.start().row()),
-                    first.range.start().column().min(second.range.start().column()));
+                    first
+                        .range
+                        .start()
+                        .column()
+                        .min(second.range.start().column()),
+                );
                 let end = CellRef::new(
                     first.range.end().row().max(second.range.end().row()),
-                    first.range.end().column().max(second.range.end().column()));
+                    first.range.end().column().max(second.range.end().column()),
+                );
                 let range = CellRange::new(start, end);
                 let id = ReferenceId(self.areas.len());
-                self.areas.push(ReadArea::area(ReferenceArea { range, ..first }));
+                self.areas
+                    .push(ReadArea::area(ReferenceArea { range, ..first }));
                 id
             }
             BinaryOp::Intersection => {
@@ -1243,25 +1441,43 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
                 }
                 let mut joined = None;
                 for first_index in 0..split {
-                    let ReadShape::Area(first) = self.areas[self.area_leaves[first_index].0].shape else { unreachable!() };
+                    let ReadShape::Area(first) = self.areas[self.area_leaves[first_index].0].shape
+                    else {
+                        unreachable!()
+                    };
                     for second_index in split..self.area_leaves.len() {
-                        let ReadShape::Area(second) = self.areas[self.area_leaves[second_index].0].shape else { unreachable!() };
-                        if !first.range.intersects(second.range) { continue; }
+                        let ReadShape::Area(second) =
+                            self.areas[self.area_leaves[second_index].0].shape
+                        else {
+                            unreachable!()
+                        };
+                        if !first.range.intersects(second.range) {
+                            continue;
+                        }
                         let start = CellRef::new(
                             first.range.start().row().max(second.range.start().row()),
-                            first.range.start().column().max(second.range.start().column()));
+                            first
+                                .range
+                                .start()
+                                .column()
+                                .max(second.range.start().column()),
+                        );
                         let end = CellRef::new(
                             first.range.end().row().min(second.range.end().row()),
-                            first.range.end().column().min(second.range.end().column()));
+                            first.range.end().column().min(second.range.end().column()),
+                        );
                         let id = ReferenceId(self.areas.len());
                         self.areas.push(ReadArea::area(ReferenceArea {
-                            range: CellRange::new(start, end), ..first
+                            range: CellRange::new(start, end),
+                            ..first
                         }));
                         joined = Some(if let Some(previous) = joined {
                             let union = ReferenceId(self.areas.len());
                             self.areas.push(ReadArea::union(previous, id));
                             union
-                        } else { id });
+                        } else {
+                            id
+                        });
                     }
                 }
                 let Some(id) = joined else {
@@ -1278,8 +1494,11 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         matches!(self.areas[id.0].shape, ReadShape::Union(..))
     }
 
-    fn reference_nth(&mut self, id: super::formula::value::ReferenceId, index: usize)
-        -> super::formula::value::Outcome {
+    fn reference_nth(
+        &mut self,
+        id: super::formula::value::ReferenceId,
+        index: usize,
+    ) -> super::formula::value::Outcome {
         use super::formula::value::{Operand, Outcome};
         self.area_leaves.clear();
         if let Err(reason) = self.collect_areas(id) {
@@ -1287,7 +1506,8 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         }
         self.area_leaves.get(index).copied().map_or(
             Outcome::Computed(Operand::Error(super::cell::ExcelError::Ref)),
-            |area| Outcome::Computed(Operand::Reference(area)))
+            |area| Outcome::Computed(Operand::Reference(area)),
+        )
     }
 
     fn reference_geometry(&self, id: super::formula::value::ReferenceId) -> Option<CellRange> {
@@ -1297,7 +1517,10 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         }
     }
 
-    fn intersection(&mut self, id: super::formula::value::ReferenceId) -> super::formula::value::Outcome {
+    fn intersection(
+        &mut self,
+        id: super::formula::value::ReferenceId,
+    ) -> super::formula::value::Outcome {
         use super::formula::value::{Operand, Outcome, ReferenceId, Unevaluated};
         let ReadShape::Area(area) = self.areas[id.0].shape else {
             return Outcome::Computed(Operand::Error(super::cell::ExcelError::Value));
@@ -1309,8 +1532,12 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
                 }
                 let ready = self.areas[id.0].scalar;
                 let selected = ReferenceId(self.areas.len());
-                self.areas.push(ReadArea { shape: ReadShape::Area(area), scalar: ready,
-                    range: ready, subtotal: [false; 2] });
+                self.areas.push(ReadArea {
+                    shape: ReadShape::Area(area),
+                    scalar: ready,
+                    range: ready,
+                    subtotal: [false; 2],
+                });
                 Outcome::Computed(Operand::Reference(selected))
             }
             Ok(None) => Outcome::Uncomputed(Unevaluated::Reference),
@@ -1318,7 +1545,11 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         }
     }
 
-    fn reference_range(&mut self, id: super::formula::value::ReferenceId, range: CellRange) -> super::formula::value::Outcome {
+    fn reference_range(
+        &mut self,
+        id: super::formula::value::ReferenceId,
+        range: CellRange,
+    ) -> super::formula::value::Outcome {
         use super::formula::value::{Operand, Outcome, ReferenceId};
         let ReadShape::Area(area) = self.areas[id.0].shape else {
             return Outcome::Computed(Operand::Error(super::cell::ExcelError::Value));
@@ -1327,17 +1558,23 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
             return Outcome::Uncomputed(super::formula::value::Unevaluated::ReferenceComplexity);
         }
         let selected = ReferenceId(self.areas.len());
-        self.areas.push(ReadArea::area(ReferenceArea { range, ..area }));
+        self.areas
+            .push(ReadArea::area(ReferenceArea { range, ..area }));
         Outcome::Computed(Operand::Reference(selected))
     }
 
-    fn ready(&mut self, id: super::formula::value::ReferenceId,
-        usage: super::formula::parser::ReferenceUse) -> Result<bool> {
+    fn ready(
+        &mut self,
+        id: super::formula::value::ReferenceId,
+        usage: super::formula::parser::ReferenceUse,
+    ) -> Result<bool> {
         use super::formula::parser::ReferenceUse;
         // Geometry and rejected union consumers must never register value
         // dependencies, including cycles through an otherwise unused area.
-        if !self.selective || usage == ReferenceUse::Geometry
-            || (usage != ReferenceUse::Range && self.reference_is_union(id)) {
+        if !self.selective
+            || usage == ReferenceUse::Geometry
+            || (usage != ReferenceUse::Range && self.reference_is_union(id))
+        {
             return Ok(true);
         }
         let address = (self.resolver.book.slots[self.host.tab].key, self.host.at);
@@ -1348,14 +1585,24 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         };
         if !prior {
             self.area_leaves.clear();
-            if self.collect_areas(id).is_err() { return Ok(true); }
+            if self.collect_areas(id).is_err() {
+                return Ok(true);
+            }
             for &leaf in self.area_leaves.iter() {
-                let ReadShape::Area(area) = self.areas[leaf.0].shape else { unreachable!() };
+                let ReadShape::Area(area) = self.areas[leaf.0].shape else {
+                    unreachable!()
+                };
                 if let Ok(Some(area)) = area.selected(usage, self.host.at) {
                     for slot in &self.resolver.book.slots[area.first_tab..area.end_tab] {
                         self.graph.admit(
-                            self.schedule, address, slot.key, area.range,
-                            slot.parsed.get().expect("parsed above").cells_in(area.range)
+                            self.schedule,
+                            address,
+                            slot.key,
+                            area.range,
+                            slot.parsed
+                                .get()
+                                .expect("parsed above")
+                                .cells_in(area.range)
                                 .map(Cell::reference),
                         )?;
                     }
@@ -1370,20 +1617,28 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
         Ok(self.graph.ready(self.schedule, address))
     }
 
-    fn ready_subtotal(&mut self, id: super::formula::value::ReferenceId,
-        exclude_hidden: bool) -> Result<bool> {
+    fn ready_subtotal(
+        &mut self,
+        id: super::formula::value::ReferenceId,
+        exclude_hidden: bool,
+    ) -> Result<bool> {
         let index = usize::from(exclude_hidden);
         let address = (self.resolver.book.slots[self.host.tab].key, self.host.at);
         if !self.areas[id.0].subtotal[index] {
             self.area_leaves.clear();
-            if self.collect_areas(id).is_err() { return Ok(true); }
+            if self.collect_areas(id).is_err() {
+                return Ok(true);
+            }
             for &leaf in self.area_leaves.iter() {
-                let ReadShape::Area(area) = self.areas[leaf.0].shape else { unreachable!() };
+                let ReadShape::Area(area) = self.areas[leaf.0].shape else {
+                    unreachable!()
+                };
                 for slot in &self.resolver.book.slots[area.first_tab..area.end_tab] {
                     // The watch retains future source changes; a nested
                     // SUBTOTAL remains a graph edge even when its value is
                     // excluded from this fold.
-                    self.graph.watch(self.schedule, address, slot.key, area.range)?;
+                    self.graph
+                        .watch(self.schedule, address, slot.key, area.range)?;
                     let sheet = slot.parsed.get().expect("the resolver parsed worksheets");
                     for cell in sheet.cells_in(area.range) {
                         let at = cell.reference();
@@ -1391,8 +1646,13 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
                             && !(exclude_hidden && sheet.is_row_hidden(at.row()))
                             && self.graph.pending(self.schedule, (slot.key, at))
                         {
-                            self.graph.admit(self.schedule, address, slot.key,
-                                CellRange::new(at, at), std::iter::once(at))?;
+                            self.graph.admit(
+                                self.schedule,
+                                address,
+                                slot.key,
+                                CellRange::new(at, at),
+                                std::iter::once(at),
+                            )?;
                         }
                     }
                 }
@@ -1411,9 +1671,12 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
             return Ok(Outcome::Computed(value));
         };
         let ReadShape::Area(source) = self.areas[id.0].shape else {
-            return Ok(Outcome::Computed(Operand::Error(super::cell::ExcelError::Value)));
+            return Ok(Outcome::Computed(Operand::Error(
+                super::cell::ExcelError::Value,
+            )));
         };
-        let area = match source.selected(super::formula::parser::ReferenceUse::Scalar, self.host.at) {
+        let area = match source.selected(super::formula::parser::ReferenceUse::Scalar, self.host.at)
+        {
             Ok(Some(area)) if area.range.start() == area.range.end() => area,
             Ok(_) => return Ok(Outcome::Uncomputed(Unevaluated::Reference)),
             Err(error) => return Ok(Outcome::Computed(Operand::Error(error))),
@@ -1447,31 +1710,40 @@ impl<'w> super::formula::eval::Context<'w> for CalculationContext<'_, 'w> {
             return Ok(RangeProgress::Complete);
         }
         if read == RangeRead::Lookup && self.area_leaves.len() != 1 {
-            let _ = visit(Outcome::Computed(Operand::Error(super::cell::ExcelError::Value)), 1);
+            let _ = visit(
+                Outcome::Computed(Operand::Error(super::cell::ExcelError::Value)),
+                1,
+            );
             return Ok(RangeProgress::Complete);
         }
         let mut offset = 0_u64;
         for position in 0..self.area_leaves.len() {
             let leaf = self.area_leaves[position];
-            let ReadShape::Area(area) = self.areas[leaf.0].shape else { unreachable!() };
+            let ReadShape::Area(area) = self.areas[leaf.0].shape else {
+                unreachable!()
+            };
             let length = area.range.cell_count();
             if from >= offset + length {
                 offset += length;
                 continue;
             }
             let mut stopped = false;
-            let result = self.visit_one_area(area, read, from.saturating_sub(offset), |value, count| {
-                let answer = visit(value, count);
-                stopped |= answer.is_break();
-                answer
-            })?;
-            if result != RangeProgress::Complete { return Ok(result); }
-            if stopped { return Ok(RangeProgress::Complete); }
+            let result =
+                self.visit_one_area(area, read, from.saturating_sub(offset), |value, count| {
+                    let answer = visit(value, count);
+                    stopped |= answer.is_break();
+                    answer
+                })?;
+            if result != RangeProgress::Complete {
+                return Ok(result);
+            }
+            if stopped {
+                return Ok(RangeProgress::Complete);
+            }
             offset += length;
         }
         Ok(RangeProgress::Complete)
     }
-
 }
 
 /// One `<sheet>` of the workbook, its part, and the [`Sheet`] once parsed.
@@ -1852,7 +2124,8 @@ impl Registration {
             &bytes,
             Arc::clone(&self.inherited_markup),
             |_, _, depth, position| Ok((depth == 2).then(|| format_smolstr!("{position}"))),
-        )?.len())
+        )?
+        .len())
     }
 
     fn has_children(&self) -> Result<bool> {
@@ -2689,14 +2962,13 @@ impl Registration {
             }
             let (namespace, name) = reader.resolver().resolve_element(start.name());
             let main = name.as_ref() == local.as_bytes()
-                && Self::in_namespace(
-                    namespace,
-                    &[super::NAMESPACE, super::STRICT_NAMESPACE],
-                )?;
+                && Self::in_namespace(namespace, &[super::NAMESPACE, super::STRICT_NAMESPACE])?;
             if !main {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new(part),
-                    reason: format_smolstr!("expected a {local} root in the main worksheet namespace"),
+                    reason: format_smolstr!(
+                        "expected a {local} root in the main worksheet namespace"
+                    ),
                 });
             }
             Ok(Some(format_smolstr!("{position}")))
@@ -5214,11 +5486,13 @@ impl Workbook {
     /// # Errors
     ///
     /// Returns [`Error::Unsupported`] for a BIFF (`.xls`) or encrypted
-    /// workbook, [`Error::Codec`] for bytes that are not a ZIP package or a
+    /// workbook, [`Error::Codec`] for a handle whose name declares a content
+    /// coding (`trades.xlsx.gz`), for bytes that are not a ZIP package or for a
     /// part that is not well-formed, and [`Error::InvalidRecord`] naming the
     /// part for a package with no workbook.
     pub fn open(handle: impl Into<Holder>) -> Result<Self> {
         let handle = handle.into();
+        super::reject_outer_coding(&handle)?;
         if handle.size() == 0 {
             return Ok(Self::new());
         }
@@ -5545,7 +5819,12 @@ impl Workbook {
             let pivots = self.read_pivots()?;
             let _ = self.stated.pivots.set(pivots);
         }
-        Ok(&self.stated.pivots.get().expect("pivot inventory was installed").tables)
+        Ok(&self
+            .stated
+            .pivots
+            .get()
+            .expect("pivot inventory was installed")
+            .tables)
     }
 
     fn read_pivots(&self) -> Result<PivotInventory> {
@@ -5566,20 +5845,33 @@ impl Workbook {
                 path: format_smolstr!("{}#pivotCaches/pivotCache", self.workbook_part),
                 reason: format_smolstr!("expected a numeric cacheId, got {:?}", entry.id),
             })?;
-            let relationship = relationships.by_id(&entry.rid).ok_or_else(|| Error::InvalidRecord {
-                path: relationships_part.clone(),
-                reason: format_smolstr!("expected relationship {} of pivot cache {id}", entry.rid),
-            })?;
+            let relationship =
+                relationships
+                    .by_id(&entry.rid)
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: relationships_part.clone(),
+                        reason: format_smolstr!(
+                            "expected relationship {} of pivot cache {id}",
+                            entry.rid
+                        ),
+                    })?;
             if relationship.type_uri != cache_type {
                 return Err(Error::InvalidRecord {
                     path: relationships_part.clone(),
-                    reason: format_smolstr!("expected {cache_type} for {}, got {}", entry.rid, relationship.type_uri),
+                    reason: format_smolstr!(
+                        "expected {cache_type} for {}, got {}",
+                        entry.rid,
+                        relationship.type_uri
+                    ),
                 });
             }
-            let target = relationship.target.clone().ok_or_else(|| Error::InvalidRecord {
-                path: relationships_part.clone(),
-                reason: format_smolstr!("expected internal target for {}", entry.rid),
-            })?;
+            let target = relationship
+                .target
+                .clone()
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: relationships_part.clone(),
+                    reason: format_smolstr!("expected internal target for {}", entry.rid),
+                })?;
             if caches.insert(id, target).is_some() {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("{}#pivotCaches", self.workbook_part),
@@ -5591,17 +5883,32 @@ impl Workbook {
         let mut pivots = Vec::new();
         let mut names = HashSet::<SmolStr>::new();
         let mut tables = HashSet::<SmolStr>::new();
-        for slot in self.slots.iter().filter(|slot| slot.kind == SheetKind::Worksheet) {
+        for slot in self
+            .slots
+            .iter()
+            .filter(|slot| slot.kind == SheetKind::Worksheet)
+        {
             let host_rels = package::relationships_part_of(&slot.part);
             let Some(bytes) = self.part_bytes_if_present(&host_rels)? else {
                 continue;
             };
             let relationships = Relationships::from_xml(&bytes, &slot.part)?;
-            for relationship in relationships.entries().iter().filter(|item| item.type_uri == table_type) {
-                let table_part = relationship.target.clone().ok_or_else(|| Error::InvalidRecord {
-                    path: host_rels.clone(),
-                    reason: format_smolstr!("expected internal pivot target for {}", relationship.id),
-                })?;
+            for relationship in relationships
+                .entries()
+                .iter()
+                .filter(|item| item.type_uri == table_type)
+            {
+                let table_part =
+                    relationship
+                        .target
+                        .clone()
+                        .ok_or_else(|| Error::InvalidRecord {
+                            path: host_rels.clone(),
+                            reason: format_smolstr!(
+                                "expected internal pivot target for {}",
+                                relationship.id
+                            ),
+                        })?;
                 if !tables.insert(table_part.clone()) {
                     return Err(Error::InvalidRecord {
                         path: host_rels.clone(),
@@ -5613,7 +5920,9 @@ impl Workbook {
                     "pivotTableDefinition",
                     &table_part,
                 )?;
-                let name = table.root_attribute(b"name")?.filter(|name| !name.is_empty())
+                let name = table
+                    .root_attribute(b"name")?
+                    .filter(|name| !name.is_empty())
                     .ok_or_else(|| Error::InvalidRecord {
                         path: table_part.clone(),
                         reason: "expected a pivot name".into(),
@@ -5625,19 +5934,26 @@ impl Workbook {
                         reason: format_smolstr!("expected a unique pivot name, got {name}"),
                     });
                 }
-                let id = table.root_attribute(b"cacheId")?
+                let id = table
+                    .root_attribute(b"cacheId")?
                     .and_then(|id| id.parse::<u32>().ok())
                     .ok_or_else(|| Error::InvalidRecord {
                         path: table_part.clone(),
                         reason: "expected a numeric pivot cacheId".into(),
                     })?;
-                let cache_part = caches.get(&id).cloned().ok_or_else(|| Error::InvalidRecord {
-                    path: table_part.clone(),
-                    reason: format_smolstr!("expected a workbook pivot cache for cacheId {id}"),
-                })?;
+                let cache_part = caches
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: table_part.clone(),
+                        reason: format_smolstr!("expected a workbook pivot cache for cacheId {id}"),
+                    })?;
                 let table_rels = package::relationships_part_of(&table_part);
                 let links = Relationships::from_xml(&self.part_bytes(&table_rels)?, &table_part)?;
-                let mut linked = links.entries().iter().filter(|link| link.type_uri == cache_type);
+                let mut linked = links
+                    .entries()
+                    .iter()
+                    .filter(|link| link.type_uri == cache_type);
                 let actual = linked.next().and_then(|link| link.target.as_deref());
                 if actual != Some(cache_part.as_str()) || linked.next().is_some() {
                     return Err(Error::InvalidRecord {
@@ -5652,23 +5968,34 @@ impl Workbook {
                     "pivotCacheDefinition",
                     &cache_part,
                 )?;
-                let mut locations = table.children_named(
-                    &[super::NAMESPACE, super::STRICT_NAMESPACE], "location",
-                )?;
+                let mut locations = table
+                    .children_named(&[super::NAMESPACE, super::STRICT_NAMESPACE], "location")?;
                 if locations.len() != 1 {
                     return Err(Error::InvalidRecord {
                         path: table_part.clone(),
-                        reason: format_smolstr!("expected one pivot location, got {}", locations.len()),
+                        reason: format_smolstr!(
+                            "expected one pivot location, got {}",
+                            locations.len()
+                        ),
                     });
                 }
-                let range = locations.remove(0).root_attribute(b"ref")?
+                let range = locations
+                    .remove(0)
+                    .root_attribute(b"ref")?
                     .and_then(|text| text.parse::<CellRange>().ok())
                     .ok_or_else(|| Error::InvalidRecord {
                         path: format_smolstr!("{table_part}#location"),
                         reason: "expected a worksheet rectangle".into(),
                     })?;
                 let mut unrepresented = None;
-                let spec = self.vertical_pivot_spec(&name, &table, &cache, &table_part, &cache_part, &mut unrepresented)?;
+                let spec = self.vertical_pivot_spec(
+                    &name,
+                    &table,
+                    &cache,
+                    &table_part,
+                    &cache_part,
+                    &mut unrepresented,
+                )?;
                 let reason = unrepresented.or_else(|| spec.is_none().then(||
                     SmolStr::new_static("foreign pivot fields are not representable by the current typed writer")));
                 pivots.push(PivotTable::read(
@@ -5685,7 +6012,10 @@ impl Workbook {
                 ));
             }
         }
-        Ok(PivotInventory { tables: pivots, max_cache_id })
+        Ok(PivotInventory {
+            tables: pivots,
+            max_cache_id,
+        })
     }
 
     /// The sheets, in tab order, worksheets and chart sheets alike.
@@ -6211,10 +6541,7 @@ impl Workbook {
 
     /// Publish a completely prepared pass after its enclosing edit is known
     /// to be successful. Conversion and dependency refusal occurred above.
-    pub(crate) fn commit_prepared_calculation(
-        &mut self,
-        report: &super::formula::Recalculation,
-    ) {
+    pub(crate) fn commit_prepared_calculation(&mut self, report: &super::formula::Recalculation) {
         let mut calculation = self.stated.calculation.take().expect("prepared above");
         for (tab, cell, bits) in calculation.replacements.drain(..) {
             self.slots[tab]
@@ -6254,9 +6581,12 @@ impl Workbook {
     }
 
     pub(crate) fn calculation_receipt(&self) -> (u64, Option<super::formula::Recalculation>) {
-        self.stated.calculation.as_ref().map_or((0, None), |calculation| {
-            (calculation.pass, calculation.last_status.clone())
-        })
+        self.stated
+            .calculation
+            .as_ref()
+            .map_or((0, None), |calculation| {
+                (calculation.pass, calculation.last_status.clone())
+            })
     }
 
     pub(crate) fn restore_calculation(
@@ -6274,7 +6604,10 @@ impl Workbook {
     }
 
     pub(crate) fn restored_calculation_status(&self) -> super::formula::Recalculation {
-        let mut status = self.stated.calculation.as_ref()
+        let mut status = self
+            .stated
+            .calculation
+            .as_ref()
             .and_then(|calculation| calculation.last_status.clone())
             .unwrap_or_default();
         status.evaluated = 0;
@@ -11153,8 +11486,9 @@ impl Workbook {
                 | Step::Layout { key, .. }
                 | Step::RecordFootprint { key, .. }
                 | Step::Frame { key, .. } => Some(*key),
-                Step::Names(_) | Step::Views(_) | Step::Overrides(_)
-                | Step::Calculation { .. } => None,
+                Step::Names(_) | Step::Views(_) | Step::Overrides(_) | Step::Calculation { .. } => {
+                    None
+                }
             };
             if let Some(key) = key.filter(|key| Some(*key) != restored) {
                 let at = self
@@ -14467,7 +14801,8 @@ fn read_workbook(bytes: &[u8], part: &str) -> Result<WorkbookDocument> {
     let mut compatibility_extensions = 0_u8;
     let mut compatibility_seen = false;
     let compatibility_refusal = |reason: SmolStr| Error::InvalidRecord {
-        path: format_smolstr!("{part}#extLst/ext/version"), reason,
+        path: format_smolstr!("{part}#extLst/ext/version"),
+        reason,
     };
     let root_refusal = |actual: &str| Error::InvalidRecord {
         path: format_smolstr!("{part}#workbook"),
@@ -14492,31 +14827,46 @@ fn read_workbook(bytes: &[u8], part: &str) -> Result<WorkbookDocument> {
         match &event {
             Event::Start(start) | Event::Empty(start) => {
                 let level = namespaces.level().checked_add(1).ok_or_else(|| {
-                    package::codec_error(position, "expected XML nesting within the namespace resolver's limit")
+                    package::codec_error(
+                        position,
+                        "expected XML nesting within the namespace resolver's limit",
+                    )
                 })?;
                 namespaces.set_level(level);
                 let mut declarations = 0;
                 for attribute in start.attributes().with_checks(level == 1) {
-                    let attribute = attribute.map_err(|error| package::codec_error(position, error.to_string()))?;
-                    let Some(prefix) = attribute.key.as_namespace_binding() else { continue };
+                    let attribute = attribute
+                        .map_err(|error| package::codec_error(position, error.to_string()))?;
+                    let Some(prefix) = attribute.key.as_namespace_binding() else {
+                        continue;
+                    };
                     declarations += 1;
                     if declarations > namespaces.max_declarations_per_element() {
-                        return Err(package::codec_error(position, "too many namespace declarations on one element"));
+                        return Err(package::codec_error(
+                            position,
+                            "too many namespace declarations on one element",
+                        ));
                     }
-                    let value = attribute.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                    let value = attribute
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         .map_err(|error| package::codec_error(position, error.to_string()))?;
-                    namespaces.add(prefix, quick_xml::name::Namespace(value.as_bytes()))
+                    namespaces
+                        .add(prefix, quick_xml::name::Namespace(value.as_bytes()))
                         .map_err(|error| package::codec_error(position, error.to_string()))?;
                 }
                 let (namespace, local) = namespaces.resolve_element(start.name());
                 if level == 1 {
                     if root_seen || local.as_ref() != b"workbook" {
-                        return Err(root_refusal(&format!("root {:?}", String::from_utf8_lossy(start.name().as_ref()))));
+                        return Err(root_refusal(&format!(
+                            "root {:?}",
+                            String::from_utf8_lossy(start.name().as_ref())
+                        )));
                     }
                     let quick_xml::name::ResolveResult::Bound(uri) = &namespace else {
                         return Err(root_refusal("an unbound root namespace"));
                     };
-                    document.family = std::str::from_utf8(uri.as_ref()).ok()
+                    document.family = std::str::from_utf8(uri.as_ref())
+                        .ok()
                         .and_then(NamespaceFamily::from_namespace)
                         .ok_or_else(|| root_refusal(&format!("namespace {uri:?}")))?;
                     root_seen = true;
@@ -14527,44 +14877,75 @@ fn read_workbook(bytes: &[u8], part: &str) -> Result<WorkbookDocument> {
                     compatibility_list = main && local.as_ref() == b"extLst";
                 }
                 if level == 3 {
-                    compatibility_extension = compatibility_list && main && local.as_ref() == b"ext"
+                    compatibility_extension = compatibility_list
+                        && main
+                        && local.as_ref() == b"ext"
                         && package::exact_attribute(start, b"uri", position)?.as_deref()
                             == Some(super::formula::text::Compatibility::EXTENSION);
                     if compatibility_extension {
                         compatibility_extensions += 1;
                         if compatibility_extensions > 1 {
-                            return Err(compatibility_refusal("expected one compatibility extension, got multiple extensions".into()));
+                            return Err(compatibility_refusal(
+                                "expected one compatibility extension, got multiple extensions"
+                                    .into(),
+                            ));
                         }
                     }
                 }
-                if level == 4 && compatibility_extension && local.as_ref() == b"version"
+                if level == 4
+                    && compatibility_extension
+                    && local.as_ref() == b"version"
                     && matches!(&namespace, quick_xml::name::ResolveResult::Bound(uri)
                         if uri.as_ref() == super::formula::text::Compatibility::NAMESPACE.as_bytes())
                 {
                     if compatibility_seen {
-                        return Err(compatibility_refusal("expected one compatibility version, got multiple versions".into()));
+                        return Err(compatibility_refusal(
+                            "expected one compatibility version, got multiple versions".into(),
+                        ));
                     }
                     compatibility_seen = true;
                     let (mut version, mut warning) = (None, None);
                     for attribute in start.attributes() {
-                        let attribute = attribute.map_err(|error| compatibility_refusal(format_smolstr!("expected unique compatibility attributes, got {error}")))?;
+                        let attribute = attribute.map_err(|error| {
+                            compatibility_refusal(format_smolstr!(
+                                "expected unique compatibility attributes, got {error}"
+                            ))
+                        })?;
                         let target = match attribute.key.as_ref() {
                             b"setVersion" => &mut version,
                             b"warnBelowVersion" => &mut warning,
                             _ => continue,
                         };
-                        let value = attribute.normalized_value(quick_xml::XmlVersion::Implicit1_0)
-                            .map_err(|error| compatibility_refusal(format_smolstr!("expected a decoded compatibility attribute, got {error}")))?;
-                        *target = Some(value.trim().parse::<u32>().map_err(|_| compatibility_refusal(format_smolstr!("expected an unsigned 32-bit compatibility version, got {value:?}")))?);
+                        let value = attribute
+                            .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .map_err(|error| {
+                                compatibility_refusal(format_smolstr!(
+                                    "expected a decoded compatibility attribute, got {error}"
+                                ))
+                            })?;
+                        *target = Some(value.trim().parse::<u32>().map_err(|_| {
+                            compatibility_refusal(format_smolstr!(
+                                "expected an unsigned 32-bit compatibility version, got {value:?}"
+                            ))
+                        })?);
                     }
-                    if warning == Some(0) || matches!((version, warning), (Some(version), Some(warning)) if version < warning) {
-                        return Err(compatibility_refusal(format_smolstr!("expected a positive warnBelowVersion no greater than setVersion, got {warning:?} and {version:?}")));
+                    if warning == Some(0)
+                        || matches!((version, warning), (Some(version), Some(warning)) if version < warning)
+                    {
+                        return Err(compatibility_refusal(format_smolstr!(
+                            "expected a positive warnBelowVersion no greater than setVersion, got {warning:?} and {version:?}"
+                        )));
                     }
-                    document.text_compatibility = super::formula::text::Compatibility::from_version(version);
+                    document.text_compatibility =
+                        super::formula::text::Compatibility::from_version(version);
                 }
-                if matches!(event, Event::Empty(_)) { namespaces.pop(); }
+                if matches!(event, Event::Empty(_)) {
+                    namespaces.pop();
+                }
             }
-            Event::End(_) => { namespaces.pop(); }
+            Event::End(_) => {
+                namespaces.pop();
+            }
             _ => {}
         }
         if let Some((entry, depth)) = name.as_mut() {
@@ -14644,10 +15025,9 @@ fn read_workbook(bytes: &[u8], part: &str) -> Result<WorkbookDocument> {
                         });
                     }
                     b"pivotCache" => {
-                        let id = package::attribute(start, b"cacheId", position)?
-                            .unwrap_or_default();
-                        let rid = package::attribute(start, b"id", position)?
-                            .unwrap_or_default();
+                        let id =
+                            package::attribute(start, b"cacheId", position)?.unwrap_or_default();
+                        let rid = package::attribute(start, b"id", position)?.unwrap_or_default();
                         document.pivot_caches.push(PivotCacheEntry {
                             id: SmolStr::new(id),
                             rid: SmolStr::new(rid),
@@ -14688,7 +15068,9 @@ fn read_workbook(bytes: &[u8], part: &str) -> Result<WorkbookDocument> {
         return Err(root_refusal("no root element"));
     }
     if compatibility_extensions != 0 && !compatibility_seen {
-        return Err(compatibility_refusal("expected one genuine compatibility version child, got none".into()));
+        return Err(compatibility_refusal(
+            "expected one genuine compatibility version child, got none".into(),
+        ));
     }
     Ok(document)
 }
@@ -14702,15 +15084,29 @@ pub mod internals {
     /// No timing or expanded-grid proxy.
     #[must_use]
     pub fn calculation_work(book: &super::Workbook) -> (usize, usize, usize, usize) {
-        let calculation = book.stated.calculation.as_ref().expect("calculation was requested");
-        (calculation.dependency_nodes, calculation.evaluator.visited(), calculation.precedents.len(), calculation.schedule.ordered().len())
+        let calculation = book
+            .stated
+            .calculation
+            .as_ref()
+            .expect("calculation was requested");
+        (
+            calculation.dependency_nodes,
+            calculation.evaluator.visited(),
+            calculation.precedents.len(),
+            calculation.schedule.ordered().len(),
+        )
     }
 
     /// Actual cache-miss element operations for the last evaluated formula.
     /// The counter is absent from production builds.
     #[must_use]
     pub fn array_work(book: &super::Workbook) -> usize {
-        book.stated.calculation.as_ref().expect("calculation was requested").evaluator.array_steps()
+        book.stated
+            .calculation
+            .as_ref()
+            .expect("calculation was requested")
+            .evaluator
+            .array_steps()
     }
 
     use super::{Cell, CellRange, CellRef, DefinedName, SheetKey, Workbook};
@@ -14847,8 +15243,14 @@ impl Workbook {
         if !table.children_named(main, "pageFields")?.is_empty()
             || !table.children_named(main, "filters")?.is_empty()
             || !Self::native_vertical_extensions(table, cache)?
-            || !matches!(cache.root_attribute(b"saveData")?.as_deref(), None | Some("0"))
-            || !matches!(cache.root_attribute(b"refreshOnLoad")?.as_deref(), None | Some("1"))
+            || !matches!(
+                cache.root_attribute(b"saveData")?.as_deref(),
+                None | Some("0")
+            )
+            || !matches!(
+                cache.root_attribute(b"refreshOnLoad")?.as_deref(),
+                None | Some("1")
+            )
         {
             return Ok(None);
         }
@@ -14913,13 +15315,17 @@ impl Workbook {
             };
             for items in field.children_named(main, "items")? {
                 for item in items.children_named(main, "item")? {
-                    if !matches!(item.root_attribute(b"h")?.as_deref(), None | Some("0") | Some("false")) {
+                    if !matches!(
+                        item.root_attribute(b"h")?.as_deref(),
+                        None | Some("0") | Some("false")
+                    ) {
                         *unrepresented = Some(format_smolstr!(
                             "{table_part}#pivotFields[{index}]/items: hidden item is not represented"
                         ));
                         return Ok(None);
                     }
-                    let item_index = item.root_attribute(b"x")?
+                    let item_index = item
+                        .root_attribute(b"x")?
                         .and_then(|value| value.parse::<usize>().ok());
                     let item_kind = item.root_attribute(b"t")?;
                     if item_kind.as_deref() == Some("default") {
@@ -14932,7 +15338,8 @@ impl Workbook {
                         continue;
                     }
                     if !matches!(item_kind.as_deref(), None | Some("data"))
-                        || item_index.is_none_or(|at| at >= cache_items.len()) {
+                        || item_index.is_none_or(|at| at >= cache_items.len())
+                    {
                         *unrepresented = Some(format_smolstr!(
                             "{table_part}#pivotFields[{index}]/items: item index or kind is not represented"
                         ));
@@ -14940,14 +15347,16 @@ impl Workbook {
                     }
                     if let Some(label) = item.root_attribute(b"n")? {
                         let expected = if let Some((kind, value)) =
-                            item_index.and_then(|at| cache_items.get(at)) {
+                            item_index.and_then(|at| cache_items.get(at))
+                        {
                             match kind.as_str() {
                                 "m" => Some(SmolStr::new_static(super::pivot::BLANK_CAPTION)),
                                 "b" => {
                                     let raw = value.root_attribute(b"v")?;
                                     match raw.as_deref() {
                                         Some("1") | Some("0") | Some("true") | Some("false") => {
-                                            let truth = matches!(raw.as_deref(), Some("1") | Some("true"));
+                                            let truth =
+                                                matches!(raw.as_deref(), Some("1") | Some("true"));
                                             Some(super::pivot::part::item_caption(
                                                 &super::pivot::compute::PivotItem::Boolean(truth),
                                                 "$.pivot.itemCaption",
@@ -14955,12 +15364,16 @@ impl Workbook {
                                         }
                                         _ => None,
                                     }
-                                },
-                                "e" => value.root_attribute(b"v")?
-                                    .and_then(|text| super::pivot::compute::PivotItem::Error(
-                                        super::cell::ExcelError::from_text(&text)
-                                    ).authored_error_label().map(SmolStr::new_static)),
-                                "s" => value.root_attribute(b"v")?
+                                }
+                                "e" => value.root_attribute(b"v")?.and_then(|text| {
+                                    super::pivot::compute::PivotItem::Error(
+                                        super::cell::ExcelError::from_text(&text),
+                                    )
+                                    .authored_error_label()
+                                    .map(SmolStr::new_static)
+                                }),
+                                "s" => value
+                                    .root_attribute(b"v")?
                                     .map(|text| SmolStr::new(super::shared_strings::decode(&text))),
                                 _ => None,
                             }
@@ -14968,7 +15381,8 @@ impl Workbook {
                             None
                         };
                         if expected.as_deref()
-                            != Some(super::shared_strings::decode(&label).as_ref()) {
+                            != Some(super::shared_strings::decode(&label).as_ref())
+                        {
                             *unrepresented = Some(format_smolstr!(
                                 "{table_part}#pivotFields[{index}]/items: authored item caption or index is not represented"
                             ));
@@ -15062,25 +15476,36 @@ impl Workbook {
             }
             let number_format = match value.root_attribute(b"numFmtId")? {
                 Some(text) => {
-                    let Ok(id) = text.parse::<u32>() else { return Ok(None); };
+                    let Ok(id) = text.parse::<u32>() else {
+                        return Ok(None);
+                    };
                     Some(self.styles()?.code_of(id))
                 }
                 None => None,
             };
             let Some(aggregate) = Aggregate::from_subtotal(
-                value.root_attribute(b"subtotal")?.as_deref().unwrap_or("sum"),
-            ) else { return Ok(None); };
+                value
+                    .root_attribute(b"subtotal")?
+                    .as_deref()
+                    .unwrap_or("sum"),
+            ) else {
+                return Ok(None);
+            };
             values.push(ValueField {
                 field: source.clone().into(),
                 aggregate,
-                caption: value.root_attribute(b"name")?
+                caption: value
+                    .root_attribute(b"name")?
                     .map(|text| SmolStr::new(super::shared_strings::decode(&text))),
                 number_format,
             });
         }
         let axis_subtotals = |name: &str| -> Result<bool> {
             let mut found = false;
-            for item in table.one_child(main, name, table_part)?.children_named(main, "i")? {
+            for item in table
+                .one_child(main, name, table_part)?
+                .children_named(main, "i")?
+            {
                 found |= item.root_attribute(b"t")?.as_deref() == Some("default");
             }
             Ok(found)
@@ -15119,7 +15544,6 @@ impl Workbook {
         }))
     }
 }
-
 
 // Scratch continuation inside workbook.rs: one vertical pivot publisher.
 // Requires the staged model, compute, layout, part, identity and inventory.
@@ -15252,8 +15676,13 @@ impl Plan {
             .part(workbook, &rels_part, cached)?
             .ok_or_else(|| Error::absent("pivot relationships", &rels_part))?;
         let links = Relationships::from_xml(&before, owner)?;
-        let expected_type = format_smolstr!("{}/{kind}", workbook.stated.family.relationships_namespace());
-        let id = links.entries().iter()
+        let expected_type = format_smolstr!(
+            "{}/{kind}",
+            workbook.stated.family.relationships_namespace()
+        );
+        let id = links
+            .entries()
+            .iter()
             .find(|link| link.type_uri == expected_type && link.target.as_deref() == Some(target))
             .ok_or_else(|| Error::InvalidRecord {
                 path: rels_part.clone(),
@@ -15261,7 +15690,13 @@ impl Plan {
             })?
             .id
             .clone();
-        if links.entries().iter().filter(|link| link.target.as_deref() == Some(target)).count() > 1 {
+        if links
+            .entries()
+            .iter()
+            .filter(|link| link.target.as_deref() == Some(target))
+            .count()
+            > 1
+        {
             return Err(Error::Unsupported {
                 operation: "removing a pivot part referenced by another relationship",
                 filesystem: format_smolstr!("{owner} -> {target}"),
@@ -15309,7 +15744,8 @@ impl Workbook {
         sheet: &str,
         anchor: CellRef,
     ) -> Result<CellRange> {
-        self.add_pivot_owned(spec, sheet, anchor).map(|(range, _)| range)
+        self.add_pivot_owned(spec, sheet, anchor)
+            .map(|(range, _)| range)
     }
 
     pub(crate) fn add_pivot_owned(
@@ -15324,10 +15760,15 @@ impl Workbook {
 
     /// Recompute the pivot from its current source, preserving part identities.
     pub fn refresh_pivot(&mut self, sheet: &str, name: &str) -> Result<CellRange> {
-        self.refresh_pivot_owned(sheet, name).map(|(range, _)| range)
+        self.refresh_pivot_owned(sheet, name)
+            .map(|(range, _)| range)
     }
 
-    pub(crate) fn refresh_pivot_owned(&mut self, sheet: &str, name: &str) -> Result<(CellRange, Restore)> {
+    pub(crate) fn refresh_pivot_owned(
+        &mut self,
+        sheet: &str,
+        name: &str,
+    ) -> Result<(CellRange, Restore)> {
         let host = self.resolve(sheet).ok_or_else(|| self.absent(sheet))?;
         let sheet = self.slots[host].name.as_str();
         let old = self
@@ -15349,15 +15790,21 @@ impl Workbook {
 
     /// Change one editable pivot specification while preserving its package identity.
     pub fn update_pivot(&mut self, sheet: &str, name: &str, spec: PivotSpec) -> Result<CellRange> {
-        self.update_pivot_owned(sheet, name, spec).map(|(range, _)| range)
+        self.update_pivot_owned(sheet, name, spec)
+            .map(|(range, _)| range)
     }
 
     pub(crate) fn update_pivot_owned(
-        &mut self, sheet: &str, name: &str, spec: PivotSpec,
+        &mut self,
+        sheet: &str,
+        name: &str,
+        spec: PivotSpec,
     ) -> Result<(CellRange, Restore)> {
         let host = self.resolve(sheet).ok_or_else(|| self.absent(sheet))?;
         let sheet = self.slots[host].name.as_str();
-        let old = self.pivots()?.iter()
+        let old = self
+            .pivots()?
+            .iter()
             .find(|pivot| pivot.host_sheet() == sheet && pivot.name() == name)
             .cloned()
             .ok_or_else(|| Error::absent("pivot", name))?;
@@ -15401,7 +15848,10 @@ impl Workbook {
             spec
         } else {
             resolved = PivotSpec {
-                source: PivotSource { sheet: source.name().into(), range: spec.source.range },
+                source: PivotSource {
+                    sheet: source.name().into(),
+                    range: spec.source.range,
+                },
                 ..spec.clone()
             };
             &resolved
@@ -15412,16 +15862,15 @@ impl Workbook {
         super::pivot::layout::geometry(spec, anchor, 1, 1)?;
         let computed = super::pivot::compute::PivotComputed::build(spec, &bound, source)?;
         let display = super::pivot::layout::PivotDisplay::new(spec, &computed)?;
-        let rows = u32::try_from(display.row_events.len())
-            .map_err(|_| Error::InvalidRecord {
-                path: "$.pivot.rows".into(),
-                reason: "expected a bounded item count".into(),
-            })?
-;
-        let columns = u32::try_from(display.column_events.len()).map_err(|_| Error::InvalidRecord {
-            path: "$.pivot.columns".into(),
+        let rows = u32::try_from(display.row_events.len()).map_err(|_| Error::InvalidRecord {
+            path: "$.pivot.rows".into(),
             reason: "expected a bounded item count".into(),
         })?;
+        let columns =
+            u32::try_from(display.column_events.len()).map_err(|_| Error::InvalidRecord {
+                path: "$.pivot.columns".into(),
+                reason: "expected a bounded item count".into(),
+            })?;
         let geometry = super::pivot::layout::geometry(spec, anchor, rows, columns)?;
         if spec.source.sheet == sheet && spec.source.range.intersects(geometry.range) {
             return Err(Error::Conflict {
@@ -15442,7 +15891,9 @@ impl Workbook {
         }
         let captions = if let Some(old) = old {
             let table = Registration::root_named(
-                &self.part_bytes(&old.table_part)?, "pivotTableDefinition", &old.table_part,
+                &self.part_bytes(&old.table_part)?,
+                "pivotTableDefinition",
+                &old.table_part,
             )?;
             super::pivot::part::PivotCaptions::new(
                 table.root_attribute(b"dataCaption")?,
@@ -15453,10 +15904,21 @@ impl Workbook {
         };
         let destination = self.sheet(sheet)?;
         let mut cells = super::pivot::part::display_cells(
-            spec, &bound, &computed, &display, &captions, geometry, self.system,
+            spec,
+            &bound,
+            &computed,
+            &display,
+            &captions,
+            geometry,
+            self.system,
         )?;
         // Keep imported styles without losing exceptional date serials.
-        if old.is_some_and(|old| matches!(old.origin(), super::pivot::PivotOrigin::Read { editable: true, .. })) {
+        if old.is_some_and(|old| {
+            matches!(
+                old.origin(),
+                super::pivot::PivotOrigin::Read { editable: true, .. }
+            )
+        }) {
             for cell in &mut cells.cells {
                 if let Some(before) = destination.cell(cell.reference()) {
                     cell.set_style(before.style());
@@ -15492,7 +15954,11 @@ impl Workbook {
         }
         // The source/display loops never parse or intern a format. Resolve
         // each distinct requested code once, cloning styles only on append.
-        let mut styles = if spec.values.iter().any(|value| value.number_format.is_some()) {
+        let mut styles = if spec
+            .values
+            .iter()
+            .any(|value| value.number_format.is_some())
+        {
             Some(self.styles()?)
         } else {
             None
@@ -15505,7 +15971,8 @@ impl Workbook {
                 formats.push(None);
                 continue;
             };
-            if let Some(previous) = spec.values[..index].iter()
+            if let Some(previous) = spec.values[..index]
+                .iter()
                 .position(|value| value.number_format.as_ref() == Some(code))
             {
                 value_styles.push(value_styles[previous]);
@@ -15515,7 +15982,9 @@ impl Workbook {
             let path = format_smolstr!("$.values[{index}].numberFormat");
             let parsed = FormatCode::from_code(code).map_err(|error| Error::InvalidRecord {
                 path: path.clone(),
-                reason: format_smolstr!("expected an en-US Excel number format, got {code:?}: {error}"),
+                reason: format_smolstr!(
+                    "expected an en-US Excel number format, got {code:?}: {error}"
+                ),
             })?;
             if parsed.is_localized() {
                 return Err(Error::Unsupported {
@@ -15523,9 +15992,15 @@ impl Workbook {
                     filesystem: path,
                 });
             }
-            let table = styles.as_mut().expect("requested format owns a style table");
+            let table = styles
+                .as_mut()
+                .expect("requested format owns a style table");
             let wanted = CellStyle {
-                number_format: if parsed.is_general() { SmolStr::new_static("General") } else { code.clone() },
+                number_format: if parsed.is_general() {
+                    SmolStr::new_static("General")
+                } else {
+                    code.clone()
+                },
                 ..CellStyle::default()
             };
             let id = match table.find(&wanted) {
@@ -15546,8 +16021,11 @@ impl Workbook {
                 if at.row() >= data_row && at.column() >= data_col {
                     let value = (at.column() - data_col) as usize % spec.values.len();
                     if let Some(style) = value_styles[value] {
-                        let raw = cell.restyle(style, table.number_format(style), self.system, None);
-                        if let Some(bits) = raw.and_then(|raw| super::sheet::CellExtra::exceptional_serial(cell, raw, self.system)) {
+                        let raw =
+                            cell.restyle(style, table.number_format(style), self.system, None);
+                        if let Some(bits) = raw.and_then(|raw| {
+                            super::sheet::CellExtra::exceptional_serial(cell, raw, self.system)
+                        }) {
                             cells.serials.push((at, bits));
                         }
                     }
@@ -15590,22 +16068,38 @@ impl Workbook {
             Some(old) => old.cache_id(),
             None => {
                 let _ = self.pivots()?;
-                self.stated.pivots.get().and_then(|inventory| inventory.max_cache_id)
-                    .unwrap_or(0).checked_add(1)
+                self.stated
+                    .pivots
+                    .get()
+                    .and_then(|inventory| inventory.max_cache_id)
+                    .unwrap_or(0)
+                    .checked_add(1)
             }
-                .ok_or_else(|| Error::InvalidRecord {
-                    path: "$.pivot.cacheId".into(),
-                    reason: "expected a free cache ID".into(),
-                })?,
+            .ok_or_else(|| Error::InvalidRecord {
+                path: "$.pivot.cacheId".into(),
+                reason: "expected a free cache ID".into(),
+            })?,
         };
-        let mut rendered = super::pivot::part::render(spec, &bound, &computed, &display, geometry, cache_id, &captions, &formats)?;
+        let mut rendered = super::pivot::part::render(
+            spec, &bound, &computed, &display, geometry, cache_id, &captions, &formats,
+        )?;
         if let Some(old) = old {
-            if matches!(old.origin(), super::pivot::PivotOrigin::Read { editable: true, .. }) {
+            if matches!(
+                old.origin(),
+                super::pivot::PivotOrigin::Read { editable: true, .. }
+            ) {
                 rendered.table = self.preserve_imported_pivot_part(
                     &table_part,
                     rendered.table,
                     "pivotTableDefinition",
-                    &["location", "pivotFields", "rowFields", "rowItems", "colItems", "dataFields"],
+                    &[
+                        "location",
+                        "pivotFields",
+                        "rowFields",
+                        "rowItems",
+                        "colItems",
+                        "dataFields",
+                    ],
                     &["name", "rowGrandTotals", "colGrandTotals"],
                 )?;
                 rendered.cache = self.preserve_imported_pivot_part(
@@ -15752,7 +16246,10 @@ impl Workbook {
                 path: cache_rels.clone(),
                 reason: "expected one owned cache records part".into(),
             })?;
-        for other in pivots.iter().filter(|other| other.cache_part != selected.cache_part) {
+        for other in pivots
+            .iter()
+            .filter(|other| other.cache_part != selected.cache_part)
+        {
             let relationships = package::relationships_part_of(&other.cache_part);
             let bytes = self.part_bytes(&relationships)?;
             let owner = Relationships::from_xml(&bytes, &other.cache_part)?;
@@ -15767,8 +16264,20 @@ impl Workbook {
                 });
             }
         }
-        plan.pivot_unlink(self, &self.slots[host].part, "pivotTable", &selected.table_part, &cached)?;
-        plan.pivot_unlink(self, &self.workbook_part, "pivotCacheDefinition", &selected.cache_part, &cached)?;
+        plan.pivot_unlink(
+            self,
+            &self.slots[host].part,
+            "pivotTable",
+            &selected.table_part,
+            &cached,
+        )?;
+        plan.pivot_unlink(
+            self,
+            &self.workbook_part,
+            "pivotCacheDefinition",
+            &selected.cache_part,
+            &cached,
+        )?;
         let before = plan
             .part(self, &self.workbook_part, &cached)?
             .ok_or_else(|| Error::absent("workbook part", &self.workbook_part))?;
@@ -15779,10 +16288,9 @@ impl Workbook {
             &self.workbook_part,
         )?;
         let mut changes = BTreeMap::new();
-        for child in caches.children_named(
-            &[super::NAMESPACE, super::STRICT_NAMESPACE],
-            "pivotCache",
-        )? {
+        for child in
+            caches.children_named(&[super::NAMESPACE, super::STRICT_NAMESPACE], "pivotCache")?
+        {
             if child.root_attribute(b"cacheId")?.as_deref()
                 == Some(&selected.cache_id().to_string())
             {
@@ -15805,8 +16313,13 @@ impl Workbook {
                 None
             },
         );
-        let after = Registration::replace_root(&before, &root.changed_children(&root_changes)?.xml)?;
-        plan.set_part(self.workbook_part.clone(), Some(before), Some(Arc::from(after)));
+        let after =
+            Registration::replace_root(&before, &root.changed_children(&root_changes)?.xml)?;
+        plan.set_part(
+            self.workbook_part.clone(),
+            Some(before),
+            Some(Arc::from(after)),
+        );
         let removed = BTreeSet::from([
             selected.table_part.clone(),
             table_rels,
@@ -15838,8 +16351,14 @@ impl Workbook {
         // Attempt and the same inverse owner as creation/refresh.
         let mark = self.begin_batch();
         self.stated.remember_slot(&self.slots[host]);
-        let target = self.slots[host].parsed.get_mut().expect("preflighted worksheet");
-        let cells: Vec<_> = target.cells_in(selected.location()).map(Cell::reference).collect();
+        let target = self.slots[host]
+            .parsed
+            .get_mut()
+            .expect("preflighted worksheet");
+        let cells: Vec<_> = target
+            .cells_in(selected.location())
+            .map(Cell::reference)
+            .collect();
         for at in cells {
             target.remove_cell(at);
         }
@@ -15856,11 +16375,9 @@ impl Workbook {
 // unchanged when the calculated children are replaced. Unknown extension
 // semantics remain read-only, even if their markup is syntactically valid.
 impl Workbook {
-    fn native_vertical_extensions(
-        table: &Registration,
-        cache: &Registration,
-    ) -> Result<bool> {
-        const XPDL: &str = "http://schemas.microsoft.com/office/spreadsheetml/2016/pivotdefaultlayout";
+    fn native_vertical_extensions(table: &Registration, cache: &Registration) -> Result<bool> {
+        const XPDL: &str =
+            "http://schemas.microsoft.com/office/spreadsheetml/2016/pivotdefaultlayout";
         const TABLE_XPDL: &str = "{747A6164-185A-40DC-8AA5-F01512510D54}";
         const CACHE_X14: &str = "{725AE2AE-9491-48be-B2B4-4EB974FC3084}";
         let main = &[super::NAMESPACE, super::STRICT_NAMESPACE];
@@ -15871,9 +16388,13 @@ impl Workbook {
         // foreign same-local-name children still fail this exact count.
         let table_children = 7 + table.children_named(main, "colFields")?.len();
         if tables.is_empty() && caches.is_empty() {
-            return Ok(table.direct_child_count()? == table_children && cache.direct_child_count()? == 2);
+            return Ok(
+                table.direct_child_count()? == table_children && cache.direct_child_count()? == 2
+            );
         }
-        let [table_ext] = tables.as_slice() else { return Ok(false); };
+        let [table_ext] = tables.as_slice() else {
+            return Ok(false);
+        };
         let cache_ext = match caches.as_slice() {
             [] => None,
             [entry] => Some(entry),
@@ -15898,8 +16419,12 @@ impl Workbook {
                 return Ok(false);
             }
             if uri.as_deref() == Some(super::pivot::part::HIDE_VALUES_URI) {
-                let child = entry.children_named(&[super::pivot::part::HIDE_VALUES_NAMESPACE], "pivotTableDefinition")?;
-                if child.len() != 1 || entry.direct_child_count()? != 1
+                let child = entry.children_named(
+                    &[super::pivot::part::HIDE_VALUES_NAMESPACE],
+                    "pivotTableDefinition",
+                )?;
+                if child.len() != 1
+                    || entry.direct_child_count()? != 1
                     || child[0].has_children()?
                     || child[0].root_attribute(b"hideValuesRow")?.as_deref() != Some("1")
                     || child[0].container_semantics()?.len() != 1
@@ -15909,8 +16434,11 @@ impl Workbook {
                 x14 = true;
             } else if uri.as_deref() == Some(TABLE_XPDL) {
                 let child = entry.children_named(&[XPDL], "pivotTableDefinition16")?;
-                if child.len() != 1 || entry.direct_child_count()? != 1 || child[0].has_children()?
-                    || !child[0].container_semantics()?.is_empty() {
+                if child.len() != 1
+                    || entry.direct_child_count()? != 1
+                    || child[0].has_children()?
+                    || !child[0].container_semantics()?.is_empty()
+                {
                     return Ok(false);
                 }
                 xpdl = true;
@@ -15920,17 +16448,25 @@ impl Workbook {
         }
         // Our no-column writer owns exactly this single x14 display hint.
         if cache_ext.is_none() {
-            return Ok(x14 && !xpdl
+            return Ok(x14
+                && !xpdl
                 && table.root_attribute(b"gridDropZones")?.as_deref() == Some("0"));
         }
         let cache_ext = cache_ext.unwrap();
-        if !cache_ext.container_semantics()?.is_empty()
-            || cache_ext.direct_child_count()? != 1 { return Ok(false); }
+        if !cache_ext.container_semantics()?.is_empty() || cache_ext.direct_child_count()? != 1 {
+            return Ok(false);
+        }
         let cache_entries = cache_ext.children_named(main, "ext")?;
-        if cache_entries.len() != 1 { return Ok(false); }
+        if cache_entries.len() != 1 {
+            return Ok(false);
+        }
         let cache_entry = &cache_entries[0];
-        let cache_child = cache_entry.children_named(&[super::pivot::part::HIDE_VALUES_NAMESPACE], "pivotCacheDefinition")?;
-        Ok(x14 && xpdl
+        let cache_child = cache_entry.children_named(
+            &[super::pivot::part::HIDE_VALUES_NAMESPACE],
+            "pivotCacheDefinition",
+        )?;
+        Ok(x14
+            && xpdl
             && cache_entry.root_attribute(b"uri")?.as_deref() == Some(CACHE_X14)
             && cache_entry.container_semantics()?.len() == 1
             && cache_entry.direct_child_count()? == 1
@@ -15962,7 +16498,11 @@ impl Workbook {
             if before.len() > 1 || after.len() > 1 {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("{member}#colFields"),
-                    reason: format_smolstr!("expected at most one colFields, got {}/{}", before.len(), after.len()),
+                    reason: format_smolstr!(
+                        "expected at most one colFields, got {}/{}",
+                        before.len(),
+                        after.len()
+                    ),
                 });
             }
             if let Some(before) = before.pop() {
@@ -15980,13 +16520,13 @@ impl Workbook {
         }
         let attributes = attributes
             .iter()
-            .map(|name| {
-                Ok((
-                    SmolStr::new(*name),
-                    new.root_attribute(name.as_bytes())?,
-                ))
-            })
+            .map(|name| Ok((SmolStr::new(*name), new.root_attribute(name.as_bytes())?)))
             .collect::<Result<Vec<_>>>()?;
-        Ok(old.changed_children(&changes)?.with_attributes(attributes)?.xml.as_bytes().to_vec())
+        Ok(old
+            .changed_children(&changes)?
+            .with_attributes(attributes)?
+            .xml
+            .as_bytes()
+            .to_vec())
     }
 }

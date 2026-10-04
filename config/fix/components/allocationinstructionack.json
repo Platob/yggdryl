@@ -46,17 +46,6 @@
         }
       },
       {
-        "name": "nopartyids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nopartyids",
-          "FIX:tag": "453"
-        }
-      },
-      {
         "name": "parties",
         "dtype": {
           "type": "null"
@@ -254,17 +243,6 @@
         }
       },
       {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
-        }
-      },
-      {
         "name": "regulatorytradeids",
         "dtype": {
           "type": "null"
@@ -272,17 +250,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "regulatorytradeids"
-        }
-      },
-      {
-        "name": "noallocs",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noallocs",
-          "FIX:tag": "78"
         }
       },
       {

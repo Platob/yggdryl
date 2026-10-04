@@ -35,13 +35,13 @@
 //!     .with_field(schema.clone())
 //!     .with_filter("id > 10")?
 //!     .with_batch_row_size(1024)
-//!     .with_commit_row_size(10_000);
+//!     .with_commit_batch_num(10);
 //!
 //! assert_eq!(options.field(), Some(schema.clone()));
 //! assert_eq!(options.name(), "row");
 //! assert_eq!(options.plan().to_string(), "create (id int64 not null) where id > 10");
 //! assert_eq!(options.batch_row_size(), Some(1024));
-//! assert_eq!(options.commit_row_size(), Some(10_000));
+//! assert_eq!(options.commit_batch_num(), Some(10));
 //!
 //! // The same plan, spelled as text.
 //! let spelled = options.clone().with_plan("create trade (id int64 not null) where id > 10")?;
@@ -51,12 +51,12 @@
 //! # }
 //! ```
 
-mod commit;
+pub(crate) mod commit;
 mod dispatch;
 mod limits;
 
-pub(crate) use commit::CommitBuffer;
 use commit::CommitReaders;
+pub(crate) use commit::{Cadence, CommitBuffer};
 use limits::Limited;
 pub(crate) use limits::WriteLimitState;
 
@@ -67,9 +67,8 @@ use arrow_schema::{Schema, SchemaRef};
 use smol_str::SmolStr;
 
 use crate::arrow::field_from_arrow_schema;
-use crate::cast::ArrowCastOptions;
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::expression::{Bound, BoundSelector, IntoFilter, IntoPlan, IntoSelector, Plan, Term};
-use crate::field::AppliedPlan;
 use crate::ipc::IpcOptions;
 use crate::{
     DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
@@ -80,6 +79,18 @@ use crate::{
 /// Runtime bindings use this same value when their host-language rows must be
 /// widened into Arrow before entering the core reader surface.
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
+
+/// The bytes a resumable write session holds before it publishes, where
+/// [`commit_batch_num`](IORecordOptions::commit_batch_num) is unset: 64 MiB,
+/// measured as [`memory_size`](crate::arrow::memory_size) counts the held
+/// batches.
+///
+/// A one-shot write with no cadence publishes once, after its source ends;
+/// a session ([`ArrowWriteSession`](crate::ArrowWriteSession)) exists to
+/// publish between the awaits of a runtime that pushes it batches, so it
+/// publishes by this many bytes instead. A non-zero target always yields at
+/// least one batch, and no batch is ever cut.
+pub const DEFAULT_COMMIT_BYTE_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The threads one file may decode or encode on; `None` is what the host
 /// offers.
@@ -218,25 +229,6 @@ pub trait IORecordOptions: Sized {
         let _ = batch_byte_size;
     }
 
-    /// Return the row materialization bound for a native-record write.
-    ///
-    /// Row conversion must never run past the next publication boundary: a
-    /// conversion error at row `N + 1` must not erase the complete `N`-row
-    /// prefix waiting to commit. The smaller of `batch_row_size` and
-    /// `commit_row_size` is therefore the writer's batch size; either setting
-    /// alone supplies the bound.
-    fn write_batch_row_size(&self) -> Option<usize> {
-        match self.commit_row_size() {
-            Some(commit) => Some(
-                self.batch_row_size()
-                    .unwrap_or(DEFAULT_RECORD_BATCH_ROW_SIZE)
-                    .max(1)
-                    .min(commit),
-            ),
-            None => self.batch_row_size(),
-        }
-    }
-
     /// Return the bound on how many result rows flow in total, if any - a
     /// **count of rows**, never a per-row byte cap, because the name reads
     /// both ways.
@@ -271,12 +263,13 @@ pub trait IORecordOptions: Sized {
 
     /// Return the bound on the result rows' Arrow in-memory bytes, if any.
     ///
-    /// Bytes are counted as
-    /// [`get_array_memory_size`](arrow_array::RecordBatch::get_array_memory_size)
-    /// counts them - the same accounting the Iceberg target-file-size rolling
-    /// uses - never as encoded bytes, so a Parquet file written under a byte
-    /// limit lands well under it: the format compresses what this measures
-    /// uncompressed. The flow stops at the last row that keeps the running
+    /// Bytes are counted as [`memory_size`](crate::arrow::memory_size)
+    /// counts them - each batch's own rows, a zero-copy slice its own
+    /// extent rather than its parent's buffers, the one accounting every
+    /// byte bound in the crate reads, the commit cadence and the Iceberg
+    /// target-file-size rolling included - never as encoded bytes, so a
+    /// Parquet file written under a byte limit lands well under it: the
+    /// format compresses what this measures uncompressed. The flow stops at the last row that keeps the running
     /// total at or under the limit, and a non-zero limit always yields at
     /// least one row rather than silently losing everything to one wide row -
     /// only `Some(0)` yields nothing. When
@@ -287,15 +280,56 @@ pub trait IORecordOptions: Sized {
     /// Set the bound on the result rows' Arrow in-memory bytes.
     fn set_max_byte_size(&mut self, max_byte_size: Option<u64>);
 
-    /// Return the publication cadence for a streamed write, in rows.
+    /// Return the publication cadence for a streamed write, in batches.
     ///
-    /// `None` publishes once after the source ends. `Some(N)` publishes every
-    /// complete group of `N` incoming rows and then the final remainder. Zero
-    /// is not a cadence and is rejected before a write pulls its source.
-    fn commit_row_size(&self) -> Option<usize>;
+    /// `Some(N)` publishes every `N` batches of the shaped stream and then
+    /// the final remainder; a batch is one `RecordBatch` the source yields,
+    /// cut by [`batch_row_size`](Self::batch_row_size) and
+    /// [`batch_byte_size`](Self::batch_byte_size) where a row adapter made
+    /// it, never by the cadence, and an empty batch counts for nothing.
+    /// Zero is not a cadence and is rejected before a write pulls its
+    /// source.
+    ///
+    /// `None` is the destination's own best cadence. A leaf of any
+    /// encoding and a partitioned folder publish once, after the source
+    /// ends: a leaf append is a rewrite, so a periodic commit on one would
+    /// be a rewrite per commit. An Iceberg table publishes once too, the
+    /// rows of every partition held under the process spill bound
+    /// ([`SpillOptions::from_env`](crate::SpillOptions::from_env)) until the
+    /// source ends, so a streamed write of any length is one snapshot and
+    /// its memory is the bound, not the stream; a stated cadence paces a
+    /// stream whose rows would outgrow the spill folder. A resumable write
+    /// session publishes by [`DEFAULT_COMMIT_BYTE_SIZE`]. Whatever holds a
+    /// cadence between publications - a leaf's, a session's, a table's
+    /// partition holds - is held under that same bound, the heaviest batches
+    /// spilled first.
+    ///
+    /// Whichever cadence applies, an overwrite's first commit replaces and
+    /// every later one appends, an append appends on every commit, and every
+    /// commit of a merge merges by its key - a merge an Iceberg table keys by
+    /// its partition alone replaces a partition on the first commit of the
+    /// write that reaches it and appends to it on every later one. The
+    /// commits completed before a later failure stay published.
+    fn commit_batch_num(&self) -> Option<usize>;
 
-    /// Set the publication cadence for a streamed write.
-    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>);
+    /// Set the publication cadence for a streamed write, in batches.
+    fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>);
+
+    /// Return the threads a write of several parts runs on at once.
+    ///
+    /// `Some(n)` is the most parts written side by side - an Iceberg
+    /// commit's partition groups, each group's files encoded on its own
+    /// thread with its share of `n` for the file's columns - and `None` is
+    /// the destination's own answer: an Iceberg table's `write.parallelism`
+    /// property, else its `read.parallelism`, else every thread the host
+    /// offers. Zero is not a thread count and is rejected before a write
+    /// pulls its source, at every write door. A leaf of one file is written
+    /// on the thread that writes it and reads nothing from this; the count
+    /// stays inside the options' identity wherever they travel.
+    fn num_threads(&self) -> Option<usize>;
+
+    /// Set the threads a write of several parts runs on at once.
+    fn set_num_threads(&mut self, num_threads: Option<usize>);
 
     /// Return the compression level applied to a declared content coding.
     fn level(&self) -> Level;
@@ -368,15 +402,23 @@ pub trait IORecordOptions: Sized {
     ///
     /// Returns an error when the `create` section declares a column that
     /// cannot be typed without rows, the merge key names a column twice, or
-    /// the plan carries a section these options have no property for - an
-    /// `order by` - which is refused by name rather than dropped: a plan that
-    /// orders rows is applied to the rows themselves, through the expression
-    /// layer.
+    /// the plan carries a section these options have no property for - a
+    /// join or an `order by` - which is refused by name rather than dropped:
+    /// a plan that joins or orders rows is run, or applied to the rows
+    /// themselves, through the expression layer.
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
         // Everything that can refuse does so before the first write, so a
         // refused plan leaves every section as it was.
         let declared = plan.field()?;
         distinct_merge_key(plan.merge_by())?;
+        if !plan.joins().is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.join"),
+                reason: SmolStr::new_static(
+                    "record options hold no join section; run the plan or apply it to the rows",
+                ),
+            });
+        }
         if !plan.ordering().is_empty() {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.order_by"),
@@ -706,15 +748,23 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Return these options with a publication every `commit_row_size` rows.
+    /// Return these options with a publication every `commit_batch_num`
+    /// batches.
     ///
     /// A zero value is retained so the write can return a typed error before
     /// touching a one-shot input. Use `None` through
-    /// [`set_commit_row_size`](Self::set_commit_row_size) for one publication
-    /// at the end.
+    /// [`set_commit_batch_num`](Self::set_commit_batch_num) for the
+    /// destination's own cadence.
     #[must_use]
-    fn with_commit_row_size(mut self, commit_row_size: usize) -> Self {
-        self.set_commit_row_size(Some(commit_row_size));
+    fn with_commit_batch_num(mut self, commit_batch_num: usize) -> Self {
+        self.set_commit_batch_num(Some(commit_batch_num));
+        self
+    }
+
+    /// Return a copy running a write of several parts on `num_threads`.
+    #[must_use]
+    fn with_num_threads(mut self, num_threads: usize) -> Self {
+        self.set_num_threads(Some(num_threads));
         self
     }
 
@@ -763,11 +813,9 @@ pub trait IORecordOptions: Sized {
     /// a stored column for every reader of the resource. Each absent layer
     /// costs nothing.
     ///
-    /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
-    /// casting: a declaration is a cast *and* the `TRANSFORM:`, `PARTITION:`
-    /// and `DIGEST:` columns it derives, so a column a schema declares arrives
-    /// written rather than arriving as the default nothing filled. A root that
-    /// declares no derivation applies as the cast alone.
+    /// A field shapes rows by the cast alone ([`Field::apply_arrow_batch`]):
+    /// a `TRANSFORM:`, `PARTITION:` or `DIGEST:` declaration it carries is
+    /// metadata the rows travel under, never a column the shaping fills.
     ///
     /// Every layer answers from the schemas alone, so the shaping is compiled
     /// against the batch's schema and then applied; a caller shaping many
@@ -782,7 +830,7 @@ pub trait IORecordOptions: Sized {
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
-        Shaping::compile(self, batch.schema(), existing)?.apply(batch)
+        Shaping::compile(self, batch.schema(), existing, false)?.apply(batch)
     }
 
     /// Shape a whole reader as [`apply_arrow_batch`](Self::apply_arrow_batch)
@@ -801,12 +849,12 @@ pub trait IORecordOptions: Sized {
     ) -> Result<crate::arrow::BatchReader> {
         let options = ArrowCastOptions::new().with_safe(self.safe());
         let reader = match self.field() {
-            Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
+            Some(declared) => declared.apply_arrow_reader(reader, options)?,
             None => reader,
         };
         let reader = self.apply_arrow_expressions(reader)?;
         match existing {
-            Some(stored) => Ok(stored.apply_arrow_reader(reader, true, true, true, options)?),
+            Some(stored) => Ok(stored.apply_arrow_reader(reader, options)?),
             None => Ok(reader),
         }
     }
@@ -903,23 +951,30 @@ pub trait IORecordOptions: Sized {
 ///
 /// The declared field, the `where` and `select` clauses and the stored field
 /// are each planned or bound once against the schema the layer before hands
-/// it, read off an empty batch, so a batch of that schema moves only rows.
+/// it, so a batch of that schema moves only rows.
 pub(crate) struct Shaping {
-    declared: Option<AppliedPlan>,
+    declared: Option<ArrowCastPlan>,
+    /// The columns the destination derives, computed from the rows as the
+    /// declared field leaves them and before any clause reads them: a table
+    /// that owns its derivations, never a leaf.
+    derived: Option<crate::expression::Derivation>,
     /// Whether the `select` runs first, because the `where` reads a column
     /// only the selector builds.
     late: bool,
     filter: Option<Bound>,
     select: Option<BoundSelector>,
-    /// A holder already holding a value is left alone, so this fills only
-    /// what the destination declares and the incoming rows do not already
-    /// carry.
-    existing: Option<AppliedPlan>,
+    /// The cast completing the rows onto the destination's stored field.
+    existing: Option<ArrowCastPlan>,
 }
 
 impl Shaping {
     /// Compile how `options`, completed onto `existing`, shape a batch of
     /// `source`.
+    ///
+    /// `derive` is a destination that owns the derivations its stored field
+    /// declares - a table - and computes them: after the declared cast,
+    /// before the clauses, so a `where` may name a derived column and a
+    /// required one is never refused as missing.
     ///
     /// # Errors
     ///
@@ -929,23 +984,26 @@ impl Shaping {
         options: &impl IORecordOptions,
         source: SchemaRef,
         existing: Option<&Field>,
+        derive: bool,
     ) -> Result<Self> {
+        let cast = ArrowCastOptions::new().with_safe(options.safe());
         let mut schema = source;
         let declared = match options.declared() {
             Some(declared) => {
-                let plan = AppliedPlan::compile(
-                    declared,
-                    Arc::clone(&schema),
-                    true,
-                    true,
-                    true,
-                    ArrowCastOptions::new().with_safe(options.safe()),
-                )?;
-                schema = plan.apply(&RecordBatch::new_empty(schema))?.schema();
+                let plan =
+                    ArrowCastPlan::compile_schema(&schema, declared, cast, Deferred::default())?;
+                schema = Arc::clone(plan.target_schema()?);
                 Some(plan)
             }
             None => None,
         };
+        let derived = match existing.filter(|_| derive) {
+            Some(stored) => crate::expression::Derivation::owning(stored)?,
+            None => None,
+        };
+        if let Some(derivation) = &derived {
+            schema = derivation.schema(&schema)?;
+        }
         let late = crate::expression::filter_after_select(
             options.filter(),
             options.select(),
@@ -959,18 +1017,17 @@ impl Shaping {
             (filter, Self::bind_select(options.select(), &mut schema)?)
         };
         let existing = match existing {
-            Some(stored) => Some(AppliedPlan::compile(
+            Some(stored) => Some(ArrowCastPlan::compile_schema(
+                &schema,
                 stored,
-                schema,
-                true,
-                true,
-                true,
-                ArrowCastOptions::new().with_safe(options.safe()),
+                cast,
+                Deferred::default(),
             )?),
             None => None,
         };
         Ok(Self {
             declared,
+            derived,
             late,
             filter,
             select,
@@ -1006,9 +1063,12 @@ impl Shaping {
     /// declaration cannot be satisfied, or a term fails over the rows.
     pub(crate) fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
         let mut batch = match &self.declared {
-            Some(plan) => plan.apply(&batch)?,
+            Some(plan) => plan.reconcile_batch(batch)?,
             None => batch,
         };
+        if let Some(derivation) = &self.derived {
+            batch = derivation.apply(batch)?;
+        }
         if self.late {
             batch = self.select(batch)?;
             batch = self.filter(batch)?;
@@ -1017,7 +1077,7 @@ impl Shaping {
             batch = self.select(batch)?;
         }
         match &self.existing {
-            Some(plan) => Ok(plan.apply(&batch)?),
+            Some(plan) => Ok(plan.reconcile_batch(batch)?),
             None => Ok(batch),
         }
     }
@@ -1190,12 +1250,20 @@ macro_rules! record_options_fields {
             self.max_byte_size = max_byte_size;
         }
 
-        fn commit_row_size(&self) -> Option<usize> {
-            self.commit_row_size
+        fn commit_batch_num(&self) -> Option<usize> {
+            self.commit_batch_num
         }
 
-        fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
-            self.commit_row_size = commit_row_size;
+        fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
+            self.commit_batch_num = commit_batch_num;
+        }
+
+        fn num_threads(&self) -> Option<usize> {
+            self.num_threads
+        }
+
+        fn set_num_threads(&mut self, num_threads: Option<usize>) {
+            self.num_threads = num_threads;
         }
 
         fn level(&self) -> $crate::Level {
@@ -1779,32 +1847,72 @@ impl RecordOptions {
     /// This is public only for the workspace bindings, which must reject a
     /// zero cadence before converting or pulling a runtime iterator.
     #[doc(hidden)]
-    pub fn require_commit_row_size(&self) -> Result<Option<usize>> {
-        match self.commit_row_size() {
+    pub fn require_commit_batch_num(&self) -> Result<Option<usize>> {
+        match self.commit_batch_num() {
             Some(0) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.commit_row_size"),
+                path: SmolStr::new_static("$.commit_batch_num"),
                 reason: SmolStr::new_static(
-                    "expected commit_row_size to be a non-zero row count, got 0",
+                    "expected commit_batch_num to be a non-zero batch count, got 0",
                 ),
             }),
-            commit_row_size => Ok(commit_row_size),
+            commit_batch_num => Ok(commit_batch_num),
         }
+    }
+
+    /// Validate the optional thread count of a write of several parts.
+    ///
+    /// This is public only for the workspace bindings, which must reject a
+    /// zero count before converting or pulling a runtime iterator.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `$.num_threads` for a count of zero.
+    #[doc(hidden)]
+    pub fn require_num_threads(&self) -> Result<Option<usize>> {
+        match self.num_threads() {
+            Some(0) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.num_threads"),
+                reason: SmolStr::new_static(
+                    "expected num_threads to be a non-zero thread count, got 0",
+                ),
+            }),
+            num_threads => Ok(num_threads),
+        }
+    }
+
+    /// The cadence a write publishes by: the batch count these options
+    /// state, or `default`, the destination's own, where they state none.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`require_commit_batch_num`](Self::require_commit_batch_num)
+    /// refusal of a zero count.
+    pub(crate) fn commit_cadence(&self, default: Cadence) -> Result<Cadence> {
+        Ok(match self.require_commit_batch_num()? {
+            Some(batches) => Cadence::Batches(
+                std::num::NonZeroUsize::new(batches).expect("a zero count was refused"),
+            ),
+            None => default,
+        })
     }
 
     /// Split one already-shaped stream into bounded publication readers.
     ///
     /// The caller validates write intent and shapes the stream before entering
     /// here. Every yielded reader contains exactly one complete cadence, or
-    /// the final remainder after end-of-stream. A source error discards only
-    /// the incomplete cadence it interrupted.
+    /// the final remainder after end-of-stream; `default` is the cadence
+    /// where the options state no batch count, and [`Cadence::Once`] yields
+    /// the stream itself once. A source error discards only the incomplete
+    /// cadence it interrupted.
     pub(crate) fn commit_arrow_readers(
         &self,
         batches: crate::arrow::BatchReader,
+        default: Cadence,
     ) -> Result<CommitReaders> {
         Ok(CommitReaders {
             schema: batches.schema(),
             batches: Some(batches),
-            commit_row_size: self.require_commit_row_size()?,
+            cadence: self.commit_cadence(default)?,
             buffer: None,
             done: false,
         })
@@ -1867,8 +1975,8 @@ impl RecordOptions {
         let reason = match crate::text::Format::from_mime_type(base) {
             Ok(format) => crate::text::expected_got(
                 format_args!(
-                    "{encodings}; a {} document is one value, read with read_arrow or \
-                     read_scalar and written with write_arrow (overwrite) or write_scalar",
+                    "{encodings}; a {} document is one value, read with read_serie or \
+                     read_scalar and written with write_serie (overwrite) or write_scalar",
                     format.as_str()
                 ),
                 base,
@@ -2033,17 +2141,19 @@ impl RecordOptions {
 pub mod internals {
     //! What `rust/tests/media/options.rs` pins and a caller cannot reach.
     //!
-    //! `commit_arrow_readers` is the crate-private slicer every bounded write
-    //! pulls through: it cuts a stream at the declared row cadence without
-    //! reading ahead, which is a claim only a counted reader handed straight
-    //! to it can make. The readers it yields come back as an opaque iterator,
-    //! so the type carrying them stays as private as it was.
+    //! `commit_arrow_readers` is the crate-private splitter every bounded
+    //! write pulls through: it cuts a stream at the declared batch cadence,
+    //! or at the byte target a destination defaults to, without reading
+    //! ahead, which is a claim only a counted reader handed straight to it
+    //! can make. The readers it yields come back as an opaque iterator, so
+    //! the type carrying them stays as private as it was.
 
     use super::RecordOptions;
     use crate::Result;
     use crate::arrow::BatchReader;
 
-    /// Split one already-shaped stream into bounded publication readers.
+    /// Split one already-shaped stream into bounded publication readers,
+    /// once after the source ends where the options state no cadence.
     ///
     /// # Errors
     ///
@@ -2052,7 +2162,22 @@ pub mod internals {
         options: &RecordOptions,
         batches: BatchReader,
     ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
-        options.commit_arrow_readers(batches)
+        options.commit_arrow_readers(batches, super::Cadence::Once)
+    }
+
+    /// Split one already-shaped stream into bounded publication readers,
+    /// by `target` bytes of held batches where the options state no
+    /// cadence - what an Iceberg table and a write session default to.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed failure where the declared cadence is zero.
+    pub fn commit_arrow_readers_by_bytes(
+        options: &RecordOptions,
+        batches: BatchReader,
+        target: u64,
+    ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
+        options.commit_arrow_readers(batches, super::Cadence::Bytes(target))
     }
 
     /// Hand one file its share of a table's threads, as a table scan or

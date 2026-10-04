@@ -36,17 +36,6 @@
         }
       },
       {
-        "name": "nomdentries",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nomdentries",
-          "FIX:tag": "268"
-        }
-      },
-      {
         "name": "mdackgrp",
         "dtype": {
           "type": "null"
@@ -65,17 +54,6 @@
         "metadata": {
           "FIX:field": "transacttime",
           "FIX:tag": "60"
-        }
-      },
-      {
-        "name": "nolinesoftext",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolinesoftext",
-          "FIX:tag": "33"
         }
       },
       {

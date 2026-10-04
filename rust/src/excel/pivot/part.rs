@@ -6,18 +6,19 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Result};
 
 use super::super::formula::aggregate::Aggregate;
-use super::{PivotSpec, BLANK_CAPTION};
 use super::compute::{BoundSource, PivotComputed, PivotItem, PivotMeasure};
 use super::layout::{Geometry, PivotDisplay, PivotEvent};
-use crate::excel::NumberFormat;
+use super::{BLANK_CAPTION, PivotSpec};
 use crate::Scalar;
+use crate::excel::NumberFormat;
 use crate::excel::cell::serial_text;
 use crate::excel::package::escape_attribute;
 use crate::excel::shared_strings::encode;
 use crate::excel::{Cell, CellRef, DateSystem};
 
 pub(crate) const HIDE_VALUES_URI: &str = "{962EF5D1-5CA2-4c93-8EF4-DBF5C05439D2}";
-pub(crate) const HIDE_VALUES_NAMESPACE: &str = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
+pub(crate) const HIDE_VALUES_NAMESPACE: &str =
+    "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
 
 /// Three semantic XML members; OPC relationships/overrides stay with package.
 pub(crate) struct PivotPartBytes {
@@ -60,29 +61,55 @@ impl PivotCaptions {
         let grand = grand.unwrap_or_else(|| GRAND_CAPTION.to_owned());
         pivot_label("$.pivot.dataCaption", &values)?;
         pivot_label("$.pivot.grandTotalCaption", &grand)?;
-        Ok(Self { values: values.into(), grand: grand.into() })
+        Ok(Self {
+            values: values.into(),
+            grand: grand.into(),
+        })
     }
 }
 const MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const RELS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-fn shared_items(items: &super::compute::PivotItems, facts: super::compute::PivotItemFacts) -> Result<String> {
+fn shared_items(
+    items: &super::compute::PivotItems,
+    facts: super::compute::PivotItemFacts,
+) -> Result<String> {
     let mut xml = format!("<sharedItems count=\"{}\"", items.items().len());
-    if facts.blank { xml.push_str(" containsBlank=\"1\""); }
+    if facts.blank {
+        xml.push_str(" containsBlank=\"1\"");
+    }
     if facts.date {
         // Do not mix date attributes with numeric bound attributes.
-        if !facts.blank { xml.push_str(" containsSemiMixedTypes=\"0\""); }
-        if !facts.mixed { xml.push_str(" containsNonDate=\"0\""); }
+        if !facts.blank {
+            xml.push_str(" containsSemiMixedTypes=\"0\"");
+        }
+        if !facts.mixed {
+            xml.push_str(" containsNonDate=\"0\"");
+        }
         xml.push_str(" containsDate=\"1\"");
-        xml.push_str(if facts.string { " containsString=\"1\"" } else { " containsString=\"0\"" });
+        xml.push_str(if facts.string {
+            " containsString=\"1\""
+        } else {
+            " containsString=\"0\""
+        });
     }
-    if facts.mixed { xml.push_str(" containsMixedTypes=\"1\""); }
+    if facts.mixed {
+        xml.push_str(" containsMixedTypes=\"1\"");
+    }
     if facts.number && !facts.date {
-        if !facts.mixed { xml.push_str(" containsSemiMixedTypes=\"0\" containsString=\"0\""); }
+        if !facts.mixed {
+            xml.push_str(" containsSemiMixedTypes=\"0\" containsString=\"0\"");
+        }
         xml.push_str(" containsNumber=\"1\"");
-        if facts.integer { xml.push_str(" containsInteger=\"1\""); }
+        if facts.integer {
+            xml.push_str(" containsInteger=\"1\"");
+        }
         if let (Some(min), Some(max)) = (facts.min_number, facts.max_number) {
-            xml.push_str(&format!(" minValue=\"{}\" maxValue=\"{}\"", serial_text(min), serial_text(max)));
+            xml.push_str(&format!(
+                " minValue=\"{}\" maxValue=\"{}\"",
+                serial_text(min),
+                serial_text(max)
+            ));
         }
     }
     // The writer authors no fieldGroup. Date bounds are optional OOXML
@@ -125,7 +152,11 @@ pub(crate) fn render(
     pivot_label("$.name", &spec.name)?;
     pivot_label("$.pivot.blankCaption", BLANK_CAPTION)?;
     let expected_height = geometry.header_rows + display.row_events.len() as u32;
-    let groups = if spec.columns.is_empty() { 1 } else { display.column_events.len() as u32 };
+    let groups = if spec.columns.is_empty() {
+        1
+    } else {
+        display.column_events.len() as u32
+    };
     let expected_width = spec.rows.len() as u32 + groups * spec.values.len() as u32;
     if geometry.height != expected_height || geometry.width != expected_width {
         return Err(refusal(
@@ -149,12 +180,22 @@ pub(crate) fn render(
     for (index, name) in bound.headers.iter().enumerate() {
         let column = u32::try_from(index)
             .map_err(|_| refusal("$.source.range", "too many source fields"))?;
-        let items = row_cols.iter().position(|&axis| axis == column)
+        let items = row_cols
+            .iter()
+            .position(|&axis| axis == column)
             .map(|axis| &computed.row_items[axis])
-            .or_else(|| column_cols.iter().position(|&axis| axis == column)
-                .map(|axis| &computed.column_items[axis]));
+            .or_else(|| {
+                column_cols
+                    .iter()
+                    .position(|&axis| axis == column)
+                    .map(|axis| &computed.column_items[axis])
+            });
         let facts = items.map(|items| items.facts());
-        let num_fmt_id = if facts.is_some_and(|facts| facts.date_only) { 14 } else { 0 };
+        let num_fmt_id = if facts.is_some_and(|facts| facts.date_only) {
+            14
+        } else {
+            0
+        };
         cache.push_str(&format!(
             "<cacheField name=\"{}\" numFmtId=\"{num_fmt_id}\">",
             escape_attribute(&encode(name))
@@ -186,9 +227,19 @@ pub(crate) fn render(
         let column = u32::try_from(index)
             .map_err(|_| refusal("$.source.range", "too many source fields"))?;
         let axis = if let Some(row) = row_cols.iter().position(|&axis| axis == column) {
-            Some(("axisRow", &display.row_fields[row], spec.rows[row].order, computed.row_items[row].items()))
+            Some((
+                "axisRow",
+                &display.row_fields[row],
+                spec.rows[row].order,
+                computed.row_items[row].items(),
+            ))
         } else if let Some(axis) = column_cols.iter().position(|&axis| axis == column) {
-            Some(("axisCol", &display.column_fields[axis], spec.columns[axis].order, computed.column_items[axis].items()))
+            Some((
+                "axisCol",
+                &display.column_fields[axis],
+                spec.columns[axis].order,
+                computed.column_items[axis].items(),
+            ))
         } else {
             None
         };
@@ -198,9 +249,15 @@ pub(crate) fn render(
             for &cache_index in visible {
                 if matches!(items[cache_index], PivotItem::Boolean(_) | PivotItem::Blank) {
                     let label = item_caption(&items[cache_index], "$.pivot.itemCaption")?;
-                    table.push_str(&format!("<item x=\"{cache_index}\" n=\"{}\"/>", escape_attribute(&label)));
+                    table.push_str(&format!(
+                        "<item x=\"{cache_index}\" n=\"{}\"/>",
+                        escape_attribute(&label)
+                    ));
                 } else if let Some(label) = items[cache_index].authored_error_label() {
-                    table.push_str(&format!("<item x=\"{cache_index}\" n=\"{}\"/>", escape_attribute(label)));
+                    table.push_str(&format!(
+                        "<item x=\"{cache_index}\" n=\"{}\"/>",
+                        escape_attribute(label)
+                    ));
                 } else {
                     table.push_str(&format!("<item x=\"{cache_index}\"/>"));
                 }
@@ -228,12 +285,18 @@ pub(crate) fn render(
     for event in &display.row_events {
         match *event {
             PivotEvent::Leaf { id, first_new } => {
-                if first_new == 0 { table.push_str("<i>"); }
-                else { table.push_str(&format!("<i r=\"{first_new}\">")); }
+                if first_new == 0 {
+                    table.push_str("<i>");
+                } else {
+                    table.push_str(&format!("<i r=\"{first_new}\">"));
+                }
                 for field in first_new..spec.rows.len() {
                     let rank = display.row_rank[field][computed.row_tuples[id][field]];
-                    if rank == 0 { table.push_str("<x/>"); }
-                    else { table.push_str(&format!("<x v=\"{rank}\"/>")); }
+                    if rank == 0 {
+                        table.push_str("<x/>");
+                    } else {
+                        table.push_str(&format!("<x v=\"{rank}\"/>"));
+                    }
                 }
                 table.push_str("</i>");
             }
@@ -242,8 +305,11 @@ pub(crate) fn render(
                 table.push_str("<i t=\"default\">");
                 for field in 0..=level {
                     let rank = display.row_rank[field][computed.row_tuples[id][field]];
-                    if rank == 0 { table.push_str("<x/>"); }
-                    else { table.push_str(&format!("<x v=\"{rank}\"/>")); }
+                    if rank == 0 {
+                        table.push_str("<x/>");
+                    } else {
+                        table.push_str(&format!("<x v=\"{rank}\"/>"));
+                    }
                 }
                 table.push_str("</i>");
             }
@@ -255,52 +321,89 @@ pub(crate) fn render(
         if spec.values.len() == 1 {
             table.push_str("<colItems count=\"1\"><i/></colItems>");
         } else {
-            table.push_str(&format!("<colFields count=\"1\"><field x=\"-2\"/></colFields><colItems count=\"{}\">", spec.values.len()));
+            table.push_str(&format!(
+                "<colFields count=\"1\"><field x=\"-2\"/></colFields><colItems count=\"{}\">",
+                spec.values.len()
+            ));
             for value in 0..spec.values.len() {
-                if value == 0 { table.push_str("<i><x/></i>"); }
-                else { table.push_str(&format!("<i i=\"{value}\"><x v=\"{value}\"/></i>")); }
+                if value == 0 {
+                    table.push_str("<i><x/></i>");
+                } else {
+                    table.push_str(&format!("<i i=\"{value}\"><x v=\"{value}\"/></i>"));
+                }
             }
             table.push_str("</colItems>");
         }
     } else {
         let fields = spec.columns.len();
         let values = spec.values.len();
-        table.push_str(&format!("<colFields count=\"{}\">", fields + usize::from(values > 1)));
-        for field in &column_cols { table.push_str(&format!("<field x=\"{field}\"/>")); }
-        if values > 1 { table.push_str("<field x=\"-2\"/>"); }
-        table.push_str(&format!("</colFields><colItems count=\"{}\">", display.column_events.len() * values));
+        table.push_str(&format!(
+            "<colFields count=\"{}\">",
+            fields + usize::from(values > 1)
+        ));
+        for field in &column_cols {
+            table.push_str(&format!("<field x=\"{field}\"/>"));
+        }
+        if values > 1 {
+            table.push_str("<field x=\"-2\"/>");
+        }
+        table.push_str(&format!(
+            "</colFields><colItems count=\"{}\">",
+            display.column_events.len() * values
+        ));
         for event in &display.column_events {
             for value in 0..values {
                 match *event {
                     PivotEvent::Leaf { id, first_new } => {
                         if value == 0 {
-                            if first_new == 0 { table.push_str("<i>"); }
-                            else { table.push_str(&format!("<i r=\"{first_new}\">")); }
-                            for field in first_new..fields {
-                                let rank = display.column_rank[field][computed.column_tuples[id][field]];
-                                if rank == 0 { table.push_str("<x/>"); }
-                                else { table.push_str(&format!("<x v=\"{rank}\"/>")); }
+                            if first_new == 0 {
+                                table.push_str("<i>");
+                            } else {
+                                table.push_str(&format!("<i r=\"{first_new}\">"));
                             }
-                            if values > 1 { table.push_str("<x/>"); }
+                            for field in first_new..fields {
+                                let rank =
+                                    display.column_rank[field][computed.column_tuples[id][field]];
+                                if rank == 0 {
+                                    table.push_str("<x/>");
+                                } else {
+                                    table.push_str(&format!("<x v=\"{rank}\"/>"));
+                                }
+                            }
+                            if values > 1 {
+                                table.push_str("<x/>");
+                            }
                             table.push_str("</i>");
                         } else {
-                            table.push_str(&format!("<i r=\"{fields}\" i=\"{value}\"><x v=\"{value}\"/></i>"));
+                            table.push_str(&format!(
+                                "<i r=\"{fields}\" i=\"{value}\"><x v=\"{value}\"/></i>"
+                            ));
                         }
                     }
                     PivotEvent::Subtotal { level, from, .. } => {
                         let id = display.columns[from];
-                        if value == 0 { table.push_str("<i t=\"default\">"); }
-                        else { table.push_str(&format!("<i t=\"default\" i=\"{value}\">")); }
+                        if value == 0 {
+                            table.push_str("<i t=\"default\">");
+                        } else {
+                            table.push_str(&format!("<i t=\"default\" i=\"{value}\">"));
+                        }
                         for field in 0..=level {
-                            let rank = display.column_rank[field][computed.column_tuples[id][field]];
-                            if rank == 0 { table.push_str("<x/>"); }
-                            else { table.push_str(&format!("<x v=\"{rank}\"/>")); }
+                            let rank =
+                                display.column_rank[field][computed.column_tuples[id][field]];
+                            if rank == 0 {
+                                table.push_str("<x/>");
+                            } else {
+                                table.push_str(&format!("<x v=\"{rank}\"/>"));
+                            }
                         }
                         table.push_str("</i>");
                     }
                     PivotEvent::Grand => {
-                        if value == 0 { table.push_str("<i t=\"grand\"><x/></i>"); }
-                        else { table.push_str(&format!("<i t=\"grand\" i=\"{value}\"><x/></i>")); }
+                        if value == 0 {
+                            table.push_str("<i t=\"grand\"><x/></i>");
+                        } else {
+                            table.push_str(&format!("<i t=\"grand\" i=\"{value}\"><x/></i>"));
+                        }
                     }
                 }
             }
@@ -368,7 +471,8 @@ fn axis_label(item: &PivotItem, at: &str) -> Result<Scalar> {
         PivotItem::Blank => Ok(Scalar::from(BLANK_CAPTION)),
         PivotItem::Number(value) => Ok(Scalar::from(*value)),
         PivotItem::Boolean(_) => Ok(Scalar::from(item_caption(item, at)?)),
-        PivotItem::Error(_) => item.authored_error_label()
+        PivotItem::Error(_) => item
+            .authored_error_label()
             .map(Scalar::from)
             .ok_or_else(|| refusal(at, "an authored classic error heading")),
         _ => Err(refusal(
@@ -525,20 +629,28 @@ fn event_total(
     column: PivotEvent,
     value: usize,
 ) -> Result<Option<PivotMeasure>> {
-    if !matches!(row, PivotEvent::Subtotal { .. })
-        && !matches!(column, PivotEvent::Subtotal { .. })
+    if !matches!(row, PivotEvent::Subtotal { .. }) && !matches!(column, PivotEvent::Subtotal { .. })
     {
-        let row_id = match row { PivotEvent::Leaf { id, .. } => Some(id), _ => None };
+        let row_id = match row {
+            PivotEvent::Leaf { id, .. } => Some(id),
+            _ => None,
+        };
         let column_id = if spec.columns.is_empty() && row_id.is_none() {
             None
         } else {
-            match column { PivotEvent::Leaf { id, .. } => Some(id), _ => None }
+            match column {
+                PivotEvent::Leaf { id, .. } => Some(id),
+                _ => None,
+            }
         };
         return total(spec, computed, display, row_id, column_id, value);
     }
     let row_single;
     let rows: &[usize] = match row {
-        PivotEvent::Leaf { id, .. } => { row_single = id; std::slice::from_ref(&row_single) }
+        PivotEvent::Leaf { id, .. } => {
+            row_single = id;
+            std::slice::from_ref(&row_single)
+        }
         PivotEvent::Subtotal { from, to, .. } => &display.rows[from..to],
         PivotEvent::Grand => &display.rows,
     };
@@ -552,7 +664,10 @@ fn event_total(
         PivotEvent::Grand => &display.columns,
     };
     if let Some(error) = first_source_error(
-        computed, rows.iter().copied(), columns.iter().copied(), value,
+        computed,
+        rows.iter().copied(),
+        columns.iter().copied(),
+        value,
     ) {
         return Ok(Some(error));
     }
@@ -566,19 +681,31 @@ fn event_total(
         };
         let column_scope = match column {
             PivotEvent::Leaf { id, .. } => (spec.columns.len(), id),
-            PivotEvent::Subtotal { level, from, .. } => {
-                (level + 1, computed.column_parents[display.columns[from]][level])
-            }
+            PivotEvent::Subtotal { level, from, .. } => (
+                level + 1,
+                computed.column_parents[display.columns[from]][level],
+            ),
             PivotEvent::Grand => (0, 0),
         };
-        return Ok(computed.parent_rollups.get(&(
-            row_scope.0, row_scope.1, column_scope.0, column_scope.1, value,
-        )).copied());
+        return Ok(computed
+            .parent_rollups
+            .get(&(
+                row_scope.0,
+                row_scope.1,
+                column_scope.0,
+                column_scope.1,
+                value,
+            ))
+            .copied());
     }
     sum_groups(
-        computed, rows.iter().copied(), columns.iter().copied(), value,
+        computed,
+        rows.iter().copied(),
+        columns.iter().copied(),
+        value,
         "$.pivot.subtotal",
-    ).map(|number| number.map(PivotMeasure::Number))
+    )
+    .map(|number| number.map(PivotMeasure::Number))
 }
 
 pub(crate) fn item_caption(item: &PivotItem, path: &str) -> Result<SmolStr> {
@@ -587,9 +714,11 @@ pub(crate) fn item_caption(item: &PivotItem, path: &str) -> Result<SmolStr> {
         PivotItem::Blank => Ok(BLANK_CAPTION.into()),
         PivotItem::Number(value) => Ok(serial_text(*value)),
         PivotItem::Boolean(value) => Ok(crate::excel::FormatCode::general()
-            .render(&Scalar::from(*value), DateSystem::Year1900).text),
+            .render(&Scalar::from(*value), DateSystem::Year1900)
+            .text),
         PivotItem::Date(_) | PivotItem::Error(_) => Err(refusal(
-            path, "a native-proven locale-sensitive or temporal parent caption",
+            path,
+            "a native-proven locale-sensitive or temporal parent caption",
         )),
     }
 }
@@ -611,10 +740,18 @@ fn put_axis(
 ) -> Result<()> {
     let cell = match item {
         PivotItem::Date(serial) => {
-            let value = system.scalar_from_serial(*serial, NumberFormat::Date)
-                .map_err(|error| refusal(path, format_smolstr!("expected a representable date item: {error}")))?;
+            let value = system
+                .scalar_from_serial(*serial, NumberFormat::Date)
+                .map_err(|error| {
+                    refusal(
+                        path,
+                        format_smolstr!("expected a representable date item: {error}"),
+                    )
+                })?;
             let cell = Cell::from_scalar(at, value, system)?;
-            if let Some(bits) = super::super::sheet::CellExtra::exceptional_serial(&cell, *serial, system) {
+            if let Some(bits) =
+                super::super::sheet::CellExtra::exceptional_serial(&cell, *serial, system)
+            {
                 serials.push((at, bits));
             }
             cell
@@ -640,49 +777,91 @@ pub(crate) fn display_cells(
     let header = at.row();
     let data_start = header + geometry.header_rows;
     let mut cells = Vec::with_capacity(
-        display.row_events.len() * (spec.rows.len() + display.column_events.len() * spec.values.len())
+        display.row_events.len()
+            * (spec.rows.len() + display.column_events.len() * spec.values.len())
             + geometry.header_rows as usize * geometry.width as usize,
     );
     let mut serials = Vec::new();
     let put = |cells: &mut Vec<Cell>, row: u32, column: u32, scalar: Scalar| -> Result<()> {
-        cells.push(Cell::from_scalar(CellRef::new(row, column), scalar, system)?);
+        cells.push(Cell::from_scalar(
+            CellRef::new(row, column),
+            scalar,
+            system,
+        )?);
         Ok(())
     };
-    let put_measure = |cells: &mut Vec<Cell>, row: u32, column: u32, measure: Option<PivotMeasure>| -> Result<()> {
+    let put_measure = |cells: &mut Vec<Cell>,
+                       row: u32,
+                       column: u32,
+                       measure: Option<PivotMeasure>|
+     -> Result<()> {
         let at = CellRef::new(row, column);
         match measure {
-            Some(PivotMeasure::Number(number)) => cells.push(Cell::from_scalar(at, Scalar::from(number), system)?),
+            Some(PivotMeasure::Number(number)) => {
+                cells.push(Cell::from_scalar(at, Scalar::from(number), system)?)
+            }
             Some(PivotMeasure::Error(error) | PivotMeasure::SourceError(error)) => {
                 cells.push(Cell::from_scalar(at, Scalar::Null, system)?.with_error(error));
             }
-            Some(PivotMeasure::Empty) | None => {},
+            Some(PivotMeasure::Empty) | None => {}
         }
         Ok(())
     };
     if spec.columns.is_empty() {
         for (axis, &column) in bound.rows.iter().enumerate() {
-            let label = bound.headers[(column - spec.source.range.start().column()) as usize].clone();
-            put(&mut cells, header, at.column() + axis as u32, Scalar::from(label))?;
+            let label =
+                bound.headers[(column - spec.source.range.start().column()) as usize].clone();
+            put(
+                &mut cells,
+                header,
+                at.column() + axis as u32,
+                Scalar::from(label),
+            )?;
         }
         for value in 0..spec.values.len() {
-            put(&mut cells, header, data_col + value as u32,
-                Scalar::from(caption(spec, bound, value)))?;
+            put(
+                &mut cells,
+                header,
+                data_col + value as u32,
+                Scalar::from(caption(spec, bound, value)),
+            )?;
         }
     } else {
         if spec.values.len() == 1 {
-            put(&mut cells, header, at.column(), Scalar::from(caption(spec, bound, 0)))?;
+            put(
+                &mut cells,
+                header,
+                at.column(),
+                Scalar::from(caption(spec, bound, 0)),
+            )?;
         }
         for (axis, &column) in bound.columns.iter().enumerate() {
-            let label = bound.headers[(column - spec.source.range.start().column()) as usize].clone();
-            put(&mut cells, header, data_col + axis as u32, Scalar::from(label))?;
+            let label =
+                bound.headers[(column - spec.source.range.start().column()) as usize].clone();
+            put(
+                &mut cells,
+                header,
+                data_col + axis as u32,
+                Scalar::from(label),
+            )?;
         }
         if spec.values.len() > 1 {
-            put(&mut cells, header, data_col + spec.columns.len() as u32,
-                Scalar::from(captions.values.clone()))?;
+            put(
+                &mut cells,
+                header,
+                data_col + spec.columns.len() as u32,
+                Scalar::from(captions.values.clone()),
+            )?;
         }
         for (axis, &column) in bound.rows.iter().enumerate() {
-            let label = bound.headers[(column - spec.source.range.start().column()) as usize].clone();
-            put(&mut cells, data_start - 1, at.column() + axis as u32, Scalar::from(label))?;
+            let label =
+                bound.headers[(column - spec.source.range.start().column()) as usize].clone();
+            put(
+                &mut cells,
+                data_start - 1,
+                at.column() + axis as u32,
+                Scalar::from(label),
+            )?;
         }
         for (position, &event) in display.column_events.iter().enumerate() {
             let first = data_col + (position * spec.values.len()) as u32;
@@ -691,13 +870,23 @@ pub(crate) fn display_cells(
                     let tuple = &computed.column_tuples[id];
                     for axis in first_new..spec.columns.len() {
                         let item = &computed.column_items[axis].items()[tuple[axis]];
-                        put_axis(&mut cells, &mut serials, CellRef::new(header + 1 + axis as u32, first),
-                            item, &format!("$.columns[{axis}]"), system)?;
+                        put_axis(
+                            &mut cells,
+                            &mut serials,
+                            CellRef::new(header + 1 + axis as u32, first),
+                            item,
+                            &format!("$.columns[{axis}]"),
+                            system,
+                        )?;
                     }
                     if spec.values.len() > 1 {
                         for value in 0..spec.values.len() {
-                            put(&mut cells, data_start - 1, first + value as u32,
-                                Scalar::from(caption(spec, bound, value)))?;
+                            put(
+                                &mut cells,
+                                data_start - 1,
+                                first + value as u32,
+                                Scalar::from(caption(spec, bound, value)),
+                            )?;
                         }
                     }
                 }
@@ -712,8 +901,12 @@ pub(crate) fn display_cells(
                         } else {
                             format_smolstr!("{} {label}", caption(spec, bound, value))
                         };
-                        put(&mut cells, header + 1 + level as u32, first + value as u32,
-                            Scalar::from(label))?;
+                        put(
+                            &mut cells,
+                            header + 1 + level as u32,
+                            first + value as u32,
+                            Scalar::from(label),
+                        )?;
                     }
                 }
                 PivotEvent::Grand => {
@@ -723,7 +916,12 @@ pub(crate) fn display_cells(
                         } else {
                             format_smolstr!("Total {}", caption(spec, bound, value))
                         };
-                        put(&mut cells, header + 1, first + value as u32, Scalar::from(label))?;
+                        put(
+                            &mut cells,
+                            header + 1,
+                            first + value as u32,
+                            Scalar::from(label),
+                        )?;
                     }
                 }
             }
@@ -736,8 +934,14 @@ pub(crate) fn display_cells(
                 let tuple = &computed.row_tuples[id];
                 for axis in first_new..spec.rows.len() {
                     let item = &computed.row_items[axis].items()[tuple[axis]];
-                    put_axis(&mut cells, &mut serials, CellRef::new(row, at.column() + axis as u32),
-                        item, &format!("$.rows[{axis}]"), system)?;
+                    put_axis(
+                        &mut cells,
+                        &mut serials,
+                        CellRef::new(row, at.column() + axis as u32),
+                        item,
+                        &format!("$.rows[{axis}]"),
+                        system,
+                    )?;
                 }
             }
             PivotEvent::Subtotal { level, from, .. } => {
@@ -745,16 +949,29 @@ pub(crate) fn display_cells(
                 let tuple = &computed.row_tuples[id];
                 let item = &computed.row_items[level].items()[tuple[level]];
                 let label = item_caption(item, &format!("$.rows[{level}]"))?;
-                put(&mut cells, row, at.column() + level as u32,
-                    Scalar::from(format_smolstr!("Total {label}")))?;
+                put(
+                    &mut cells,
+                    row,
+                    at.column() + level as u32,
+                    Scalar::from(format_smolstr!("Total {label}")),
+                )?;
             }
-            PivotEvent::Grand => put(&mut cells, row, at.column(), Scalar::from(captions.grand.clone()))?,
+            PivotEvent::Grand => put(
+                &mut cells,
+                row,
+                at.column(),
+                Scalar::from(captions.grand.clone()),
+            )?,
         }
         for (position, &column_event) in display.column_events.iter().enumerate() {
             for value in 0..spec.values.len() {
                 let column = data_col + (position * spec.values.len() + value) as u32;
-                put_measure(&mut cells, row, column,
-                    event_total(spec, computed, display, row_event, column_event, value)?)?;
+                put_measure(
+                    &mut cells,
+                    row,
+                    column,
+                    event_total(spec, computed, display, row_event, column_event, value)?,
+                )?;
             }
         }
     }

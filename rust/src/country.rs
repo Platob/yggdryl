@@ -10,9 +10,54 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-code_leaf!(Country, COUNTRY_WIDTH);
+code_leaf!(
+    Country,
+    COUNTRY_WIDTH,
+    doc = "One ISO 3166-1 alpha-2 country code, held by its shape: at most two \
+ASCII bytes. Whether ISO 3166 currently assigns it ([`Country::is_listed`]) is \
+the reading its [`rank`](CodeValue::rank) counts, so a user-assigned `XX` or a \
+code the registry does not know is a value of rank zero - which every merge \
+replaces by a listed one whatever the order - rather than a refusal.
 
-code_value!(Country, Country, COUNTRY_WIDTH);
+```
+use yggdryl::{CodeValue, Country};
+
+# fn main() -> yggdryl::Result<()> {
+let listed = Country::new(\"CH\")?;
+assert!(listed.is_listed());
+assert_eq!(listed.rank(), 1);
+let masked = Country::new(\"XX\")?;
+assert!(!masked.is_listed());
+assert_eq!(masked.clone().merge_with(&listed), listed);
+assert_eq!(listed.clone().merge_with(&masked), listed);
+# Ok(())
+# }
+```"
+);
+
+impl Country {
+    /// Whether ISO 3166-1 currently assigns this code:
+    /// [`StringEnum::COUNTRIES`](crate::StringEnum::COUNTRIES) lists it.
+    #[must_use]
+    pub fn is_listed(&self) -> bool {
+        crate::StringEnum::COUNTRIES
+            .binary_search(&self.as_str())
+            .is_ok()
+    }
+
+    /// [`CodeValue::rank`]: one where the code is listed.
+    fn ranked(&self) -> u8 {
+        u8::from(self.is_listed())
+    }
+}
+
+code_value!(
+    Country,
+    Country,
+    COUNTRY_WIDTH,
+    rank = Country::ranked,
+    max_rank = 1
+);
 
 // ------------------------------------------------------------------------
 // The registered codes: the identifiers of a trade, each its own datatype.

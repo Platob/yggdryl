@@ -14,10 +14,12 @@ fn the_host_is_read_once_and_spells_a_url_host() -> yggdryl::Result<()> {
         HOSTNAME.as_str()
     );
     let url = Url::from_str(&format!(
-        "memory://{}/bucket/trades.parquet",
+        "file://{}/bucket/trades.parquet",
         HOSTNAME.as_str()
     ))?;
     assert_eq!(url.hostname(), Some(HOSTNAME.as_str()));
+    // Read as this machine beside `localhost`.
+    assert!(Authority::from_str(HOSTNAME.as_str())?.is_this_machine());
     Ok(())
 }
 

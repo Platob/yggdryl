@@ -1,12 +1,12 @@
 //! Iceberg's own vocabulary, on the field views that carry it.
 //!
 //! An Iceberg schema states more about a column than a [`Field`](crate::Field)
-//! has structural slots for - the schema identifier, a doc string, the v3
-//! defaults, an `unknown` column the `variant` it reads as cannot
-//! distinguish - and a
+//! has structural slots for - the schema identifier, the v3 defaults, an
+//! `unknown` column the `variant` it reads as cannot distinguish - and a
 //! partition tuple states how each of its values was derived. All of it rides
 //! as `ICEBERG:` properties, so these two impls are the one place that
-//! vocabulary is spelled, parsed and rendered.
+//! vocabulary is spelled, parsed and rendered. A column's `doc` is not among
+//! them: it is the field's own [`description`](crate::Field::description).
 //!
 //! The impls live here rather than beside the other protocol views because the
 //! property constants belong to the documents they are read from and written
@@ -18,10 +18,10 @@
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut field = DataType::Int64.required_field("id");
-//! field.as_iceberg_mut().set_doc("row identifier")?;
+//! field.as_iceberg_mut().set_spec_id(1)?;
 //! field.as_iceberg_mut().set_partition_source_id(3)?;
 //!
-//! assert_eq!(field.as_iceberg().doc(), Some("row identifier"));
+//! assert_eq!(field.as_iceberg().spec_id()?, Some(1));
 //! assert_eq!(field.as_iceberg().partition_source_id()?, Some(3));
 //! assert_eq!(field.get_metadata("ICEBERG:partition-source-id"), Some("3"));
 //! # Ok(())
@@ -32,8 +32,9 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
-use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
-use crate::{DataType, Error, IcebergField, IcebergFieldMut, Result, Scalar};
+use super::schema::{IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
+use crate::integer::integer_from_text_as;
+use crate::{DataType, Error, Field, IcebergField, IcebergFieldMut, Result, Scalar};
 
 impl<'field> IcebergField<'field> {
     /// Parses the identifier of the schema this root is.
@@ -65,7 +66,7 @@ impl<'field> IcebergField<'field> {
             .map(str::trim)
             .filter(|id| !id.is_empty())
             .map(|id| {
-                id.parse().map_err(|_| {
+                integer_from_text_as::<i32>(id).ok_or_else(|| {
                     self.invalid(
                         IDENTIFIER,
                         "a comma-separated list of signed 32-bit decimal integers",
@@ -74,11 +75,6 @@ impl<'field> IcebergField<'field> {
                 })
             })
             .collect()
-    }
-
-    /// Returns this column's Iceberg documentation string.
-    pub fn doc(&self) -> Option<&'field str> {
-        self.get(DOC)
     }
 
     /// Whether the schema declares this column Iceberg's `unknown`.
@@ -155,9 +151,8 @@ impl<'field> IcebergField<'field> {
     fn identifier(&self, name: &str) -> Result<Option<i32>> {
         self.get(name)
             .map(|stored| {
-                stored
-                    .parse()
-                    .map_err(|_| self.invalid(name, "a signed 32-bit decimal integer", stored))
+                integer_from_text_as::<i32>(stored)
+                    .ok_or_else(|| self.invalid(name, "a signed 32-bit decimal integer", stored))
             })
             .transpose()
     }
@@ -198,15 +193,6 @@ impl IcebergFieldMut<'_> {
         self.store(IDENTIFIER, joined.join(","))
     }
 
-    /// Records this column's Iceberg documentation string.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::set_schema_id`] carries the rule.
-    pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()> {
-        self.store(DOC, doc)
-    }
-
     /// Declares this column Iceberg's `unknown`, or clears the declaration.
     ///
     /// # Errors
@@ -242,7 +228,8 @@ impl IcebergFieldMut<'_> {
     /// Returns an error when the value has no JSON representation, or when the
     /// property write fails. Both default writes fail the same way.
     pub fn set_initial_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(INITIAL_DEFAULT, crate::json::into_utf8(value)?)
+        let json = single_value_json(self, value)?;
+        self.store(INITIAL_DEFAULT, json)
     }
 
     /// Records a v3 `write-default` as encoded JSON.
@@ -251,7 +238,8 @@ impl IcebergFieldMut<'_> {
     ///
     /// [`Self::set_initial_default`] carries the rule.
     pub fn set_write_default(&mut self, value: &Scalar) -> Result<()> {
-        self.store(WRITE_DEFAULT, crate::json::into_utf8(value)?)
+        let json = single_value_json(self, value)?;
+        self.store(WRITE_DEFAULT, json)
     }
 
     /// Records the identifier of the spec a partition tuple belongs to.
@@ -286,4 +274,41 @@ impl IcebergFieldMut<'_> {
         self.insert(name, value)?;
         Ok(())
     }
+}
+
+/// The JSON a v3 default travels as: the Iceberg table spec's single-value
+/// form (Appendix D), in which a decimal states its scale by the digits
+/// behind its point - `"14.20"` for `decimal(4, 2)` - because a reader that
+/// checks the scale, as Java's `SingleValueParser` does, refuses any other.
+/// That is the one decimal text written at its scale rather than as the
+/// shortest exact one; a decimal default is first restated under the
+/// field, so it carries the field's scale. Every other value is its JSON.
+fn single_value_json(field: &Field, value: &Scalar) -> Result<String> {
+    if !value.is_decimal() {
+        return crate::json::into_utf8(value);
+    }
+    let restated;
+    let value = if field.dtype().id().is_decimal() {
+        restated = field.scalar(value.clone())?;
+        &restated
+    } else {
+        value
+    };
+    let Some((coefficient, scale)) = value.as_decimal() else {
+        return crate::json::into_utf8(value);
+    };
+    let mut text = crate::decimal::decimal_text(coefficient, scale);
+    if scale > 0 {
+        let places = text
+            .split_once('.')
+            .map_or(0, |(_, fraction)| fraction.len());
+        if places == 0 {
+            text.push('.');
+        }
+        text.extend(std::iter::repeat_n(
+            '0',
+            usize::from(scale.unsigned_abs()) - places,
+        ));
+    }
+    crate::json::into_utf8(&Scalar::from(text))
 }

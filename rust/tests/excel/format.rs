@@ -1268,8 +1268,11 @@ fn shared_digits_truncate_decimal_places_without_rounding() {
         (0.0, 2, 0.0),
         (1e15, -1, 1e15),
     ] {
-        assert_eq!(truncated_magnitude(value, places).unwrap().to_bits(),
-            expected.to_bits(), "{value:?}, {places}");
+        assert_eq!(
+            truncated_magnitude(value, places).unwrap().to_bits(),
+            expected.to_bits(),
+            "{value:?}, {places}"
+        );
     }
 }
 
@@ -1278,17 +1281,20 @@ fn shared_digits_truncate_decimal_places_without_rounding() {
 fn shared_digits_round_away_preserves_exact_quanta_and_carry() {
     use yggdryl::internals::excel_format::rounded_away_magnitude;
     for (value, places, expected) in [
-        (1.2, 1, 1.2_f64),        // No discarded nonzero digit.
+        (1.2, 1, 1.2_f64), // No discarded nonzero digit.
         (1.0, 0, 1.0),
         (1.201, 1, 1.3),
-        (9.99, 1, 10.0),        // Carry crosses the decimal point.
+        (9.99, 1, 10.0), // Carry crosses the decimal point.
         (999.1, -2, 1_000.0),
         (0.099, 1, 0.1),
         (0.3, 0, 1.0),
         (1.25, i32::MAX, 1.25), // No active digit can be discarded.
     ] {
-        assert_eq!(rounded_away_magnitude(value, places).unwrap().to_bits(),
-            expected.to_bits(), "{value:?}, {places}");
+        assert_eq!(
+            rounded_away_magnitude(value, places).unwrap().to_bits(),
+            expected.to_bits(),
+            "{value:?}, {places}"
+        );
     }
     // The decimal magnitude lies outside binary64; the numeric policy owns
     // whether that becomes a typed #NUM!, not the stack decimal itself.
@@ -1305,30 +1311,47 @@ fn formula_numeric_text_uses_full_precision_without_changing_general_display() {
         (2, "LEFT(1.2E-18,99)", "1.2E-18"),
         (3, "LEFT(-1.23456789012345E-9,99)", "-1.23456789012345E-09"),
     ] {
-        book.set_entry("Data", CellRef::new(row,0), &format!("={expression}")).unwrap();
-        assert_eq!(book.calculate_all().unwrap().uncomputed,0);
-        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(row,0)).as_str(),Some(expected));
+        book.set_entry("Data", CellRef::new(row, 0), &format!("={expression}"))
+            .unwrap();
+        assert_eq!(book.calculate_all().unwrap().uncomputed, 0);
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .scalar(CellRef::new(row, 0))
+                .as_str(),
+            Some(expected)
+        );
     }
-    assert_eq!(render("General", &n(1.0/3.0)), "0.333333333");
+    assert_eq!(render("General", &n(1.0 / 3.0)), "0.333333333");
 }
 
 #[test]
 fn text_format_distinguishes_legal_hash_fill_from_overflow_and_preserves_display_colour() {
-    let overflow=FormatCode::from_code("[Red]yyyy-mm-dd").unwrap().render(&n(-1.0),DateSystem::Year1900);
-    assert_eq!(overflow.fill,Some(('#',0)));
-    assert_eq!(overflow.color,Some(0xff0000));
-    let fill=FormatCode::from_code("*#0").unwrap().render(&n(2.5),DateSystem::Year1900);
-    assert_eq!(fill.text,"3");assert_eq!(fill.fill,Some(('#',0)));
-    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
-    for (row,formula,text,error) in [
-        (0,"TEXT(2.5,\"*#0\")",Some("3"),None),
-        (1,"TEXT(-1,\"[Red]yyyy-mm-dd\")",None,Some("#VALUE!")),
-        (2,"TEXT(1/3,\"General\")",Some("0.333333333"),None),
-        (3,"TEXT(2.5,\"\")",Some(""),None),
+    let overflow = FormatCode::from_code("[Red]yyyy-mm-dd")
+        .unwrap()
+        .render(&n(-1.0), DateSystem::Year1900);
+    assert_eq!(overflow.fill, Some(('#', 0)));
+    assert_eq!(overflow.color, Some(0xff0000));
+    let fill = FormatCode::from_code("*#0")
+        .unwrap()
+        .render(&n(2.5), DateSystem::Year1900);
+    assert_eq!(fill.text, "3");
+    assert_eq!(fill.fill, Some(('#', 0)));
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (row, formula, text, error) in [
+        (0, "TEXT(2.5,\"*#0\")", Some("3"), None),
+        (1, "TEXT(-1,\"[Red]yyyy-mm-dd\")", None, Some("#VALUE!")),
+        (2, "TEXT(1/3,\"General\")", Some("0.333333333"), None),
+        (3, "TEXT(2.5,\"\")", Some(""), None),
     ] {
-        let at=CellRef::new(row,0);book.set_entry("Data",at,&format!("={formula}")).unwrap();
-        book.calculate_all().unwrap();let cell=book.sheet("Data").unwrap().cell(at).unwrap();
-        assert_eq!(cell.error().map(|e|e.as_str()),error);
-        if let Some(text)=text {assert_eq!(cell.value().as_str(),Some(text));}
+        let at = CellRef::new(row, 0);
+        book.set_entry("Data", at, &format!("={formula}")).unwrap();
+        book.calculate_all().unwrap();
+        let cell = book.sheet("Data").unwrap().cell(at).unwrap();
+        assert_eq!(cell.error().map(|e| e.as_str()), error);
+        if let Some(text) = text {
+            assert_eq!(cell.value().as_str(), Some(text));
+        }
     }
 }

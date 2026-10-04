@@ -291,29 +291,55 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
-    fn commit_row_size(&self) -> Option<usize> {
+    fn commit_batch_num(&self) -> Option<usize> {
         match self {
-            Self::Ipc(options) => options.commit_row_size(),
+            Self::Ipc(options) => options.commit_batch_num(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.commit_row_size(),
-            Self::Avro(options) => options.commit_row_size(),
-            Self::Text(options) => options.commit_row_size(),
-            Self::Xmla(options) => options.commit_row_size(),
-            Self::Csv(options) => options.commit_row_size(),
-            Self::Excel(options) => options.commit_row_size(),
+            Self::Parquet(options) => options.commit_batch_num(),
+            Self::Avro(options) => options.commit_batch_num(),
+            Self::Text(options) => options.commit_batch_num(),
+            Self::Xmla(options) => options.commit_batch_num(),
+            Self::Csv(options) => options.commit_batch_num(),
+            Self::Excel(options) => options.commit_batch_num(),
         }
     }
 
-    fn set_commit_row_size(&mut self, commit_row_size: Option<usize>) {
+    fn set_commit_batch_num(&mut self, commit_batch_num: Option<usize>) {
         match self {
-            Self::Ipc(options) => options.set_commit_row_size(commit_row_size),
+            Self::Ipc(options) => options.set_commit_batch_num(commit_batch_num),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_commit_row_size(commit_row_size),
-            Self::Avro(options) => options.set_commit_row_size(commit_row_size),
-            Self::Text(options) => options.set_commit_row_size(commit_row_size),
-            Self::Xmla(options) => options.set_commit_row_size(commit_row_size),
-            Self::Csv(options) => options.set_commit_row_size(commit_row_size),
-            Self::Excel(options) => options.set_commit_row_size(commit_row_size),
+            Self::Parquet(options) => options.set_commit_batch_num(commit_batch_num),
+            Self::Avro(options) => options.set_commit_batch_num(commit_batch_num),
+            Self::Text(options) => options.set_commit_batch_num(commit_batch_num),
+            Self::Xmla(options) => options.set_commit_batch_num(commit_batch_num),
+            Self::Csv(options) => options.set_commit_batch_num(commit_batch_num),
+            Self::Excel(options) => options.set_commit_batch_num(commit_batch_num),
+        }
+    }
+
+    fn num_threads(&self) -> Option<usize> {
+        match self {
+            Self::Ipc(options) => options.num_threads(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.num_threads(),
+            Self::Avro(options) => options.num_threads(),
+            Self::Text(options) => options.num_threads(),
+            Self::Xmla(options) => options.num_threads(),
+            Self::Csv(options) => options.num_threads(),
+            Self::Excel(options) => options.num_threads(),
+        }
+    }
+
+    fn set_num_threads(&mut self, num_threads: Option<usize>) {
+        match self {
+            Self::Ipc(options) => options.set_num_threads(num_threads),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_num_threads(num_threads),
+            Self::Avro(options) => options.set_num_threads(num_threads),
+            Self::Text(options) => options.set_num_threads(num_threads),
+            Self::Xmla(options) => options.set_num_threads(num_threads),
+            Self::Csv(options) => options.set_num_threads(num_threads),
+            Self::Excel(options) => options.set_num_threads(num_threads),
         }
     }
 

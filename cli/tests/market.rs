@@ -515,12 +515,68 @@ fn serve_runs_every_example_its_help_states() {
 }
 
 #[test]
+fn serve_reads_a_read_timeout_in_every_spelling_the_core_reads_a_length_of_time() {
+    let root = books_root();
+    for value in ["30", "2.5", "30s", "1500ms"] {
+        let mut serve = command();
+        serve
+            .args(["market", "serve", "--bind", "127.0.0.1:0", "--read-timeout"])
+            .arg(value)
+            .arg(root.to_str().expect("a UTF-8 path"));
+        let (served, endpoint, _) = started(serve, 0);
+        assert!(
+            endpoint.starts_with("http://127.0.0.1:"),
+            "{value:?}: {endpoint}"
+        );
+        drop(served);
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn serve_reads_a_table_location_as_python_and_node_read_one() {
+    let root = books_root();
+    // `file:/path` is one reading with `file:///path`, and a place nothing is
+    // at yet is still the folder a capture makes a table of.
+    let absent = root.join("absent");
+    for spelled in [
+        format!("books=file:{}", root.display()),
+        format!("books=file://{}", root.display()),
+        format!("books=file:{}", absent.display()),
+    ] {
+        let mut serve = command();
+        serve
+            .args(["market", "serve", "--bind", "127.0.0.1:0"])
+            .arg(&spelled);
+        let (served, endpoint, note) = started(serve, 1);
+        assert!(
+            endpoint.starts_with("http://127.0.0.1:"),
+            "{spelled}: {endpoint}"
+        );
+        assert!(
+            note[0].contains("table books over file://"),
+            "{spelled}: {note:?}"
+        );
+        drop(served);
+    }
+    // Text with a scheme that is no URL is refused as one, not read as a
+    // folder named after it.
+    for spelled in ["s3:/bucket/books", "trades:2026"] {
+        refused(&["--bind", "127.0.0.1:0", spelled], &["\u{2717}"]);
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn serve_refuses_a_grid_a_read_timeout_or_a_forwarded_field_it_cannot_honour() {
     let root = books_root();
     for (flag, value, named) in [
         ("--snapshot-millis", "x", "snapshot-millis"),
         ("--forwarded-header", "X-Real-IP", "forwarded-header"),
         ("--read-timeout", "0", "read-timeout"),
+        ("--read-timeout", "1e30", "read-timeout"),
+        ("--read-timeout", "86401s", "read-timeout"),
+        ("--read-timeout", "soon", "read-timeout"),
     ] {
         refused(
             &[
@@ -770,7 +826,9 @@ fn capture_served(root: &std::path::Path) -> Vec<String> {
         audit
             .headers()
             .get("content-disposition")
-            .is_some_and(|value| value.starts_with("attachment; filename=\"audit-2454-")),
+            .is_some_and(|value| {
+                value.starts_with("attachment; filename=\"audit-TW0002454006-")
+            }),
         "{:?}",
         audit.headers()
     );
@@ -787,12 +845,12 @@ fn capture_served(root: &std::path::Path) -> Vec<String> {
 #[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
 fn serve_folds_a_capture_into_an_iceberg_table_and_serves_its_books() {
     use yggdryl::Scheme;
-    use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec};
 
     let root = isolated("iceberg");
     std::fs::create_dir_all(&root).expect("isolated test folder");
     // The row as Iceberg states it: the `uint64` codes as `decimal(20, 0)`.
-    Table::create(
+    IcebergTable::create(
         Holder::folder(&root).expect("the root holds"),
         FormatVersion::V2,
         MarketData::field()
@@ -816,17 +874,17 @@ fn serve_folds_a_capture_into_an_iceberg_table_and_serves_its_books() {
 #[cfg(feature = "iceberg")]
 #[ignore = "hosts a live server, which races the runner's socket readiness; run with --ignored"]
 fn serve_makes_an_absent_folder_the_table_a_capture_lands_in() {
-    use yggdryl::iceberg::Table;
+    use yggdryl::iceberg::IcebergTable;
 
     // Nothing is there, so one command creates the table and serves it.
     let root = isolated("created");
     let notes = capture_served(&root);
     assert!(notes[0].ends_with(", created"), "{notes:?}");
-    let table = Table::locate(Holder::folder(&root).expect("the root holds"))
+    let table = IcebergTable::locate(Holder::folder(&root).expect("the root holds"))
         .expect("the folder reads")
         .expect("a table was created");
     assert!(
-        table.metadata().current_snapshot().is_some(),
+        table.metadata().unwrap().current_snapshot().is_some(),
         "the capture was committed"
     );
     let _ = std::fs::remove_dir_all(&root);

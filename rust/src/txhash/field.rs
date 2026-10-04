@@ -3,7 +3,7 @@
 //! `DIGEST:time` names the field whose instant leads the stored bytes, and
 //! `DIGEST:unit` states the clock resolution that instant is counted in,
 //! microseconds when absent. Both live on the holder, beside its algorithm
-//! and sources, so the field they read carries no metadata at all.
+//! and its `by` terms, so the field they read carries no metadata at all.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -37,16 +37,30 @@ fn parse_digest_unit(value: &str) -> Result<TimeUnit> {
     Ok(unit)
 }
 
-/// Accept a stored time path: one non-empty field path, never the
-/// select-everything spelling.
+/// Accept a stored time path: one non-empty field path of names, read once
+/// here by the one path parser - a column whose name holds a dot the quoted
+/// `"a.b"` - never the select-everything spelling.
 pub(crate) fn validate_digest_time(value: &str) -> Result<()> {
-    if value.is_empty() || value == crate::metadata::ALL_SOURCES {
+    if value.is_empty() || value == crate::metadata::ALL_COLUMNS {
         return Err(Error::InvalidMetadataValue {
             key: SmolStr::new_static(DIGEST_TIME_KEY),
             reason: format_smolstr!("expected one non-empty field path, got {value:?}"),
         });
     }
-    Ok(())
+    let reason = match crate::FieldPath::with_schema_segments(value, |segments| {
+        !segments.is_empty()
+            && segments
+                .iter()
+                .all(|segment| matches!(segment, crate::FieldSegment::Field(_)))
+    }) {
+        Ok(true) => return Ok(()),
+        Ok(false) => format_smolstr!("expected a path of field names, got {value:?}"),
+        Err(error) => format_smolstr!("expected one field path, got {value:?}: {error}"),
+    };
+    Err(Error::InvalidMetadataValue {
+        key: SmolStr::new_static(DIGEST_TIME_KEY),
+        reason,
+    })
 }
 
 /// Return whether a coupled holder's storage carries this algorithm's width.
@@ -75,7 +89,7 @@ impl DigestField<'_> {
     ///
     /// A holder naming one stores an instant in front of its digest, and its
     /// storage is a `fixed_size_binary` of the coupled width. The path is
-    /// relative to the holder's Struct, spelled the way `DIGEST:sources` are.
+    /// relative to the holder's Struct, a dotted path and never a term.
     pub fn time(&self) -> Option<&str> {
         self.get(TIME)
     }
@@ -133,7 +147,8 @@ impl DigestFieldMut<'_> {
     /// # Errors
     ///
     /// Returns an error when this field is not a holder, when `path` is
-    /// empty or the select-everything spelling, or when the storage is not
+    /// empty, the select-everything spelling or not one field path of
+    /// names, or when the storage is not
     /// the `fixed_size_binary` a coupled digest of its declared or implied
     /// algorithm needs, leaving the field unchanged.
     pub fn set_time(&mut self, path: &str) -> Result<()> {

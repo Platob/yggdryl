@@ -15,17 +15,6 @@
         }
       },
       {
-        "name": "nolegprovisioncashsettlpaymentdatebusinesscenters",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisioncashsettlpaymentdatebusinesscenters",
-          "FIX:tag": "40934"
-        }
-      },
-      {
         "name": "legprovisioncashsettlpaymentdatebusinesscenters",
         "dtype": {
           "type": "null"
@@ -99,17 +88,6 @@
         "metadata": {
           "FIX:field": "legprovisioncashsettlpaymentdaterangelast",
           "FIX:tag": "40523"
-        }
-      },
-      {
-        "name": "nolegprovisioncashsettlpaymentdates",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "nolegprovisioncashsettlpaymentdates",
-          "FIX:tag": "40473"
         }
       },
       {

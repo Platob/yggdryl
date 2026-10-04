@@ -30,7 +30,7 @@
         "dtype": {
           "type": "null"
         },
-        "nullable": true,
+        "nullable": false,
         "metadata": {
           "FIX:field": "crosscode",
           "FIX:tag": "65003"
@@ -151,7 +151,7 @@
         "dtype": {
           "type": "null"
         },
-        "nullable": true,
+        "nullable": false,
         "metadata": {
           "FIX:field": "seqnum",
           "FIX:tag": "65014"
@@ -300,35 +300,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "securityid",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}
@@ -344,7 +318,7 @@
         "metadata": {
           "FIX:tag": "65020",
           "FIX:transient": "false",
-          "description": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent. Derived from the message's fields; a row stating one is the row's word.",
+          "description": "The security identifiers the message names, each a type, a source and a code: SecurityID under SecurityIDSource, the SecurityAltID group, a bridge's instrument key, the keyed aliases a bridge states - ISINCODE, OMS_RICCODE, SEDOL_CODE - and the codes an ISIN embeds. SecurityID, SecurityIDSource and the group stay in fixentries as sent, and a keyed alias under 0:key. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Security IDs"
         }
       },
@@ -493,7 +467,7 @@
         "metadata": {
           "FIX:tag": "65026",
           "FIX:transient": "false",
-          "description": "The spot part of an FX forward price: LastSpotRate, or a sided quote's BidSpotRate or OfferSpotRate. Derived from the message's fields; a row stating one is the row's word.",
+          "description": "The spot part of an FX forward price: LastSpotRate. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Spot Rate"
         }
       },
@@ -506,7 +480,7 @@
         "metadata": {
           "FIX:tag": "65027",
           "FIX:transient": "false",
-          "description": "The forward points of an FX forward price: LastForwardPoints, or a sided quote's BidForwardPoints or OfferForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
+          "description": "The forward points of an FX forward price: LastForwardPoints. Derived from the message's fields; a row stating one is the row's word.",
           "display": "Forward Points"
         }
       },
@@ -704,35 +678,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "identifier",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}
@@ -748,7 +696,7 @@
         "metadata": {
           "FIX:tag": "65038",
           "FIX:transient": "false",
-          "description": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap and the parties that name one. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+          "description": "The operation's alternate identifiers, each a type, the FIX source and an identifier: the fields the dictionary files under FIX:idmap, the parties that name one, and the keys no dictionary resolved whose names spell one - a bridge's PARENTORDERID, its firm.x.ParentOrderID - which ride fixentries under 0:key. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
           "display": "Identifiers"
         }
       },
@@ -770,35 +718,9 @@
                   "metadata": {}
                 },
                 {
-                  "name": "partyid",
+                  "name": "value",
                   "dtype": {
-                    "type": "struct",
-                    "fields": [
-                      {
-                        "name": "src",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "type",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      },
-                      {
-                        "name": "value",
-                        "dtype": {
-                          "type": "string"
-                        },
-                        "nullable": false,
-                        "metadata": {}
-                      }
-                    ]
+                    "type": "string"
                   },
                   "nullable": false,
                   "metadata": {}
@@ -814,7 +736,7 @@
         "metadata": {
           "FIX:tag": "65039",
           "FIX:transient": "false",
-          "description": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, and Account under AcctIDSource. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
+          "description": "The parties the operation names, each a role, a source and an identifier: the Parties and RootParties groups, Account under AcctIDSource, and the keys no dictionary resolved whose names spell a party - a bridge's OMS_UserID, its TECH.CLIENTID - which ride fixentries under 0:key. The groups and Account stay in fixentries as sent. Derived from the message's fields; a set a row states keeps its own and takes what it lacks.",
           "display": "Party IDs"
         }
       },
@@ -1633,17 +1555,6 @@
         }
       },
       {
-        "name": "notrdregtimestamps",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "notrdregtimestamps",
-          "FIX:tag": "768"
-        }
-      },
-      {
         "name": "trdregtimestamps",
         "dtype": {
           "type": "null"
@@ -1651,17 +1562,6 @@
         "nullable": true,
         "metadata": {
           "FIX:group": "trdregtimestamps"
-        }
-      },
-      {
-        "name": "noregulatorytradeids",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "noregulatorytradeids",
-          "FIX:tag": "1907"
         }
       },
       {
@@ -1917,7 +1817,7 @@
         },
         "nullable": true,
         "metadata": {
-          "description": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way.",
+          "description": "Content no other column represents, keyed by each field's tag:name: a scalar's wire text, a group or a component as the JSON of what it holds, keyed the same way; and, under 0:key, each key no dictionary resolved that an identifier map holds with its value, as it arrived.",
           "display": "FixEntries"
         }
       }

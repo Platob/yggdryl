@@ -4,6 +4,7 @@ import {
   BatchReader,
   Field,
   IOBase,
+  IOResult,
   RecordOptions,
   TextOptions,
   type RecordSource,
@@ -29,31 +30,34 @@ const readNamed: BatchReader = handle.readArrowReader(
   'application/vnd.apache.arrow.stream',
 )
 
-const overwriteReader: void = handle.overwriteArrowReader(reader, options)
-const appendReader: void = handle.appendArrowReader(BatchReader.from(table), options)
-const mergeReader: void = handle.mergeArrowReader(BatchReader.from(table), merging)
-const writeReader: void = handle.writeArrowReader(
+const overwriteReader: IOResult = handle.overwriteArrowReader(reader, options)
+const appendReader: IOResult = handle.appendArrowReader(BatchReader.from(table), options)
+const mergeReader: IOResult = handle.mergeArrowReader(BatchReader.from(table), merging)
+const writeReader: IOResult = handle.writeArrowReader(
   BatchReader.from(table),
   overIOMode,
   options,
 )
 
-const overwriteTable: void = handle.overwriteArrowTable(table, options)
-const appendTable: void = handle.appendArrowTable(table, options)
-const mergeTable: void = handle.mergeArrowTable(table, merging)
-const writeTable: void = handle.writeArrowTable(table, 'append', options)
+const overwriteTable: IOResult = handle.overwriteArrowTable(table, options)
+const appendTable: IOResult = handle.appendArrowTable(table, options)
+const mergeTable: IOResult = handle.mergeArrowTable(table, merging)
+const writeTable: IOResult = handle.writeArrowTable(table, 'append', options)
 
-const overwriteBatch: void = handle.overwriteArrowBatch(batch, options)
-const appendBatch: void = handle.appendArrowBatch(batch, options)
-const mergeBatch: void = handle.mergeArrowBatch(batch, merging)
-const writeBatch: void = handle.writeArrowBatch(batch, 'merge', merging)
+const overwriteBatch: IOResult = handle.overwriteArrowBatch(batch, options)
+const appendBatch: IOResult = handle.appendArrowBatch(batch, options)
+const mergeBatch: IOResult = handle.mergeArrowBatch(batch, merging)
+const writeBatch: IOResult = handle.writeArrowBatch(batch, 'merge', merging)
 
 const record: StructRecord = { id: 1, venue: 'XNAS' }
 const records: RecordSource = [record]
-const overwriteRecords: void = handle.overwriteRecords(records, options)
-const appendRecords: void = handle.appendRecords(record, options)
-const mergeRecords: void = handle.mergeRecords(records, merging)
-const writeRecords: void = handle.writeRecords(records, 'overwrite', options)
+const overwriteRecords: IOResult = handle.overwriteRecords(records, options)
+const appendRecords: IOResult = handle.appendRecords(record, options)
+const mergeRecords: IOResult = handle.mergeRecords(records, merging)
+const writeRecords: IOResult = handle.writeRecords(records, 'overwrite', options)
+const writtenRows: number = writeRecords.writtenRows
+// @ts-expect-error a write answers what it did, not nothing
+const answersNothing: void = handle.overwriteArrowTable(table, options)
 const readRecords: IterableIterator<Record<string, unknown>> = handle.readRecords(options)
 class Trade {
   constructor(readonly row: Record<string, unknown>) {}
@@ -65,10 +69,10 @@ handle.readRecords(options, options)
 async function* pages(): AsyncIterable<StructRecord> {
   yield record
 }
-const pendingOverwrite: Promise<void> = handle.overwriteRecords(pages(), options)
-const pendingAppend: Promise<void> = handle.appendRecords(pages(), options)
-const pendingMerge: Promise<void> = handle.mergeRecords(pages(), merging)
-const pendingWrite: Promise<void> = handle.writeRecords(pages(), 'append', options)
+const pendingOverwrite: Promise<IOResult> = handle.overwriteRecords(pages(), options)
+const pendingAppend: Promise<IOResult> = handle.appendRecords(pages(), options)
+const pendingMerge: Promise<IOResult> = handle.mergeRecords(pages(), merging)
+const pendingWrite: Promise<IOResult> = handle.writeRecords(pages(), 'append', options)
 
 // @ts-expect-error the mode is required and precedes options
 handle.writeArrowReader(BatchReader.from(table), options)

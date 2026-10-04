@@ -159,13 +159,22 @@ mod dataset {
         assert_eq!(dated.len(), clocks.len());
         assert!(!dated.contains(&handle.expect("the file's time")));
         // The clock is consumed into `currunix`, so no column carries it; the
-        // level is the capture's own column.
+        // thread and the level are matched and never captured, so no column
+        // carries them either.
         let names = header_captures();
-        assert_eq!(names.first().map(String::as_str), Some("mtime"));
-        assert_eq!(names.last().map(String::as_str), Some("loglevel"));
+        assert_eq!(
+            names,
+            [
+                "mtime",
+                "msgsessionid",
+                "msgctxid",
+                "msgseqnum",
+                "msgpluginid"
+            ]
+        );
         let carried = options.source_field().expect("the source field");
         assert!(carried.field("mtime").is_err() && carried.field("timestamp").is_err());
-        assert!(carried.field("loglevel").is_ok());
+        assert!(carried.field("msgthreadid").is_err() && carried.field("loglevel").is_err());
     }
 
     #[test]
@@ -376,6 +385,36 @@ mod dataset {
             .expect("every line reads")
     }
 
+    /// Every grid view the capture's walk makes - one per minute and live
+    /// chain - is stamped again over the live message's code rather than
+    /// settled, and is exactly what settling a copy of it answers, stood
+    /// under its chain's cross element as a view is: its fields, its maps,
+    /// its identity and its anomalies. A message stating no cross code is a
+    /// chain of one, so settling it alone derives its cross element from
+    /// its own identity, which the view's tick moved.
+    #[test]
+    fn every_grid_view_of_the_capture_is_what_settling_it_answers() {
+        let codec = codec()
+            .with_exclude_msgtypes::<[&str; 0], &str>([])
+            .with_snapshot_ns(60_000_000_000);
+        let walked = codec
+            .lifecycle(line_messages(&codec))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the capture walks");
+        let views: Vec<&FixMsg> = walked
+            .iter()
+            .filter(|message| message.get_snapunix().is_some())
+            .collect();
+        assert!(views.len() > 10, "the grid views: {}", views.len());
+        for view in views {
+            let mut settled = view.clone();
+            settled.finalize();
+            settled.set_crossuuid(view.get_crossuuid());
+            assert!(*view == settled, "{}", view.get_curruuid());
+            assert_eq!(view.anomalies(), settled.anomalies());
+        }
+    }
+
     /// A table read hour partition by hour partition hands the lifecycle its
     /// messages sorted by the instant they were stored under - the undated
     /// ones first, the walk dating them by their transactions - and the walk
@@ -583,6 +622,90 @@ mod dataset {
                 .collect::<Vec<_>>()
         };
         assert_eq!(walked(&codec, delivered(3)), walked(&codec, delivered(2)));
+    }
+
+    #[test]
+    fn a_capture_read_twice_walks_as_two_deliveries_naming_both_reads() {
+        // The capture read twice - its lines numbered on from the first read,
+        // so each line of the second is a line of its own - is every session
+        // event observed once per read, where two deliveries of one read
+        // observe it twice from the same lines. The walks answer the same
+        // rows and anomalies, and each session event names the union of what
+        // its observations name: its lines in both reads. A message keyed by
+        // no session event folds nothing: its second statement is a twin the
+        // walk's window drops, the first read's lines named alone.
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let RecordOptions::Text(mut options) = reading() else {
+            panic!("a text read")
+        };
+        let first = framed(&options);
+        options.start_rownum = Some(i64::try_from(LINES).expect("a line count") + 1);
+        let second = framed(&options);
+        assert_eq!((first.len(), second.len()), (LINES, LINES));
+        let again: std::collections::HashMap<yggdryl::Uuid, yggdryl::Uuid> = first
+            .iter()
+            .zip(&second)
+            .map(|(first, second)| (first.get_curruuid(), second.get_curruuid()))
+            .inspect(|(first, second)| assert_ne!(first, second, "a line of its own"))
+            .collect();
+        let parsed = |lines: Vec<TextLine>| {
+            codec
+                .parse_text_lines(lines)
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("every line reads")
+        };
+        let once = parsed(first);
+        let read: Vec<FixMsg> = once.iter().cloned().chain(parsed(second)).collect();
+        let delivered: Vec<FixMsg> = once.iter().chain(&once).cloned().collect();
+        let walk = |messages: Vec<FixMsg>| {
+            codec
+                .lifecycle(messages)
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("the capture walks")
+        };
+        let (mut read, mut delivered) = (walk(read), walk(delivered));
+        assert_eq!(read.len(), delivered.len());
+        let (mut events, mut unions) = (0, 0);
+        for (read, delivered) in read.iter_mut().zip(&mut delivered) {
+            let folded = delivered.capture().msgsesseventid().is_some();
+            events += usize::from(folded);
+            let mut union: Vec<yggdryl::Uuid> = delivered
+                .get_srcuuids()
+                .iter()
+                .flat_map(|source| {
+                    std::iter::once(*source).chain(again.get(source).filter(|_| folded).copied())
+                })
+                .collect();
+            union.sort_unstable();
+            unions += usize::from(union.len() > delivered.get_srcuuids().len());
+            assert_eq!(
+                read.get_srcuuids(),
+                union.as_slice(),
+                "{}",
+                delivered.get_crosscode()
+            );
+            assert_eq!(read.anomalies(), delivered.anomalies());
+            // Everything else is the same walk.
+            read.set_srcuuids(Vec::new());
+            delivered.set_srcuuids(Vec::new());
+        }
+        // Every session event the walk answers names a line of each read.
+        assert_eq!((unions, events), (26, 26));
+        let stated = |messages: Vec<FixMsg>| {
+            let schema = super::format_target(&registry());
+            messages
+                .into_iter()
+                .map(|message| {
+                    format!(
+                        "{:?} {:?} {}",
+                        message.into_row(&schema).expect("a row"),
+                        OrderEvent::from(&message),
+                        message.digest(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(stated(read), stated(delivered));
     }
 
     /// The batch door's answer for the whole capture: a capture row in, one FIX
@@ -956,8 +1079,17 @@ mod dataset {
         // occurrence nests inside it rather than beside it, at every depth:
         // the leg carries its own allocations, the side its parties, and a
         // party its sub-identifiers.
-        assert_eq!(message.by_tag(555).unwrap().as_i64(), Some(1), "NoLegs");
-        assert_eq!(message.by_tag(552).unwrap().as_i64(), Some(1), "NoSides");
+        for group in ["TrdInstrmtLegGrp", "TrdCapRptSideGrp"] {
+            assert_eq!(
+                message
+                    .by_name(group)
+                    .unwrap()
+                    .as_sequence()
+                    .map(<[Scalar]>::len),
+                Some(1),
+                "{group}"
+            );
+        }
         assert_eq!(
             message
                 .by_path(&path("TrdInstrmtLegGrp[0].LegAllocs[0].LegAllocQty"))
@@ -1043,8 +1175,10 @@ mod dataset {
         // A stated value is never a derived one: the line said 260 remain.
         assert_eq!(fill.by_tag(151).unwrap(), super::decimal("260"));
 
-        // An identifier the check digit does not close is no identifier: the
-        // anonymized line names one, and nothing is read off it.
+        // An identifier the check digit does not close is a value of rank
+        // zero: the anonymized line names one, which is read as the ISIN it
+        // states - the lifecycle replaces it by a real one where it learns
+        // one - and nothing is derived off it, the country included.
         let masked = line_messages(&codec)
             .into_iter()
             .find(|message| {
@@ -1056,12 +1190,13 @@ mod dataset {
             .expect("the anonymized line");
         assert_eq!(
             masked.get_securityids().get(&yggdryl::IdType::Isin),
-            None,
-            "no ISIN off a masked one"
+            Some("XX0000000001"),
+            "the masked ISIN, as stated"
         );
+        assert_eq!(yggdryl::IdType::Isin.rank("XX0000000001"), 0);
         assert!(
             masked.get_by_tag(470).is_none_or(|held| held.is_null()),
-            "and no country either"
+            "and no country off it"
         );
     }
 
@@ -1261,7 +1396,7 @@ mod dataset {
 
     #[test]
     fn the_capture_reads_as_market_data_and_folds_into_books() {
-        use std::collections::{BTreeMap, HashMap};
+        use std::collections::{BTreeMap, BTreeSet, HashMap};
 
         use yggdryl::graph::{BookIterator, MarketData};
 
@@ -1301,17 +1436,20 @@ mod dataset {
             .into_iter()
             .map(|held| held.unwrap_err().to_string())
             .collect();
-        // Eighteen of the deliveries reach a book - eight fills, the eight
-        // reports they were split off, now their orders' reports, three
-        // orders, less a fill and a report the window yields once, and the
-        // execution the trade capture of line 112 splits off; the rest are
-        // acknowledgements, rejects, session traffic and bridge rows no book
-        // takes. Nothing is refused: the trade is no book input itself,
-        // since a trade's fills are the executions its parse splits off -
-        // and its single side states no `Side(54)`, so that execution is
-        // of side `UNKN`.
+        // Twenty-one of the deliveries are market data - eight fills, the
+        // eight reports they were split off, now their orders' reports,
+        // three orders, less a fill and a report the window yields once,
+        // the execution the trade capture of line 112 splits off, and the
+        // NOVN order's three steps: the venue's acknowledgement of it - an
+        // execution report of no fill, its order's leaf - the restatement
+        // the walk reads as `UPDATED`, and the expiry the walk dates at its
+        // `ExpireTime(126)`; the rest are rejects, session traffic and
+        // bridge rows no market data holds. Nothing is refused: the trade is no market
+        // data itself, since a trade's fills are the executions its parse
+        // splits off - and its single side states no `Side(54)`, so that
+        // execution is of side `UNKN`.
         assert!(refused.is_empty(), "{refused:?}");
-        assert_eq!(operations.len(), 18);
+        assert_eq!(operations.len(), 21);
         // The two a walk remembering nothing answers beside them each repeat
         // an identity already there.
         let every: Vec<MarketData> = codec
@@ -1325,7 +1463,7 @@ mod dataset {
             )
             .collect::<yggdryl::Result<_>>()
             .expect("every delivery reads");
-        assert_eq!(every.len(), 20);
+        assert_eq!(every.len(), 23);
         let mut seen = std::collections::HashSet::new();
         let once: Vec<&MarketData> = every
             .iter()
@@ -1338,36 +1476,137 @@ mod dataset {
         }
         assert_eq!(
             census,
-            BTreeMap::from([("execution_event", 8), ("order_event", 10)])
+            BTreeMap::from([("execution_event", 8), ("order_event", 13)])
         );
-        assert!(operations.windows(2).all(|pair| {
-            let at = |operation: &MarketData| {
-                let event: &dyn Event = match operation {
-                    MarketData::OrderEvent(event) => event,
-                    MarketData::ExecutionEvent(event) => event,
-                    other => panic!("an order or a fill, got {}", other.kind().as_str()),
-                };
-                event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        let at = |operation: &MarketData| {
+            let event: &dyn Event = match operation {
+                MarketData::OrderEvent(event) => event,
+                MarketData::ExecutionEvent(event) => event,
+                other => panic!("an order or a fill, got {}", other.kind().as_str()),
             };
-            at(&pair[0]) <= at(&pair[1])
-        }));
+            event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+        };
+        assert!(
+            operations
+                .windows(2)
+                .all(|pair| at(&pair[0]) <= at(&pair[1]))
+        );
 
-        // Every operation folds into a book, read off the `Buffer` source so
-        // no modification time dates a line. The Sell order of `2454` states
-        // no price: it rests at its side's one unpriced level rather than
-        // being refused, and it leaves the side at the same instant, so the
-        // one book of that instant applies both as deltas and holds nothing;
-        // eight books come out - one of them the trade capture's, whose one
-        // execution of side `UNKN` takes neither side - and the last is
-        // that one.
+        // Every order folds into a book and every execution is pruned, read
+        // off the `Buffer` source so no modification time dates a line: a
+        // fill moved its book through its order's report already. Every order
+        // is a delta of its book, so a book stands at every instant an order
+        // states and none where only an execution does. The Sell order of
+        // `2454` states no price: it rests at its side's one unpriced level
+        // rather than being refused, and it leaves the side at the same
+        // instant, so the one book of that instant applies both as deltas and
+        // holds nothing. Ten books come out - the NOVN order's three steps
+        // each its book's instant - each stating its deltas alone - with no
+        // grid and no snapshot input no book is whole, a code's first
+        // following no book - and the last is that one.
         let books: Vec<yggdryl::graph::BookEvent> =
             BookIterator::new(operations.clone().into_iter().map(Ok), 0)
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 8);
+        assert_eq!(books.len(), 10);
+        assert!(books.iter().all(|book| !book.is_complete()));
+        let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
+        let stood: BTreeSet<(String, i64)> = books
+            .iter()
+            .map(|book| (book.book_crosscode().to_owned(), book.get_currunix()))
+            .collect();
+        assert_eq!(stood.len(), books.len(), "one book per book and instant");
+        let booked: BTreeSet<(String, i64)> = operations
+            .iter()
+            .filter(|operation| operation.marketdatakind().is_booked())
+            .map(key)
+            .collect();
+        assert_eq!(stood, booked);
+        // Three of those instants each hold one order that ended before its
+        // book held it: two first reported filled, with nothing left to rest
+        // and no live entry to continue, and one restating the fill that
+        // ended an order its book stopped holding at an earlier instant. Each
+        // places nothing - what was alive before it is alive after it - yet
+        // each is the one delta of the book of its instant.
+        let ended: Vec<&MarketData> = operations
+            .iter()
+            .filter(|operation| {
+                let MarketData::OrderEvent(event) = operation else {
+                    return false;
+                };
+                !event.get_state().is_live()
+                    && books
+                        .iter()
+                        .find(|book| {
+                            (book.book_crosscode().to_owned(), book.get_currunix())
+                                == key(operation)
+                        })
+                        .is_some_and(|book| book.deltas().len() == 1)
+            })
+            .collect();
+        assert_eq!(
+            ended.len(),
+            3,
+            "one ended order alone at each of three instants"
+        );
+        for order in ended {
+            let MarketData::OrderEvent(event) = order else {
+                unreachable!("filtered to orders")
+            };
+            assert_eq!(
+                yggdryl::graph::Market::get_quantity(event),
+                Some(yggdryl::Decimal::from_int(0))
+            );
+            let book = books
+                .iter()
+                .find(|book| (book.book_crosscode().to_owned(), book.get_currunix()) == key(order))
+                .expect("the book of its instant");
+            let [delta] = book.deltas().collect::<Vec<_>>()[..] else {
+                panic!("one delta")
+            };
+            assert_eq!(delta.get_crossuuid(), order.get_crossuuid());
+            let MarketData::OrderEvent(delta) = delta else {
+                panic!("an order, got {}", delta.kind().as_str())
+            };
+            assert!(!delta.get_state().is_live());
+        }
+        // The one instant no order states is the trade capture's, which its
+        // execution of side `UNKN` alone touched.
+        let unbooked: Vec<&MarketData> = operations
+            .iter()
+            .filter(|operation| !booked.contains(&key(operation)))
+            .collect();
+        let [MarketData::ExecutionEvent(trade_fill)] = unbooked[..] else {
+            panic!(
+                "the trade capture's execution alone, got {}",
+                unbooked.len()
+            )
+        };
+        assert_eq!(trade_fill.get_side(), yggdryl::Side::Unknown);
         let last = books.last().expect("a last book");
         assert_eq!(last.get_ticker(), Some("2454"));
+        // Keyed by its instrument's ISIN, which it holds as its `isin`
+        // security identifier beside the ticker its first input stated.
+        assert_eq!(last.get_isincode(), Some("TW0002454006"));
+        assert_eq!(last.book_crosscode(), "TW0002454006");
+        assert_eq!(last.get_crosscode(), "3:0:TW0002454006");
+        // Every book is keyed by the ISIN its inputs state, else their
+        // ticker: the masked line's number keys its own book, and the
+        // ticker-only HOLN line stands in Holcim's book through the
+        // registry's ticker index.
+        let keys: BTreeSet<&str> = books.iter().map(|book| book.book_crosscode()).collect();
+        assert_eq!(
+            keys,
+            BTreeSet::from([
+                "CH0012005267",
+                "CH0012214059",
+                "CH0012221716",
+                "TW0001605004",
+                "TW0002454006",
+                "XX0000000001",
+            ])
+        );
         assert!(last.limits(yggdryl::Side::Buy).next().is_none());
         assert!(last.limits(yggdryl::Side::Sell).next().is_none());
         assert_eq!(last.alive().count(), 0);
@@ -1394,7 +1633,7 @@ mod dataset {
         // place of its kind's word and its `marketoperationid` (D2). D8, D9
         // and D1 leave it: the two deltas carry no group for the metadata
         // JSON to render, each lane holds a quantity alone, and the book is
-        // keyed by its ticker. It moved again when a book's sides stopped
+        // was keyed by its ticker. It moved again when a book's sides stopped
         // being leaves: the book digests what each side holds - its entries
         // and deltas - rather than a side summary's identity, and no longer
         // the scopes a snapshot replaced; and the two deltas' identities moved
@@ -1433,14 +1672,46 @@ mod dataset {
         // be held in the order of their keys as `src:type` spells them, the
         // bridge's own keys among them: each delta digests the identifiers
         // its `ParentOrderID`, `OMSUserID` and `OMSInstrumentID` keys state
-        // under the sources their names spell.
-        assert_eq!(last.get_currhashcode(), 1_642_488_774_851_967_775);
+        // under the sources their names spell. It moved again when every
+        // type took its base key, spelled as the type alone: the `fix`
+        // source became the base, so each delta digests the wire's
+        // identifiers under `base`, the base key a named source fills - a
+        // party's role under `proprietary`, the bridge's `oms` instrument -
+        // beside it, in the order the keys spell; and when the bridge's
+        // `DETAILEDCFICODE` became a name of `CFICode(461)`, folded into it.
+        // It moved again when a book stopped holding executions and digested
+        // its deltas once, in the order applied, after both sides' entries:
+        // each side feeds its live entries alone - none here - and the two
+        // deltas this book's ask side fed are the book's own feed, counted
+        // and fed after both sides; it held no execution, so none left it.
+        // It held when books came to digest in chain form - the book's own
+        // market event, the book it follows, its instant, each side's live
+        // entries only at a snapshot, then each delta's operation word and
+        // identity - because this book is its code's first: it follows none
+        // and states its instant as its snapshot, so it feeds what it fed.
+        // It moved again when a code's first book stopped being whole: it
+        // states its deltas alone and no snapshot instant, following no book,
+        // so it no longer feeds its two sides' digests. It moved again when
+        // a book came to be keyed by its instrument's ISIN and to hold it as
+        // its `isin` security identifier: the book's stored cross code reads
+        // `3:0:TW0002454006` and its digest feeds that identifier.
+        assert_eq!(last.get_currhashcode(), 9_341_042_899_919_963_577);
 
-        // No leaf keys a typed fact.
+        // No leaf keys a typed fact, save the one the NOVN delivery's hops
+        // disagree on: its rows state two `OMSDEALERORDERID` values, the
+        // walk's statement holds the later under `omsdealer:orderid`, and
+        // the metadata keeps the other as the evidence no set holds.
         for operation in &operations {
             for typed in TYPED {
+                let disagreeing = typed == "omsdealerorderid"
+                    && operation.book_crosscode() == "CH0012005267"
+                    && operation
+                        .get_metadata()
+                        .get(typed)
+                        .map(|value| value.as_str())
+                        == Some("U8NNITE0-00");
                 assert!(
-                    !operation.get_metadata().contains_key(typed),
+                    disagreeing || !operation.get_metadata().contains_key(typed),
                     "{typed} is a typed fact: {:?}",
                     operation.get_metadata()
                 );
@@ -1462,7 +1733,12 @@ mod dataset {
         // 35 of the 83 are such keys - `TECH.CLIENTID`, `TECH.ACCOUNT`,
         // `FIRM.ORIG.CLIENTID`, `ULLINK.CLIENTID`, `CLIENT.CLIENTID`,
         // `ULLINK.INSTRUMENTID` and the eight demoted aliases - and every
-        // other key stays.
+        // other key stays. The NOVN order's three leaves carry eleven keys
+        // each beside them, 116 over the twenty-one: the acknowledgement's
+        // seven identifier keys are read into its sets and its four others
+        // ride, and the restatement and the expiry the delivery's hops
+        // folded each read six and keep five, the `OMSDEALERORDERID` the
+        // hops disagree on among them - 62 kept and 54 read in all.
         let by_sources: HashMap<&[yggdryl::Uuid], &FixMsg> = walked
             .iter()
             .map(|message| (message.get_srcuuids(), message))
@@ -1501,11 +1777,11 @@ mod dataset {
                 } else {
                     identifiers
                 };
-                assert_eq!(set.get_from(id.src(), id.kind()), Some(id.value()), "{key}");
+                assert_eq!(set.get_from(id.key()), Some(id.value()), "{key}");
                 lifted += 1;
             }
         }
-        assert_eq!((carried, lifted), (48, 35));
+        assert_eq!((carried, lifted), (62, 54));
         let of_line = |seqnum: u64| {
             lines
                 .iter()
@@ -1520,10 +1796,10 @@ mod dataset {
             .find(|operation| operation.get_srcuuids().contains(&of_line(105)))
             .expect("the fill line 105 carries");
         assert_eq!(
-            sets(fill)[2].get_from(
-                &"tech".parse::<yggdryl::IdSource>().unwrap(),
-                &yggdryl::IdType::ClientId
-            ),
+            sets(fill)[2].get_from(&yggdryl::IdKey::new(
+                "tech".parse::<yggdryl::IdSource>().unwrap(),
+                yggdryl::IdType::ClientId
+            )),
             Some("OMSX1")
         );
         assert!(!fill.get_metadata().contains_key("tech.clientid"));
@@ -1596,14 +1872,13 @@ mod dataset {
         // Every observation's leaves, the repeated deliveries among them:
         // nothing walked folds a repeat onto the delivery it repeats. A fill
         // is two leaves since the parse splits its execution off (A12): its
-        // report, now its order's, and the execution - 56 more than 60, the
-        // trade's execution left out above.
-        assert_eq!(direct.len(), 60 + SPLIT - 1);
+        // report, now its order's, and the execution - 56 more than 68, the
+        // trade's execution left out above; the eight rows of the NOVN
+        // acknowledgement are each its order's leaf, an execution report of
+        // no fill being one.
+        assert_eq!(direct.len(), 68 + SPLIT - 1);
         assert_eq!(twin.len(), direct.len());
         for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
-            if index == 114 {
-                eprintln!("DEBUG twin={twin:#?}\nDEBUG direct={direct:#?}");
-            }
             assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
             assert_eq!(twin.get_curruuid(), direct.get_curruuid(), "leaf {index}");
             assert_eq!(
@@ -1870,10 +2145,11 @@ mod pipeline {
         // message's own columns follow those. A capture whose folded name a
         // fixed column takes is not carried, it fills that column: the
         // reader's `msgtype`, and the header's `bridgesessionid`, `msgctxid`
-        // and `msgseqnum`, each named for the field it fills. What is left
-        // is what no column is spelled for - the thread that wrote the line
-        // and its level; the clock the bridge printed dates the line, so it
-        // is the line's `currunix` and leads no column of its own. Where the
+        // and `msgseqnum`, each named for the field it fills. Nothing is
+        // left for the header to carry: the thread and the level are
+        // matched and never captured, and the clock the bridge printed
+        // dates the line, so it is the line's `currunix` and leads no
+        // column of its own. Where the
         // line came out of, which line it was and when it was written are
         // `crosscode`, `seqnum` and `currunix`, the columns both halves open
         // with.
@@ -1884,8 +2160,8 @@ mod pipeline {
             + 1;
         assert_eq!(names[0], "curruuid", "{names:?}");
         assert_eq!(
-            &names[shared..shared + 5],
-            ["mimetype", "body", "msgthreadid", "loglevel", "sendingtime"],
+            &names[shared..shared + 3],
+            ["mimetype", "body", "sendingtime"],
             "{names:?}"
         );
         let at = |name: &str| {
@@ -1894,15 +2170,7 @@ mod pipeline {
                 .position(|held| *held == name)
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
-        for pair in [
-            "currunix",
-            "creaunix",
-            "prevunix",
-            "loglevel",
-            "beginstring",
-        ]
-        .windows(2)
-        {
+        for pair in ["currunix", "creaunix", "prevunix", "body", "beginstring"].windows(2) {
             assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
         }
         let header = names
@@ -1919,7 +2187,7 @@ mod pipeline {
             "crosscode",
             "seqnum",
             "currunix",
-            "loglevel",
+            "body",
             "msgsessionid",
             "msgctxid",
             "msgpluginid",
@@ -2035,8 +2303,16 @@ mod pipeline {
                 .iter()
                 .map(Scalar::as_u64)
                 .collect::<Vec<_>>(),
-            [None, None, None, None, Some(1), None, Some(1)],
-            "a first place states none"
+            [
+                Some(0),
+                Some(0),
+                Some(0),
+                Some(0),
+                Some(1),
+                Some(0),
+                Some(1)
+            ],
+            "a first place is zero, never absent"
         );
         let lines = column(&stage, "curruuid");
         let sources = column(&read, "srcuuids");
@@ -2060,16 +2336,14 @@ mod pipeline {
             }
         }
 
-        // The row header's captures survive the codec untouched: the thread that
-        // wrote the line and the level, and the bracket's sequence number - null
-        // where the bracket held only the thread.
-        assert_eq!(
-            text_column(&read, "loglevel")[FILL_ROW].as_deref(),
-            Some("INFO")
-        );
-        let thread = column(&read, "msgthreadid");
-        assert_eq!(thread[ROUTED_ROW].as_i64(), Some(15_333));
-        assert_eq!(thread[HEARTBEAT_ROW].as_i64(), Some(15_261));
+        // The thread that wrote the line and the level it was logged at are
+        // matched by the row header and lifted into no column.
+        for unlifted in ["msgthreadid", "loglevel"] {
+            assert!(
+                read.schema().column_with_name(unlifted).is_none(),
+                "{unlifted}"
+            );
+        }
         // The bracket's sequence number is FIX's own `MsgSeqNum(34)`, so it fills
         // that column rather than riding in front of the row - and only where the
         // message states none. The routed line is keyed by name and spells no
@@ -2554,8 +2828,8 @@ mod pipeline {
 
         // Both rows came from line 1, because line 2 contributed none, and
         // both say which line by naming its identity rather than its number:
-        // `seqnum` on a fixed row is the message's own place, and neither of
-        // these two frames states one.
+        // `seqnum` on a fixed row is the message's own place, and each of
+        // these two frames is the first at its own instant.
         let first = column(&stage, "curruuid")[0].clone();
         let sources = column(&read, "srcuuids");
         assert_eq!(sources.len(), 2);
@@ -2565,9 +2839,13 @@ mod pipeline {
                 std::slice::from_ref(&first)
             );
         }
-        assert!(
-            column(&read, "seqnum").iter().all(Scalar::is_null),
-            "a frame the bridge relayed states no place of its own"
+        assert_eq!(
+            column(&read, "seqnum")
+                .iter()
+                .map(Scalar::as_u64)
+                .collect::<Vec<_>>(),
+            [Some(0), Some(0)],
+            "a frame the bridge relayed stands first at its own instant"
         );
 
         // Each message owns the entries of its own frame and none of its

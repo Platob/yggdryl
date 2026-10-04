@@ -49,7 +49,11 @@ fn a_null_clears_and_nothing_stated_is_none() {
     assert_eq!(element.get_crosscode(), "");
     assert!(element.get_srcuuids().is_empty());
     assert_eq!(element.get_curruuid(), identity);
-    assert_eq!(ElementColumn::CrossCode.fact(&element), None);
+    assert_eq!(
+        ElementColumn::CrossCode.fact(&element),
+        Some(Scalar::from("")),
+        "the code is never absent: a null reads as the empty text"
+    );
     assert_eq!(ElementColumn::SrcUuids.fact(&element), None);
     assert!(ElementColumn::CurrUuid.fact(&element).is_some());
 }
@@ -77,7 +81,7 @@ fn the_columns_are_the_element_trait_s_in_one_order() -> yggdryl::Result<()> {
         .filter(|field| field.is_nullable())
         .map(|field| field.name())
         .collect();
-    assert_eq!(nullable, ["crosscode", "srcuuids"]);
+    assert_eq!(nullable, ["srcuuids"], "only the sources may be absent");
     for field in &fields {
         assert!(field.display().is_some(), "{}", field.name());
         assert!(field.description().is_some(), "{}", field.name());

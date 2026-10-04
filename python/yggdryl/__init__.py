@@ -13,8 +13,8 @@ paths the work happens in, so `logging.getLogger("yggdryl")` is the one switch.
 Debug is an operation starting, info is one done and carries the counts a
 monitor watches - a table opened, a scan planned and what its filters pruned,
 a snapshot's rows and files, a commit and the version it landed. Nothing is
-reported per row, per batch, or per file. A level changed after import reaches
-the bridge through `refresh_logging`.
+reported per row, per batch, or per file. A level changed at any time applies
+to the next record; `yggdryl.logging` says how.
 """
 
 from . import (
@@ -36,6 +36,7 @@ from . import (
     iceberg,
     integer,
     json,
+    logging,
     media,
     nested,
     temporal,
@@ -43,6 +44,7 @@ from . import (
     toml,
     txhash,
     uri,
+    warehouse,
     xml,
     xxhash,
     yaml,
@@ -53,6 +55,7 @@ from ._native import (
     AVRO_MAX_SCHEMA_DEPTH,
     DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_RECORD_BATCH_ROW_SIZE,
+    DEFAULT_SPILL_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE,
     HOSTNAME,
     IPC_DICTIONARY_IDS_KEY,
@@ -62,15 +65,17 @@ from ._native import (
     DataType,
     Field,
     FieldPath,
+    IOResult,
+    JoinOptions,
     ProtocolField,
     PythonMetadata,
+    SpillOptions,
     StringEnum,
     StringParameters,
     Timezone,
     UnknownPropertyWarning,
     __version__,
     combined,
-    refresh_logging,
 )
 from .expression import (
     Bound,
@@ -89,6 +94,20 @@ from .mediatype import MediaType
 from .mimetype import MimeType
 from .text import TextEntries, TextEntry, TextLine, TextLines, TextOptions
 from .uri import Arn, Parameters, Uri, Url, Urn
+from .warehouse import (
+    Catalog,
+    FolderCatalog,
+    FolderNamespace,
+    MediaTable,
+    MemoryCatalog,
+    MemoryNamespace,
+    Namespace,
+    Namespaces,
+    SystemWarehouse,
+    Table,
+    Tables,
+    Warehouse,
+)
 
 from ._classes import field
 from ._typing import TypedDataType, TypedField
@@ -213,7 +232,9 @@ from .serie import (
     Serie,
     SerieField,
     SerieReader,
+    SerieReaderWindows,
     SerieSerie,
+    WindowSerie,
     SerieViewField,
     SerieViewSerie,
     StructSerie,
@@ -272,6 +293,7 @@ from .urn import UrnField, urn
 from .url import UrlField, url
 from .version import Version, VersionField, version
 from .identifier import Identifier, Identifiers
+from .isin_registry import IsinRegistry
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
@@ -285,6 +307,7 @@ __all__ = [
     "Bounds",
     "BytesField",
     "BytesParameters",
+    "Catalog",
     "CfiField",
     "ChunkedSerie",
     "CountryField",
@@ -293,6 +316,7 @@ __all__ = [
     "CusipField",
     "DEFAULT_FETCH_BYTE_SIZE",
     "DEFAULT_RECORD_BATCH_ROW_SIZE",
+    "DEFAULT_SPILL_BYTE_SIZE",
     "DEFAULT_STREAM_BATCH_SIZE",
     "DataType",
     "HOSTNAME",
@@ -318,6 +342,8 @@ __all__ = [
     "Filter",
     "FixedSizeSerieField",
     "FixedSizeSerieSerie",
+    "FolderCatalog",
+    "FolderNamespace",
     "Float16Field",
     "Float32Field",
     "Float64Field",
@@ -326,7 +352,9 @@ __all__ = [
     "IOBase",
     "Identifier",
     "Identifiers",
+    "IsinRegistry",
     "IOCursor",
+    "IOResult",
     "IPC_DICTIONARY_IDS_KEY",
     "Int16Field",
     "Int32Field",
@@ -335,6 +363,7 @@ __all__ = [
     "IntervalField",
     "Ipc",
     "IsinField",
+    "JoinOptions",
     "LargeSerieField",
     "LargeSerieSerie",
     "LargeSerieViewField",
@@ -342,12 +371,17 @@ __all__ = [
     "MapField",
     "MapSerie",
     "Media",
+    "MediaTable",
     "MediaType",
     "MediaTypeField",
+    "MemoryCatalog",
+    "MemoryNamespace",
     "MicField",
     "MimeType",
     "MimeTypeField",
     "NULL_PARTITION",
+    "Namespace",
+    "Namespaces",
     "NullField",
     "Parameters",
     "Parquet",
@@ -370,16 +404,22 @@ __all__ = [
     "Serie",
     "SerieField",
     "SerieReader",
+    "SerieReaderWindows",
     "SerieSerie",
+    "WindowSerie",
     "SerieViewField",
     "SerieViewSerie",
     "SideField",
+    "SpillOptions",
     "StateField",
     "StringEnum",
     "StringField",
     "StringParameters",
     "StructField",
     "StructSerie",
+    "SystemWarehouse",
+    "Table",
+    "Tables",
     "Term",
     "Text",
     "TextEntries",
@@ -412,6 +452,7 @@ __all__ = [
     "VariantField",
     "Version",
     "VersionField",
+    "Warehouse",
     "Xmla",
     "Excel",
     "__version__",
@@ -479,6 +520,7 @@ __all__ = [
     "interval",
     "isin",
     "json",
+    "logging",
     "large_ascii",
     "large_ascii_view",
     "large_binary",
@@ -497,7 +539,6 @@ __all__ = [
     "mimetype",
     "nested",
     "null",
-    "refresh_logging",
     "ric",
     "run_end_encoded",
     "scalar",
@@ -537,6 +578,7 @@ __all__ = [
     "uuid",
     "variant",
     "version",
+    "warehouse",
     "xml",
     "xxhash",
     "yaml",

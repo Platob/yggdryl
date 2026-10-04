@@ -155,6 +155,21 @@ class TestRecordPath:
         with pytest.raises(ValueError, match="Trades!A2.*declare a field"):
             handle.read_arrow_reader(sheet="Trades", header=False)
 
+    def test_a_coded_workbook_name_is_refused_at_every_door(self, tmp_path: pathlib.Path) -> None:
+        # A workbook is a ZIP package deflated inside, so `.xlsx.gz` names a
+        # file no spreadsheet opens: the write refuses it before a byte is
+        # written, and a read and `Workbook.open` refuse it too.
+        for name, codec in (("trades.xlsx.gz", "gzip"), ("trades.xlsx.zst", "zstd")):
+            refused = f"expected an uncompressed xlsx handle, got {codec} coding"
+            handle = IOBase(tmp_path / name)
+            with pytest.raises(ValueError, match=refused):
+                handle.overwrite_arrow_table(trades())
+            assert not (tmp_path / name).exists()
+            with pytest.raises(ValueError, match=refused):
+                handle.read_arrow_reader()
+            with pytest.raises(ValueError, match=refused):
+                Workbook.open(tmp_path / name)
+
     def test_a_missing_sheet_reads_as_nothing_and_a_write_adds_it(self, tmp_path: pathlib.Path) -> None:
         handle = written(tmp_path)
         assert handle.read_arrow_reader(sheet="Missing").read_all().num_rows == 0
@@ -288,6 +303,31 @@ class TestCell:
         with pytest.raises(ValueError, match="date system"):
             Cell("A1", 1, date_system="1930")
 
+    def test_an_unknown_error_keeps_its_literal_and_formula_through_pickle(self) -> None:
+        original = Cell("B2", 3).with_formula("1+2")
+        failed = original.with_error("#FUTURE!")
+        assert failed.error == failed.text() == "#FUTURE!"
+        assert failed.formula == "1+2"
+        assert failed.is_null() and failed.as_py() is None
+        restored = pickle.loads(pickle.dumps(failed))
+        assert restored == failed and hash(restored) == hash(failed)
+        assert restored.error == "#FUTURE!"
+        assert restored.formula == "1+2"
+        assert original.as_py() == 3 and original.error is None
+        assert failed.with_error("#ref!").error == "#REF!"
+
+    def test_typed_formula_references_move_and_malformed_entry_is_refused(self) -> None:
+        cell = Cell("C1", 3).with_formula("a1*$b$1+a$1-$a1+sum(a:a,1:1)")
+        assert cell.formula == "A1*$B$1+A$1-$A1+SUM(A:A,1:1)"
+        moved = cell.at("D3")
+        assert moved.formula == "B3*$B$1+B$1-$A3+SUM(B:B,3:3)"
+        restored = pickle.loads(pickle.dumps(moved))
+        assert restored == moved and hash(restored) == hash(moved)
+        with pytest.raises(ValueError, match=r"expected \) to close this"):
+            cell.with_formula("SUM(A1")
+        assert cell.formula == "A1*$B$1+A$1-$A1+SUM(A:A,1:1)"
+        assert cell.as_py() == 3
+
 
 class TestSheet:
     def test_a_sheet_is_built_cell_by_cell_and_read_back_by_reference(self) -> None:
@@ -387,6 +427,44 @@ class TestSheet:
         assert other != sheet
         with pytest.raises(TypeError):
             hash(sheet)
+
+    @pytest.mark.parametrize("shared", [False, True], ids=["owned", "shared"])
+    def test_1904_row_edits_update_references_and_refuse_overflow_atomically(
+        self, shared: bool
+    ) -> None:
+        workbook = Workbook()
+        workbook.date_system = "1904"
+        sheet = workbook.add_sheet("Data") if shared else Sheet("Data", date_system="1904")
+        day = datetime.date(2024, 2, 29)
+        sheet["A1"] = day
+        sheet.insert_cell(Cell("B1", None).with_formula("A1"))
+        report = workbook.add_sheet("Report") if shared else None
+        if report is not None:
+            report.insert_cell(Cell("A1", None).with_formula("Data!A1"))
+
+        sheet.insert_rows(0, 1)
+        assert sheet.date_system == "1904" and sheet["A2"].as_py() == day
+        assert sheet["B2"].formula == "A2"
+        if report is not None:
+            assert report["A1"].formula == "Data!A2"
+        sheet.remove_rows(0, 1)
+        assert sheet.date_system == "1904" and sheet["A1"].as_py() == day
+        assert sheet["B1"].formula == "A1"
+        if report is not None:
+            assert report["A1"].formula == "Data!A1"
+
+        sheet[f"A{MAX_ROWS}"] = 2
+        before = copy.copy(sheet)
+        report_before = copy.copy(report) if report is not None else None
+        with pytest.raises(
+            ValueError,
+            match=r"Data!A1048576: expected the moved rows to stay within",
+        ):
+            sheet.insert_rows(0, 1)
+        assert sheet == before and sheet.date_system == "1904"
+        if report is not None:
+            assert workbook["Data"] == before
+            assert report == report_before
 
 
 class TestWorkbook:

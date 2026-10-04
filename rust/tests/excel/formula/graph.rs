@@ -743,21 +743,43 @@ fn lazy_schedule_admits_duplicate_rectangles_without_replaying_ready_roots() {
     use yggdryl::excel::{CellRange, CellRef, Workbook};
     use yggdryl::internals::excel_formula_graph::Scheduler;
     let at = |text: &str| text.parse::<CellRef>().unwrap();
-    let mut book = Workbook::new(); book.add_sheet("Data").unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
     let key = book.sheet_key("Data").unwrap();
     let mut graph = Scheduler::default();
-    for cell in ["A1", "B1", "C1"] { graph.set(key, at(cell), &[], false).unwrap(); }
+    for cell in ["A1", "B1", "C1"] {
+        graph.set(key, at(cell), &[], false).unwrap();
+    }
     let mut pass = graph.begin(true).unwrap();
     assert_eq!(graph.next(&mut pass), Some((key, at("A1"))));
-    graph.admit(&mut pass, (key, at("A1")), key, "B1:C1".parse().unwrap(), &[at("B1"), at("C1")]).unwrap();
-    graph.admit(&mut pass, (key, at("A1")), key, CellRange::new(at("B1"), at("B1")), &[at("B1")]).unwrap();
+    graph
+        .admit(
+            &mut pass,
+            (key, at("A1")),
+            key,
+            "B1:C1".parse().unwrap(),
+            &[at("B1"), at("C1")],
+        )
+        .unwrap();
+    graph
+        .admit(
+            &mut pass,
+            (key, at("A1")),
+            key,
+            CellRange::new(at("B1"), at("B1")),
+            &[at("B1")],
+        )
+        .unwrap();
     for cell in ["B1", "C1", "A1"] {
         assert_eq!(graph.next(&mut pass), Some((key, at(cell))));
         graph.complete(&mut pass, (key, at(cell)));
     }
     assert_eq!(graph.next(&mut pass), None);
     graph.finish(&mut pass);
-    assert_eq!(pass.ordered(), &[(key, at("B1")), (key, at("C1")), (key, at("A1"))]);
+    assert_eq!(
+        pass.ordered(),
+        &[(key, at("B1")), (key, at("C1")), (key, at("A1"))]
+    );
     graph.acknowledge(pass, &[true; 3]).unwrap();
     graph.changed(key, at("B1")).unwrap();
     let mut pass = graph.begin(false).unwrap();
@@ -766,13 +788,15 @@ fn lazy_schedule_admits_duplicate_rectangles_without_replaying_ready_roots() {
         assert_eq!(graph.next(&mut pass), Some((key, at(cell))));
         graph.complete(&mut pass, (key, at(cell)));
     }
-    graph.finish(&mut pass); graph.acknowledge(pass, &[true; 2]).unwrap();
+    graph.finish(&mut pass);
+    graph.acknowledge(pass, &[true; 2]).unwrap();
     graph.changed(key, at("B1")).unwrap();
     let mut pass = graph.begin(false).unwrap();
     assert_eq!(graph.next(&mut pass), Some((key, at("B1"))));
     graph.complete(&mut pass, (key, at("B1")));
     assert_eq!(graph.next(&mut pass), None);
-    graph.finish(&mut pass); graph.acknowledge(pass, &[true]).unwrap();
+    graph.finish(&mut pass);
+    graph.acknowledge(pass, &[true]).unwrap();
 }
 
 #[cfg(feature = "internals")]
@@ -781,15 +805,38 @@ fn lazy_schedule_classifies_new_active_cycles_and_retires_them_next_pass() {
     use yggdryl::excel::{CellRange, CellRef, Workbook};
     use yggdryl::internals::excel_formula_graph::Scheduler;
     let at = |text: &str| text.parse::<CellRef>().unwrap();
-    let mut book = Workbook::new(); book.add_sheet("Data").unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
     let key = book.sheet_key("Data").unwrap();
     let mut graph = Scheduler::default();
     graph.set(key, at("A1"), &[], false).unwrap();
-    graph.set(key, at("B1"), &[(key, CellRange::new(at("A1"), at("A1")))], false).unwrap();
-    graph.set(key, at("C1"), &[(key, CellRange::new(at("B1"), at("B1")))], false).unwrap();
+    graph
+        .set(
+            key,
+            at("B1"),
+            &[(key, CellRange::new(at("A1"), at("A1")))],
+            false,
+        )
+        .unwrap();
+    graph
+        .set(
+            key,
+            at("C1"),
+            &[(key, CellRange::new(at("B1"), at("B1")))],
+            false,
+        )
+        .unwrap();
     let mut pass = graph.begin(true).unwrap();
     assert_eq!(graph.next(&mut pass), Some((key, at("A1"))));
-    graph.admit(&mut pass, (key, at("A1")), key, CellRange::new(at("B1"), at("B1")), &[at("B1")]).unwrap();
+    graph
+        .admit(
+            &mut pass,
+            (key, at("A1")),
+            key,
+            CellRange::new(at("B1"), at("B1")),
+            &[at("B1")],
+        )
+        .unwrap();
     assert_eq!(graph.next(&mut pass), None);
     graph.finish(&mut pass);
     assert_eq!(pass.circular(), &[(key, at("A1")), (key, at("B1"))]);
@@ -802,7 +849,8 @@ fn lazy_schedule_classifies_new_active_cycles_and_retires_them_next_pass() {
         graph.complete(&mut pass, (key, at(cell)));
     }
     graph.finish(&mut pass);
-    assert!(pass.circular().is_empty()); assert!(pass.blocked().is_empty());
+    assert!(pass.circular().is_empty());
+    assert!(pass.blocked().is_empty());
     graph.acknowledge(pass, &[true; 3]).unwrap();
     assert_eq!(graph.status_counts(), (0, 0));
 }
@@ -820,18 +868,42 @@ fn calculation_contract_ten_thousand_links_evaluate_once_after_input_change() {
     // contract count. Recalculation must visit each affected formula once.
     let shape = Formula::from_file("A1+1", CellRef::new(1, 0));
     for row in 1..=LINKS {
-        sheet.insert_cell(Cell::from_scalar(CellRef::new(row, 0), Scalar::Null, DateSystem::Year1900)
-            .unwrap().with_formula(shape.clone())).unwrap();
+        sheet
+            .insert_cell(
+                Cell::from_scalar(CellRef::new(row, 0), Scalar::Null, DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shape.clone()),
+            )
+            .unwrap();
     }
     let first = book.calculate_all().unwrap();
-    assert_eq!((first.evaluated, first.uncomputed, first.circular_count), (u64::from(LINKS), 0, 0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(LINKS, 0)), Scalar::from(f64::from(LINKS + 1)));
+    assert_eq!(
+        (first.evaluated, first.uncomputed, first.circular_count),
+        (u64::from(LINKS), 0, 0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(CellRef::new(LINKS, 0)),
+        Scalar::from(f64::from(LINKS + 1))
+    );
     assert_eq!(book.recalculate().unwrap().evaluated, 0);
 
-    book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 0), 2.0).unwrap();
+    book.sheet_mut("Data")
+        .unwrap()
+        .set_cell(CellRef::new(0, 0), 2.0)
+        .unwrap();
     let changed = book.recalculate().unwrap();
-    assert_eq!((changed.evaluated, changed.uncomputed, changed.circular_count), (u64::from(LINKS), 0, 0));
-    assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(LINKS, 0)), Scalar::from(f64::from(LINKS + 2)));
+    assert_eq!(
+        (
+            changed.evaluated,
+            changed.uncomputed,
+            changed.circular_count
+        ),
+        (u64::from(LINKS), 0, 0)
+    );
+    assert_eq!(
+        book.sheet("Data").unwrap().scalar(CellRef::new(LINKS, 0)),
+        Scalar::from(f64::from(LINKS + 2))
+    );
     assert_eq!(book.recalculate().unwrap().evaluated, 0);
 }
 
@@ -844,14 +916,39 @@ fn calculation_contract_whole_column_input_evaluates_one_and_unread_cell_zero() 
     let result = CellRef::new(0, 0);
     book.set_entry("Cases", result, "=SUM(Values!A:A)").unwrap();
     assert_eq!(book.calculate_all().unwrap().evaluated, 1);
-    assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(1.0));
+    assert_eq!(
+        book.sheet("Cases").unwrap().scalar(result),
+        Scalar::from(1.0)
+    );
     // A formerly absent last-grid-row cell is covered by the one rectangle.
-    book.sheet_mut("Values").unwrap().set_cell(CellRef::new(MAX_ROWS - 1, 0), 3.0).unwrap();
+    book.sheet_mut("Values")
+        .unwrap()
+        .set_cell(CellRef::new(MAX_ROWS - 1, 0), 3.0)
+        .unwrap();
     let changed = book.recalculate().unwrap();
-    assert_eq!((changed.evaluated, changed.uncomputed, changed.circular_count), (1, 0, 0));
-    assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(4.0));
-    book.sheet_mut("Values").unwrap().set_cell(CellRef::new(0, 1), 9.0).unwrap();
+    assert_eq!(
+        (
+            changed.evaluated,
+            changed.uncomputed,
+            changed.circular_count
+        ),
+        (1, 0, 0)
+    );
+    assert_eq!(
+        book.sheet("Cases").unwrap().scalar(result),
+        Scalar::from(4.0)
+    );
+    book.sheet_mut("Values")
+        .unwrap()
+        .set_cell(CellRef::new(0, 1), 9.0)
+        .unwrap();
     let unread = book.recalculate().unwrap();
-    assert_eq!((unread.evaluated, unread.uncomputed, unread.circular_count), (0, 0, 0));
-    assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(4.0));
+    assert_eq!(
+        (unread.evaluated, unread.uncomputed, unread.circular_count),
+        (0, 0, 0)
+    );
+    assert_eq!(
+        book.sheet("Cases").unwrap().scalar(result),
+        Scalar::from(4.0)
+    );
 }

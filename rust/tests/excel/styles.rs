@@ -1605,19 +1605,33 @@ fn new_styles_keep_the_workbook_namespace_family() {
     assert!(style.font.bold && style.font.italic);
 }
 
-
 #[test]
 fn pivot_number_format_xstring_uses_the_shared_spreadsheet_string_boundary() {
     use yggdryl::excel::{CellRange, StylePatch, Workbook};
     let code = "0\"<&\0_x0041_\"";
     let mut book = Workbook::new();
-    book.add_sheet("Data").unwrap().set_cell("A1".parse().unwrap(), 2.0).unwrap();
-    book.set_style("Data", &["A1:A1".parse::<CellRange>().unwrap()], &StylePatch {
-        number_format: Some(code.into()), ..StylePatch::default()
-    }).unwrap();
+    book.add_sheet("Data")
+        .unwrap()
+        .set_cell("A1".parse().unwrap(), 2.0)
+        .unwrap();
+    book.set_style(
+        "Data",
+        &["A1:A1".parse::<CellRange>().unwrap()],
+        &StylePatch {
+            number_format: Some(code.into()),
+            ..StylePatch::default()
+        },
+    )
+    .unwrap();
     let saved = Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
     let xml = crate::excel_package::member(&saved, "xl/styles.xml");
     assert!(!xml.contains('\0'), "{xml}");
     assert!(xml.contains("&lt;&amp;_x0000__x005F_x0041_"), "{xml}");
-    assert_eq!(saved.cell_style("Data", "A1".parse().unwrap()).unwrap().number_format, code);
+    assert_eq!(
+        saved
+            .cell_style("Data", "A1".parse().unwrap())
+            .unwrap()
+            .number_format,
+        code
+    );
 }

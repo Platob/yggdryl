@@ -571,7 +571,7 @@ fn a_decimal_is_its_digits_and_other_leaves_are_their_text() {
         row(&sheet_part(&handle), 2),
         format!(
             "<row r=\"2\">{}{}{}</row>",
-            number("A2", "12.50"),
+            number("A2", "12.5"),
             text("B2", "123e4567-e89b-12d3-a456-426614174000"),
             text("C2", "AAFoaQ==")
         )
@@ -938,7 +938,7 @@ fn a_commit_cadence_publishes_every_record_in_order() {
     let field = trades();
     let mut handle = xlsx();
     let mut options = handle.record_options().unwrap();
-    options.set_commit_row_size(Some(2));
+    options.set_commit_batch_num(Some(2));
     let label = |id: i64| format!("r{id}");
     let records: Vec<Scalar> = (1..=5).map(|id| trade(id, Some(&label(id)))).collect();
     handle

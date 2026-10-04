@@ -1,13 +1,15 @@
 //! HTTP access, against the crate's own server on loopback.
 //!
-//! The seven shapes a caller of an HTTP resource performs: the whole value,
+//! The eight shapes a caller of an HTTP resource performs: the whole value,
 //! one range out of the end (a footer read), a full streamed drain, the same
 //! whole value from a route whose handler writes it chunk by chunk rather
-//! than holding it (`Response::with_writer`), one small JSON exchange, a
-//! walk of a paginated API, and a fan-out of many small requests over
-//! `send_all`. Each is a stated number of requests - one `GET`, one ranged
-//! `GET`, one `GET`, one `GET`, one `POST`, one `GET` per page, one `GET` per
-//! request - which the accounting tests hold; what is measured here is
+//! than holding it (`Response::with_writer`), one small JSON exchange, one
+//! small `GET` sent plain and again under the knobs a request states for
+//! itself - a per-attempt header hook and a retry rule - a walk of a
+//! paginated API, and a fan-out of many small requests over `send_all`. Each
+//! is a stated number of requests - one `GET`, one ranged `GET`, one `GET`,
+//! one `GET`, one `POST`, one `GET` twice over, one `GET` per page, one `GET`
+//! per request - which the accounting tests hold; what is measured here is
 //! everything around those round trips, so a per-request cost that crept in
 //! shows beside the counts. Nothing leaves the machine: the server is
 //! `yggdryl::http::Server` bound on `127.0.0.1:0`, serving a memory folder,
@@ -26,7 +28,7 @@ use std::sync::Arc;
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::fs::{FsFolder, MemoryFileSystem};
 use yggdryl::holder::Holder;
-use yggdryl::http::{Method, Response, Server, Session, Status};
+use yggdryl::http::{Headers, Method, Response, Server, Session, Status};
 use yggdryl::{IOBase, Scalar};
 
 /// The resource the byte shapes read, in bytes.
@@ -208,6 +210,42 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
                 .expect("an answer");
             assert_eq!(response.status(), Status::CREATED);
             black_box(response.scalar().expect("a document"))
+        });
+    });
+
+    // One small GET, plain and then under the knobs a request states for
+    // itself: a header made per attempt, as a proof or a signature is, and a
+    // rule for the answers worth another attempt. The answer is a success,
+    // so the rule is never asked and nothing is retried: the pair is what
+    // carrying the knobs costs a request that needs neither.
+    let small = url("/pages/0");
+    group.bench_function("get_plain", |bencher| {
+        bencher.iter(|| {
+            let response = session
+                .get(black_box(&small))
+                .expect("a request")
+                .send()
+                .expect("an answer");
+            black_box(response.bytes().expect("a body").len())
+        });
+    });
+    group.bench_function("get_with_request_knobs", |bencher| {
+        bencher.iter(|| {
+            let response = session
+                .get(black_box(&small))
+                .expect("a request")
+                .with_attempt_headers(|attempt| {
+                    let mut headers = Headers::new();
+                    let said = if attempt.number() == 1 { "1" } else { "again" };
+                    headers.insert("x-attempt", said)?;
+                    Ok(headers)
+                })
+                .with_retry_on(|status, _headers, body| {
+                    status.code() == 400 && body.starts_with(b"{\"__type\":\"Throttling")
+                })
+                .send()
+                .expect("an answer");
+            black_box(response.bytes().expect("a body").len())
         });
     });
 

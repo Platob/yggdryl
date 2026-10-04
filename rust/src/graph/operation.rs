@@ -403,12 +403,8 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_securityid(id)
     }
-    fn remove_securityid(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_securityid(src, kind)
+    fn remove_securityid(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_securityid(key)
     }
     fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
         self.data.derive_securityid(kind, code)
@@ -577,12 +573,8 @@ impl<K: OperationKind> Operation for OperationElement<K> {
     fn insert_identifier(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_identifier(id)
     }
-    fn remove_identifier(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_identifier(src, kind)
+    fn remove_identifier(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_identifier(key)
     }
     fn get_partyids(&self) -> &crate::Identifiers {
         self.data.get_partyids()
@@ -593,12 +585,8 @@ impl<K: OperationKind> Operation for OperationElement<K> {
     fn insert_partyid(&mut self, party: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_partyid(party)
     }
-    fn remove_partyid(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_partyid(src, kind)
+    fn remove_partyid(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_partyid(key)
     }
 }
 
@@ -832,8 +820,12 @@ impl<K: OperationKind> Event for OperationEvent<K> {
     fn set_state(&mut self, state: crate::State) {
         self.data.set_state(state);
     }
+    /// An execution reports one whatever its state, and an order or a
+    /// quote where its state does - a partial fill, a fill - as the
+    /// lifecycle reads it: a native leaf has no report kind of its own
+    /// beside its state, so the state speaks.
     fn is_execution(&self) -> bool {
-        matches!(K::KIND, MarketKind::Execution)
+        matches!(K::KIND, MarketKind::Execution) || self.get_state().is_execution()
     }
     fn get_seqnum(&self) -> u64 {
         self.data.get_seqnum()
@@ -961,12 +953,8 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn insert_securityid(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_securityid(id)
     }
-    fn remove_securityid(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_securityid(src, kind)
+    fn remove_securityid(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_securityid(key)
     }
     fn derive_securityid(&mut self, kind: &crate::IdType, code: &str) -> bool {
         self.data.derive_securityid(kind, code)
@@ -1135,12 +1123,8 @@ impl<K: OperationKind> Operation for OperationEvent<K> {
     fn insert_identifier(&mut self, id: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_identifier(id)
     }
-    fn remove_identifier(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_identifier(src, kind)
+    fn remove_identifier(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_identifier(key)
     }
     fn get_partyids(&self) -> &crate::Identifiers {
         self.data.get_partyids()
@@ -1151,12 +1135,8 @@ impl<K: OperationKind> Operation for OperationEvent<K> {
     fn insert_partyid(&mut self, party: crate::Identifier) -> crate::Result<bool> {
         self.data.insert_partyid(party)
     }
-    fn remove_partyid(
-        &mut self,
-        src: &crate::IdSource,
-        kind: &crate::IdType,
-    ) -> crate::Result<bool> {
-        self.data.remove_partyid(src, kind)
+    fn remove_partyid(&mut self, key: &crate::IdKey) -> crate::Result<bool> {
+        self.data.remove_partyid(key)
     }
 }
 

@@ -665,18 +665,97 @@ const fn integer_kind_name(signed: bool, bits: u16) -> &'static str {
     }
 }
 
-/// Read an integer out of its canonical spelling.
+/// What every refusal of an integer spelling names.
+pub(crate) const INTEGER_SPELLINGS: &str = "a whole number";
+
+/// What every refusal of a byte count names.
+#[cfg(feature = "http")]
+pub(crate) const BYTE_COUNT_SPELLINGS: &str =
+    "a byte count, with an optional KiB, MiB or GiB suffix";
+
+/// Read an integer out of its canonical spelling, at one native width.
 ///
-/// The spelling is the one every integer width prints, at the widest signed
-/// and unsigned storage this crate holds; the declared width then narrows it,
-/// so a magnitude the column cannot hold is refused by the width rather than
-/// wrapped here. Surrounding space is not part of the number.
-pub(crate) fn integer_from_text(text: &str) -> Option<Scalar> {
+/// The spelling is the one every integer width prints - an optional sign
+/// and ASCII digits, the surrounding space not part of the number - read at
+/// the widest storage this crate holds and narrowed to `T` exactly: a
+/// magnitude `T` cannot hold is `None`, never wrapped. The one grammar every
+/// count in the crate reads, a setting's `max_attempts` as much as a cell.
+pub(crate) fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
     let text = text.trim();
-    text.parse::<i128>()
-        .ok()
+    match text.parse::<i128>() {
+        Ok(value) => T::try_from(value).ok(),
+        Err(_) => T::try_from(text.parse::<u128>().ok()?).ok(),
+    }
+}
+
+/// Read an integer out of its canonical spelling as the value a column
+/// stores: the widest signed storage, else the widest unsigned one, so the
+/// declared width refuses a magnitude it cannot hold rather than this
+/// reader wrapping it.
+pub(crate) fn integer_from_text(text: &str) -> Option<Scalar> {
+    integer_from_text_as::<i128>(text)
         .map(Scalar::from)
-        .or_else(|| text.parse::<u128>().ok().map(Scalar::from))
+        .or_else(|| integer_from_text_as::<u128>(text).map(Scalar::from))
+}
+
+/// Read an integer a document states either way - as the number it is, or
+/// as the digits of one - at one native width.
+///
+/// One endpoint answers a lifetime as `3599` and the next as `"3599"`, and a
+/// 64-bit `size` is text because a JSON number is not 64-bit, so every such
+/// reading goes through here: an integer scalar of any width as it is, a
+/// string by [`integer_from_text_as`]. A fraction, a boolean, a code, an
+/// absence, or a magnitude `T` cannot hold is `None`, never wrapped.
+pub(crate) fn integer_from_scalar_as<T: TryFrom<i128> + TryFrom<u128>>(
+    value: &Scalar,
+) -> Option<T> {
+    if let Some(count) = value.as_i128() {
+        return T::try_from(count).ok();
+    }
+    if let Some(count) = value.as_u128() {
+        return T::try_from(count).ok();
+    }
+    integer_from_text_as(value.as_string()?.as_str())
+}
+
+/// The byte-count units a configuration file writes, binary and decimal
+/// spellings alike read as powers of 1024 the way every such file means
+/// them; the three-letter suffixes come first so `1gib` is never read as a
+/// `b`.
+#[cfg(feature = "http")]
+const BYTE_UNITS: [(&str, u64); 10] = [
+    ("gib", 1 << 30),
+    ("mib", 1 << 20),
+    ("kib", 1 << 10),
+    ("gb", 1 << 30),
+    ("mb", 1 << 20),
+    ("kb", 1 << 10),
+    ("g", 1 << 30),
+    ("m", 1 << 20),
+    ("k", 1 << 10),
+    ("b", 1),
+];
+
+/// Read a byte count out of text: a whole number with an optional unit of
+/// [`BYTE_UNITS`], in any case, blanks allowed between.
+///
+/// A count the unit multiplies past `u64` is `None` rather than a saturated
+/// bound, as is a fraction, an exponent or a sign: `1.5MiB` is a size no
+/// configuration reads, and a silently unbounded limit is not a reading.
+/// Every byte count a setting states is the HTTP client's or an object
+/// store's, so the reader exists under that feature alone.
+#[cfg(feature = "http")]
+pub(crate) fn byte_count_from_text(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let (digits, scale) = BYTE_UNITS
+        .iter()
+        .find_map(|(suffix, scale)| {
+            let cut = text.len().checked_sub(suffix.len())?;
+            let (head, tail) = text.is_char_boundary(cut).then(|| text.split_at(cut))?;
+            tail.eq_ignore_ascii_case(suffix).then_some((head, *scale))
+        })
+        .unwrap_or((text, 1));
+    integer_from_text_as::<u64>(digits)?.checked_mul(scale)
 }
 
 // ------------------------------------------------------------------------
@@ -741,3 +820,35 @@ mod arrow {
 }
 
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/root/integer.rs` pins and a caller cannot reach: the
+    //! one integer grammar at a native width, its reading of a scalar that
+    //! states a number either way, and the byte-count table.
+    /// What every refusal of an integer spelling names.
+    pub const INTEGER_SPELLINGS: &str = super::INTEGER_SPELLINGS;
+    /// What every refusal of a byte count names.
+    #[cfg(feature = "http")]
+    pub const BYTE_COUNT_SPELLINGS: &str = super::BYTE_COUNT_SPELLINGS;
+
+    /// Read an integer out of text at one native width.
+    pub fn integer_from_text_as<T: TryFrom<i128> + TryFrom<u128>>(text: &str) -> Option<T> {
+        super::integer_from_text_as(text)
+    }
+
+    /// Read an integer out of a scalar - a number or its digits - at one
+    /// native width.
+    pub fn integer_from_scalar_as<T: TryFrom<i128> + TryFrom<u128>>(
+        value: &crate::Scalar,
+    ) -> Option<T> {
+        super::integer_from_scalar_as(value)
+    }
+
+    /// Read a byte count out of text.
+    #[cfg(feature = "http")]
+    pub fn byte_count_from_text(text: &str) -> Option<u64> {
+        super::byte_count_from_text(text)
+    }
+}

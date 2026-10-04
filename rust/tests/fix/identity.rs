@@ -10,7 +10,7 @@ use super::sequence;
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::Market;
-    use yggdryl::{Cfi, FixMsg, IdSource, IdType, Isin, Scalar};
+    use yggdryl::{Cfi, FixMsg, IdType, Isin, Scalar};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -125,7 +125,7 @@ mod categories {
         assert_eq!(
             primary
                 .get_securityids()
-                .get_from(&IdSource::Fix, &IdType::Cusip),
+                .get_from(&yggdryl::IdKey::base(IdType::Cusip)),
             Some("037833100")
         );
         // A type is a name, never the wire code that named it.
@@ -767,7 +767,7 @@ mod identifiers {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["fix:clordid=C-001", "fix:execid=E-09", "fix:orderid=O-01"]
+            ["clordid=C-001", "execid=E-09", "orderid=O-01"]
         );
         // Filling them is not an arrival: the identifiers are the event's own
         // fact, so the wire is the line's own pairs beside what the dictionary
@@ -811,7 +811,7 @@ mod identifiers {
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
-            ["fix:clordid=C-1"]
+            ["clordid=C-1"]
         );
         let unnamed = codec.sole_line(b"8=FIX.4.4|35=ZZ|10=0|").unwrap();
         assert!(unnamed.get_identifiers().is_empty());
@@ -840,5 +840,152 @@ mod identifiers {
             nested.get_identifiers().get(&"listid".parse().unwrap()),
             None
         );
+    }
+}
+
+mod captured_rows {
+    //! The identity a row keeps once its captured keys ride `fixentries`
+    //! rather than `metadata`: the message's content code reads the same
+    //! arrivals wherever the row holds them.
+
+    use std::sync::Arc;
+
+    use yggdryl::graph::Element;
+
+    /// A row whose captured keys ride `fixentries` under `0:<key>` carries
+    /// the identity its message settled, a row read back keeps it, and a
+    /// row written without its identity columns settles to the same content
+    /// code again, since the arrivals it restores are the parse's.
+    #[test]
+    fn a_row_with_captured_keys_keeps_and_resettles_the_messages_identity() {
+        use yggdryl::{DataType, StructType};
+
+        let registry = super::committed_registry();
+        let codec = super::fixed_codec(Arc::clone(&registry));
+        let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
+        let message = codec
+            .parse_fix_line(
+                b"8=FIX.4.4|35=D|11=A|55=HOLN|OMSINSTRUMENTID=dbi;CH0012214059_XSWX_CHF|\
+                  TECH.CLIENTID=2540498.003|PARENTORDERID=P1|9999=x|10=0|",
+            )
+            .expect("a readable line");
+        let row = message.into_row(&schema).expect("a row");
+        let cells = row.as_sequence().expect("a row");
+        let at = |name: &str| schema.index_of(name).expect(name);
+        assert_eq!(
+            cells[at("currhashcode")].as_u128(),
+            Some(u128::from(message.get_currhashcode()))
+        );
+        let residual = cells[at("fixentries")].as_mapping().expect("the residual");
+        assert!(
+            residual
+                .iter()
+                .any(|(key, _)| key.as_str() == Some("0:tech.clientid")),
+            "{residual:?}"
+        );
+        let again = yggdryl::FixMsg::from_row(Arc::clone(&registry), &schema, &row)
+            .expect("the row read back");
+        assert_eq!(again.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(again.get_curruuid(), message.get_curruuid());
+
+        let narrow = StructType::from_fields(
+            schema
+                .fields()
+                .iter()
+                .filter(|column| !matches!(column.name(), "curruuid" | "currhashcode"))
+                .cloned(),
+        )
+        .map(DataType::from)
+        .expect("a narrow root")
+        .required_field("fix");
+        let unidentified = message.into_row(&narrow).expect("a narrower row");
+        let settled = yggdryl::FixMsg::from_row(Arc::clone(&registry), &narrow, &unidentified)
+            .expect("a narrower row settles");
+        assert_eq!(settled.get_currhashcode(), message.get_currhashcode());
+        assert_eq!(settled.get_curruuid(), message.get_curruuid());
+    }
+}
+
+/// The header's own facts, stated as text: a dictionary that declares none of
+/// the header tags types none of them, so a value written by tag crosses as
+/// it was written and the holder reads it - a flag by the one boolean reader,
+/// a count by the one integer reader.
+mod header_text {
+    use std::sync::Arc;
+
+    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+
+    fn bare() -> FixMsg {
+        let mut symbol = DataType::utf8().nullable_field("symbol");
+        symbol.as_fix_mut().set_tag(55).expect("a tag");
+        let registry = Arc::new(FixRegistry::from_fields([symbol]).expect("a dictionary"));
+        super::fixed_codec(registry)
+            .parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")
+            .expect("a readable line")
+    }
+
+    #[test]
+    fn a_flag_stated_as_text_is_read_by_the_one_boolean_reader() {
+        for (text, flag) in [
+            ("Y", Some(true)),
+            ("y", Some(true)),
+            ("yes", Some(true)),
+            ("on", Some(true)),
+            ("1", Some(true)),
+            ("true", Some(true)),
+            ("N", Some(false)),
+            ("no", Some(false)),
+            ("OFF", Some(false)),
+            ("0", Some(false)),
+            // Text no boolean spells states nothing.
+            ("maybe", None),
+        ] {
+            let mut message = bare();
+            message.set(43, Scalar::from(text)).expect("a header flag");
+            assert_eq!(message.header().possdupflag(), flag, "{text:?}");
+        }
+        let mut message = bare();
+        message.set(43, Scalar::from(true)).expect("a header flag");
+        assert_eq!(message.header().possdupflag(), Some(true), "a boolean");
+    }
+
+    #[test]
+    fn a_count_stated_as_text_is_read_by_the_one_integer_reader() {
+        for (text, sequence) in [
+            ("12", Some(12)),
+            (" 12 ", Some(12)),
+            ("+7", Some(7)),
+            ("0", Some(0)),
+            ("18446744073709551615", Some(u64::MAX)),
+            // What is no whole non-negative count that fits states nothing.
+            ("-3", None),
+            ("1e3", None),
+            ("12.5", None),
+            ("18446744073709551616", None),
+            ("twelve", None),
+        ] {
+            let mut message = bare();
+            message
+                .set(34, Scalar::from(text))
+                .expect("a sequence number");
+            assert_eq!(message.header().msgseqnum(), sequence, "{text:?}");
+        }
+        for (text, length) in [
+            ("128", Some(128)),
+            ("-1", Some(-1)),
+            ("2147483648", None),
+            ("many", None),
+        ] {
+            let mut message = bare();
+            message
+                .set(93, Scalar::from(text))
+                .expect("a signature length");
+            assert_eq!(message.header().signaturelength(), length, "{text:?}");
+        }
+        let mut message = bare();
+        message
+            .set(34, Scalar::from(8_u64))
+            .expect("a sequence number");
+        assert_eq!(message.header().msgseqnum(), Some(8), "a typed count");
     }
 }

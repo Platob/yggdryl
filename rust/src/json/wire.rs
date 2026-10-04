@@ -1,8 +1,7 @@
-use base64::Engine as _;
 use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::{Scalar, TimeUnit, Timezone};
+use crate::{DataType, Scalar, TimeUnit, Timezone};
 use crate::{bytes_scalars, code_scalars, string_scalars};
 
 /// A natural JSON view of [`Scalar`].
@@ -63,12 +62,15 @@ impl Serialize for JsonRef<'_> {
                 let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
                 serializer.serialize_str(value.render(&mut slot))
             }
-            bytes_scalars!(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
-            Scalar::Geometry(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
-            Scalar::Geography(value) => serializer
-                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
+            bytes_scalars!(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
+            Scalar::Geometry(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
+            Scalar::Geography(value) => {
+                serializer.serialize_str(&crate::bytes::into_base64(value.as_bytes()))
+            }
             Scalar::Date32(value) => {
                 if value.unit() == TimeUnit::Day
                     && let Some(text) = crate::temporal::format_date(value.count())
@@ -157,12 +159,7 @@ impl Serialize for JsonRef<'_> {
             Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                 let mut mapping = serializer.serialize_map(Some(entries.as_slice().len()))?;
                 for (key, value) in entries.as_slice() {
-                    let Some(key) = key.as_str() else {
-                        return Err(S::Error::custom(
-                            "JSON object keys must be strings; use a record or string-key mapping",
-                        ));
-                    };
-                    mapping.serialize_entry(key, &JsonRef(value))?;
+                    mapping.serialize_entry(&JsonKey(key), &JsonRef(value))?;
                 }
                 mapping.end()
             }
@@ -170,7 +167,128 @@ impl Serialize for JsonRef<'_> {
     }
 }
 
-fn serialize_float<S: Serializer>(serializer: S, value: f64) -> Result<S::Ok, S::Error> {
+/// A map key, spelled as [`JsonRef`] spells its value where serde_json's key
+/// rules take that spelling - text, and a number or a boolean quoted - which
+/// the reading half reads back under the key's datatype. An interval would
+/// be a quoted count no reader takes for one, so it is refused, as a nested
+/// key is by serde_json itself.
+struct JsonKey<'a>(&'a Scalar);
+
+impl Serialize for JsonKey<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if matches!(self.0, Scalar::Interval(_)) {
+            return Err(S::Error::custom("JSON has no map key for an interval"));
+        }
+        JsonRef(self.0).serialize(serializer)
+    }
+}
+
+/// A canonical value written as natural JSON under the datatype that holds
+/// it.
+///
+/// This is the streaming form of
+/// [`Field::into_natural_value`](crate::Field::into_natural_value) followed
+/// by [`JsonRef`], with no natural value built between them: a struct row -
+/// positional once canonical - is an object keyed by its fields' names in
+/// declaration order, a serie an array, a map an object whose keys
+/// serde_json spells as its own rules allow (text, a number, a boolean), and
+/// a union the `[type_id, value]` pair the reading half takes back.
+/// Encodings are transparent and every leaf is [`JsonRef`]'s spelling, so
+/// what the reading half reads back under the same datatype is the value
+/// written.
+pub(crate) struct JsonField<'a>(pub(crate) &'a Scalar, pub(crate) &'a DataType);
+
+impl Serialize for JsonField<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let Self(value, dtype) = *self;
+        if value.is_null() {
+            return serializer.serialize_none();
+        }
+        match dtype {
+            DataType::Struct(fields) => match value.as_serie() {
+                Some(cells) => {
+                    if cells.len() != fields.len() {
+                        return Err(S::Error::custom(format_args!(
+                            "expected {} struct values, got {}",
+                            fields.len(),
+                            cells.len()
+                        )));
+                    }
+                    let mut object = serializer.serialize_map(Some(fields.len()))?;
+                    for (cell, child) in cells.iter().zip(fields.iter()) {
+                        object.serialize_entry(child.name(), &JsonField(&cell, child.dtype()))?;
+                    }
+                    object.end()
+                }
+                // A record already carries its names.
+                None => JsonRef(value).serialize(serializer),
+            },
+            DataType::Serie(item)
+            | DataType::SerieView(item)
+            | DataType::FixedSizeSerie(item, _)
+            | DataType::LargeSerie(item)
+            | DataType::LargeSerieView(item) => match value.as_serie() {
+                Some(items) => {
+                    let mut array = serializer.serialize_seq(Some(items.len()))?;
+                    for cell in items.iter() {
+                        array.serialize_element(&JsonField(&cell, item.dtype()))?;
+                    }
+                    array.end()
+                }
+                None => JsonRef(value).serialize(serializer),
+            },
+            DataType::Map(_) | DataType::SortedMap(_) => {
+                let (Some(entries), Some(map)) = (value.as_mapping(), dtype.as_mapping()) else {
+                    return JsonRef(value).serialize(serializer);
+                };
+                let [_, item] = map.entries().fields() else {
+                    return Err(S::Error::custom(
+                        "map entries do not contain key and value fields",
+                    ));
+                };
+                let mut object = serializer.serialize_map(Some(entries.len()))?;
+                for (key, cell) in entries {
+                    object.serialize_entry(&JsonKey(key), &JsonField(cell, item.dtype()))?;
+                }
+                object.end()
+            }
+            DataType::Union(fields, _) => {
+                let pair = value.sequence_rows();
+                let Some([type_id, payload]) = pair.as_deref() else {
+                    return Err(S::Error::custom("expected [type_id, value] for a union"));
+                };
+                let branch = type_id
+                    .as_i128()
+                    .and_then(|id| i8::try_from(id).ok())
+                    .and_then(|id| {
+                        fields
+                            .iter()
+                            .find_map(|(candidate, branch)| (candidate == id).then_some(branch))
+                    })
+                    .ok_or_else(|| S::Error::custom("union type id is not declared"))?;
+                let mut array = serializer.serialize_seq(Some(2))?;
+                array.serialize_element(&JsonRef(type_id))?;
+                array.serialize_element(&JsonField(payload, branch.dtype()))?;
+                array.end()
+            }
+            DataType::Dictionary(dictionary) => {
+                JsonField(value, dictionary.value()).serialize(serializer)
+            }
+            DataType::RunEndEncoded(encoded) => {
+                JsonField(value, encoded.values().dtype()).serialize(serializer)
+            }
+            _ => JsonRef(value).serialize(serializer),
+        }
+    }
+}
+
+pub(super) fn serialize_float<S: Serializer>(serializer: S, value: f64) -> Result<S::Ok, S::Error> {
     if value.is_finite() {
         serializer.serialize_f64(value)
     } else {
