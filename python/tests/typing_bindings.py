@@ -2727,7 +2727,10 @@ identifiers_derived: bool = identifiers_from_dict.is_derived("isin")
 assert identifiers_dict == {"isin": "US0378331005", "orderid": "O-1"} and not identifiers_derived
 isin_registry: yggdryl.IsinRegistry = yggdryl.IsinRegistry(max_instruments=8)
 isin_registry_merged: bool = isin_registry.merge({"isin": "CH0012214059", "ric": "HOLN.S"})
-isin_registry_row: dict[str, Any] | None = isin_registry.get_by_ric("HOLN.S")
+isin_registry_row: dict[str, Any] | None = isin_registry.get("CH0012214059")
+isin_registry_dirty: bool = isin_registry.is_dirty
+isin_registry_committed: yggdryl.IOResult = yggdryl.IsinRegistry.from_url("instruments.arrows", 8).commit()
+isin_registry_default: yggdryl.IsinRegistry = yggdryl.IsinRegistry.from_env()
 isin_registry_listed: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN")
 isin_registry_on_market: dict[str, Any] | None = isin_registry.get_by_ticker("HOLN", "XSWX")
 isin_registry_bound: int = isin_registry.max_instruments

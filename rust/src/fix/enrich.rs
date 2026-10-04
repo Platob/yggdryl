@@ -58,6 +58,19 @@
 //! restatement, an FX detection or a landing of derived values the rebuild
 //! refuses leaves the message as it was stated, beside a warning naming the
 //! message type and why, and the pass goes on to the next step.
+//!
+//! # A parse reads the instrument table its door fixed
+//!
+//! Beside the dictionary, a parse depends on one more piece of reference
+//! data: the [`IsinTable`] the door fixed once, on the thread that opened
+//! it, from the registry the codec shares. Every message of one reading
+//! fills from that one table, no worker reaches the registry's lock, and a
+//! learn while the reading runs reaches no message of it. What a parse
+//! takes from the table is derived security identifiers only - the ISIN a
+//! ticker names on its market, every equivalent, the pair - which reach no
+//! field, no wire and no digest: a message's identity is the same with and
+//! without a table. Learning, and the market facts a row fills - the
+//! ticker, the CFI code, the currency - are the lifecycle's ([`Codes`]).
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -70,6 +83,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator, Market};
+use crate::isin_registry::{IsinTable, warn_full};
 use crate::logging::warning::warned;
 use crate::{Error, IsinRegistry, Result, Scalar, Side, State, Uuid};
 
@@ -90,8 +104,15 @@ use super::registry::FixRegistry;
 /// the message. A step the rebuild refuses leaves the message as the step found
 /// it, beside a warning. The views of the security identifiers the line stated,
 /// `viewed`, are resolved once all of that is filled, before the one settle
-/// ([`FixMsg::resolve_views`]).
-pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
+/// ([`FixMsg::resolve_views`]); the security identifiers `instruments` holds
+/// for the message's instrument are derived after it, before the identity is
+/// stamped ([`FixMsg::fill_instrument_ids`]).
+pub(super) fn enrich(
+    registry: &FixRegistry,
+    instruments: Option<&IsinTable>,
+    msg: FixMsg,
+    viewed: Viewed,
+) -> FixMsg {
     // Restatement first, and not as a step a caller may skip: every
     // derivation reads a child by its tag or its canonical name, and a child
     // stored under an alias is invisible until it has been canonicalized.
@@ -103,26 +124,35 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> Fix
             "{error}"
         );
     }
-    enrich_restated(registry, held, viewed)
+    enrich_restated(registry, instruments, held, viewed)
 }
 
 /// [`enrich`] past its restatement, for a message whose row is already
-/// restated: a message redated keeps the row it was built with, and what
-/// its new clock can move is a derivation and its identity - never a rule,
-/// which reads the row and not the clock.
-pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
+/// restated.
+pub(super) fn enrich_restated(
+    registry: &FixRegistry,
+    instruments: Option<&IsinTable>,
+    msg: FixMsg,
+    viewed: Viewed,
+) -> FixMsg {
     let mut held = msg;
     // The currency pair a symbol names is detected first, so the rules read
     // the cells it fills.
     detect_forex(registry, &mut held);
-    enrich_detected(registry, held, viewed)
+    enrich_detected(registry, instruments, held, viewed)
 }
 
-/// [`enrich_restated`] past FX detection: the rules to their fixpoint, then
-/// the one settle. A `Symbol(55)` a rule fills is detected as a stated one
+/// [`enrich_restated`] past FX detection: the rules to their fixpoint, the
+/// facts settled, the instrument's identifiers derived off the table, then
+/// the one stamp. A `Symbol(55)` a rule fills is detected as a stated one
 /// is: landed alone and detected before any other rule reads the cells its
 /// detection fills, the rules then run over what detection filled.
-fn enrich_detected(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMsg {
+fn enrich_detected(
+    registry: &FixRegistry,
+    instruments: Option<&IsinTable>,
+    msg: FixMsg,
+    viewed: Viewed,
+) -> FixMsg {
     let mut held = msg;
     let landed = super::native_derivations::derive_all(&held);
     if let Some(symbol) = landed.iter().find(|(tag, _)| *tag == 55).cloned()
@@ -136,8 +166,15 @@ fn enrich_detected(registry: &FixRegistry, msg: FixMsg, viewed: Viewed) -> FixMs
     held.resolve_views(viewed, false);
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
-    // every message is settled here, once, after everything the pass wrote.
-    held.settle();
+    // every message's facts are settled here, once, after everything the
+    // pass wrote; the table then derives what it holds of the instrument,
+    // which no settle restates and no digest reads, and the identity is
+    // stamped once over it all.
+    held.settle_facts();
+    if let Some(table) = instruments {
+        held.fill_instrument_ids(table);
+    }
+    held.stamp_identity();
     held
 }
 
@@ -154,24 +191,6 @@ fn detect_forex(registry: &FixRegistry, msg: &mut FixMsg) -> bool {
             );
             true
         })
-}
-
-/// [`enrich_restated`] for a message whose clock alone moved -
-/// [`FixMsg::dated_by_transaction`] - over fields a pass already enriched.
-///
-/// Detection and the rules read the fields, and no field moved, so where
-/// detection moves nothing and no rule lands an answer the fixpoint stands
-/// and the pass would derive what the message already holds: what the clock
-/// moves is settled alone, [`FixMsg::settle_clock`]. A message detection or
-/// a rule still answers for - fields a caller wrote without a pass - is
-/// enriched whole.
-pub(super) fn redated(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
-    let mut held = msg;
-    if detect_forex(registry, &mut held) || super::native_derivations::lands_anything(&held) {
-        return enrich_detected(registry, held, Viewed::default());
-    }
-    held.settle_clock();
-    held
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -687,19 +706,33 @@ enum Codes {
 }
 
 impl Codes {
-    /// Learns what `message` states about its instrument, then fills what
-    /// it left unstated ([`IsinRegistry::enrich`]).
-    fn enrich(&mut self, message: &mut FixMsg) {
-        match self {
+    /// Learns what `message` states about its instrument - its country of
+    /// issue beside it, where it states one its ISIN does not already say
+    /// ([`FixMsg::stated_country`]) - then fills what it left unstated
+    /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
+    /// code and the currency, settled no further than the market facts
+    /// they imply, since a parsed message is already clean and nothing a
+    /// fill writes reaches its identity. The one lock is held across the
+    /// learn and the fill, and the warning a full registry owes is raised
+    /// once it is let go of: the host a warning reaches may be waiting on
+    /// that very lock.
+    fn learn_and_fill(&mut self, message: &mut FixMsg) {
+        let country = message.stated_country();
+        let full = match self {
             Self::Walk(registry) => {
-                registry.enrich(message);
+                let learned = registry.learn_stating(message, country.as_ref());
+                message.fill_instrument(registry.as_table());
+                learned.full
             }
             Self::Shared(registry) => {
-                registry
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .enrich(message);
+                let mut registry = registry.lock().unwrap_or_else(PoisonError::into_inner);
+                let learned = registry.learn_stating(message, country.as_ref());
+                message.fill_instrument(registry.as_table());
+                learned.full
             }
+        };
+        if let Some(max) = full {
+            warn_full(max);
         }
     }
 }
@@ -737,7 +770,7 @@ impl<I: Iterator<Item = Result<FixMsg>>> Iterator for Prepared<I> {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            self.codes.enrich(&mut message);
+            self.codes.learn_and_fill(&mut message);
             return Some(message.into());
         }
     }
@@ -1076,19 +1109,20 @@ crate::graph::delegate_operation!(LifecycleMessage, message);
 pub mod internals {
     //! What `rust/tests/fix/enrich.rs` pins and a caller cannot reach.
     //!
-    //! A redated message settles its clock alone where no rule answers
-    //! anew; the whole pass is what that stands for, so it is forwarded here
-    //! for the test that holds the two to one answer.
+    //! A redated message settles its clock alone; the whole pass over a
+    //! parsed message is what that stands for, so it is forwarded here for
+    //! the test that holds the two to one answer.
     use std::sync::Arc;
 
     use super::FixMsg;
 
-    /// [`FixMsg::dated_by_transaction`] through the whole enriching pass.
+    /// [`FixMsg::dated_by_transaction`] through the whole enriching pass,
+    /// with no instrument table.
     pub fn dated_by_transaction_whole(mut msg: FixMsg) -> FixMsg {
         if !msg.redate_by_transaction() {
             return msg;
         }
         let registry = Arc::clone(msg.registry());
-        super::enrich_restated(&registry, msg, Default::default())
+        super::enrich_restated(&registry, None, msg, Default::default())
     }
 }

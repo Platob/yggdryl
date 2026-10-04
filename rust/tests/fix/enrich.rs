@@ -1738,8 +1738,8 @@ mod internal {
     use yggdryl::text::{TextOptions, read_text_lines};
     use yggdryl::{FixMsg, Timezone, Url};
 
-    /// A redated message settles what its clock moves alone where no rule
-    /// answers anew, and that is the whole pass's answer: every message of
+    /// A redated message settles what its clock moves alone, and over a
+    /// parsed message that is the whole pass's answer: every message of
     /// the bridge's capture, read as bare frames and as the capture's own
     /// lines, redated both ways, answers one message - most of them moved.
     #[test]
@@ -1786,32 +1786,6 @@ mod internal {
             }
             assert!(moved > 100, "{moved} moved");
         }
-    }
-
-    /// A pair no parse detected - a symbol written after the parse, which a
-    /// write leaves to intake to detect - is detected by the redate as by
-    /// the whole pass, and the message is enriched whole.
-    #[test]
-    fn a_redated_message_detects_a_pair_no_parse_read() {
-        let codec = super::super::fixed_codec(super::super::committed_registry());
-        let mut message = codec
-            .parse_fix_line(b"8=FIX.4.4|35=D|11=A1|38=100|60=20260102-10:15:30|10=0|")
-            .expect("a message");
-        message
-            .set(55, yggdryl::Scalar::from("EUR/USD"))
-            .expect("a symbol");
-        assert_eq!(message.get_by_tag(15), None, "no parse detected the pair");
-        let settled = message.clone().dated_by_transaction();
-        let whole = dated_by_transaction_whole(message.clone());
-        assert_ne!(settled.get_currunix(), message.get_currunix());
-        assert_eq!(settled, whole);
-        assert_eq!(
-            settled
-                .get_by_tag(15)
-                .as_ref()
-                .and_then(yggdryl::Scalar::as_str),
-            Some("EUR")
-        );
     }
 }
 
@@ -2457,4 +2431,115 @@ fn a_resend_flag_a_dictionary_left_as_text_marks_a_replay_as_a_boolean_does() {
     for flag in ["N", "no", "0", "maybe"] {
         assert_eq!(walked(flag), 2, "97={flag} is no replay");
     }
+}
+
+/// A walk learns a message's country of issue - where it states one its
+/// ISIN does not already say - and its trading currency beside the ticker
+/// and the market, and fills them into a later message of the instrument
+/// where it leaves them unsaid, settled no further than the market facts
+/// they imply: the message's identity and its wire are the parse's.
+#[test]
+fn a_walk_learns_the_country_and_the_currency_and_fills_them_unsettled() {
+    use std::sync::{Arc, Mutex};
+    use yggdryl::graph::Element;
+    use yggdryl::{Country, IsinRegistry};
+
+    let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+    let codec = super::fixed_codec(super::committed_registry())
+        .with_isin_registry(Arc::clone(&instruments));
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|{body}|10=0|"
+        )
+    };
+    let walk = |body: &str, seq: i32| -> Vec<FixMsg> {
+        let parsed: Vec<FixMsg> = codec
+            .parse_lines([line(seq, body)])
+            .collect::<yggdryl::Result<_>>()
+            .expect("a message");
+        codec
+            .lifecycle(parsed)
+            .collect::<yggdryl::Result<_>>()
+            .expect("a walk")
+    };
+    // A country the prefix already says states nothing; another is learned,
+    // with the currency of the listing.
+    walk("22=4|48=CH0012214059|470=CH|15=CHF|55=HOLN|207=XSWX", 1);
+    {
+        let held = instruments.lock().expect("the registry");
+        let row = held.get("CH0012214059").expect("learned");
+        assert_eq!(row.countrycode(), None);
+        assert_eq!(row.country(), Some(Country::new("CH").unwrap()));
+        assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
+        assert_eq!(row.ticker(), Some("HOLN"));
+        assert_eq!(row.miccode().map(|code| code.as_str()), Some("XSWX"));
+    }
+    let countrycode = || {
+        instruments
+            .lock()
+            .expect("the registry")
+            .get("CH0012214059")
+            .and_then(|row| row.countrycode().map(|code| code.as_str().to_owned()))
+    };
+    walk("22=4|48=CH0012214059|470=LI", 2);
+    assert_eq!(countrycode(), Some("LI".to_owned()));
+    // The prefix states nothing a walk learns: the rule lands it on every
+    // message stating no country, so neither a message stating none nor
+    // one stating the prefix itself takes the held country back.
+    walk("22=4|48=CH0012214059", 7);
+    assert_eq!(countrycode(), Some("LI".to_owned()));
+    walk("22=4|48=CH0012214059|470=CH", 8);
+    assert_eq!(countrycode(), Some("LI".to_owned()));
+    // An explicit merge stating the prefix does.
+    instruments
+        .lock()
+        .expect("the registry")
+        .merge(
+            yggdryl::IsinEntry::new(yggdryl::Isin::new("CH0012214059").unwrap())
+                .with_countrycode(Some(Country::new("CH").unwrap())),
+        )
+        .unwrap();
+    assert_eq!(countrycode(), None);
+    // A later message naming the ticker on the market takes the ISIN the
+    // table names at the parse, derived, and the currency as a market fact
+    // in the walk - the wire and the identity the parse gave it untouched.
+    let parsed = codec
+        .parse_fix_line(line(3, "55=HOLN|207=XSWX").as_bytes())
+        .expect("a message");
+    assert_eq!(parsed.get_isincode(), Some("CH0012214059"));
+    assert!(parsed.get_securityids().is_derived(&IdType::Isin));
+    assert!(
+        parsed.get_currency().is_none(),
+        "a parse fills no market fact"
+    );
+    let walked = walk("55=HOLN|207=XSWX", 3);
+    assert_eq!(walked.len(), 1);
+    let filled = &walked[0];
+    assert_eq!(filled.get_isincode(), Some("CH0012214059"));
+    assert!(filled.get_securityids().is_derived(&IdType::Isin));
+    assert_eq!(filled.get_currency().as_str(), "CHF");
+    assert_eq!(filled.get_curruuid(), parsed.get_curruuid());
+    assert_eq!(filled.get_currhashcode(), parsed.get_currhashcode());
+    assert_eq!(filled.into_bytes(b'|'), parsed.into_bytes(b'|'));
+    assert!(!filled.into_bytes(b'|').windows(3).any(|w| w == b"15="));
+    assert_eq!(filled.get_by_tag(15), None, "no field was written");
+
+    // A pair the parse detected off the symbol is derived, never learned;
+    // one the message states is, and the dealt currency is no listing's.
+    let fx = {
+        let body = "EZ000000000";
+        format!("{body}{}", yggdryl::Isin::closing_digit(body).unwrap())
+    };
+    walk(&format!("22=4|48={fx}|55=EUR/USD|15=EUR"), 4);
+    {
+        let held = instruments.lock().expect("the registry");
+        let row = held.get(&fx).expect("learned");
+        assert_eq!(row.forexcode(), None);
+        assert_eq!(row.currency(), None);
+    }
+    walk(&format!("22=4|48={fx}|forexcode=EUR/USD|15=EUR"), 5);
+    let held = instruments.lock().expect("the registry");
+    let row = held.get(&fx).expect("learned");
+    assert_eq!(row.forexcode().map(|pair| pair.as_str()), Some("EUR/USD"));
+    assert_eq!(row.currency(), None);
 }

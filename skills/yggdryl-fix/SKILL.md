@@ -78,7 +78,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
 | chain order lifecycles | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` | `codec.lifecycle(messages)` |
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
-| share what lifecycles learn about instruments | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_handle(&file)?)))` | `FixCodec(registry, isin_registry=IsinRegistry.from_handle(path))` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromHandle(path) })` |
+| share what lifecycles learn about instruments, and what parses fill from | `codec.with_isin_registry(Arc::new(Mutex::new(IsinRegistry::from_url(&url, props)?)))`, `FixCodec::from_env()?` for the process's own, `registry.lock()?.commit()?` to write it back | `FixCodec(registry, isin_registry=IsinRegistry.from_url(path))`, `FixCodec.from_env()`, `registry.commit()` | `new fix.FixCodec(registry, { isinRegistry: IsinRegistry.fromUrl(path) })`, `fix.FixCodec.fromEnv()`, `registry.commit()` |
 | one message as graph leaves | `msg.market_data()?`, `msg.into_market_data()?` | `msg.market_data()` | `msg.marketData()` |
 | sorted market data | `codec.market_data(messages)` | `codec.market_data(messages)` | `codec.marketData(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
@@ -379,16 +379,20 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
   anomaly naming the view column - whether a code was derived is lost (a
   registry- or caller-derived code reads back stated). Write `securityids` for
   a round trip that keeps sources.
-- Instrument enrichment is the lifecycle's, never the parse's: each walk learns
-  every message's ISIN (else its RIC, which only fills), CFI code, market,
-  ticker and security codes into an `IsinRegistry` and fills what later
-  messages of that instrument leave unsaid, as `derived` identifiers and the
-  CFI, ticker and market facts - never the wire or `CFICode(461)`. Without
-  `isin_registry=` each walk learns into its own, starting empty; pass one
-  registry (loaded from a golden Arrow or Parquet file with `from_handle`, saved
-  with an `IOBase`'s `write_arrow_reader(registry.into_arrow_reader())`) to
-  share it across walks run one after another. A Bloomberg symbol is an
-  equivalent, never a key.
+- Instrument learning is the lifecycle's, never the parse's: each walk learns
+  every message's ISIN - the one key - CFI code, country of issue, market,
+  ticker, currency, pair and security codes into an `IsinRegistry`, a valid
+  stated value filling and replacing whatever the time, and fills what later
+  messages of that instrument leave unsaid - `derived` identifiers, the
+  ticker, the CFI code and the currency as market facts - never the wire,
+  `CFICode(461)` or the message's identity. A parse through a codec sharing a
+  registry fills derived identifiers from the table its door fixed as it
+  opened, nothing else, and learns nothing. Without `isin_registry=` each walk
+  learns into its own, starting empty, and a parse fills nothing; pass one
+  registry - bound to a store with `from_url` and written back with
+  `commit()` only where it moved, or the process's own `from_env()`, which
+  `FixCodec.from_env()` attaches - to share it across walks run one after
+  another. A RIC or a Bloomberg symbol is an equivalent, never a key.
 - `DETAILEDCFICODE`, the bridge's detailed classification, is a name of
   `CFICode(461)`: one message stating both folds them into the one 461 value
   through `Cfi::refined` - the leading code's letters kept, its `X` positions

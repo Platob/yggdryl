@@ -270,8 +270,15 @@ def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
             results = pool.map(run, [command for _, _, command in pending])
             for (page, block, _), result in zip(pending, results):
                 if result.returncode != 0:
-                    tail = (result.stderr or result.stdout).strip().splitlines()
-                    detail = "\n      ".join(tail[-6:])
+                    # The message, not the stack: a Node or Python failure
+                    # ends in frames, and the line that says what failed
+                    # stands above them.
+                    tail = [
+                        line
+                        for line in (result.stderr or result.stdout).strip().splitlines()
+                        if not line.lstrip().startswith(("at ", "File \""))
+                    ]
+                    detail = "\n      ".join(tail[-14:])
                     failures.append(
                         f"{page.relative_to(ROOT)} {language} block {block.index}:\n      {detail}"
                     )

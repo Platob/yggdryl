@@ -65,13 +65,14 @@
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::ops::Range;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use quick_xml::events::Event;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::graph::Element as _;
+use crate::isin_registry::IsinTable;
 use crate::logging::warning::warned;
 use crate::mime_type::line;
 use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
@@ -518,6 +519,12 @@ pub struct FixCodec {
     /// The instrument registry every lifecycle this codec runs learns into
     /// and fills from, shared; none gives each walk its own, starting empty.
     isin_registry: Option<Arc<Mutex<IsinRegistry>>>,
+    /// The registry's table as the door this codec reads for fixed it, on
+    /// the thread that opened the door and under one lock: what every
+    /// message of that reading fills its derived identifiers from, and what
+    /// no worker reaches the lock for. None on a codec no door has read
+    /// through, which takes the table per message a singular door builds.
+    instruments: Option<IsinTable>,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -707,18 +714,26 @@ impl FixCodec {
             dedup_window_ms: Self::DEFAULT_DEDUP_WINDOW_MS,
             market_metadata: true,
             isin_registry: None,
+            instruments: None,
             beginstring,
         }
     }
 
     /// Opens a codec over the registry the process environment names,
-    /// [`FixRegistry::from_env`].
+    /// [`FixRegistry::from_env`], sharing the instrument registry it names
+    /// too, [`IsinRegistry::from_env`] - the one codec constructor that
+    /// attaches the process's own; [`Self::new`] attaches none, and a
+    /// commit of what the walks learned is always the caller's
+    /// ([`IsinRegistry::commit`]).
     ///
     /// # Errors
     ///
-    /// Returns [`FixRegistry::from_env`]'s load failure.
+    /// Returns [`FixRegistry::from_env`]'s or [`IsinRegistry::from_env`]'s
+    /// load failure.
     pub fn from_env() -> Result<Self> {
-        Ok(Self::new(Arc::clone(FixRegistry::from_env()?)))
+        let registry = Arc::clone(FixRegistry::from_env()?);
+        let instruments = Arc::clone(IsinRegistry::from_env()?);
+        Ok(Self::new(registry).with_isin_registry(instruments))
     }
 
     /// The dictionary every message is read against.
@@ -991,13 +1006,20 @@ impl FixCodec {
         }
     }
 
-    /// Shares `registry` with every lifecycle this codec runs: each learns
-    /// what its messages state about their instruments into it and fills
-    /// what they leave unstated from it ([`IsinRegistry::enrich`]), so a
-    /// walk run after another starts from what the first learned. Walks run
-    /// one after another; walks run at once on one registry interleave
-    /// their learning. Without one, each walk learns into its own, starting
-    /// empty.
+    /// Shares `registry` with every lifecycle this codec runs, and with
+    /// every parse: each lifecycle learns what its messages state about
+    /// their instruments into it ([`IsinRegistry::learn`]) and fills what
+    /// they leave unstated from it ([`IsinRegistry::fill`]), so a walk run
+    /// after another starts from what the first learned; each parse door
+    /// fixes the registry's table once, as the door opens, under one lock
+    /// on the calling thread, and every message it reads takes from that
+    /// table the security identifiers it leaves unsaid - the ISIN its
+    /// ticker names on its market, every equivalent, the pair - as derived
+    /// identifiers, which reach no field, no wire and no part of its
+    /// identity. A parse learns nothing, and a learn while a door reads
+    /// reaches no message of it. Walks run one after another; walks run at
+    /// once on one registry interleave their learning. Without one, each
+    /// walk learns into its own, starting empty, and a parse fills nothing.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -1015,6 +1037,7 @@ impl FixCodec {
     #[must_use]
     pub fn with_isin_registry(mut self, registry: Arc<Mutex<IsinRegistry>>) -> Self {
         self.isin_registry = Some(registry);
+        self.instruments = None;
         self
     }
 
@@ -1023,6 +1046,36 @@ impl FixCodec {
     #[must_use]
     pub fn isin_registry(&self) -> Option<&Arc<Mutex<IsinRegistry>>> {
         self.isin_registry.as_ref()
+    }
+
+    /// The instrument table this reading fills from: the one its door
+    /// fixed, borrowed; else the shared registry's as it stands, taken under
+    /// one uncontended lock - what a singular door costs per message; else
+    /// none, which costs nothing.
+    pub(super) fn instruments(&self) -> Option<Cow<'_, IsinTable>> {
+        if let Some(table) = &self.instruments {
+            return Some(Cow::Borrowed(table));
+        }
+        let registry = self.isin_registry.as_ref()?;
+        let table = registry
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_table()
+            .clone();
+        Some(Cow::Owned(table))
+    }
+
+    /// This codec as a door reads through it: a clone holding the shared
+    /// registry's table, fixed here, once, on the calling thread and under
+    /// one lock, so every worker of the reading fills from one table and
+    /// none reaches the lock; a table already fixed is kept, so a door
+    /// opened inside another takes no second lock.
+    pub(super) fn reading(&self) -> Self {
+        let mut codec = self.clone();
+        if codec.instruments.is_none() {
+            codec.instruments = self.instruments().map(Cow::into_owned);
+        }
+        codec
     }
 
     /// States whether the messages [`Self::lifecycle`] is handed arrive in
@@ -1529,7 +1582,7 @@ impl FixCodec {
         I: IntoIterator,
         I::Item: AsRef<[u8]>,
     {
-        let codec = self.clone();
+        let codec = self.reading();
         let threads = self.threads();
         // Each line's bytes are made a page on the thread that pulls,
         // exactly as [`Self::parse_line`] makes them one: the page is what
@@ -1690,7 +1743,7 @@ impl FixCodec {
         I::Item: Into<Result<L>>,
         L: Borrow<TextLine> + Into<TextLine>,
     {
-        let codec = self.clone();
+        let codec = self.reading();
         let lines = lines.into_iter().map(Into::<Result<L>>::into);
         if self.threads() == 1 {
             // Where it stands: a borrowed line is read borrowed.
@@ -1877,7 +1930,7 @@ impl FixCodec {
                 ));
             }
             let stamp = super::build::RowStamp::retained(extras);
-            return Ok(FixMessages::frames(self.clone(), entries, opened, stamp));
+            return Ok(FixMessages::frames(self.reading(), entries, opened, stamp));
         }
         // An XML document a transport wrote prose in front of opens before
         // any pair the locator could read as a bridge row, and is read as
@@ -1944,7 +1997,7 @@ impl FixCodec {
         // A frame opens behind the row, so the row is one message and the
         // frame the next.
         let stamp = super::build::RowStamp::retained(extras);
-        Ok(FixMessages::frames(self.clone(), entries, 0, stamp))
+        Ok(FixMessages::frames(self.reading(), entries, 0, stamp))
     }
 
     /// The message opening at `at` among a row's entries, and where the
@@ -2578,9 +2631,11 @@ impl FixCodec {
     /// set is bounded by the number of distinct deliveries in the finite
     /// capture. Distinct deliveries with equal business content remain
     /// distinct. Each message, in walk order, teaches the instrument registry
-    /// what it states about its instrument and takes what it leaves unstated
-    /// from it - derived, never stated ([`IsinRegistry::enrich`]): the walk's
-    /// own, starting empty, or the one [`Self::with_isin_registry`] shares. Finite expirations emit at their exact deadline. Where
+    /// what it states about its instrument ([`IsinRegistry::learn`]) and
+    /// takes what it leaves unstated from it ([`IsinRegistry::fill`]) - the
+    /// ticker, the CFI code and the currency as market facts, the rest as
+    /// derived identifiers, its identity untouched: the walk's own, starting
+    /// empty, or the one [`Self::with_isin_registry`] shares. Finite expirations emit at their exact deadline. Where
     /// [`Self::snapshot_ns`] is set, separate owned views of every living
     /// identity are emitted on that epoch-aligned grid without advancing its
     /// chain.
@@ -2599,29 +2654,21 @@ impl FixCodec {
     /// so a capture whose frames state no `SendingTime(52)` still orders,
     /// expires and folds by when its transactions happened.
     ///
-    /// A message whose type this codec refuses never enters the walk: a
-    /// keepalive belongs to the session rather than to a chain, and a
-    /// message handed here from somewhere other than this codec's own parse
-    /// is held to the same reading. The refusal is by
-    /// [`Self::reads_msgtype`], and a codec refusing nothing walks
-    /// everything it is given.
+    /// The walk reads its input as already cleaned: every message it is
+    /// handed is walked, whatever its type, because the parse that read it
+    /// already refused what this codec refuses ([`Self::reads_msgtype`]) -
+    /// a keepalive belongs to the session rather than to a chain - and a
+    /// message handed here from elsewhere is the caller's to hold to that
+    /// reading. Nothing is derived or detected again on the way in.
     pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
         I::Item: Into<Result<FixMsg>>,
     {
-        let codec = self.clone();
         let walked = messages
                 .into_iter()
                 .fuse()
                 .map(Into::into)
-                .filter(move |held: &Result<FixMsg>| match held {
-                    // A failure is never filtered: what a stream could not read
-                    // has no type to refuse it by, and the walk is where it is
-                    // warned about or ends the intake.
-                    Err(_) => true,
-                    Ok(message) => codec.reads_msgtype(message.header().msgtype()),
-                })
                 // The walk reads the structured message: a frame the parse
                 // dated by a stand-in clock is dated by its transaction.
                 .map(|held: Result<FixMsg>| held.map(FixMsg::dated_by_transaction));
@@ -2845,7 +2892,12 @@ impl FixCodec {
             extras.source,
             self.official_time_delay_ns(),
         )?;
-        Ok(super::enrich::enrich(&self.registry, message, viewed))
+        Ok(super::enrich::enrich(
+            &self.registry,
+            self.instruments().as_deref(),
+            message,
+            viewed,
+        ))
     }
 
     /// Reads one row a data field carried into the line it arrived on.

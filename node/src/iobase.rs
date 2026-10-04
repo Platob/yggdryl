@@ -191,7 +191,7 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 /// typed. This is where both happen, so each role below - leaf, container,
 /// constructor - decides only what to do with the location, never how to read
 /// one.
-fn location_target(
+pub(crate) fn location_target(
     value: LocationInput<'_>,
 ) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Url>> {
     Ok(match value {

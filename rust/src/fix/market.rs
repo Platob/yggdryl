@@ -18,6 +18,7 @@ use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionKind, Market, MarketData, MdUpdateAction,
     Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
 };
+use crate::isin_registry::IsinTable;
 use crate::logging::warning::warned;
 use crate::{
     DataType, Decimal, Error, Filter, IdKey, IdType, Identifier, Identifiers, MarketDataKind,
@@ -469,9 +470,9 @@ impl FixCodec {
     /// message into its leaves as [`FixMsg::into_market_data`] does, each
     /// carrying its message's unmapped fields where
     /// [`Self::market_metadata`] says so.
-    /// Neither [`Self::lifecycle`] nor [`Self::reads_msgtype`] runs here: a
-    /// caller wanting the walk passes `self.lifecycle(messages)` as the
-    /// source.
+    /// [`Self::lifecycle`] does not run here, and no message type is
+    /// refused: a caller wanting the walk passes `self.lifecycle(messages)`
+    /// as the source.
     ///
     /// The capture is collected, so it is bounded by the capture's own size,
     /// and the operations are then stably sorted by the instant each stands
@@ -984,7 +985,7 @@ fn entry_crosscode(batch: &FixMsg, members: &[Member], place: &str) -> String {
 
 /// The messages a batch splits into, one per entry of its entry group
 /// ([`batch_groups`]), each split again as a message of its category is.
-fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
+fn batch_entries(batch: &FixMsg, instruments: Option<&IsinTable>) -> Vec<FixMsg> {
     let Some((counter, inner)) = batch_groups(batch.header().msgtype()) else {
         return Vec::new();
     };
@@ -1026,7 +1027,14 @@ fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
         entry_members(batch, item.fields(), values, inner, &mut members);
         let place = format!("{counter}:{index}");
         let Some(inner) = inner else {
-            answer.extend(batch_entry(batch, &name, kind, members, &place));
+            answer.extend(batch_entry(
+                batch,
+                &name,
+                kind,
+                members,
+                &place,
+                instruments,
+            ));
             continue;
         };
         let nested = item.fields().iter().zip(values).find(|(field, _)| {
@@ -1047,7 +1055,7 @@ fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
             let mut own = members.clone();
             entry_members(batch, sequence.item().fields(), entry, None, &mut own);
             let place = format!("{place}|{inner}:{at}");
-            answer.extend(batch_entry(batch, &name, kind, own, &place));
+            answer.extend(batch_entry(batch, &name, kind, own, &place, instruments));
         }
     }
     answer
@@ -1055,13 +1063,16 @@ fn batch_entries(batch: &FixMsg) -> Vec<FixMsg> {
 
 /// One batch entry as a message of `kind`, then what it splits into: the
 /// batch without its entry group, `members` at the root, chained by
-/// [`entry_crosscode`] and naming the batch among its sources.
+/// [`entry_crosscode`] and naming the batch among its sources, its own
+/// instrument's identifiers derived off `instruments` where a table stands
+/// ([`FixMsg::refill_instrument_ids`]).
 fn batch_entry(
     batch: &FixMsg,
     group: &str,
     kind: MarketDataKind,
     members: Vec<Member>,
     place: &str,
+    instruments: Option<&IsinTable>,
 ) -> Vec<FixMsg> {
     let crosscode = entry_crosscode(batch, &members, place);
     let mut entry = batch.clone();
@@ -1089,8 +1100,10 @@ fn batch_entry(
     );
     entry.set_crosscode(crosscode);
     entry.set_srcuuids(provenance(batch));
-    entry.settle();
-    let (entry, split) = entry.split();
+    entry.settle_facts();
+    entry.refill_instrument_ids(instruments);
+    entry.stamp_identity();
+    let (entry, split) = entry.split(instruments);
     std::iter::once(entry).chain(split).collect()
 }
 
@@ -1144,19 +1157,21 @@ impl FixMsg {
     ///   into one message of its single category per entry
     ///   ([`MarketDataKind::item`]): the batch's content without its entry
     ///   group, the entry's own members at the root, chained by the entry's
-    ///   own identifier ([`batch_entries`]). Each is then split as any
-    ///   message of its category is, so a mass quote's entry is one quote
-    ///   holding its bid and its offer. A batch stating its entries in no
-    ///   group the crate reads splits into nothing.
+    ///   own identifier ([`batch_entries`]), its own instrument's
+    ///   identifiers derived off `instruments` where a table stands, as the
+    ///   batch's were. Each is then split as any message of its category
+    ///   is, so a mass quote's entry is one quote holding its bid and its
+    ///   offer. A batch stating its entries in no group the crate reads
+    ///   splits into nothing.
     ///
     /// Every message split off reads `FILLED` where it is an execution and
     /// its own state otherwise, has an identity of its own, and names its
     /// source's identity beside its source's sources as its own; the source
     /// keeps what it states, its own state included.
-    pub(super) fn split(mut self) -> (Self, Vec<Self>) {
+    pub(super) fn split(mut self, instruments: Option<&IsinTable>) -> (Self, Vec<Self>) {
         let category = self.msgcat();
         if category.is_batch() {
-            let entries = batch_entries(&self);
+            let entries = batch_entries(&self, instruments);
             return (self, entries);
         }
         if category == MarketDataKind::Trade && self.header().msgtype() == "AE" {

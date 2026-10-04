@@ -436,12 +436,15 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - else its RIC, which only fills - its
-CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
-what later messages of that instrument leave unsaid, as `derived` identifiers
-and the CFI and ticker facts, never the wire. A codec without one learns into
-a registry of each walk's own; `isinRegistry` shares one across walks run one
-after another, and any `IOBase` saves and loads it.
+A lifecycle learns each message's ISIN - the one key - its CFI code, country,
+market, ticker, currency, pair and security codes into an `IsinRegistry`, and
+fills what later messages of that instrument leave unsaid, as `derived`
+identifiers and the ticker, CFI and currency facts, never the wire; a parse
+through the same codec fills derived identifiers from the table its door
+fixed. A codec without one learns into a registry of each walk's own;
+`isinRegistry` shares one across walks run one after another, bound to a
+store with `fromUrl` and written back with `commit()` only where it moved,
+and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -451,16 +454,19 @@ const { IsinRegistry, fix } = require('yggdryl')
 const instruments = new IsinRegistry()
 const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')), { isinRegistry: instruments })
 
-// The first walk states Holcim's ISIN, RIC and CFI code.
-const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|'
+// The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
+const stated = '8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|'
 for (const _ of codec.lifecycle([...codec.parseLines([Buffer.from(stated)])])) void _
-assert.equal(instruments.getByRic('HOLN.S').isin, 'CH0012214059')
+assert.equal(instruments.get('CH0012214059').ric, 'HOLN.S')
 
-// A later walk naming only the RIC is filled from what the first learned.
-const later = [...codec.lifecycle([...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|')])])]
-assert.equal(later[0].isincode, 'CH0012214059')
-assert.ok(later[0].securityids.isDerived('isin'))
-// The table is an Arrow stream: a golden file loads with `fromHandle`.
+// A later parse naming only the ticker on the market takes the ISIN from the
+// table, derived; the walk fills the CFI code as a market fact.
+const [parsed] = [...codec.parseLines([Buffer.from('8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|')])]
+assert.equal(parsed.isincode, 'CH0012214059')
+assert.ok(parsed.securityids.isDerived('isin'))
+const [later] = [...codec.lifecycle([parsed])]
+assert.equal(later.cficode.toJSON(), 'ESVUFR')
+// The table is an Arrow stream: a golden file loads with `fromUrl`.
 assert.notEqual(IsinRegistry.fromArrowReader(instruments.intoArrowReader()).get('CH0012214059'), null)
 ```
 

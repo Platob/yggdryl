@@ -2975,13 +2975,13 @@ mod msgtype_filter_tests {
             .unwrap();
         assert_eq!(read.len(), 1);
         assert_eq!(read[0].by_tag(11).unwrap().as_str(), Some("A"));
-        // And a walk refuses what the parse would have: a keepalive handed
-        // in from elsewhere never enters a chain.
+        // A walk reads its input as already cleaned: a keepalive handed in
+        // from elsewhere is the caller's to refuse, and is walked as given.
         let keepalive = codec()
             .with_exclude_msgtypes::<[&str; 0], &str>([])
             .parse_fix_line(b"8=FIX.4.4|35=0|10=0|")
             .unwrap();
-        assert_eq!(codec().lifecycle([keepalive]).count(), 0);
+        assert_eq!(codec().lifecycle([keepalive]).count(), 1);
     }
 
     #[test]
@@ -4087,16 +4087,20 @@ mod equivalence {
 }
 
 mod threads {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use arrow_array::RecordBatch;
     use yggdryl::arrow::BatchReader;
-    use yggdryl::graph::{Element, Event};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-    use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
+    use yggdryl::{
+        FixCodec, FixMsg, IOMedia, IdType, Isin, IsinEntry, IsinRegistry, MimeType, Timezone, Url,
+        fix_schema,
+    };
 
     /// The bridge capture as the bytes a `.log` file holds, and the options
     /// its rows are read under.
@@ -4541,6 +4545,307 @@ mod threads {
             output.next().is_none(),
             "Arrow output fuses at the first error"
         );
+    }
+    /// The bridge capture's bodies as bytes.
+    fn bodies(held: &[TextLine]) -> Vec<Vec<u8>> {
+        held.iter().map(|line| line.body_bytes().to_vec()).collect()
+    }
+
+    /// A registry holding what the capture states about its instruments,
+    /// learned by walking it once on one thread, with a common code beside
+    /// every row that no message states - what a parse through the registry
+    /// fills, derived - committed to a buffer so it stands clean.
+    fn learned_registry(bare: &FixCodec, bodies: &[Vec<u8>]) -> Arc<Mutex<IsinRegistry>> {
+        let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
+        let learning = bare.clone().with_isin_registry(Arc::clone(&instruments));
+        let parsed: Vec<FixMsg> = learning
+            .parse_lines(bodies)
+            .filter_map(Result::ok)
+            .collect();
+        for walked in learning.lifecycle(parsed) {
+            walked.expect("a walked message");
+        }
+        let mut registry = instruments.lock().expect("the registry");
+        let isins: Vec<String> = registry
+            .iter()
+            .map(|row| row.isin().as_str().to_owned())
+            .collect();
+        assert!(isins.len() > 2, "the capture names instruments: {isins:?}");
+        for isin in &isins {
+            registry
+                .merge(
+                    IsinEntry::new(Isin::new(isin).expect("a learned key"))
+                        .try_with_code(IdType::Common, &format!("C-{isin}"))
+                        .expect("a common code"),
+                )
+                .expect("a fold");
+        }
+        registry
+            .set_holder(Buffer::new().with_media_type(MimeType::ARROW_STREAM.into()))
+            .expect("bound");
+        registry.commit().expect("committed");
+        assert!(!registry.is_dirty());
+        drop(registry);
+        instruments
+    }
+
+    /// The messages of `read` that carry a common code the table derived.
+    fn filled(read: &[Result<FixMsg, String>]) -> usize {
+        read.iter()
+            .filter_map(|held| held.as_ref().ok())
+            .filter(|message| message.get_securityids().is_derived(&IdType::Common))
+            .count()
+    }
+
+    /// Every door fills from the one table its codec's registry holds alike
+    /// on one thread and on four, and no door moves the registry.
+    #[test]
+    fn every_door_fills_from_one_table_alike_on_four_threads_and_moves_nothing() {
+        let bare = super::fixed_codec(super::committed_registry());
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let before: Vec<IsinEntry> = instruments
+            .lock()
+            .expect("the registry")
+            .iter()
+            .cloned()
+            .collect();
+        let one = bare.with_isin_registry(Arc::clone(&instruments));
+        let four = one.clone().with_threads(4);
+        let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
+
+        let bytes_one = messages(one.parse_lines(&bodies));
+        let bytes_four = messages(four.parse_lines(&bodies));
+        same_messages(&bytes_one, &bytes_four);
+        assert!(filled(&bytes_one) > 0, "the table filled a message");
+        let text_one = messages(composed(&one).parse_text_lines(held.iter()));
+        let text_four = messages(composed(&four).parse_text_lines(held.iter()));
+        same_messages(&text_one, &text_four);
+        assert_eq!(filled(&text_one), filled(&bytes_one));
+        let record: RecordOptions = options.clone().into();
+        let reader = || source.read_arrow_reader(&record).expect("a text reader");
+        same_batches(
+            &batches(one.parse_text_arrow_reader(reader()).expect("a reader")),
+            &batches(four.parse_text_arrow_reader(reader()).expect("a reader")),
+        );
+        // The singular door, which takes the table per row under one lock,
+        // fills the same rows; it places each row's messages on its own, so
+        // the messages themselves are not the stream door's.
+        let singular: Vec<Result<FixMsg, String>> = bodies
+            .iter()
+            .flat_map(|body| one.parse_line(body).map(messages).unwrap_or_default())
+            .collect();
+        assert_eq!(filled(&singular), filled(&bytes_one));
+
+        let registry = instruments.lock().expect("the registry");
+        assert!(!registry.is_dirty(), "a parse never moves the registry");
+        assert!(registry.iter().eq(before.iter()));
+    }
+
+    /// A door fixes the registry's table as it opens, on the calling thread,
+    /// and its workers never reach the lock: every stream built before the
+    /// lock is taken drains under it, and a learn after the door opened
+    /// reaches no message of it.
+    #[test]
+    fn a_door_fixes_the_table_as_it_opens_and_no_worker_reaches_the_lock() {
+        let bare = super::fixed_codec(super::committed_registry());
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let four = bare
+            .with_isin_registry(Arc::clone(&instruments))
+            .with_threads(4)
+            .with_capture_names(options.capture_names());
+        let record: RecordOptions = options.clone().into();
+        let unlocked = messages(four.parse_lines(&bodies));
+        let belgian = "B-LEARNED-LATER";
+        let learned = |message: &FixMsg| {
+            message
+                .get_securityids()
+                .get(&IdType::Belgian)
+                .is_some_and(|code| code == belgian)
+        };
+
+        // The doors open: each takes the table now.
+        let bytes = four.parse_lines(&bodies);
+        let text = four.parse_text_lines(held.iter());
+        let arrow = four
+            .parse_text_arrow_reader(source.read_arrow_reader(&record).expect("a text reader"))
+            .expect("a reader");
+        let rows = four.messages(
+            four.parse_text_arrow_reader(source.read_arrow_reader(&record).expect("a text reader"))
+                .expect("a reader"),
+        );
+        // A learn after the doors opened: no message of theirs sees it.
+        {
+            let mut registry = instruments.lock().expect("the registry");
+            let isin = registry.iter().next().expect("a row").isin().clone();
+            registry
+                .merge(
+                    IsinEntry::new(isin)
+                        .try_with_code(IdType::Belgian, belgian)
+                        .expect("a code"),
+                )
+                .expect("a fold");
+        }
+        // The lock, held on another thread until the doors have drained;
+        // a worker reaching it would hang the drain, and the deadline is
+        // what names that.
+        let (held_sender, held_receiver) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let locker = {
+            let instruments = Arc::clone(&instruments);
+            let timed_out = Arc::clone(&timed_out);
+            std::thread::spawn(move || {
+                let guard = instruments.lock().expect("the registry");
+                held_sender.send(()).expect("the test waits");
+                if released.recv_timeout(Duration::from_secs(300)).is_err() {
+                    timed_out.store(true, Ordering::SeqCst);
+                }
+                drop(guard);
+            })
+        };
+        held_receiver.recv().expect("the lock is held");
+        let bytes = messages(bytes);
+        let text = messages(text);
+        let arrow = batches(arrow);
+        let rows = messages(rows);
+        release.send(()).expect("the locker waits");
+        locker.join().expect("the locker");
+        assert!(
+            !timed_out.load(Ordering::SeqCst),
+            "a door drained under the registry's lock"
+        );
+        same_messages(&bytes, &unlocked);
+        assert_eq!(text.len(), unlocked.len());
+        assert!(!arrow.is_empty());
+        assert!(
+            !bytes
+                .iter()
+                .chain(&text)
+                .chain(&rows)
+                .filter_map(|held| held.as_ref().ok())
+                .any(learned),
+            "a learn after the door opened reaches no message of it"
+        );
+        // A door opened after the learn fills it.
+        let after = messages(four.parse_lines(&bodies));
+        assert!(
+            after
+                .iter()
+                .filter_map(|held| held.as_ref().ok())
+                .any(learned)
+        );
+    }
+
+    /// The table leaves a message's identity alone: with and without a
+    /// registry every message of the capture, read as bytes, as lines and
+    /// as rows, has the same `curruuid`, `currhashcode`, `crosscode`,
+    /// `seqnum` and entries, and only its derived identifiers differ; and a
+    /// parse-filled message is learned back as nothing, in memory and
+    /// through a row round trip.
+    #[test]
+    fn the_table_leaves_a_messages_identity_alone_and_feeds_nothing_back() {
+        let registry = super::committed_registry();
+        let bare = super::fixed_codec(Arc::clone(&registry));
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies = bodies(&held);
+        let instruments = learned_registry(&bare, &bodies);
+        let filling = bare.clone().with_isin_registry(Arc::clone(&instruments));
+        let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
+        let identity = |message: &FixMsg| {
+            (
+                message.get_curruuid(),
+                message.get_currhashcode(),
+                message.get_crosscode().to_owned(),
+                message.get_seqnum(),
+                message.entries().to_vec(),
+                message.into_bytes(b'|'),
+            )
+        };
+        let same_identity = |without: &[Result<FixMsg, String>],
+                             with: &[Result<FixMsg, String>]| {
+            assert_eq!(without.len(), with.len());
+            let mut differ = 0;
+            for (without, with) in without.iter().zip(with) {
+                match (without, with) {
+                    (Ok(without), Ok(with)) => {
+                        assert_eq!(identity(without), identity(with));
+                        differ += usize::from(without.get_securityids() != with.get_securityids());
+                    }
+                    (without, with) => assert_eq!(without.is_ok(), with.is_ok()),
+                }
+            }
+            assert!(differ > 0, "the table filled something");
+        };
+        same_identity(
+            &messages(bare.parse_lines(&bodies)),
+            &messages(filling.parse_lines(&bodies)),
+        );
+        same_identity(
+            &messages(composed(&bare).parse_text_lines(held.iter())),
+            &messages(composed(&filling).parse_text_lines(held.iter())),
+        );
+        let record: RecordOptions = options.clone().into();
+        let reader = || source.read_arrow_reader(&record).expect("a text reader");
+        let rows_without = batches(bare.parse_text_arrow_reader(reader()).expect("a reader"));
+        let rows_with = batches(filling.parse_text_arrow_reader(reader()).expect("a reader"));
+        assert_eq!(rows_without.len(), rows_with.len());
+        for (without, with) in rows_without.iter().zip(&rows_with) {
+            let (without, with) = (
+                without.as_ref().expect("a batch"),
+                with.as_ref().expect("a batch"),
+            );
+            for column in [
+                "curruuid",
+                "currhashcode",
+                "crosscode",
+                "seqnum",
+                "fixentries",
+            ] {
+                let at = without.schema().index_of(column).expect(column);
+                assert_eq!(without.column(at), with.column(at), "{column}");
+            }
+            let at = without
+                .schema()
+                .index_of("securityids")
+                .expect("securityids");
+            assert_ne!(without.column(at), with.column(at));
+        }
+
+        // No feedback: what a parse derived is learned back as nothing. A
+        // fresh registry learns the same of a message parsed with the table
+        // and without it, so the table's fill reaches nothing a learn reads;
+        // the registry the table came from learns nothing new either.
+        let without: Vec<FixMsg> = bare.parse_lines(&bodies).filter_map(Result::ok).collect();
+        let with: Vec<FixMsg> = filling
+            .parse_lines(&bodies)
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(without.len(), with.len());
+        let target = fix_schema(&registry, "fix").expect("the fixed schema");
+        let mut held = instruments.lock().expect("the registry");
+        for (without, with) in without.iter().zip(&with) {
+            let mut bare_learns = IsinRegistry::new();
+            let mut filled_learns = IsinRegistry::new();
+            assert_eq!(bare_learns.learn(without), filled_learns.learn(with));
+            assert!(
+                bare_learns.iter().eq(filled_learns.iter()),
+                "{}",
+                with.get_curruuid()
+            );
+            assert!(!held.learn(with), "{}", with.get_curruuid());
+            let row = with.into_row(&target).expect("a row");
+            let back = FixMsg::from_row(Arc::clone(&registry), &target, &row).expect("a message");
+            assert_eq!(back.get_securityids(), with.get_securityids());
+            assert!(!held.learn(&back));
+        }
+        assert!(!held.is_dirty());
     }
 }
 

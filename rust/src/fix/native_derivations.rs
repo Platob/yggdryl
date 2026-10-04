@@ -95,12 +95,6 @@ pub(super) fn land(msg: &mut FixMsg, landed: Vec<(i32, Scalar)>) {
     }
 }
 
-/// Whether any rule answers for `msg` anew: false where the fixpoint
-/// already stands, which one sweep proves.
-pub(super) fn lands_anything(msg: &FixMsg) -> bool {
-    !derive_all(msg).is_empty()
-}
-
 /// The message plus answers landed during this pass. Reading landed answers
 /// before the message is what gives a dependency chain its fixpoint without a
 /// materialized working row.

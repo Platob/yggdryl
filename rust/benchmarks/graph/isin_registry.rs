@@ -1,5 +1,6 @@
-//! The ISIN registry: learning and filling a market element, and its table
-//! streamed out, loaded back and round-tripped through an Arrow IPC holder.
+//! The ISIN registry: learning and filling a market element - by its ISIN,
+//! by its ticker on its market - and its table streamed out, loaded back
+//! and round-tripped through an Arrow IPC holder.
 
 use std::hint::black_box;
 
@@ -98,11 +99,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    let ric = format!("R{}.PA", size / 2);
-    let by_ric = stating(3, &[(IdType::Ric, ric.as_str())]);
-    group.bench_function("fill_by_ric", |bencher| {
+    let ticker = format!("T{}", size / 2);
+    let mut by_ticker = OrderEvent::at(3);
+    by_ticker.set_ticker(Some(SmolStr::new(ticker)), true);
+    by_ticker.set_miccode(Some(Mic::new("XPAR").expect("a market")), true);
+    group.bench_function("fill_by_ticker", |bencher| {
         bencher.iter_batched(
-            || by_ric.clone(),
+            || by_ticker.clone(),
             |mut element| {
                 black_box(held.fill(&mut element));
                 element
@@ -158,9 +161,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     &options,
                 )
                 .expect("the snapshot writes");
-            IsinRegistry::from_handle(&handle)
-                .expect("the snapshot reads")
-                .len()
+            let mut back = IsinRegistry::new();
+            back.extend_from_handle(&handle)
+                .expect("the snapshot reads");
+            back.len()
         });
     });
     group.finish();

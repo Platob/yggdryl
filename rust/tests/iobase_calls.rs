@@ -127,11 +127,15 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// same message logged at another hop, so it restates that one rather
     /// than joining the chain behind it. This codec reads through a bare
     /// registry, which types almost nothing, so most of the capture's rows
-    /// state the same little and collapse onto each other. It is 21 where it
-    /// was 16 since the parse splits each fill off its report (A12): the five
-    /// executions are each a delivery of their own, `FILLED` ending each
-    /// chain, so a later fill under one `ExecID` starts afresh.
-    const WALKED: usize = 21;
+    /// state the same little and collapse onto each other. It was 21 where
+    /// it was 16 since the parse splits each fill off its report (A12): the
+    /// five executions are each a delivery of their own, `FILLED` ending
+    /// each chain, so a later fill under one `ExecID` starts afresh. It is
+    /// 55 since the walk reads its input as already cleaned: the rows whose
+    /// type the bare registry does not define, which the walk used to
+    /// refuse on its own, are walked as the parse handed them over, and
+    /// only the rows that collapse onto a live identity fold.
+    const WALKED: usize = 55;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it - through the record dispatcher and through the
     /// text door alike: both ask the one container question, because a
@@ -1422,7 +1426,9 @@ mod isin_registry {
         }
         let one_read = calls.snapshot().to_string();
         costs("an isin registry read", &calls, &one_read, || {
-            assert_eq!(IsinRegistry::from_handle(&handle).unwrap().len(), 1);
+            let mut registry = IsinRegistry::new();
+            assert_eq!(registry.extend_from_handle(&handle).unwrap(), 1);
+            assert_eq!(registry.len(), 1);
         });
     }
 }

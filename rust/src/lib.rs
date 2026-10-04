@@ -470,6 +470,7 @@ pub mod internals {
     pub use crate::iceberg::value::internals as iceberg_value;
     pub use crate::integer::internals as integer;
     pub use crate::ipc::internals as ipc;
+    pub use crate::isin_registry::env::internals as isin_registry_env;
     pub use crate::isin_registry::internals as isin_registry;
     pub use crate::json::column::internals as json_column;
     pub use crate::json::field::internals as json_field;
