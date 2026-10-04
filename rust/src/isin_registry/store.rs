@@ -124,7 +124,7 @@ impl IsinRegistry {
         })();
         match loaded {
             Ok(read) => {
-                self.store = Some(store);
+                self.store = Some(Box::new(store));
                 Ok(read)
             }
             Err(error) => {

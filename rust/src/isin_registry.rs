@@ -1002,7 +1002,9 @@ pub struct IsinRegistry {
     /// Whether the table moved since it was loaded or committed.
     dirty: bool,
     /// The store the table is bound to, where it was.
-    store: Option<Store>,
+    /// Boxed so a registry stays small enough to sit inline in a walk's
+    /// own state: the store is bound once, never per walk.
+    store: Option<Box<Store>>,
 }
 
 impl Default for IsinRegistry {

@@ -701,7 +701,7 @@ impl Event for LifecycleMessage {
 /// codec shares across the walks it runs one after another, locked once per
 /// message.
 enum Codes {
-    Walk(Box<IsinRegistry>),
+    Walk(IsinRegistry),
     Shared(Arc<Mutex<IsinRegistry>>),
 }
 
@@ -755,7 +755,7 @@ impl<I> Prepared<I> {
         let capacity = source.len_hint().min(4_096);
         Self {
             source,
-            codes: registry.map_or_else(|| Codes::Walk(Box::default()), Codes::Shared),
+            codes: registry.map_or_else(|| Codes::Walk(IsinRegistry::new()), Codes::Shared),
             seen: HashSet::with_capacity(capacity),
         }
     }
