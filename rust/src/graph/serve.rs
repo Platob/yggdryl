@@ -12,12 +12,12 @@
 //! that row types them, an empty or absent store is the empty reading, and
 //! the `BOOK` rows come back as [`BookEvent`]s through
 //! [`MarketData::from_arrow_reader`]. A `ticker` that is no book key is
-//! resolved by one projected read of the rows stating it as their ticker,
-//! only once the read of it as a key answers nothing, and the key it
-//! names is read then; the book at an instant is read back from it a grid
-//! window at a time where the service states the grid the books were
-//! folded on, so a table partitioned by that grid opens one partition for a
-//! key alive there. Each reading is
+//! resolved, by one projected read of the rows stating it as their ticker,
+//! only once the read of it as a key answers nothing, and the key it names
+//! is read then; the book at an instant is read back from it a grid window
+//! at a time where the service states the grid the books were folded on,
+//! so a table partitioned by that grid opens one partition for a key alive
+//! there. Each reading is
 //! also answered without HTTP ([`BookService::tickers`],
 //! [`BookService::candles`], [`BookService::book`],
 //! [`BookService::events`]), so a test, a binding and the CLI reach the same
