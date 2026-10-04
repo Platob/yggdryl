@@ -442,15 +442,15 @@ assert chained.num_rows == 4 and len(set(chained.column("crossuuid").to_pylist()
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
+A lifecycle learns each message's ISIN - the one key - CFI code, country,
 market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
+fills what later messages of that instrument leave unsaid: `derived`
+identifiers, and the ticker, CFI and currency facts, never the wire. A parse
 through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isin_registry=` shares one across walks run one after another, bound to a
-store with `from_url` and written back with `commit()` only where it moved,
-and `FixCodec.from_env()` shares the process's own, `IsinRegistry.from_env()`.
+fixed. A codec without one learns into each walk's own; `isin_registry=`
+shares one across walks run one after another, bound to a store with
+`from_url` and written back with `commit()` where it moved, and
+`FixCodec.from_env()` shares the process's own (`IsinRegistry.from_env()`).
 
 ```python
 from pathlib import Path

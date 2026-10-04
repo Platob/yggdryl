@@ -213,51 +213,48 @@ test('a ticker leads back to its ISIN on the same market', () => {
 })
 
 test('the process registry is the store the environment names, shared with the codec the environment names', (t) => {
-  // Process-wide state, so it is driven in a process of its own whose
+  // Process-wide state, so each case is driven in a process of its own whose
   // environment names a scratch store, never the real home.
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-isin-env-'))
   t.after(() => fs.rmSync(home, { recursive: true, force: true }))
   const store = path.join(home, 'instruments') + path.sep
-  const script = `
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const path = require('node:path')
-    const { IsinRegistry, fix } = require(process.argv[1])
+  const inProcess = (body) => {
+    const script = `
+      const assert = require('node:assert/strict')
+      const fs = require('node:fs')
+      const path = require('node:path')
+      const { IsinRegistry, fix } = require(process.argv[1])
+      const store = process.argv[2]
+      ${body}
+      console.log('ok')
+    `
+    const output = execFileSync(
+      process.execPath,
+      ['-e', script, require.resolve('yggdryl'), store],
+      { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_ISIN_REGISTRY_URI: store } },
+    )
+    assert.equal(output.trim(), 'ok')
+  }
+
+  inProcess(`
     const registry = IsinRegistry.fromEnv()
     assert.equal(registry.length, 0, 'an empty first run')
     assert.ok(IsinRegistry.fromEnv().equals(registry), 'resolved once')
     assert.throws(() => IsinRegistry.installEnv(new IsinRegistry()), /already resolved/)
     assert.ok(registry.merge({ isin: '${HOLCIM}', ric: 'HOLN.S' }))
     assert.equal(registry.commit().writtenRows, 1)
-    assert.ok(fs.existsSync(path.join(process.argv[2], 'part-0.arrows')))
-    const codec = fix.FixCodec.fromEnv()
-    assert.ok(codec.isinRegistry.equals(registry))
+    assert.ok(fs.existsSync(path.join(store, 'part-0.arrows')))
+    assert.ok(fix.FixCodec.fromEnv().isinRegistry.equals(registry))
     const own = new IsinRegistry()
     assert.ok(fix.FixCodec.fromEnv({ isinRegistry: own }).isinRegistry.equals(own), 'a stated pin stands')
     assert.equal(new fix.FixCodec(fix.FixRegistry.fromEnv()).isinRegistry, null, 'a codec built by hand attaches none')
-    console.log('ok')
-  `
-  const output = execFileSync(
-    process.execPath,
-    ['-e', script, require.resolve('yggdryl'), store],
-    { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_ISIN_REGISTRY_URI: store } },
-  )
-  assert.equal(output.trim(), 'ok')
+  `)
   // Installed first, the caller's own table is the one every later
   // `fromEnv` answers.
-  const installed = `
-    const assert = require('node:assert/strict')
-    const { IsinRegistry } = require(process.argv[1])
+  inProcess(`
     const own = new IsinRegistry(4)
     IsinRegistry.installEnv(own)
     assert.ok(IsinRegistry.fromEnv().equals(own))
     assert.throws(() => IsinRegistry.installEnv(new IsinRegistry()), /already resolved/)
-    console.log('ok')
-  `
-  const second = execFileSync(
-    process.execPath,
-    ['-e', installed, require.resolve('yggdryl')],
-    { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, YGGDRYL_ISIN_REGISTRY_URI: store } },
-  )
-  assert.equal(second.trim(), 'ok')
+  `)
 })

@@ -1185,10 +1185,8 @@ class TestSerieVerbs:
 
 
 # ---------------------------------------------------------------------------
-# What every record write answers - mirrors `mod results` of
-# rust/tests/root/iomedia.rs: the core's `IOResult`, the rows the write read
-# off its source, the rows that reached the destination and the difference,
-# carried through the binding untouched whatever shape the rows arrive in.
+# What every record write answers: the core's `IOResult`, whatever shape the
+# rows arrive in - mirrors `mod results` of rust/tests/root/iomedia.rs.
 # ---------------------------------------------------------------------------
 
 
@@ -1197,9 +1195,8 @@ def polars_frame() -> object:
     return polars.from_arrow(quote_table())
 
 
-# Each shape a record door is named for: the suffix of its four doors - the
-# overwrite, the append, the merge and the generic write - the rows built
-# fresh, and the properties the shape needs beside them.
+# Each shape a record door is named for: the suffix of its four doors, the
+# rows built fresh, and the properties the shape needs beside them.
 SHAPES: dict[str, tuple[str, Callable[[], object], dict[str, Any]]] = {
     "serie": ("serie", lambda: Serie.from_(quote_table()), {}),
     "serie_source": ("serie", quote_table, {}),
@@ -1222,21 +1219,15 @@ class TestWriteResults:
         suffix, rows, properties = SHAPES[shape]
         handle = IOBase(tmp_path / "quotes.arrows")
 
-        overwritten = getattr(handle, f"overwrite_{suffix}")(rows(), **properties)
-        assert isinstance(overwritten, IOResult)
-        assert overwritten == IOResult(2, 2)
-        assert len(rows_of(handle)) == 2
-
-        # A merge writes every incoming row - an update and an addition alike -
-        # so the stored count says which these were.
-        merged = getattr(handle, f"merge_{suffix}")(rows(), merge_by="symbol", **properties)
-        assert (merged.read_rows, merged.written_rows, merged.skipped_rows) == (2, 2, 0)
-        assert len(rows_of(handle)) == 2
-
-        appended = getattr(handle, f"append_{suffix}")(rows(), **properties)
-        assert appended == IOResult(2, 2)
-        assert len(rows_of(handle)) == 4
-
+        # A merge writes every incoming row, an update and an addition alike.
+        for door, extra, stored in (
+            ("overwrite", {}, 2),
+            ("merge", {"merge_by": "symbol"}, 2),
+            ("append", {}, 4),
+        ):
+            result = getattr(handle, f"{door}_{suffix}")(rows(), **extra, **properties)
+            assert result == IOResult(2, 2), door
+            assert len(rows_of(handle)) == stored, door
         written = getattr(handle, f"write_{suffix}")(rows(), "overwrite", **properties)
         assert written == IOResult(2, 2)
         assert len(rows_of(handle)) == 2
@@ -1246,13 +1237,11 @@ class TestWriteResults:
     ) -> None:
         handle = IOBase(tmp_path / "quotes.arrows")
         result = handle.overwrite_arrow_reader(quote_table().to_reader(), filter="size > 100")
-        assert (result.read_rows, result.written_rows, result.skipped_rows) == (2, 1, 1)
+        assert result == IOResult(2, 1)
         assert rows_of(handle) == quote_rows()[1:]
 
         # Every row kept out is a source that was read and a write of none.
-        none = handle.append_serie(quote_table(), filter="size > 1000")
-        assert (none.read_rows, none.written_rows, none.skipped_rows) == (2, 0, 2)
-        assert not none.is_empty()
+        assert handle.append_serie(quote_table(), filter="size > 1000") == IOResult(2, 0)
         assert rows_of(handle) == quote_rows()[1:]
 
     def test_a_row_bound_cuts_the_batch_it_falls_in_and_pulls_no_further(
@@ -1264,7 +1253,7 @@ class TestWriteResults:
         result = handle.append_arrow_reader(stream, max_row_size=3)
         # The bound falls inside the second batch: its last row was read and
         # not written, and the third batch was never pulled.
-        assert (result.read_rows, result.written_rows, result.skipped_rows) == (4, 3, 1)
+        assert result == IOResult(4, 3)
         assert len(rows_of(handle)) == 3
 
     def test_an_empty_source_answers_the_empty_result(self, tmp_path: pathlib.Path) -> None:
@@ -1274,9 +1263,7 @@ class TestWriteResults:
         assert handle.append_arrow_table(empty) == IOResult()
         assert handle.merge_arrow_table(empty, merge_by="symbol") == IOResult()
         assert handle.write_serie(empty) == IOResult()
-        appended = handle.append_serie(empty)
-        assert appended == IOResult()
-        assert appended.is_empty()
+        assert handle.append_serie(empty) == IOResult()
         assert rows_of(handle) == []
 
     def test_a_zero_row_limit_reads_nothing_and_answers_the_empty_result(

@@ -141,10 +141,8 @@ impl Session {
     }
 
     /// Whether `name` is a property [`Self::with_properties`] reads, in any
-    /// spelling it accepts: a name it answers `false` for is one it ignores.
-    ///
-    /// Answered by the reader itself - a known name either takes a probe
-    /// value or refuses it - so the answer cannot disagree with a read.
+    /// spelling it accepts, `false` being a name it ignores - answered by the
+    /// reader itself, so it cannot disagree with a read.
     #[must_use]
     pub fn is_property(name: &str) -> bool {
         Identity::default()
@@ -155,11 +153,9 @@ impl Session {
 
 /// The identity properties collected off one map, assembled onto a session
 /// once all of them are in hand: a role and a sign-in are several values.
-///
-/// The S3 options' reader collects into one too, under the keys its own,
-/// wider fold answers, and keeps for itself the names that are also the
-/// object store's - the region, the pair, `anonymous` - so one reader reads
-/// every name however it was reached.
+/// The S3 options' reader collects into one too, under its own wider fold,
+/// keeping the names that are also the object store's - the region, the pair,
+/// `anonymous`.
 #[derive(Default)]
 pub(crate) struct Identity {
     region: Option<String>,
@@ -425,11 +421,10 @@ pub(crate) enum EndpointName {
 
 impl EndpointName {
     /// Every name an endpoint is stated under, once folded, and what it
-    /// places: the one list the two property readers match an endpoint by,
-    /// and the S3 options' environment sweep turns no name of into a knob -
-    /// a stated endpoint outranks `AWS_ENDPOINT_URL_<SERVICE>` and the
-    /// profile and survives `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, which a
-    /// variable the environment merely holds must not.
+    /// places: the one list both property readers match an endpoint by, and
+    /// whose names the S3 options' environment sweep never turns into a knob -
+    /// a stated endpoint outranks the environment and the profile, which a
+    /// variable merely held must not.
     const ALL: [(&'static str, Self); 14] = [
         ("endpoint", Self::Store),
         ("endpoint_url", Self::Store),

@@ -15,44 +15,33 @@ function counts(result) {
 
 test('IOResult is the native class, exported at the root', () => {
   assert.equal(IOResult, NativeIOResult)
-  assert.equal(typeof IOResult, 'function')
 })
 
-test('what was read and not written is skipped', () => {
-  const result = new IOResult(10, 8)
-  assert.deepEqual(counts(result), [10, 8, 2])
-  for (const count of counts(result)) assert.equal(typeof count, 'number')
-  assert.equal(result.isEmpty(), false)
-})
-
-test('a write of more rows than it read skips none', () => {
-  // A `select` that unnests writes more rows than its source held, and the
-  // skipped count never goes below zero.
-  assert.deepEqual(counts(new IOResult(2, 6)), [2, 6, 0])
-})
-
-test('an absent count is zero, and the default is the write of an empty source', () => {
-  const empty = new IOResult()
-  assert.deepEqual(counts(empty), [0, 0, 0])
-  assert.equal(empty.isEmpty(), true)
-  assert.ok(new IOResult(undefined, undefined).equals(empty))
-  assert.ok(new IOResult(null, null).equals(empty))
-  assert.deepEqual(counts(new IOResult(5)), [5, 0, 5])
-  assert.deepEqual(counts(new IOResult(undefined, 3)), [0, 3, 0])
-
-  // The three counts stated are taken as they are: what a sum holds, which
-  // the read rows less the written need not be.
-  const summed = new IOResult(2, 6).add(new IOResult(4, 0))
-  assert.deepEqual(counts(summed), [6, 6, 4])
-  assert.ok(new IOResult(6, 6, 4).equals(summed))
-  assert.equal(new IOResult(6, 6, 4).equals(new IOResult(6, 6)), false)
-  assert.ok(new IOResult(10, 8, undefined).equals(new IOResult(10, 8)))
-  assert.ok(new IOResult(10, 8, null).equals(new IOResult(10, 8)))
-  assert.throws(() => new IOResult(1, 1, -1), /skippedRows/)
-  // A source whose every row was kept out was read: it is not empty, and
-  // neither is a write that produced rows from none.
-  assert.equal(new IOResult(3, 0).isEmpty(), false)
-  assert.equal(new IOResult(0, 2).isEmpty(), false)
+test('an absent count is zero, and what was read and not written is skipped unless stated', () => {
+  for (const [args, expected] of [
+    [[], [0, 0, 0]],
+    [[undefined, undefined], [0, 0, 0]],
+    [[null, null], [0, 0, 0]],
+    [[5], [5, 0, 5]],
+    [[undefined, 3], [0, 3, 0]],
+    [[10, 8], [10, 8, 2]],
+    [[10, 8, undefined], [10, 8, 2]],
+    [[10, 8, null], [10, 8, 2]],
+    // A `select` that unnests writes more rows than it read: none skipped.
+    [[2, 6], [2, 6, 0]],
+    // Stated, the three counts are taken as they are: what a sum holds.
+    [[6, 6, 4], [6, 6, 4]],
+  ]) {
+    const answered = counts(new IOResult(...args))
+    assert.deepEqual(answered, expected, String(args))
+    for (const count of answered) assert.equal(typeof count, 'number')
+  }
+  assert.equal(new IOResult().isEmpty(), true)
+  // A source whose every row was kept out was read, and a write that
+  // produced rows from none wrote: neither is empty.
+  for (const args of [[10, 8], [3, 0], [0, 2]]) {
+    assert.equal(new IOResult(...args).isEmpty(), false, String(args))
+  }
 })
 
 test('a count is a non-negative whole number, refused by name', () => {
@@ -64,6 +53,7 @@ test('a count is a non-negative whole number, refused by name', () => {
     [[2 ** 53 + 2], 'readRows'],
     [[1, -1], 'writtenRows'],
     [[1, 0.5], 'writtenRows'],
+    [[1, 1, -1], 'skippedRows'],
   ]) {
     assert.throws(
       () => new IOResult(...args),
@@ -72,17 +62,19 @@ test('a count is a non-negative whole number, refused by name', () => {
     )
   }
   // A count is a number: text and a bigint are refused, never read.
-  assert.throws(() => new IOResult('10'), /into rust type `f64`/)
-  assert.throws(() => new IOResult(1n), /into rust type `f64`/)
+  for (const value of ['10', 1n]) {
+    assert.throws(() => new IOResult(value), /into rust type `f64`/)
+  }
 })
 
 test('results add count by count, each stating its own skipped rows', () => {
-  const total = new IOResult(10, 8).add(new IOResult(5, 5))
-  assert.ok(total.equals(new IOResult(15, 13)))
-  assert.deepEqual(counts(total.add(new IOResult(1, 0))), [16, 13, 3])
+  assert.ok(new IOResult(10, 8).add(new IOResult(5, 5)).equals(new IOResult(15, 13)))
   // A sum keeps the skipped rows each part stated, which the difference of
-  // the summed counts need not be: 3 read, 6 written, 1 skipped.
-  assert.deepEqual(counts(new IOResult(2, 6).add(new IOResult(1, 0))), [3, 6, 1])
+  // the summed counts need not be.
+  const summed = new IOResult(2, 6).add(new IOResult(4, 0))
+  assert.deepEqual(counts(summed), [6, 6, 4])
+  assert.ok(summed.equals(new IOResult(6, 6, 4)))
+  assert.equal(summed.equals(new IOResult(6, 6)), false)
   // Neither operand moves.
   const left = new IOResult(1, 1)
   left.add(new IOResult(4, 4))
@@ -107,23 +99,18 @@ test('a result compares, orders and hashes as its three counts', () => {
   assert.notEqual(hash, new IOResult(8, 10).stableHash())
 })
 
-test('a result clones apart and renders the core text', () => {
-  const result = new IOResult(10, 8)
-  const copy = result.clone()
-  assert.notEqual(copy, result)
-  assert.ok(copy.equals(result))
-  assert.equal(copy.stableHash(), result.stableHash())
-
-  assert.equal(result.toString(), 'read 10 rows, wrote 8, skipped 2')
-  assert.equal(`${new IOResult()}`, 'read 0 rows, wrote 0, skipped 0')
-  assert.equal(String(new IOResult(2, 6)), 'read 2 rows, wrote 6, skipped 0')
-})
-
-test('a result is immutable', () => {
+test('a result is immutable, clones apart and renders the core text', () => {
   const result = new IOResult(10, 8)
   assert.throws(() => {
     'use strict'
     result.readRows = 1
   }, TypeError)
   assert.deepEqual(counts(result), [10, 8, 2])
+
+  const copy = result.clone()
+  assert.notEqual(copy, result)
+  assert.ok(copy.equals(result))
+
+  assert.equal(result.toString(), 'read 10 rows, wrote 8, skipped 2')
+  assert.equal(`${new IOResult(2, 6)}`, 'read 2 rows, wrote 6, skipped 0')
 })

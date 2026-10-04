@@ -19,6 +19,8 @@ use yggdryl::internals::s3_client::{
 };
 use yggdryl::s3::S3Options;
 
+use crate::mod_::{NOWHERE_REGION, nowhere};
+
 fn url(text: &str) -> Url {
     Url::from_str(text).expect("a valid location")
 }
@@ -40,24 +42,25 @@ fn profiled(config: &str) -> Session {
         .with_config_text(config)
 }
 
-/// Options that consult an environment, carrying a session whose environment
-/// is exactly `variables` and whose shared files are `config` and nothing -
-/// so what the AWS tools would read from the machine is what the test says.
-///
-/// The options sweep no prefix, so no variable of this process becomes a
-/// knob; and they are anonymous, so the Google and Azure halves of the client
-/// look for no identity of their own on the machine. Who signs plays no part
-/// in where a request goes.
-fn ambient(variables: &[(&str, &str)], config: &str) -> S3Options {
-    let session = Session::new()
+/// A session whose environment is exactly `variables` and whose shared files
+/// are `config` and nothing, so what the AWS tools would read from the
+/// machine is what the test says.
+fn ambient_session(variables: &[(&str, &str)], config: &str) -> Session {
+    Session::new()
         .with_variables(variables.iter().copied())
         .with_config_text(config)
         .with_credentials_text("")
-        .with_metadata_disabled(true);
+        .with_metadata_disabled(true)
+}
+
+/// Options that consult an environment, carrying [`ambient_session`]. They
+/// sweep no prefix, so no variable of this process becomes a knob, and are
+/// anonymous, so no store looks for an identity of its own on the machine.
+fn ambient(variables: &[(&str, &str)], config: &str) -> S3Options {
     S3Options::default()
         .with_environment_prefixes(std::iter::empty::<String>())
         .with_anonymous(true)
-        .with_session(session)
+        .with_session(ambient_session(variables, config))
 }
 
 /// The client `location` and `options` describe.
@@ -471,98 +474,87 @@ fn the_path_an_s3_endpoint_carries_is_the_prefix_every_request_is_sent_under() {
     );
 }
 
-// --- where a request arrives -------------------------------------------------
-//
-// Each test below reaches the fake store through one source of the endpoint,
-// and the source a wrong reading would take instead points at a loopback port
-// nothing listens on. The session is in a region no AWS partition publishes
-// a host for, so a client that read no configured endpoint at all would ask
-// for `s3.zz-nowhere-1.amazonaws.com` - a name that resolves to nothing - and
-// fail on this machine rather than send a fixture-signed request to Amazon S3.
-
-/// A region no AWS partition publishes a host for.
-const NOWHERE_REGION: &str = "zz-nowhere-1";
-
-/// A loopback URL nothing listens on: where a decoy source points, so a
-/// client that read the wrong source fails on this machine rather than
-/// reaching anything.
-fn nowhere() -> String {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
-    let address = listener.local_addr().expect("a bound address");
-    drop(listener);
-    format!("http://{address}")
-}
-
-/// Options carrying a session in [`NOWHERE_REGION`] whose whole environment
-/// is `variables` and whose configuration file is `config`, signing with a
-/// pair the fake store accepts and sweeping no prefix of this process.
+/// [`ambient`] options in [`NOWHERE_REGION`], signing with a pair the fake
+/// store accepts rather than anonymous.
 fn named_by(variables: &[(&str, &str)], config: &str) -> S3Options {
-    let session = Session::new()
-        .with_variables(variables.iter().copied())
-        .with_config_text(config)
-        .with_credentials_text("")
-        .with_metadata_disabled(true)
-        .with_region(NOWHERE_REGION);
     S3Options::default()
         .with_environment_prefixes(std::iter::empty::<String>())
         .with_credentials(yggdryl::s3::Credentials::new(
             "AKIAIOSFODNN7EXAMPLE",
             "wJalrXUtnFEMI",
         ))
-        .with_session(session)
+        .with_session(ambient_session(variables, config).with_region(NOWHERE_REGION))
 }
 
-/// A fake store holding `trades/lake/part.parquet`.
-fn holding_a_part() -> crate::server::FakeS3 {
-    let store = crate::server::FakeS3::start();
-    store.create_bucket("trades");
-    store.put("trades", "lake/part.parquet", b"PAR1");
-    store
-}
-
-/// The part read under `options`: one request, at `path` on `store`.
-fn read_at(store: &crate::server::FakeS3, options: S3Options, path: &str) {
+/// The part `store` holds, read under `options` in `case`: one request, at
+/// `path`, signed for [`NOWHERE_REGION`].
+fn read_at(store: &crate::server::FakeS3, options: S3Options, path: &str, case: &str) {
     use yggdryl::IOBase;
 
     store.clear_requests();
-    let part = yggdryl::s3::file_with("s3://trades/lake/part.parquet", options).expect("a handle");
-    assert_eq!(part.read_all_bytes().expect("the object"), b"PAR1");
+    let part = yggdryl::s3::file_with("s3://trades/lake/part.parquet", options).expect(case);
+    assert_eq!(part.read_all_bytes().expect(case), b"PAR1", "{case}");
     let sent = store.requests();
-    assert_eq!(sent.len(), 1, "{sent:?}");
-    assert_eq!(sent[0].path, path);
+    assert_eq!(sent.len(), 1, "{case}: {sent:?}");
+    assert_eq!(sent[0].path, path, "{case}");
     assert!(
         sent[0]
             .headers
             .iter()
             .any(|(name, value)| name == "authorization"
                 && value.contains(&format!("/{NOWHERE_REGION}/s3/aws4_request"))),
-        "signed for the session's region: {:?}",
+        "{case}: signed for the session's region: {:?}",
         sent[0]
     );
 }
 
 #[test]
-fn a_request_reaches_the_store_aws_endpoint_url_s3_alone_names_and_the_path_it_names() {
-    let store = holding_a_part();
-    let decoy = nowhere();
-
-    // The variable alone: the generic one beside it points nowhere.
-    let named = store.endpoint();
-    read_at(
-        &store,
-        named_by(
-            &[
+fn a_request_reaches_the_store_the_highest_configured_endpoint_source_names() {
+    // Each case names the store through one source; every source it outranks
+    // points nowhere, and the region publishes no host to fall back on.
+    let store = crate::server::FakeS3::start();
+    store.create_bucket("trades");
+    store.put("trades", "lake/part.parquet", b"PAR1");
+    let (named, decoy) = (store.endpoint(), nowhere());
+    let cases = [
+        (
+            "AWS_ENDPOINT_URL_S3 over AWS_ENDPOINT_URL",
+            vec![
                 ("AWS_ENDPOINT_URL_S3", named.as_str()),
                 ("AWS_ENDPOINT_URL", decoy.as_str()),
             ],
-            "",
+            String::new(),
         ),
-        "/trades/lake/part.parquet",
-    );
+        (
+            "AWS_ENDPOINT_URL over the profile's [services] entry and endpoint_url",
+            vec![("AWS_ENDPOINT_URL", named.as_str())],
+            format!(
+                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
+                 [services local]\ns3 =\n  endpoint_url = {decoy}\n"
+            ),
+        ),
+        (
+            "the [services] s3 entry over endpoint_url and another service's entry",
+            Vec::new(),
+            format!(
+                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
+                 [services local]\nsts =\n  endpoint_url = {decoy}\n\
+                 s3 =\n  endpoint_url = {named}\n"
+            ),
+        ),
+    ];
+    for (case, variables, config) in &cases {
+        read_at(
+            &store,
+            named_by(variables, config),
+            "/trades/lake/part.parquet",
+            case,
+        );
+    }
 
     // Below a gateway's path, which every request is sent under.
     store.mount_at("/gateway/s3");
-    let mounted = format!("{}/gateway/s3/", store.endpoint());
+    let mounted = format!("{named}/gateway/s3/");
     read_at(
         &store,
         named_by(
@@ -573,45 +565,7 @@ fn a_request_reaches_the_store_aws_endpoint_url_s3_alone_names_and_the_path_it_n
             "",
         ),
         "/gateway/s3/trades/lake/part.parquet",
-    );
-}
-
-#[test]
-fn a_request_reaches_the_store_aws_endpoint_url_alone_names() {
-    let store = holding_a_part();
-    let (named, decoy) = (store.endpoint(), nowhere());
-    // The profile's `[services]` entry and its own endpoint, which the
-    // variable outranks, point nowhere.
-    read_at(
-        &store,
-        named_by(
-            &[("AWS_ENDPOINT_URL", named.as_str())],
-            &format!(
-                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
-                 [services local]\ns3 =\n  endpoint_url = {decoy}\n"
-            ),
-        ),
-        "/trades/lake/part.parquet",
-    );
-}
-
-#[test]
-fn a_request_reaches_the_store_the_services_section_s_s3_entry_names() {
-    let store = holding_a_part();
-    let (named, decoy) = (store.endpoint(), nowhere());
-    // The profile's own endpoint, which the entry outranks, and another
-    // service's entry point nowhere.
-    read_at(
-        &store,
-        named_by(
-            &[],
-            &format!(
-                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
-                 [services local]\nsts =\n  endpoint_url = {decoy}\n\
-                 s3 =\n  endpoint_url = {named}\n"
-            ),
-        ),
-        "/trades/lake/part.parquet",
+        "AWS_ENDPOINT_URL_S3 below a gateway's path",
     );
 }
 
@@ -720,40 +674,11 @@ fn the_backoff_doubles_and_stops_doubling() {
 }
 
 #[test]
-fn an_endpoint_splits_into_scheme_host_and_port() {
-    assert_eq!(
-        Client::split_endpoint("http://localhost:9000").expect("a split endpoint"),
-        (
-            "http".to_owned(),
-            "localhost".to_owned(),
-            Some(9000),
-            String::new()
-        )
-    );
-    assert_eq!(
-        Client::split_endpoint("s3.example.io").expect("a split endpoint"),
-        (
-            "https".to_owned(),
-            "s3.example.io".to_owned(),
-            None,
-            String::new()
-        )
-    );
-    assert_eq!(
-        Client::split_endpoint("https://[::1]:9000").expect("a split endpoint"),
-        (
-            "https".to_owned(),
-            "[::1]".to_owned(),
-            Some(9000),
-            String::new()
-        )
-    );
-    Client::split_endpoint("https://host:notaport").expect_err("a refused port");
-}
-
-#[test]
 fn an_endpoint_is_read_once_as_the_url_it_is_and_only_where_the_store_is_is_kept() {
     for (endpoint, scheme, host, port, path) in [
+        ("http://localhost:9000", "http", "localhost", Some(9000), ""),
+        ("s3.example.io", "https", "s3.example.io", None, ""),
+        ("https://[::1]:9000", "https", "[::1]", Some(9000), ""),
         ("localhost:9000", "https", "localhost", Some(9000), ""),
         (
             "HTTP://minio.example.io:9000/",

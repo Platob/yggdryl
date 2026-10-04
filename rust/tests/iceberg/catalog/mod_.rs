@@ -488,31 +488,34 @@ fn a_create_takes_the_stated_format_version_else_the_lowest_the_schema_needs() {
             .unwrap()
             .format_version()
     };
-    let nanos = DataType::DateTime64 {
-        unit: yggdryl::TimeUnit::Nanosecond,
+    let instant = |unit| DataType::DateTime64 {
+        unit,
         timezone: yggdryl::Timezone::UTC,
     };
-    let micros = DataType::DateTime64 {
-        unit: yggdryl::TimeUnit::Microsecond,
-        timezone: yggdryl::Timezone::UTC,
-    };
-    assert_eq!(
-        version("nyc.micros", &row(micros), &none()),
-        FormatVersion::V2
-    );
-    assert_eq!(
-        version("nyc.nanos", &row(nanos.clone()), &none()),
-        FormatVersion::V3
-    );
-    assert_eq!(
-        version("nyc.variant", &row(DataType::Variant), &none()),
-        FormatVersion::V3
-    );
     let stated = Properties::new().with_property("format-version", "3");
-    assert_eq!(
-        version("nyc.stated", &taxi_schema(), &stated),
-        FormatVersion::V3
-    );
+    for (name, field, properties, expected) in [
+        (
+            "nyc.micros",
+            row(instant(yggdryl::TimeUnit::Microsecond)),
+            none(),
+            FormatVersion::V2,
+        ),
+        (
+            "nyc.nanos",
+            row(instant(yggdryl::TimeUnit::Nanosecond)),
+            none(),
+            FormatVersion::V3,
+        ),
+        (
+            "nyc.variant",
+            row(DataType::Variant),
+            none(),
+            FormatVersion::V3,
+        ),
+        ("nyc.stated", taxi_schema(), stated, FormatVersion::V3),
+    ] {
+        assert_eq!(version(name, &field, &properties), expected, "{name}");
+    }
 
     // A version no format has is refused by the property, nothing created.
     let error = catalog

@@ -3,9 +3,8 @@
 //! A provider reads its variables through one value so a caller can hand
 //! over an environment of their own - a captured one, a subprocess's, a
 //! test's - and so every reading trims and treats a blank variable as unset
-//! the same way. That is how botocore reads an endpoint variable; a blank
-//! *flag* it reads as set and false, where here it is unset and the profile
-//! is read next.
+//! the same way - a blank flag included, which botocore reads as set and
+//! false where here the profile is read next.
 
 #[cfg(feature = "aws")]
 use std::collections::BTreeMap;
@@ -48,8 +47,7 @@ impl Environment {
     /// spell reads false, as the cloud tools read it: these are toggles read
     /// where nothing can refuse, and one nobody can read is not one that was
     /// set. The table is wider than botocore's, which reads only `true` as
-    /// true: `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=1` ignores the configured
-    /// endpoints here and not there.
+    /// true.
     pub fn flag(&self, name: &str) -> Option<bool> {
         self.get(name)
             .map(|value| bool_from_text(&value).unwrap_or(false))

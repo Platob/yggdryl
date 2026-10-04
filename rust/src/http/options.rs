@@ -436,12 +436,8 @@ impl HttpOptions {
 
     /// Whether a request naming no credential takes the `.netrc` entry of
     /// its host - the file `NETRC` names, else `.netrc` then `_netrc` in the
-    /// home directory - as curl and Python's `requests` do.
-    ///
-    /// Left unset it follows [`Self::read_environment`], so a session that
-    /// reads no environment reads no `.netrc` either; `false` keeps the file
-    /// out of a session that reads the proxy and the CA bundle variables, as
-    /// one whose every request states the credential it means does.
+    /// home directory - as curl and Python's `requests` do. Unset, it
+    /// follows [`Self::read_environment`]; once said, it stands.
     ///
     /// ```
     /// use yggdryl::http::HttpOptions;

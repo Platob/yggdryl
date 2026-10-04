@@ -9,7 +9,7 @@ mod protocol {
     use std::path::PathBuf;
 
     use yggdryl::aws::{AssumedRole, Session};
-    use yggdryl::s3::S3Options;
+    use yggdryl::s3::{S3File, S3Options};
     use yggdryl::{Error, IOBase};
 
     use crate::mod_::{BUCKET, file, file_with, folder, options, payload, store};
@@ -313,18 +313,23 @@ mod protocol {
     }
 
     /// A temporary set for `key`, as a credentials file holds one.
-    fn dumped(key: &str, extra: &str) -> String {
+    fn dumped(key: &str) -> String {
         format!(
             "[default]\naws_access_key_id = {key}\naws_secret_access_key = {key}-secret\n\
-             aws_session_token = {key}-token\n{extra}"
+             aws_session_token = {key}-token\n"
         )
     }
 
-    /// Options that reach `store` as a session reading the credentials file
-    /// under `directory` and nothing else: the variables it reads are the
+    /// A store holding `lake/part.bin`, a fresh directory `name` whose
+    /// credentials file holds `text`, and a handle on the part signing as a
+    /// session that reads that file and nothing else: its variables are the
     /// test's own, and the metadata services are off.
-    fn reading_files(store: &crate::server::FakeS3, directory: &std::path::Path) -> S3Options {
-        S3Options::default()
+    fn signing_as_file(name: &str, text: &str) -> (crate::server::FakeS3, PathBuf, S3File) {
+        let store = store();
+        store.put(BUCKET, "lake/part.bin", &payload(64));
+        let directory = scratch(name);
+        std::fs::write(directory.join("credentials"), text).expect("a credentials file");
+        let options = S3Options::default()
             .with_endpoint(store.endpoint())
             .with_region("us-east-1")
             .with_path_style(true)
@@ -334,9 +339,11 @@ mod protocol {
                         "BOTO_CONFIG",
                         directory.join("no-such-boto.cfg").display().to_string(),
                     )])
-                    .with_directory(directory)
+                    .with_directory(&directory)
                     .with_metadata_disabled(true),
-            )
+            );
+        let handle = file_with("lake/part.bin", options);
+        (store, directory, handle)
     }
 
     /// Who signed each recorded request, and how it was answered.
@@ -359,18 +366,13 @@ mod protocol {
 
     #[test]
     fn a_set_dumped_anew_signs_the_request_the_store_refused_the_old_one_for() {
-        let store = store();
-        store.put(BUCKET, "lake/part.bin", &payload(64));
-        let directory = scratch("redumped");
-        let credentials = directory.join("credentials");
-        std::fs::write(&credentials, dumped("ASIAOLDDUMP", "")).expect("a dumped set");
-        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
+        let (store, directory, handle) = signing_as_file("redumped", &dumped("ASIAOLDDUMP"));
         assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
 
-        // The developer dumps a fresh set; the process still holds the old
-        // one, until the store says it lapsed - then the file is read again
-        // and the same request goes once more, signed with what it says now.
-        std::fs::write(&credentials, dumped("ASIANEWDUMPED", "")).expect("a set dumped anew");
+        // The process holds the old set until the store says it lapsed; then
+        // the file is read again and the request goes once more.
+        std::fs::write(directory.join("credentials"), dumped("ASIANEWDUMPED"))
+            .expect("a set dumped anew");
         store.fail_next(400, "ExpiredToken", 1);
         store.clear_requests();
         assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
@@ -387,13 +389,7 @@ mod protocol {
     #[test]
     fn a_stale_dump_with_nothing_behind_it_is_the_sessions_refusal_and_a_fresh_one_mends_the_next_read()
      {
-        let store = store();
-        store.put(BUCKET, "lake/part.bin", &payload(64));
-        let directory = scratch("stale-dump");
-        let credentials = directory.join("credentials");
-        std::fs::write(&credentials, dumped("ASIASTALEDUMP", "")).expect("a dumped set");
-        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
-
+        let (store, directory, handle) = signing_as_file("stale-dump", &dumped("ASIASTALEDUMP"));
         store.fail_next(400, "ExpiredToken", 1);
         store.clear_requests();
         let message = handle.read_all_bytes().expect_err("a refusal").to_string();
@@ -409,7 +405,8 @@ mod protocol {
             "the refused set is not sent again"
         );
 
-        std::fs::write(&credentials, dumped("ASIAMENDEDDUMP", "")).expect("a set dumped anew");
+        std::fs::write(directory.join("credentials"), dumped("ASIAMENDEDDUMP"))
+            .expect("a set dumped anew");
         store.clear_requests();
         assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
         assert_eq!(signers(&store), [("ASIAMENDEDDUMP".to_owned(), 200)]);
@@ -418,16 +415,11 @@ mod protocol {
 
     #[test]
     fn a_key_the_store_does_not_recognize_yet_is_read_again_once_the_file_moves() {
-        let store = store();
-        store.put(BUCKET, "lake/part.bin", &payload(64));
+        let pair = "[default]\naws_access_key_id = AKIANEWLYMADE\naws_secret_access_key = made\n";
+        let (store, directory, handle) = signing_as_file("propagating", pair);
         // IAM answers a key it has not propagated yet as unknown: that is
         // no lapse, so the key is held off for a pause, not for good.
         store.require_access_key(Some("AKIAOTHERKEY"));
-        let directory = scratch("propagating");
-        let credentials = directory.join("credentials");
-        let pair = "[default]\naws_access_key_id = AKIANEWLYMADE\naws_secret_access_key = made\n";
-        std::fs::write(&credentials, pair).expect("a new pair");
-        let handle = file_with("lake/part.bin", reading_files(&store, &directory));
         let message = handle
             .read_all_bytes()
             .expect_err("an unknown key")
@@ -438,8 +430,11 @@ mod protocol {
         );
 
         store.require_access_key(Some("AKIANEWLYMADE"));
-        std::fs::write(&credentials, format!("# saved again\n{pair}"))
-            .expect("the file saved again");
+        std::fs::write(
+            directory.join("credentials"),
+            format!("# saved again\n{pair}"),
+        )
+        .expect("the file saved again");
         store.clear_requests();
         assert_eq!(handle.read_all_bytes().expect("a read"), payload(64));
         assert_eq!(signers(&store), [("AKIANEWLYMADE".to_owned(), 200)]);
@@ -448,19 +443,16 @@ mod protocol {
 
     #[test]
     fn a_head_refused_with_no_body_reads_the_files_again_and_goes_once_more_only_for_another_set() {
-        let store = store();
-        store.put(BUCKET, "lake/part.bin", &payload(64));
-        let directory = scratch("head-redumped");
-        let credentials = directory.join("credentials");
-        std::fs::write(&credentials, dumped("ASIAHEADOLD", "")).expect("a dumped set");
-        let mut handle = file_with("lake/part.bin", reading_files(&store, &directory));
+        let (store, directory, mut handle) =
+            signing_as_file("head-redumped", &dumped("ASIAHEADOLD"));
         handle.open().expect("one HEAD");
         handle.close().expect("closed");
 
         // A HEAD names no reason, so the key is held against nothing: the
         // files are read again, and the request goes once more only because
         // they now hold another set.
-        std::fs::write(&credentials, dumped("ASIAHEADNEWER", "")).expect("a set dumped anew");
+        std::fs::write(directory.join("credentials"), dumped("ASIAHEADNEWER"))
+            .expect("a set dumped anew");
         store.fail_next(400, "ExpiredToken", 1);
         store.clear_requests();
         handle.open().expect("one HEAD, signed again");

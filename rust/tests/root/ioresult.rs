@@ -3,22 +3,17 @@
 use yggdryl::IOResult;
 
 #[test]
-fn what_was_read_and_not_written_is_skipped() {
-    let result = IOResult::new(10, 8);
-
-    assert_eq!(result.read_rows, 10);
-    assert_eq!(result.written_rows, 8);
-    assert_eq!(result.skipped_rows, 2);
-    assert!(!result.is_empty());
-}
-
-#[test]
-fn a_write_of_more_rows_than_it_read_skips_none() {
-    // A `select` that unnests writes more rows than its source held, and a
-    // skipped count never goes below zero.
-    let result = IOResult::new(2, 6);
-
-    assert_eq!(result.skipped_rows, 0);
+fn what_was_read_and_not_written_is_skipped_and_never_below_zero() {
+    // An unnesting `select` writes more rows than its source held.
+    for (read, written, skipped) in [(10, 8, 2), (2, 6, 0)] {
+        let result = IOResult::new(read, written);
+        assert_eq!(
+            (result.read_rows, result.written_rows, result.skipped_rows),
+            (read, written, skipped),
+            "read {read}, wrote {written}"
+        );
+        assert!(!result.is_empty());
+    }
 }
 
 #[test]

@@ -66,6 +66,22 @@ fn ccy(text: &str) -> Option<Ccy> {
     Some(Ccy::new(text).unwrap())
 }
 
+fn country(text: &str) -> Option<Country> {
+    Some(Country::new(text).unwrap())
+}
+
+/// The ISIN of the row `ticker` names on `market`.
+fn by_ticker<'a>(
+    registry: &'a IsinRegistry,
+    ticker: &str,
+    market: Option<&str>,
+) -> Option<&'a str> {
+    let market = market.and_then(mic);
+    registry
+        .get_by_ticker(ticker, market.as_ref())
+        .map(|row| row.isin().as_str())
+}
+
 #[test]
 fn a_statement_is_learned_by_its_isin_and_filled_into_one_naming_it() {
     let mut stated = order(
@@ -95,11 +111,7 @@ fn a_statement_is_learned_by_its_isin_and_filled_into_one_naming_it() {
     assert_eq!(row.ticker(), Some("HOLN"));
     assert_eq!(row.currency().map(|code| code.as_str()), Some("CHF"));
     assert_eq!(row.countrycode(), None, "no statement named a country");
-    assert_eq!(
-        row.country(),
-        Some(Country::new("CH").unwrap()),
-        "the prefix"
-    );
+    assert_eq!(row.country(), country("CH"), "the prefix");
     assert_eq!(row.forexcode(), None);
 
     // The ISIN alone fills the rest, each as a derivation.
@@ -263,11 +275,7 @@ fn a_valid_statement_fills_and_replaces_whatever_the_time() {
         Some("E")
     );
     assert_eq!(registry.get(HOLCIM).unwrap().updunix(), Some(20));
-    // Nothing that differs moves nothing, and keeps the registry clean.
-    registry.clear();
-    registry
-        .merge(entry(HOLCIM, Some(20), &[(IdType::Common, "E")]))
-        .unwrap();
+    // The same value moves nothing, the stamp included.
     let mut again = IsinRegistry::new();
     again
         .merge(entry(HOLCIM, Some(20), &[(IdType::Common, "E")]))
@@ -393,31 +401,12 @@ fn a_registry_fills_the_isin_a_ticker_names_on_the_same_market() {
     listed.set_ticker(Some(SmolStr::new("HOLN")), true);
     listed.set_miccode(mic("XSWX"), true);
     assert!(registry.learn(&listed));
-    assert_eq!(
-        registry
-            .get_by_ticker("HOLN", None)
-            .map(|row| row.isin().as_str()),
-        Some(HOLCIM)
-    );
-    assert_eq!(
-        registry
-            .get_by_ticker("HOLN", mic("XSWX").as_ref())
-            .map(|row| row.isin().as_str()),
-        Some(HOLCIM)
-    );
-    assert!(
-        registry
-            .get_by_ticker("HOLN", mic("XLON").as_ref())
-            .is_none()
-    );
-    assert!(registry.get_by_ticker("ABBN", None).is_none());
+    assert_eq!(by_ticker(&registry, "HOLN", None), Some(HOLCIM));
+    assert_eq!(by_ticker(&registry, "HOLN", Some("XSWX")), Some(HOLCIM));
+    assert_eq!(by_ticker(&registry, "HOLN", Some("XLON")), None);
+    assert_eq!(by_ticker(&registry, "ABBN", None), None);
     // A ticker is looked up trimmed, as it is learned.
-    assert_eq!(
-        registry
-            .get_by_ticker(" HOLN ", None)
-            .map(|row| row.isin().as_str()),
-        Some(HOLCIM)
-    );
+    assert_eq!(by_ticker(&registry, " HOLN ", None), Some(HOLCIM));
     let mut padded = OrderEvent::at(20);
     padded.set_ticker(Some(SmolStr::new(" HOLN ")), true);
     padded.set_miccode(mic("XSWX"), true);
@@ -461,19 +450,9 @@ fn a_registry_fills_the_isin_a_ticker_names_on_the_same_market() {
     other_listing.set_ticker(Some(SmolStr::new("HOLN")), true);
     other_listing.set_miccode(mic("XLON"), true);
     assert!(registry.learn(&other_listing));
-    assert_eq!(
-        registry
-            .get_by_ticker("HOLN", mic("XLON").as_ref())
-            .map(|row| row.isin().as_str()),
-        Some(NOVARTIS)
-    );
-    assert_eq!(
-        registry
-            .get_by_ticker("HOLN", mic("XSWX").as_ref())
-            .map(|row| row.isin().as_str()),
-        Some(HOLCIM)
-    );
-    assert!(registry.get_by_ticker("HOLN", None).is_none(), "ambiguous");
+    assert_eq!(by_ticker(&registry, "HOLN", Some("XLON")), Some(NOVARTIS));
+    assert_eq!(by_ticker(&registry, "HOLN", Some("XSWX")), Some(HOLCIM));
+    assert_eq!(by_ticker(&registry, "HOLN", None), None, "ambiguous");
     let mut ambiguous = OrderEvent::at(40);
     ambiguous.set_ticker(Some(SmolStr::new("HOLN")), true);
     assert!(!registry.fill(&mut ambiguous));
@@ -483,22 +462,12 @@ fn a_registry_fills_the_isin_a_ticker_names_on_the_same_market() {
     renamed.set_ticker(Some(SmolStr::new("NOVN")), true);
     renamed.set_miccode(mic("XLON"), true);
     assert!(registry.learn(&renamed));
-    assert_eq!(
-        registry
-            .get_by_ticker("NOVN", None)
-            .map(|row| row.isin().as_str()),
-        Some(NOVARTIS)
-    );
-    assert_eq!(
-        registry
-            .get_by_ticker("HOLN", None)
-            .map(|row| row.isin().as_str()),
-        Some(HOLCIM)
-    );
+    assert_eq!(by_ticker(&registry, "NOVN", None), Some(NOVARTIS));
+    assert_eq!(by_ticker(&registry, "HOLN", None), Some(HOLCIM));
     assert!(registry.remove(HOLCIM).is_some());
-    assert!(registry.get_by_ticker("HOLN", None).is_none());
+    assert_eq!(by_ticker(&registry, "HOLN", None), None);
     registry.clear();
-    assert!(registry.get_by_ticker("NOVN", None).is_none());
+    assert_eq!(by_ticker(&registry, "NOVN", None), None);
 }
 
 #[test]
@@ -582,8 +551,9 @@ fn a_listing_fact_on_another_market_switches_the_listing_whole() {
     assert_eq!(row.currency(), None);
     assert_eq!(row.get(&IdType::Common), Some("C"), "the instrument's");
     assert_eq!(row.updunix(), Some(10));
-    assert!(
-        registry.get_by_ticker("HOLN", None).is_none(),
+    assert_eq!(
+        by_ticker(&registry, "HOLN", None),
+        None,
         "the index follows"
     );
     // Back with a ticker and a currency: the listing switches again.
@@ -640,50 +610,37 @@ fn the_country_the_pair_and_the_currency_are_learned_and_filled() {
     registry
         .merge(
             IsinEntry::new(isin(HOLCIM))
-                .with_countrycode(Some(Country::new("LI").unwrap()))
+                .with_countrycode(country("LI"))
                 .with_currency(ccy("XXX")),
         )
         .unwrap();
     let row = registry.get(HOLCIM).unwrap();
     assert_eq!(row.countrycode().map(|code| code.as_str()), Some("LI"));
-    assert_eq!(
-        row.country().map(|code| code.as_str().to_owned()),
-        Some("LI".into())
-    );
+    assert_eq!(row.country(), country("LI"));
     assert_eq!(row.currency(), None, "XXX states no currency");
     assert!(
         IsinEntry::new(isin(HOLCIM))
-            .with_countrycode(Some(Country::new("XX").unwrap()))
+            .with_countrycode(country("XX"))
             .countrycode()
             .is_none()
     );
     // The ISIN's own prefix, stated, takes the held country back and is
     // held beside the key by no row.
-    let own = || IsinEntry::new(isin(HOLCIM)).with_countrycode(Some(Country::new("CH").unwrap()));
+    let own = || IsinEntry::new(isin(HOLCIM)).with_countrycode(country("CH"));
     assert!(registry.merge(own()).unwrap(), "a stated country replaces");
     let row = registry.get(HOLCIM).unwrap();
     assert_eq!(row.countrycode(), None);
-    assert_eq!(
-        row.country().map(|code| code.as_str().to_owned()),
-        Some("CH".into())
-    );
+    assert_eq!(row.country(), country("CH"));
     assert!(
         !registry.merge(own()).unwrap(),
         "restated, it moves nothing"
     );
     let mut fresh = IsinRegistry::new();
     fresh
-        .merge(IsinEntry::new(isin(APPLE)).with_countrycode(Some(Country::new("US").unwrap())))
+        .merge(IsinEntry::new(isin(APPLE)).with_countrycode(country("US")))
         .unwrap();
     assert_eq!(fresh.get(APPLE).unwrap().countrycode(), None);
-    assert_eq!(
-        fresh
-            .get(APPLE)
-            .unwrap()
-            .country()
-            .map(|code| code.as_str().to_owned()),
-        Some("US".into())
-    );
+    assert_eq!(fresh.get(APPLE).unwrap().country(), country("US"));
     // An agency prefix names no country.
     let referential = numbered("XT");
     registry.merge(IsinEntry::new(isin(&referential))).unwrap();
@@ -853,7 +810,7 @@ fn an_entry_reads_back_from_its_scalar() {
         &[(IdType::Ric, "HOLN.S"), (IdType::Valor, "1221405")],
     )
     .with_cficode(cfi("ESVUFR"))
-    .with_countrycode(Some(Country::new("CH").unwrap()))
+    .with_countrycode(country("CH"))
     .with_forexcode(Some(Forex::new("EUR/CHF").unwrap()))
     .with_miccode(mic("XSWX"))
     .with_ticker(Some(SmolStr::new(" HOLN ")))
@@ -916,7 +873,7 @@ fn a_registry_round_trips_an_ipc_file_through_the_record_surface() {
                 &[(IdType::Ric, "HOLN.S"), (IdType::Valor, "1221405")],
             )
             .with_cficode(cfi("ESVUFR"))
-            .with_countrycode(Some(Country::new("CH").unwrap()))
+            .with_countrycode(country("CH"))
             .with_miccode(mic("XSWX"))
             .with_currency(ccy("CHF")),
         )

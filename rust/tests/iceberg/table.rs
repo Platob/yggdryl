@@ -756,6 +756,28 @@ mod iceberg {
             .collect()
     }
 
+    /// Each record as its batch.
+    fn batches_of(records: &[yggdryl::Serie]) -> Vec<RecordBatch> {
+        records
+            .iter()
+            .map(|record| record.into_arrow_batch().unwrap())
+            .collect()
+    }
+
+    /// The `SORT:by` a schema read under `options` declares.
+    fn read_order(
+        table: &IcebergTable<LocalFolder>,
+        options: &yggdryl::media::RecordOptions,
+    ) -> Option<String> {
+        use yggdryl::IOMedia;
+
+        table
+            .read_arrow_field(options)
+            .unwrap()
+            .get_metadata("SORT:by")
+            .map(str::to_owned)
+    }
+
     /// The `order by` keys a record declares, as text.
     fn declared_keys(record: &yggdryl::Serie) -> Vec<String> {
         record
@@ -796,11 +818,7 @@ mod iceberg {
         for record in &records {
             assert_eq!(declared_keys(record), ["venue", "ts", "id"]);
         }
-        let batches: Vec<RecordBatch> = records
-            .iter()
-            .map(|record| record.into_arrow_batch().unwrap())
-            .collect();
-        assert_eq!(ids_of(&quote_rows(&batches)), expected);
+        assert_eq!(ids_of(&quote_rows(&batches_of(&records))), expected);
         // XLON's two files and XNYS's three each cover a later stretch than
         // the one opened before them, so each is a record of its own; two of
         // XNAS's overlap, so its four rows are merged into one.
@@ -823,13 +841,7 @@ mod iceberg {
         );
         let batches: Vec<RecordBatch> = transport.map(Result::unwrap).collect();
         assert_eq!(ids_of(&quote_rows(&batches)), expected);
-        assert_eq!(
-            table
-                .read_arrow_field(&options)
-                .unwrap()
-                .get_metadata("SORT:by"),
-            order
-        );
+        assert_eq!(read_order(&table, &options).as_deref(), order);
         // The table still reports the order its writers keep, and a scan
         // door still reads the files as the manifests list them, commit
         // after commit.
@@ -872,11 +884,10 @@ mod iceberg {
             records.iter().map(yggdryl::Serie::len).collect::<Vec<_>>(),
             [1, 1, 1, 2, 2, 2]
         );
-        let batches: Vec<RecordBatch> = records
-            .iter()
-            .map(|record| record.into_arrow_batch().unwrap())
-            .collect();
-        assert_eq!(ids_of(&quote_rows(&batches)), [8, 5, 2, 9, 7, 6, 4, 3, 1]);
+        assert_eq!(
+            ids_of(&quote_rows(&batches_of(&records))),
+            [8, 5, 2, 9, 7, 6, 4, 3, 1]
+        );
     }
 
     /// A `where` window prunes the files its bounds rule out and the rest
@@ -966,13 +977,7 @@ mod iceberg {
         assert_eq!(reader.field().get_metadata("SORT:by"), None);
         assert_eq!(ids_of(&quote_rows(&records_of(reader))), [3, 2, 4, 1]);
         let options = unsorted.record_options().unwrap();
-        assert_eq!(
-            unsorted
-                .read_arrow_field(&options)
-                .unwrap()
-                .get_metadata("SORT:by"),
-            None
-        );
+        assert_eq!(read_order(&unsorted, &options), None);
 
         // A partitioned table declaring no order keeps its partition
         // column's, ascending with nulls first.
@@ -986,11 +991,7 @@ mod iceberg {
         for record in &records {
             assert_eq!(declared_keys(record), ["venue nulls first"]);
         }
-        let batches: Vec<RecordBatch> = records
-            .iter()
-            .map(|record| record.into_arrow_batch().unwrap())
-            .collect();
-        assert_eq!(ids_of(&quote_rows(&batches)), [3, 2, 4, 1]);
+        assert_eq!(ids_of(&quote_rows(&batches_of(&records))), [3, 2, 4, 1]);
     }
 
     /// A `select` keeps the part of the order whose columns it publishes
@@ -1036,10 +1037,7 @@ mod iceberg {
             .collect();
         assert_eq!(rows, expected);
         assert_eq!(
-            table
-                .read_arrow_field(&options)
-                .unwrap()
-                .get_metadata("SORT:by"),
+            read_order(&table, &options).as_deref(),
             Some(r#"["venue"]"#)
         );
     }
@@ -1127,13 +1125,7 @@ mod iceberg {
         assert_eq!(reader.field().get_metadata("SORT:by"), declared);
         assert_eq!(ids_of(&quote_rows(&records_of(reader))), [2, 5, 1]);
         let options = table.record_options().unwrap();
-        assert_eq!(
-            table
-                .read_arrow_field(&options)
-                .unwrap()
-                .get_metadata("SORT:by"),
-            declared
-        );
+        assert_eq!(read_order(&table, &options).as_deref(), declared);
         let rows = relanded(table.read_arrow_reader(&options).unwrap());
         assert_eq!(ids_of(&rows), [2, 5, 1]);
 
@@ -1207,13 +1199,7 @@ mod iceberg {
             instants.extend((0..column.len()).map(|row| column.value(row).to_owned()));
         }
         assert_eq!(instants, ["9", "10"]);
-        assert_eq!(
-            table
-                .read_arrow_field(&options)
-                .unwrap()
-                .get_metadata("SORT:by"),
-            None
-        );
+        assert_eq!(read_order(&table, &options), None);
         let landed = yggdryl::SerieReader::from_arrow_reader(
             None,
             table.read_arrow_reader(&options).unwrap(),
@@ -1280,6 +1266,19 @@ mod derived_columns {
         schema
     }
 
+    /// A v3 table of [`declared`] at `path`, partitioned as it declares.
+    fn created(path: &std::path::Path) -> IcebergTable<LocalFolder> {
+        let schema = declared();
+        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        IcebergTable::create(
+            LocalFolder::new(path).unwrap(),
+            FormatVersion::V3,
+            schema,
+            spec,
+        )
+        .unwrap()
+    }
+
     /// Instants laid out as `field` types them, its zone included.
     fn instants(values: &[i64], field: &arrow_schema::Field) -> Arc<dyn Array> {
         Arc::new(
@@ -1334,18 +1333,11 @@ mod derived_columns {
     #[test]
     fn a_derived_partition_column_is_computed_by_every_write_door() {
         let path = root("doors");
-        let schema = declared();
-        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
+        let spec = PartitionSpec::from_schema(1, &declared()).unwrap();
         assert_eq!(spec.fields.len(), 1);
         assert_eq!(spec.fields[0].transform, Transform::Identity);
         assert_eq!(spec.fields[0].name, "part");
-        let mut table = IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V3,
-            schema,
-            spec,
-        )
-        .unwrap();
+        let mut table = created(&path);
 
         // The rows carry no `part`: the commit door computes it, and the
         // table lays its files out by it.
@@ -1411,15 +1403,7 @@ mod derived_columns {
     #[test]
     fn a_reopened_table_declares_the_term_its_properties_keep() {
         let path = root("reopened");
-        let schema = declared();
-        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
-        IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V3,
-            schema,
-            spec,
-        )
-        .unwrap();
+        created(&path);
 
         let table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
         let key = format!("{}part", TableMetadata::TRANSFORM_PROPERTY_PREFIX);
@@ -1454,15 +1438,7 @@ mod derived_columns {
     #[test]
     fn a_value_the_rows_carry_under_a_derived_name_is_computed_again() {
         let path = root("written");
-        let schema = declared();
-        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
-        let mut table = IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V3,
-            schema,
-            spec,
-        )
-        .unwrap();
+        let mut table = created(&path);
         // The stored layout, `part` included and stating another quarter
         // than the term answers: the table owns the derivation, so what it
         // stores is what its schema says, whatever the rows carried.
@@ -1487,15 +1463,7 @@ mod derived_columns {
     #[test]
     fn a_window_on_the_source_prunes_by_the_bucket_it_falls_in() {
         let path = root("pruned");
-        let schema = declared();
-        let spec = PartitionSpec::from_schema(1, &schema).unwrap();
-        let mut table = IcebergTable::create(
-            LocalFolder::new(&path).unwrap(),
-            FormatVersion::V3,
-            schema,
-            spec,
-        )
-        .unwrap();
+        let mut table = created(&path);
         // One commit a quarter: one manifest each, summarizing one bucket.
         for quarter in 0..4_i64 {
             table
@@ -1918,16 +1886,13 @@ mod located {
         let _ = std::fs::remove_dir_all(&path);
     }
 
-    /// A table in an object-store folder is rooted on a handle that opens
-    /// under everything it was given - the store takes only the key stated,
-    /// and a clone, which opens again, writes through it - while the table
-    /// states the properties less the ones the store read: who signs, where
-    /// it is and how it is addressed are listed by nothing and printed by
-    /// nothing, before the handle resolves and after. A table bucket's table
-    /// states none, which `rust/tests/s3tables/catalog.rs` pins. The shared
-    /// files are this test's own, so nothing of the operator's is read, and
-    /// opening by location costs the store what an open costs: the version
-    /// hint and the current document, one `GetObject` each.
+    /// A table in an object-store folder opens under everything it was
+    /// given - the store takes only the key stated, and a clone writes
+    /// through it - while the table states the properties less the ones the
+    /// store read, listed and printed by nothing. The shared files are this
+    /// test's own, so nothing of the operator's is read. Opening by location
+    /// costs what an open costs: the version hint and the current document,
+    /// one `GetObject` each.
     #[cfg(feature = "s3")]
     #[test]
     fn a_table_on_an_object_store_states_what_the_store_did_not_read() {
@@ -2008,12 +1973,9 @@ mod located {
     /// a build without the `s3tables` feature, by the scheme no backend of
     /// it holds.
     ///
-    /// Nothing counts requests here - the fake control plane's suite does,
-    /// in `rust/tests/s3tables/catalog.rs` - so the identity is stated in
-    /// full and the endpoint is a closed loopback port: a request this door
-    /// should not send would fail on this machine rather than leave it, and
-    /// nothing of the operator's - a variable's key, a shared file - is read
-    /// to sign one.
+    /// The identity is stated in full and the endpoint is a closed loopback
+    /// port, so a request this door should not send fails here rather than
+    /// leaving the machine, and nothing of the operator's is read.
     #[test]
     fn a_table_bucket_location_that_names_no_table_is_refused_where_it_is_read() {
         let aws = root("no-identity");

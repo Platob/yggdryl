@@ -546,29 +546,14 @@ pub(super) fn validate_schema(document: &Scalar) -> Result<()> {
 ///
 /// A manifest carries the table schema in its Avro header, and the official
 /// manifest reader parses it; this is what that reader is handed instead of
-/// a document spelling `unknown` or `variant`. `None` says the document
-/// already reads as it is.
-pub(super) fn bridged_schema(document: &Scalar) -> Result<Option<Scalar>> {
-    let mut renamed = false;
-    let bridged = walk_v3_types(document, &mut |name| {
-        let spelling = bridged_spelling(name)?;
-        renamed |= spelling.is_some();
-        Ok(spelling)
-    })?;
-    Ok(renamed.then_some(bridged))
-}
-
-/// The reading of one schema document the official manifest *parser* is
-/// handed: [`bridged_schema`]'s placeholders and, where `nanoseconds` says
-/// the manifest partitions on one, every nanosecond timestamp spelled `long`.
-///
-/// iceberg 0.10 converts a manifest's partition tuple by its field types and
-/// has no arm reading an Avro long as `timestamp_ns` or `timestamptz_ns`, so
-/// a table partitioned by the identity of a nanosecond instant would not
-/// open. The count is the same eight bytes under either name, and the tuple
-/// is read back under the manifest's own header, which still says what the
-/// column is. `None` says the document already reads as it is.
-pub(super) fn parser_view_schema(document: &Scalar, nanoseconds: bool) -> Result<Option<Scalar>> {
+/// a document spelling `unknown` or `variant` - and, where `nanoseconds` says
+/// the manifest partitions on one, with every nanosecond timestamp spelled
+/// `long`: iceberg 0.10 converts a partition tuple by its field types and has
+/// no arm reading an Avro long as `timestamp_ns` or `timestamptz_ns`. The
+/// count is the same eight bytes under either name, and the tuple is read
+/// back under the manifest's own header. `None` says the document already
+/// reads as it is.
+pub(super) fn bridged_schema(document: &Scalar, nanoseconds: bool) -> Result<Option<Scalar>> {
     let mut renamed = false;
     let bridged = walk_v3_types(document, &mut |name| {
         let spelling = match name {

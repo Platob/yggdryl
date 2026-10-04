@@ -31,7 +31,7 @@ pub(crate) use lease::Bearer;
 #[cfg(feature = "aws")]
 pub(crate) use lease::{Expiring, Lease, instant, instant_from_millis, iso8601};
 #[cfg(feature = "aws")]
-pub(crate) use report::Report;
+pub(crate) use report::{Report, refusal};
 pub(crate) use secret::Secret;
 #[cfg(feature = "aws")]
 pub(crate) use secret::write_private;

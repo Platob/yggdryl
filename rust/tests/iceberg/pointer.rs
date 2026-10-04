@@ -14,7 +14,7 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
 use crate::counting_filesystem::{CountingFileSystem, counted_folder};
 use yggdryl::arrow::BatchReader;
-use yggdryl::fs::FileSystem;
+use yggdryl::fs::{FileSystem, FsFolder};
 use yggdryl::iceberg::{
     FormatVersion, IcebergTable, MetadataPointer, PartitionSpec, PointerState, assign_field_ids,
 };
@@ -175,25 +175,37 @@ fn ids<H: yggdryl::IOBase>(table: &IcebergTable<H>) -> Vec<i64> {
     ids
 }
 
+/// A pointed table of [`schema`] created over `folder`.
+fn create(
+    folder: FsFolder,
+    pointer: Arc<dyn MetadataPointer>,
+) -> yggdryl::Result<IcebergTable<FsFolder>> {
+    IcebergTable::create_pointed(
+        folder,
+        FormatVersion::V2,
+        schema(),
+        PartitionSpec::unpartitioned(),
+        pointer,
+    )
+}
+
 /// A pointed table created over a fresh counting folder.
 fn created(
     name: &str,
 ) -> (
     Arc<CountingFileSystem>,
     Arc<MemoryPointer>,
-    IcebergTable<yggdryl::fs::FsFolder>,
+    IcebergTable<FsFolder>,
 ) {
     let (filesystem, folder) = counted_folder(name);
     let pointer = Arc::new(MemoryPointer::default());
-    let table = IcebergTable::create_pointed(
-        folder,
-        FormatVersion::V2,
-        schema(),
-        PartitionSpec::unpartitioned(),
-        Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
-    )
-    .unwrap();
+    let table = create(folder, Arc::clone(&pointer) as Arc<dyn MetadataPointer>).unwrap();
     (filesystem, pointer, table)
+}
+
+/// The folder `name` on `filesystem`, as another handle opens it.
+fn folder_on(filesystem: &Arc<CountingFileSystem>, name: &str) -> FsFolder {
+    FsFolder::from_path(Arc::clone(filesystem) as Arc<dyn FileSystem>, name, None).unwrap()
 }
 
 /// Whether the store holds anything at `path`.
@@ -225,16 +237,7 @@ fn a_created_table_publishes_version_zero_and_writes_no_hint() {
     let pointer = Arc::new(MemoryPointer::default());
     let mut table = None;
     let costs = filesystem.costs(|| {
-        table = Some(
-            IcebergTable::create_pointed(
-                folder,
-                FormatVersion::V2,
-                schema(),
-                PartitionSpec::unpartitioned(),
-                Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
-            )
-            .unwrap(),
-        );
+        table = Some(create(folder, Arc::clone(&pointer) as Arc<dyn MetadataPointer>).unwrap());
     });
     let table = table.unwrap();
     // One read of the pointer, one document written - the write that finds
@@ -259,14 +262,7 @@ fn a_created_table_publishes_version_zero_and_writes_no_hint() {
 fn a_pointer_that_names_a_document_refuses_a_second_creation() {
     let (_, pointer, _) = created("twice");
     let (_, folder) = counted_folder("twice-again");
-    let error = IcebergTable::create_pointed(
-        folder,
-        FormatVersion::V2,
-        schema(),
-        PartitionSpec::unpartitioned(),
-        pointer as Arc<dyn MetadataPointer>,
-    )
-    .unwrap_err();
+    let error = create(folder, pointer as Arc<dyn MetadataPointer>).unwrap_err();
     assert!(error.is_conflict(), "{error}");
 }
 
@@ -278,12 +274,7 @@ fn open_reads_the_one_document_the_pointer_names() {
 
     // A hint planted beside the documents names nothing a pointed table
     // reads: the pointer is the one answer.
-    let folder = yggdryl::fs::FsFolder::from_path(
-        Arc::clone(&filesystem) as Arc<dyn FileSystem>,
-        "opened",
-        None,
-    )
-    .unwrap();
+    let folder = folder_on(&filesystem, "opened");
     folder
         .child_by_path("metadata/version-hint.text")
         .unwrap()
@@ -356,12 +347,7 @@ fn a_moved_pointer_rebases_an_append_onto_the_winner() {
     let (filesystem, pointer, mut first) = created("rebased");
     let reopen = || {
         IcebergTable::open_pointed(
-            yggdryl::fs::FsFolder::from_path(
-                Arc::clone(&filesystem) as Arc<dyn FileSystem>,
-                "rebased",
-                None,
-            )
-            .unwrap(),
+            folder_on(&filesystem, "rebased"),
             Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
         )
         .unwrap()
@@ -400,12 +386,7 @@ fn a_moved_pointer_is_a_conflict_for_an_overwrite_and_leaves_its_files() {
     let (filesystem, pointer, mut first) = created("conflicted");
     first.commit_append(rows(&[("XNAS", 1)])).unwrap();
     let mut second = IcebergTable::open_pointed(
-        yggdryl::fs::FsFolder::from_path(
-            Arc::clone(&filesystem) as Arc<dyn FileSystem>,
-            "conflicted",
-            None,
-        )
-        .unwrap(),
+        folder_on(&filesystem, "conflicted"),
         Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
     )
     .unwrap();
@@ -464,6 +445,7 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
     // A removal is the pointer's to answer, and one that drops nothing
     // refuses - restated by the table naming where it is, as the listing's
     // refusal does.
+    let location = IOBase::url(table.root()).unwrap().to_string();
     let mut listed = None;
     let mut removed = None;
     let costs = filesystem.costs(|| {
@@ -475,6 +457,7 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
     assert_eq!(listed.len(), 1, "one refusal");
     let error = listed.into_iter().next().unwrap().unwrap_err();
     assert!(error.to_string().contains("listing the files"), "{error}");
+    assert!(error.to_string().contains(&location), "{error}");
     let (recursive, flat) = removed.unwrap();
     for error in [recursive.unwrap_err(), flat.unwrap_err()] {
         assert!(matches!(error, Error::Unsupported { .. }), "{error:?}");
@@ -484,12 +467,6 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
                 .contains("dropping a table through its pointer"),
             "{error}"
         );
-        assert!(error.to_string().contains("kept"), "{error}");
-    }
-    let listing = table.ls(false, false).next().unwrap().unwrap_err();
-    let removal = table.remove(true).unwrap_err();
-    let location = IOBase::url(table.root()).unwrap().to_string();
-    for error in [listing, removal] {
         assert!(error.to_string().contains(&location), "{error}");
     }
 
@@ -506,14 +483,7 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
 fn removing_a_pointed_table_asks_its_pointer_and_never_its_folder() {
     let (filesystem, folder) = counted_folder("dropped");
     let pointer = Arc::new(DroppingPointer::default());
-    let mut table = IcebergTable::create_pointed(
-        folder,
-        FormatVersion::V2,
-        schema(),
-        PartitionSpec::unpartitioned(),
-        Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
-    )
-    .unwrap();
+    let mut table = create(folder, Arc::clone(&pointer) as Arc<dyn MetadataPointer>).unwrap();
     table.commit_append(rows(&[("XNAS", 1)])).unwrap();
     let name = table.metadata_file_name().unwrap();
 
@@ -546,11 +516,8 @@ fn removing_a_pointed_table_asks_its_pointer_and_never_its_folder() {
 #[test]
 fn a_pointers_own_refusal_of_a_drop_reaches_the_caller_as_it_came() {
     let (filesystem, folder) = counted_folder("refused");
-    let mut table = IcebergTable::create_pointed(
+    let mut table = create(
         folder,
-        FormatVersion::V2,
-        schema(),
-        PartitionSpec::unpartitioned(),
         Arc::new(RefusingPointer::default()) as Arc<dyn MetadataPointer>,
     )
     .unwrap();

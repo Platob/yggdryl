@@ -1,11 +1,6 @@
-//! JavaScript's native view of the shared [`IOResult`]: the rows one record
-//! write read, wrote and skipped.
-//!
-//! [`JsIOResult`] owns only the core value and is immutable. Every number is
-//! the core's: the constructor is [`IOResult::new`], or the value's own
-//! three fields where all three are stated, `add` is its `Add`, `toString`
-//! its `Display`, and a count crosses as the `number` every other row count
-//! of this binding crosses as.
+//! JavaScript's view of the core [`IOResult`]: immutable, compared and
+//! hashed by its three counts; `add` is the core's `Add`, `toString` its
+//! `Display`, and a count crosses as a `number`, as every row count does.
 
 use napi::bindgen_prelude::Result;
 use napi_derive::napi;
@@ -14,12 +9,8 @@ use yggdryl::IOResult;
 use crate::iobase::safe_js_count;
 use crate::{exact_u64, ordering_value};
 
-/// The rows one record write read, wrote and skipped.
-///
-/// Every record write of an `IOBase` answers one: `readRows` is what the
-/// write pulled from its source, `writtenRows` what reached the destination,
-/// `skippedRows` what was read and not written - the rows a `where` kept
-/// out, the part of the last batch a bound cut off.
+/// The rows one record write read, wrote and skipped - what a `where` kept
+/// out, or a bound cut off. Every record write of an `IOBase` answers one.
 #[napi(js_name = "IOResult")]
 #[derive(Clone, Copy)]
 pub struct JsIOResult {
@@ -35,11 +26,9 @@ impl JsIOResult {
 
 #[napi]
 impl JsIOResult {
-    /// The result of a write that read `readRows` and wrote `writtenRows`,
-    /// each `0` when absent, the rest of what it read skipped - or, where
-    /// `skippedRows` is stated, the three counts as they are: a sum of
-    /// results states its own skipped rows, which `readRows - writtenRows`
-    /// need not be.
+    /// Each count is `0` when absent. Omitted, `skippedRows` is the rows read
+    /// and not written; stated, the three counts are taken as they are - a
+    /// sum's own.
     #[napi(constructor)]
     pub fn new(
         read_rows: Option<f64>,
@@ -48,13 +37,13 @@ impl JsIOResult {
     ) -> Result<Self> {
         let read_rows = read_rows.map_or(Ok(0), |count| exact_u64(count, "readRows"))?;
         let written_rows = written_rows.map_or(Ok(0), |count| exact_u64(count, "writtenRows"))?;
-        let Some(skipped_rows) = skipped_rows else {
-            return Ok(Self::from_core(IOResult::new(read_rows, written_rows)));
-        };
-        Ok(Self::from_core(IOResult {
-            read_rows,
-            written_rows,
-            skipped_rows: exact_u64(skipped_rows, "skippedRows")?,
+        Ok(Self::from_core(match skipped_rows {
+            Some(count) => IOResult {
+                read_rows,
+                written_rows,
+                skipped_rows: exact_u64(count, "skippedRows")?,
+            },
+            None => IOResult::new(read_rows, written_rows),
         }))
     }
 
@@ -82,8 +71,7 @@ impl JsIOResult {
         self.inner.is_empty()
     }
 
-    /// The two results summed count by count, as one write cut into several
-    /// commits answers.
+    /// The two results summed count by count.
     #[napi]
     pub fn add(&self, other: &JsIOResult) -> Self {
         Self::from_core(self.inner + other.inner)

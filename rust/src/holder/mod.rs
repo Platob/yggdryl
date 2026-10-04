@@ -274,22 +274,16 @@ impl Holder {
     /// object store options read them; an `http:` or `https:` URL is held
     /// through the `http` feature as the request that reads and writes the
     /// resource, configured by the `HttpOptions` properties; an `s3tables:`
-    /// URL is held through the `s3tables` feature as what it names in an
-    /// Amazon S3 Tables table bucket - `s3tables://<bucket>` the bucket's
-    /// catalog, `s3tables://<bucket>/<namespace>` a namespace, each a
-    /// description costing no request, and
+    /// URL is held through the `s3tables` feature, under the properties the
+    /// bucket's catalog reads ([`Catalog::from_url`](crate::Catalog::from_url)):
+    /// `s3tables://<bucket>` the catalog and `s3tables://<bucket>/<namespace>`
+    /// a namespace, each costing no request, and
     /// `s3tables://<bucket>/<namespace>/<table>` the Iceberg table, one
-    /// `GetTableMetadataLocation` after the one `ListTableBuckets` per page
-    /// that finds the bucket where neither a `warehouse` property nor
-    /// `account_id` states its ARN - under the properties the bucket's
-    /// catalog reads ([`Catalog::from_url`](crate::Catalog::from_url)); a
-    /// trailing slash names nothing, and more than a namespace and a table
-    /// below the bucket is refused at `$.url`. An ARN of that service is
-    /// read as the ARN rather than as the location it locates: a table
-    /// bucket's is the catalog, its region and account kept, and a table's -
-    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
-    /// is the table that identifier is, at one `GetTable`, since the
-    /// location it lowers to spells the identifier where a namespace goes.
+    /// `GetTableMetadataLocation` - after one `ListTableBuckets` per page
+    /// where neither a `warehouse` property nor `account_id` states the
+    /// bucket's ARN. A trailing slash names nothing and deeper paths are
+    /// refused at `$.url`. An ARN of that service is read as itself: a table
+    /// bucket's is the catalog, a table's the table, at one `GetTable`.
     ///
     /// Two properties are read here whatever the byte backend: `media_type`
     /// (or `mime_type`, `content_type`) declares what the bytes are, and
@@ -413,13 +407,11 @@ impl Holder {
     }
 
     /// Whether `name` is a property the backend `url` selects reads for
-    /// itself - who signs, where the store is, how it is addressed - rather
-    /// than one it leaves to the object it holds: the object store options'
-    /// under `s3`, the HTTP options' under `http`, and none for a local
-    /// path, which opens under nothing. The two names [`Self::from_url`]
-    /// reads whatever the backend, `media_type` and `codec`, describe the
-    /// bytes and are not the backend's own. An Iceberg table opened by its
-    /// location states its properties less these.
+    /// itself - who signs, where the store is, how it is addressed: the
+    /// object store options' under `s3`, the HTTP options' under `http`, none
+    /// for a local path. `media_type` and `codec` describe the bytes and are
+    /// no backend's. An Iceberg table opened by its location states its
+    /// properties less these.
     #[cfg(feature = "iceberg")]
     #[cfg_attr(not(any(feature = "s3", feature = "http")), allow(unused_variables))]
     pub(crate) fn is_backend_property(url: &Url, name: &str) -> bool {

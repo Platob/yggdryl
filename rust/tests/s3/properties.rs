@@ -703,10 +703,9 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
 fn the_sweep_reads_no_endpoint_under_any_prefix_and_no_name_the_session_reads_in_any_case() {
     use yggdryl::internals::s3_properties::swept;
 
-    // Where a store is, the environment says through that store's own reader
-    // alone: a swept endpoint would address every store, over the URL, over
+    // A swept endpoint would address every store, over the URL, over
     // `AWS_ENDPOINT_URL_S3` and past `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`.
-    let variables: Vec<(String, String)> = [
+    let variables = [
         ("AWS_ENDPOINT", "http://aws-endpoint.local"),
         ("AWS_S3_ENDPOINT", "http://aws-s3-endpoint.local"),
         ("AWS_S3_ENDPOINT_URL", "http://aws-s3-endpoint-url.local"),
@@ -746,11 +745,8 @@ fn the_sweep_reads_no_endpoint_under_any_prefix_and_no_name_the_session_reads_in
         // Knobs the sweep does read.
         ("AWS_S3_FORCE_PATH_STYLE", "true"),
         ("YGGDRYL_SSE_TYPE", "AES256"),
-    ]
-    .iter()
-    .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-    .collect();
-    let found = swept(&S3Options::default(), variables);
+    ];
+    let found = swept(&S3Options::default(), &variables);
     assert_eq!(
         found,
         [
@@ -797,40 +793,23 @@ fn aws_endpoint_url_sts_is_where_a_role_is_traded_whatever_a_swept_sts_endpoint_
     use yggdryl::internals::s3_properties::swept;
 
     // The process holds the service's own variable beside names the sweep
-    // once read as a stated `sts_endpoint` - which outranks every configured
-    // endpoint and survives the ignore flag - each pointing at a loopback
-    // port nothing listens on. The options are what a client builds off that
-    // process: the sweep's knobs, then the session reading the variables.
-    //
-    // The session is in a region no AWS partition publishes a host for, so a
-    // session that read no STS endpoint at all would ask
-    // `sts.zz-nowhere-1.amazonaws.com`, a name that resolves to nothing, and
-    // fail here rather than send the fixture's keys to STS.
+    // once read as a stated `sts_endpoint`, each a decoy; the options are
+    // what a client builds off that process - the sweep's knobs, then the
+    // session reading the variables.
     let store = crate::mod_::store();
     store.put(crate::mod_::BUCKET, "lake/part.parquet", b"PAR1");
-    let (sts, decoy) = (store.endpoint(), {
-        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
-        let address = listener.local_addr().expect("a bound address");
-        drop(listener);
-        format!("http://{address}")
-    });
+    let (sts, decoy) = (store.endpoint(), crate::mod_::nowhere());
     let variables = [
         ("AWS_ENDPOINT_URL_STS", sts.as_str()),
         ("AWS_STS_ENDPOINT", decoy.as_str()),
         ("YGGDRYL_STS_ENDPOINT", decoy.as_str()),
         ("YGGDRYL_ROLE_STS_ENDPOINT", decoy.as_str()),
-        ("AWS_REGION", "zz-nowhere-1"),
+        ("AWS_REGION", crate::mod_::NOWHERE_REGION),
         ("AWS_PROFILE", "trader"),
     ];
     let ambient = S3Options::default()
         .with_environment_prefixes(std::iter::empty::<String>())
-        .with_properties(swept(
-            &S3Options::default(),
-            variables
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-                .collect(),
-        ))
+        .with_properties(swept(&S3Options::default(), &variables))
         .expect("readable properties");
     let directory =
         std::env::temp_dir().join(format!("yggdryl-s3-swept-sts-{}", std::process::id()));

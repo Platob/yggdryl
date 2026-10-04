@@ -107,11 +107,6 @@ fn code_order(kind: &IdType) -> Option<char> {
     kind.fix_security_source().filter(|_| *kind != IdType::Isin)
 }
 
-/// The later of two instants, an undated one the oldest.
-fn later(left: Option<i64>, right: Option<i64>) -> Option<i64> {
-    left.max(right)
-}
-
 /// One instrument: its ISIN and everything it is known by.
 ///
 /// The row of an [`IsinRegistry`]: `isin`, `updunix` - when the statement
@@ -739,7 +734,8 @@ fn folded(row: &IsinEntry, statement: &Statement<'_>) -> Option<IsinEntry> {
     match next {
         Cow::Borrowed(_) => None,
         Cow::Owned(mut entry) => {
-            entry.updunix = later(row.updunix, statement.updunix);
+            // The later instant; an undated one is the oldest.
+            entry.updunix = row.updunix.max(statement.updunix);
             Some(entry)
         }
     }
@@ -802,15 +798,10 @@ impl IsinTable {
     /// The row the ticker `ticker` names on `market`
     /// ([`IsinRegistry::get_by_ticker`]).
     pub(crate) fn get_by_ticker(&self, ticker: &str, market: Option<&Mic>) -> Option<&IsinEntry> {
-        let market = market.filter(|code| !code.is_none());
         let mut found = None;
         for isin in self.tickers.get(ticker.trim())? {
             let row = self.rows.get(isin)?;
-            let listed = match (market, &row.miccode) {
-                (Some(stated), Some(held)) => stated == held,
-                _ => true,
-            };
-            if listed {
+            if Self::listed_on(row, market) {
                 if found.is_some() {
                     return None;
                 }
@@ -830,6 +821,21 @@ impl IsinTable {
         self.rows.is_empty()
     }
 
+    /// The rows as a stream under [`IsinEntry::field`], in ISIN order, laid
+    /// out one bounded batch at a time; a later write does not move it.
+    fn snapshot(&self) -> crate::arrow::Result<BatchReader> {
+        crate::arrow::rows::reader(
+            &FIELD,
+            Snapshot {
+                rows: Arc::clone(&self.rows),
+                after: None,
+            },
+            None,
+            None,
+            None,
+        )
+    }
+
     /// The row `element` names, and whether its ISIN is derived from it: the
     /// row of its real ISIN - stated or derived - a miss ending the fill;
     /// else the row its ticker names on its market, whose ISIN is derived
@@ -838,23 +844,17 @@ impl IsinTable {
         let ids = element.get_securityids();
         match ids.get(&IdType::Isin) {
             Some(isin) if IdType::Isin.is_real(isin) => self.rows.get(isin).map(|row| (row, false)),
-            _ => {
-                let market = element.get_miccode().filter(|code| !code.is_none());
-                element
-                    .get_ticker()
-                    .and_then(|ticker| self.get_by_ticker(ticker, market))
-                    .map(|row| (row, true))
-            }
+            _ => element
+                .get_ticker()
+                .and_then(|ticker| self.get_by_ticker(ticker, element.get_miccode()))
+                .map(|row| (row, true)),
         }
     }
 
-    /// Whether `element`'s market is `row`'s: both stated and equal, or
-    /// either unstated - none and `XXXX` unstated.
-    fn same_market<E: Market + ?Sized>(row: &IsinEntry, element: &E) -> bool {
-        match (
-            element.get_miccode().filter(|code| !code.is_none()),
-            &row.miccode,
-        ) {
+    /// Whether `row` is listed on `market`: both stated and equal, or either
+    /// unstated - none and `XXXX` unstated.
+    fn listed_on(row: &IsinEntry, market: Option<&Mic>) -> bool {
+        match (market.filter(|code| !code.is_none()), &row.miccode) {
             (Some(stated), Some(held)) => stated == held,
             _ => true,
         }
@@ -897,7 +897,7 @@ impl IsinTable {
         let Some((row, derived)) = self.row_of(element) else {
             return false;
         };
-        let same_market = Self::same_market(row, element);
+        let same_market = Self::listed_on(row, element.get_miccode());
         Self::derive_into(row, derived, same_market, element)
     }
 
@@ -911,14 +911,9 @@ impl IsinTable {
         let Some((row, derived)) = self.row_of(element) else {
             return false;
         };
-        let same_market = Self::same_market(row, element);
-        let markets_equal = match (
-            element.get_miccode().filter(|code| !code.is_none()),
-            &row.miccode,
-        ) {
-            (Some(stated), Some(held)) => stated == held,
-            _ => false,
-        };
+        let market = element.get_miccode().filter(|code| !code.is_none());
+        let same_market = Self::listed_on(row, market);
+        let markets_equal = same_market && market.is_some() && row.miccode.is_some();
         let mut moved = Self::derive_into(row, derived, same_market, element);
         if same_market
             && element.get_ticker().is_none()
@@ -1284,18 +1279,21 @@ impl IsinRegistry {
     }
 
     /// Fills what `element` leaves unsaid about its instrument from the row
-    /// its real ISIN - stated or derived - names, a miss ending the fill,
-    /// else the row its ticker names on its market
-    /// ([`Self::get_by_ticker`]), whose ISIN is derived first - over none,
-    /// or over a number ranking below it, a masked one or a typo: each
-    /// equivalent of a type it holds none of as a derived identifier, the
-    /// listing codes only where its market - none and `XXXX` unstated - is
-    /// the row's or either is unstated, the pair, the ticker on the same
-    /// market, its CFI code where it states none or the row's refines it,
-    /// and the currency only where both markets are stated and equal, the
-    /// ticker is the row's and it states none. The element is finalized
-    /// where anything moved, and nothing is built where nothing is filled.
-    /// Whether anything moved.
+    /// its real ISIN names - stated or derived, a miss ending the fill -
+    /// else from the row its ticker names on its market
+    /// ([`Self::get_by_ticker`]), whose ISIN is derived first over none or
+    /// over a number ranking below it (a masked one, a typo):
+    ///
+    /// - each equivalent of a type it holds none of, as a derived
+    ///   identifier - a listing code only where the markets agree or either
+    ///   is unstated (`XXXX` counts as unstated) - and the pair;
+    /// - the ticker, on the same market;
+    /// - the CFI code where it states none or the row's refines it;
+    /// - the currency only where both markets are stated and equal, the
+    ///   ticker is the row's and it states none.
+    ///
+    /// The element is finalized where anything moved, and nothing is built
+    /// where nothing is filled. Whether anything moved.
     pub fn fill<E: Market + Element + ?Sized>(&self, element: &mut E) -> bool {
         let moved = self.table.fill_unsettled(element);
         if moved {
@@ -1466,16 +1464,7 @@ impl IsinRegistry {
     ///
     /// What laying the rows out refuses, which no registry value causes.
     pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader> {
-        crate::arrow::rows::reader(
-            &FIELD,
-            Snapshot {
-                rows: Arc::clone(&self.table.rows),
-                after: None,
-            },
-            None,
-            None,
-            None,
-        )
+        self.table.snapshot()
     }
 }
 

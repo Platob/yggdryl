@@ -113,15 +113,10 @@ type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<St
 /// The core's one dispatcher decides: an `http` or `https` URL is the request
 /// that reads and writes the resource, an object-store URL the native store,
 /// a `file:` URL whose fragment names an archive member that member, an
-/// `s3tables:` URL the catalog, the namespace or the table it names in its
-/// table bucket, anything else local - and a scheme no backend speaks is
-/// refused by that scheme. An identifier crosses as it was named and the
-/// core locates it, so an ARN that states more than its location - a
-/// table's, in a table bucket - is read whole. Construction touches nothing
-/// but a table bucket's table, sent here under no properties: a table's ARN
-/// one `GetTable`, a location one `GetTableMetadataLocation` after the one
-/// `ListTableBuckets` per page that finds the bucket, since nothing states
-/// its ARN or account.
+/// `s3tables:` URL the catalog, the namespace or the table it names,
+/// anything else local - and a scheme no backend speaks is refused by that
+/// scheme. Construction touches nothing but an S3 Tables table, sent here
+/// under no properties, which its service describes.
 fn local_holder(location: impl AsRef<yggdryl::Uri>) -> Result<Holder> {
     Holder::from_url(location, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
 }
@@ -191,14 +186,9 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
 }
 
 /// Reduce one location argument to the handle it is, or the identifier it
-/// names - as it was named, never lowered to the location it locates: a door
-/// that reads more off an identifier than where it is - a table's ARN, in a
-/// table bucket - locates it itself.
-///
-/// Text is read as the core reads any identifier: a Windows drive, a UNC
-/// share and a scheme-less path are a `file:` identifier, and text naming a
-/// resource rather than a place is that name, so there is nothing to sniff
-/// here.
+/// names as named, never lowered to its location: a door that reads more
+/// off an identifier - a table's ARN - locates it itself. Text is read as
+/// the core reads any identifier, so there is nothing to sniff here.
 fn identifier_target(
     value: LocationInput<'_>,
 ) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Uri>> {
@@ -232,8 +222,7 @@ pub(crate) fn location_target(
 ///
 /// What [`folder_from_input`] is for a container, this is for a leaf: a
 /// `.cfb` is a file, and a location held as a container reads as its leaves
-/// end to end, which is no one document. The identifier crosses as named,
-/// and the core's one dispatcher locates it.
+/// end to end, which is no one document.
 pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
     match identifier_target(value)? {
         Either::A(handle) => handle.rebuilt().map(|held| held.inner),
@@ -290,9 +279,8 @@ fn folder_of_handle(handle: &JsIOBase) -> Result<Holder> {
     folder_holder_for(url)
 }
 
-/// What a table door's `root` names: a handle in hand, taken as the
-/// container it addresses, or the identifier of the table's location as it
-/// was named, which the core opens by itself.
+/// A table door's `root`: a handle, as the container it addresses, or the
+/// location as named, which the core opens.
 pub(crate) fn table_root_from_input(
     value: LocationInput<'_>,
 ) -> Result<Either<Holder, yggdryl::Uri>> {
@@ -645,8 +633,8 @@ impl JsIOBase {
     /// `Arn` - naming a location, or another handle. A name is resolved the
     /// way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
     /// opens the path that name spells. Per the laziness contract, nothing is
-    /// opened, created, or read here - but a table an Amazon S3 Tables table
-    /// bucket keeps, which its service describes at construction.
+    /// opened, created, or read here - but an S3 Tables table, which its
+    /// service describes.
     ///
     /// An Arrow file system handler as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
@@ -1803,8 +1791,7 @@ impl JsIOBase {
     /// and names the intent; absent options are the handle's own, resolved
     /// by the core, and options declaring no field take the rows' own root,
     /// as every other record write does. A structured text document takes
-    /// overwrite alone, and of the options the declared field alone. Answers
-    /// the rows the write read, wrote and skipped.
+    /// overwrite alone, and of the options the declared field alone.
     #[napi(js_name = "_writeSerieNative", skip_typescript)]
     pub fn write_serie_native(
         &mut self,
@@ -1868,8 +1855,8 @@ impl JsIOBase {
     ///
     /// This is the native-reader publication hook. The incoming stream is cast
     /// to `options.field` once in the core, and a match key is refused because
-    /// overwrite never infers merge intent. Answers the rows the write read,
-    /// wrote and skipped.
+    /// overwrite never infers merge intent. Every record write answers its
+    /// `IOResult`.
     #[napi]
     pub fn overwrite_arrow_reader(
         &mut self,
@@ -1890,7 +1877,6 @@ impl JsIOBase {
     ///
     /// Both sides stream: what is stored is chained ahead of what arrives, and
     /// incoming batches are cast to the target shape as they are pulled.
-    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn append_arrow_reader(
         &mut self,
@@ -1912,7 +1898,6 @@ impl JsIOBase {
     /// A non-empty match key is required. The core keeps the incoming reader
     /// streaming, applies `options.field` once, and publishes through the
     /// implementor's overwrite hook without casting the shaped rows twice.
-    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn merge_arrow_reader(
         &mut self,
@@ -1977,7 +1962,7 @@ impl JsIOBase {
     }
 
     /// Publish the final partial cadence and close the private session,
-    /// answering the rows every pushed chunk carried and the rows written.
+    /// answering the `IOResult` of every chunk pushed.
     #[napi(js_name = "_finishArrowWriteSessionNative", skip_typescript)]
     pub fn finish_arrow_write_session(
         &mut self,

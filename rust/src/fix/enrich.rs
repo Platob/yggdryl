@@ -61,16 +61,14 @@
 //!
 //! # A parse reads the instrument table its door fixed
 //!
-//! Beside the dictionary, a parse depends on one more piece of reference
-//! data: the [`IsinTable`] the door fixed once, on the thread that opened
-//! it, from the registry the codec shares. Every message of one reading
-//! fills from that one table, no worker reaches the registry's lock, and a
-//! learn while the reading runs reaches no message of it. What a parse
-//! takes from the table is derived security identifiers only - the ISIN a
-//! ticker names on its market, every equivalent, the pair - which reach no
-//! field, no wire and no digest: a message's identity is the same with and
-//! without a table. Learning, and the market facts a row fills - the
-//! ticker, the CFI code, the currency - are the lifecycle's ([`Codes`]).
+//! Beside the dictionary, a parse reads one more piece of reference data:
+//! the [`IsinTable`] its door took once from the registry the codec shares,
+//! so no worker reaches the registry's lock and a learn while the reading
+//! runs reaches no message of it. A parse takes derived security
+//! identifiers only - the ISIN a ticker names on its market, every
+//! equivalent, the pair - which reach no field, wire or digest: a message's
+//! identity is the same with and without a table. Learning, and the ticker,
+//! CFI code and currency a row fills, are the lifecycle's ([`Codes`]).
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -384,10 +382,9 @@ fn merge_session_events(messages: Vec<FixMsg>) -> Vec<FixMsg> {
 /// content the rebuild refuses to merge folds its clocks, its anomalies and
 /// its provenance alone, beside a warning.
 ///
-/// Each fold settles the facts it moved and none stamps the identity: no
-/// fold reads the reference's code or identity, which are a function of
-/// its facts, so the reference is stamped once, after the last fold that
-/// moved anything - the identity stamping at every fold would have left.
+/// Each fold settles the facts it moved and none stamps the identity - a
+/// function of the facts, which no fold reads: the reference is stamped
+/// once, after the last fold that moved anything.
 fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     if held.others.is_empty() {
         return held.message;
@@ -706,16 +703,11 @@ enum Codes {
 }
 
 impl Codes {
-    /// Learns what `message` states about its instrument - its country of
-    /// issue beside it, where it states one its ISIN does not already say
-    /// ([`FixMsg::stated_country`]) - then fills what it left unstated
-    /// ([`FixMsg::fill_instrument`]): the identifiers, the ticker, the CFI
-    /// code and the currency, settled no further than the market facts
-    /// they imply, since a parsed message is already clean and nothing a
-    /// fill writes reaches its identity. The one lock is held across the
-    /// learn and the fill, and the warning a full registry owes is raised
-    /// once it is let go of: the host a warning reaches may be waiting on
-    /// that very lock.
+    /// Learns what `message` states about its instrument, its country of
+    /// issue included ([`FixMsg::stated_country`]), then fills what it left
+    /// unstated ([`FixMsg::fill_instrument`]). The one lock is held across
+    /// both, and a full registry's warning is raised once it is let go of:
+    /// the host a warning reaches may be waiting on that very lock.
     fn learn_and_fill(&mut self, message: &mut FixMsg) {
         let country = message.stated_country();
         let full = match self {

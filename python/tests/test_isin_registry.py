@@ -207,8 +207,7 @@ def test_a_registry_commits_to_its_store_only_where_it_moved(tmp_path: pathlib.P
     assert registry.commit() == IOResult(0, 0), "a clean registry writes nothing"
     assert registry.merge({"isin": HOLCIM, "ric": "HOLN.S"})
     assert registry.is_dirty
-    result = registry.commit()
-    assert isinstance(result, IOResult) and result.written_rows == 1
+    assert registry.commit().written_rows == 1
     assert not registry.is_dirty
     assert (tmp_path / "isin" / "part-0.arrows").is_file()
     assert registry.commit().written_rows == 0, "a second commit writes nothing"
@@ -254,6 +253,7 @@ def test_a_codec_shares_the_callers_registry_with_every_lifecycle_and_every_pars
 def test_the_process_registry_is_the_sealed_store_and_the_codec_the_environment_names_shares_it() -> None:
     # The suite's conftest points `YGGDRYL_ISIN_REGISTRY_URI` at a session
     # folder before anything resolves the default.
+    assert "YGGDRYL_ISIN_REGISTRY_URI" in os.environ, "the suite seals the default"
     default = IsinRegistry.from_env()
     assert default == IsinRegistry.from_env(), "resolved once"
     assert not default.is_dirty
@@ -264,7 +264,6 @@ def test_the_process_registry_is_the_sealed_store_and_the_codec_the_environment_
     assert FixCodec(FixRegistry.from_env()).isin_registry is None, "a codec built by hand attaches none"
     with pytest.raises(ValueError, match="already resolved"):
         IsinRegistry.install_env(IsinRegistry())
-    assert "YGGDRYL_ISIN_REGISTRY_URI" in os.environ, "the suite seals the default"
 
 
 def test_a_registry_is_equal_only_to_itself_and_never_hashed_or_pickled() -> None:

@@ -1,8 +1,13 @@
 //! `rust/src/http/request.rs`: the builders, the wire form, the body, and
 //! every row of the cost table over the loopback server.
 
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use yggdryl::holder::{Buffer, Holder};
-use yggdryl::http::{Body, HttpOptions, Method, Pagination, Request, Session, parse_http_date};
+use yggdryl::http::{
+    Body, Headers, HttpOptions, Method, Pagination, Request, Session, parse_http_date,
+};
 use yggdryl::media::RecordOptions;
 use yggdryl::{
     DigestAlgorithm, Error, IOBase, IOKind, IOMedia, MediaType, MimeType, Scalar, Serie, Url,
@@ -138,8 +143,6 @@ fn a_body_is_held_whole_and_spelled_in_its_shape() {
 
 #[test]
 fn the_attempt_knobs_are_read_back_and_cost_nothing() {
-    use std::time::Duration;
-
     let session = Session::new();
     let plain = session.get("http://127.0.0.1:1/token").unwrap();
     assert_eq!(plain.idempotent(), None);
@@ -159,7 +162,7 @@ fn the_attempt_knobs_are_read_back_and_cost_nothing() {
         .with_connect_timeout(Duration::from_millis(250))
         .with_deadline(Duration::from_secs(2))
         .with_direct(true)
-        .with_attempt_headers(|_| Ok(yggdryl::http::Headers::new()))
+        .with_attempt_headers(|_| Ok(Headers::new()))
         .with_retry_on(|status, _, _| status.code() == 400);
     assert_eq!(request.idempotent(), Some(true));
     assert_eq!(request.max_attempts(), Some(1), "zero attempts is one");
@@ -194,7 +197,7 @@ fn a_streamed_body_is_never_retried_however_the_request_is_declared() {
         .with_attempt_headers(|attempt| {
             // A body read from the caller's reader cannot be shown: the
             // attempt says it is streamed, and shows none.
-            let mut headers = yggdryl::http::Headers::new();
+            let mut headers = Headers::new();
             headers.insert("x-attempt", &attempt.number().to_string())?;
             headers.insert("x-streamed", &attempt.is_streamed().to_string())?;
             headers.insert("x-body", &format!("{:?}", attempt.body()))?;
@@ -218,8 +221,8 @@ fn an_attempt_shows_its_hook_the_body_that_goes_out_and_its_debug_no_header_valu
     let server = HttpServer::start();
     server.echo("/sign");
     let session = Session::new();
-    let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-    let rendered = std::sync::Arc::clone(&seen);
+    let seen = Arc::new(Mutex::new(String::new()));
+    let rendered = Arc::clone(&seen);
     let response = session
         .post(&server.url("/sign"), "payload")
         .unwrap()
@@ -227,7 +230,7 @@ fn an_attempt_shows_its_hook_the_body_that_goes_out_and_its_debug_no_header_valu
         .unwrap()
         .with_attempt_headers(move |attempt| {
             *rendered.lock().unwrap() = format!("{attempt:?}");
-            let mut headers = yggdryl::http::Headers::new();
+            let mut headers = Headers::new();
             // What a signature covers: the bytes that go out.
             let body = attempt.body().expect("the body in hand");
             headers.insert("x-body-len", &body.len().to_string())?;

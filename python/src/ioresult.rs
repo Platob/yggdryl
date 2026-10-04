@@ -1,11 +1,5 @@
-//! Python's native view of the shared [`IOResult`]: the rows one record
-//! write read, wrote and skipped.
-//!
-//! [`PyIOResult`] owns only the core value and is immutable, so it compares,
-//! orders, hashes and pickles by the three counts the core's equality reads.
-//! Every number is the core's: the constructor is [`IOResult::new`], or the
-//! value's own three fields where all three are stated, `+` is its `Add`,
-//! `str` its `Display`.
+//! Python's view of the core [`IOResult`]: immutable, compared, hashed and
+//! pickled by its three counts; `+` is the core's `Add`, `str` its `Display`.
 
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
@@ -13,12 +7,9 @@ use yggdryl::IOResult;
 
 use crate::{compare, python_hash};
 
-/// The rows one record write read, wrote and skipped. Immutable.
-///
-/// Every record write of an `IOBase` answers one: `read_rows` is what the
-/// write pulled from its source, `written_rows` what reached the
-/// destination, `skipped_rows` what was read and not written - the rows a
-/// `where` kept out, the part of the last batch a bound cut off.
+/// The rows one record write read, wrote and skipped - what a `where` kept
+/// out, or a bound cut off. A write cut into several commits answers their
+/// sum. Immutable.
 #[pyclass(
     name = "IOResult",
     module = "yggdryl._native",
@@ -40,11 +31,9 @@ impl PyIOResult {
 
 #[pymethods]
 impl PyIOResult {
-    /// The result of a write that read `read_rows` and wrote
-    /// `written_rows`, the rest of what it read skipped - or, where
-    /// `skipped_rows` is stated, the three counts as they are: a sum of
-    /// results states its own skipped rows, which `read_rows - written_rows`
-    /// need not be, and this is what `repr`, pickle and copy rebuild from.
+    /// `skipped_rows` omitted is the read rows the write did not write,
+    /// never below zero; stated, the three counts are taken as they are - a
+    /// sum's own, which `repr` and pickle rebuild.
     #[new]
     #[pyo3(signature = (read_rows = 0, written_rows = 0, skipped_rows = None))]
     const fn new(read_rows: u64, written_rows: u64, skipped_rows: Option<u64>) -> Self {
@@ -86,8 +75,7 @@ impl PyIOResult {
         self.inner.stable_hash()
     }
 
-    /// The two results summed count by count, as one write cut into several
-    /// commits answers.
+    /// The two results summed count by count.
     fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let py = other.py();
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {

@@ -403,37 +403,59 @@ mod grammar {
         }
     }
 
-    /// The partition instant a table root declares: `partunix` derived from
-    /// `currunix` by `time_bucket`, filled where it arrives absent or wholly
-    /// null and left alone where any row of it was written.
-    #[test]
-    fn a_time_bucket_term_fills_the_partition_instant_from_currunix() {
-        use yggdryl::{ArrowCastOptions, Serie};
-
+    /// `(root, rows_only)`: a root of `currunix` and `partunix`, the
+    /// partition instant derived by `time_bucket`, and the root of
+    /// `currunix` alone.
+    fn partunix_roots() -> (Field, Field) {
         let ns = DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
         };
-        let term = "time_bucket('15 minutes', currunix)";
         let mut partunix = ns.clone().nullable_field("partunix");
         partunix
             .as_transform_mut()
-            .set_term(&term.parse().unwrap())
+            .set_term(&"time_bucket('15 minutes', currunix)".parse().unwrap())
             .unwrap();
-        // A literal argument keeps the whole term under `expression`.
-        assert_eq!(partunix.get_metadata("TRANSFORM:expression"), Some(term));
-        assert_eq!(partunix.get_metadata("TRANSFORM:function"), None);
         let root = DataType::from(
             StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
         )
         .required_field("row");
-        let rows_only = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
-        )
-        .required_field("row");
+        let rows_only =
+            DataType::from(StructType::from_fields([ns.required_field("currunix")]).unwrap())
+                .required_field("row");
+        (root, rows_only)
+    }
 
-        let nanos =
-            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    fn nanos(count: i64) -> Scalar {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    }
+
+    /// Rows of `root`, one per item, as one batch.
+    fn rows_batch(
+        root: &Field,
+        rows: impl IntoIterator<Item = Scalar>,
+    ) -> arrow_array::RecordBatch {
+        yggdryl::Serie::from_scalars(root.clone(), rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+    }
+
+    /// `partunix` filled where it arrives absent or wholly null, and left
+    /// alone where any row of it was written.
+    #[test]
+    fn a_time_bucket_term_fills_the_partition_instant_from_currunix() {
+        use yggdryl::{ArrowCastOptions, Serie};
+
+        let (root, rows_only) = partunix_roots();
+        // A literal argument keeps the whole term under `expression`.
+        let partunix = &root.fields()[1];
+        assert_eq!(
+            partunix.get_metadata("TRANSFORM:expression"),
+            Some("time_bucket('15 minutes', currunix)")
+        );
+        assert_eq!(partunix.get_metadata("TRANSFORM:function"), None);
+
         let instants = [
             899_999_999_999_i64,
             900_000_000_000,
@@ -457,47 +479,36 @@ mod grammar {
         let expected: Vec<Scalar> = floored.iter().map(|count| nanos(*count)).collect();
 
         // Absent: the rows carry `currunix` alone.
-        let absent = Serie::from_scalars(
-            rows_only.clone(),
+        let absent = rows_batch(
+            &rows_only,
             instants
                 .iter()
                 .map(|count| Scalar::from_sequence([nanos(*count)])),
-        )
-        .unwrap()
-        .into_arrow_batch()
-        .unwrap();
+        );
         assert_eq!(partunix_of(&absent), expected);
 
         // Present and null in every row: the declaration's default, filled.
-        let nulls = Serie::from_scalars(
-            root.clone(),
+        let nulls = rows_batch(
+            &root,
             instants
                 .iter()
                 .map(|count| Scalar::from_sequence([nanos(*count), Scalar::Null])),
-        )
-        .unwrap()
-        .into_arrow_batch()
-        .unwrap();
+        );
         assert_eq!(partunix_of(&nulls), expected);
 
         // Written in any row: the column is the caller's, left as it came,
         // its null rows included.
-        let written = Serie::from_scalars(
-            root.clone(),
+        let written = rows_batch(
+            &root,
             instants.iter().enumerate().map(|(position, count)| {
-                Scalar::from_sequence([
-                    nanos(*count),
-                    if position == 0 {
-                        nanos(7)
-                    } else {
-                        Scalar::Null
-                    },
-                ])
+                let partunix = if position == 0 {
+                    nanos(7)
+                } else {
+                    Scalar::Null
+                };
+                Scalar::from_sequence([nanos(*count), partunix])
             }),
-        )
-        .unwrap()
-        .into_arrow_batch()
-        .unwrap();
+        );
         assert_eq!(
             partunix_of(&written),
             vec![nanos(7), Scalar::Null, Scalar::Null, Scalar::Null]
@@ -509,35 +520,14 @@ mod grammar {
         use arrow_array::RecordBatchReader as _;
         use yggdryl::{ArrowCastOptions, Serie};
 
-        let ns = DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        };
-        let mut partunix = ns.clone().nullable_field("partunix");
-        partunix
-            .as_transform_mut()
-            .set_term(&"time_bucket('15 minutes', currunix)".parse().unwrap())
-            .unwrap();
-        let root = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix"), partunix]).unwrap(),
-        )
-        .required_field("row");
-        let rows_only = DataType::from(
-            StructType::from_fields([ns.clone().required_field("currunix")]).unwrap(),
-        )
-        .required_field("row");
-        let nanos =
-            |count: i64| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let (root, rows_only) = partunix_roots();
         let batch = |counts: &[i64]| {
-            Serie::from_scalars(
-                rows_only.clone(),
+            rows_batch(
+                &rows_only,
                 counts
                     .iter()
                     .map(|count| Scalar::from_sequence([nanos(*count)])),
             )
-            .unwrap()
-            .into_arrow_batch()
-            .unwrap()
         };
 
         // Two batches of one layout: the derived column is in the reader's
@@ -579,16 +569,13 @@ mod grammar {
 
         // Rows that cannot answer the term are refused before a batch is
         // pulled, naming the column the term reads.
-        let other = Serie::from_scalars(
-            DataType::from(
+        let other = rows_batch(
+            &DataType::from(
                 StructType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
             )
             .required_field("row"),
             [Scalar::from_sequence([Scalar::from(1_i64)])],
-        )
-        .unwrap()
-        .into_arrow_batch()
-        .unwrap();
+        );
         let reader = yggdryl::arrow::batch_reader(other.schema(), [other]);
         let Err(error) = root.as_transform().apply_arrow_reader(reader) else {
             panic!("a stream without the term's column was filled");

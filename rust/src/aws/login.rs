@@ -31,7 +31,7 @@ use serde_json::{Map, Value};
 
 use super::credentials::Credentials;
 use crate::auth::lease::lapses_within;
-use crate::auth::{Secret, instant, iso8601, write_private};
+use crate::auth::{Secret, instant, iso8601, refusal, write_private};
 use crate::{Error, Result};
 
 /// A cached set lapsing within this is refreshed: the window the AWS tools
@@ -72,13 +72,10 @@ const SCALAR_LEN: usize = 32;
 const POINT_LEN: usize = 1 + 2 * SCALAR_LEN;
 
 /// The Sign-In service a sign-in made in `region` is refreshed at, as the
-/// service's endpoint rules spell it for an operation that is not the
-/// control plane's: `{region}.signin.<partition host>`; under FIPS
-/// `signin-fips.{region}.<dns suffix>`, but `signin-fips.amazonaws-us-gov.com`
-/// for `us-gov-west-1` and `{region}.signin-fips.amazonaws-us-gov.com` for
-/// the rest of GovCloud; dual-stack `signin.{region}.<dual-stack suffix>`,
-/// and both `signin-fips.{region}.<dual-stack suffix>` - the suffixes the
-/// region's [`ArnPartition`](crate::ArnPartition) states.
+/// service's endpoint rules spell it: `{region}.signin.<partition host>`,
+/// the FIPS and dual-stack hosts on the suffixes the region's
+/// [`ArnPartition`](crate::ArnPartition) states, and GovCloud's FIPS hosts
+/// as that partition spells them.
 ///
 /// # Errors
 ///
@@ -149,15 +146,11 @@ pub(crate) fn cache_path(cache_directory: &Path, login_session: &str) -> PathBuf
     ))
 }
 
-/// The credential set the sign-in `login_session` names, as it stands at
-/// `now`: the cached set, with its expiry and its account, while it lasts
-/// beyond [`REFRESH_WINDOW`] and `is_refused` does not say a store refused
-/// its key; else the set a refresh at `endpoint` obtains, filed back in the
-/// cache under `cache_directory` before it is answered.
-///
-/// A refresh that fails while the cached set still stands answers that set
-/// and says why in the log, so no request is refused over a set the
-/// service still accepts; the session's lease decides when to try again.
+/// The credential set the sign-in `login_session` names at `now`: the
+/// cached set while it lasts beyond [`REFRESH_WINDOW`] and `is_refused`
+/// does not refuse its key; else the set a refresh at `endpoint` obtains,
+/// filed back in the cache first. A refresh that fails while the cached set
+/// still stands answers that set, logging why.
 ///
 /// # Errors
 ///
@@ -803,13 +796,6 @@ fn transport_failure(endpoint: &str, signin: Signin<'_>, error: &impl std::fmt::
     ))
 }
 
-fn refusal(message: String) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        message,
-    ))
-}
-
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
@@ -834,8 +820,7 @@ pub mod internals {
     ///
     /// # Errors
     ///
-    /// A region that is not one host label, or FIPS or dual-stack where no
-    /// host is spelled.
+    /// A region that is not one host label.
     pub fn endpoint(
         region: &str,
         fips: bool,
@@ -869,30 +854,6 @@ pub mod internals {
             login_session,
             profile,
             &|_| false,
-            now,
-        )
-    }
-
-    /// [`credentials`], with the store having refused the key `refused`.
-    ///
-    /// # Errors
-    ///
-    /// As [`credentials`].
-    pub fn credentials_refusing(
-        endpoint: &str,
-        cache_directory: &Path,
-        login_session: &str,
-        profile: &str,
-        refused: &str,
-        now: SystemTime,
-    ) -> Result<Credentials> {
-        super::credentials(
-            crate::aws::Session::new().with_environment(false).http()?,
-            endpoint,
-            cache_directory,
-            login_session,
-            profile,
-            &|key| key == refused,
             now,
         )
     }

@@ -1,17 +1,13 @@
-//! `rust/src/aws/login.rs`: the AWS Console sign-in `aws login` files -
-//! where the cache keeps it, what its document holds, the P-256 key its
-//! refresh token is bound to, the `DPoP` proof that key signs - and its
-//! refresh against the identity fake, which verifies every proof with its
-//! own decoding and its own ES256 check.
+//! `rust/src/aws/login.rs`: the `aws login` sign-in - its cache file, its
+//! document, the P-256 key its refresh token is bound to, the `DPoP` proof
+//! that key signs - and its refresh against the identity fake, which
+//! verifies every proof itself.
 //!
-//! No caller names any of it until a profile's `login_session` reaches it
-//! through `Session`, so the whole file reaches the crate through
-//! `yggdryl::internals::aws_login`. What a refresh logs is read through the
-//! crate's logging tree, installed as the `log` facade's backend.
+//! Only `Session` reaches any of it, so the file reaches the crate through
+//! `yggdryl::internals::aws_login`.
 
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
@@ -21,22 +17,16 @@ use yggdryl::aws::Credentials;
 use yggdryl::internals::aws_login::{
     REFRESH_WINDOW, cache_path, credentials, endpoint, jti, jwk, parse, proof,
 };
-use yggdryl::logging::{self, Handler, Level};
+use yggdryl::logging::Level;
 
 use crate::identity::{
-    Identity, LOGIN_ACCESS_KEY, LOGIN_EXPIRES_IN, LOGIN_REFRESH_TOKEN, LOGIN_SECRET_KEY,
-    LOGIN_SESSION_TOKEN, Recorded, iso8601,
+    Identity, LOGIN_ACCESS_KEY, LOGIN_ACCOUNT, LOGIN_CACHED_ACCESS_KEY, LOGIN_CACHED_ID_TOKEN,
+    LOGIN_CACHED_REFRESH_TOKEN, LOGIN_CACHED_SECRET, LOGIN_CACHED_SESSION_TOKEN, LOGIN_CLIENT,
+    LOGIN_EXPIRES_IN, LOGIN_KEY, LOGIN_REFRESH_TOKEN, LOGIN_SECRET_KEY, LOGIN_SESSION,
+    LOGIN_SESSION_KEY, LOGIN_SESSION_TOKEN, Recorded, iso8601, login_document, now_seconds,
 };
-use crate::logging::{Collect, Kept, serial};
-use crate::mod_::scratch;
+use crate::mod_::{Logged, scratch};
 
-/// The sign-in most tests file: the session aws-sdk-rust's own cache tests
-/// name.
-const SESSION: &str = "arn:aws:iam::0123456789012:user/Admin";
-/// `sha256(SESSION)`, the file `aws login` keeps it in: the name
-/// aws-sdk-rust's `determine_correct_cache_filenames` pins, which Python's
-/// `hashlib.sha256` answers too.
-const SESSION_KEY: &str = "36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726";
 /// The sign-in the tests reading the logging tree file, so no other test's
 /// record is taken for theirs; its file name pinned the same way.
 const OTHER_SESSION: &str = "arn:aws:iam::000000000000:user/PowerUser";
@@ -46,30 +36,16 @@ const PROFILE: &str = "console";
 const WAY_OUT: &str = "aws login --profile console";
 /// The logger the crate's records from `aws::login` reach.
 const LOGGER: &str = "yggdryl.aws.login";
-/// The client `aws login` signs in as.
-const CLIENT: &str = "arn:aws:signin:::devtools/same-device";
-/// The account the cached set names, which a refresh carries over.
-const ACCOUNT: &str = "012345678901";
-/// What the cache holds before a refresh.
-const CACHED_ACCESS_KEY: &str = "ASIACACHEDLOGIN";
-const CACHED_SECRET: &str = "cached-login-secret";
-const CACHED_SESSION_TOKEN: &str = "cached-login-session-token";
-const CACHED_REFRESH_TOKEN: &str = "cached-login-refresh-token";
-const CACHED_ID_TOKEN: &str = "cached-login-id-token";
-
-/// The SEC1 key aws-sdk-rust's login cache module documents as the one
-/// `aws login` files.
-const KEY: &str = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIFDZHUzOG1Pzq+6F0mjMlOSp1syN9LRPBuHMoCFXTcXhoAoGCCqGSM49\nAwEHoUQDQgAE9qhj+KtcdHj1kVgwxWWWw++tqoh7H7UHs7oXh8jBbgF47rrYGC+t\ndjiIaHK3dBvvdE7MGj5HsepzLm3Kj91bqA==\n-----END EC PRIVATE KEY-----\n";
-/// The JWK coordinates of `KEY`, computed outside this crate: OpenSSL 3.5.7
+/// The JWK coordinates of `LOGIN_KEY`, computed outside this crate: OpenSSL 3.5.7
 /// derived the point from the private scalar alone (`openssl ec -no_public`
 /// dropped the stated point, `openssl pkey -pubout` derived it again), and
 /// Python's `base64.urlsafe_b64encode`, padding stripped, spelled each
 /// coordinate.
 const KEY_X: &str = "9qhj-KtcdHj1kVgwxWWWw--tqoh7H7UHs7oXh8jBbgE";
 const KEY_Y: &str = "eO662BgvrXY4iGhyt3Qb73ROzBo-R7Hqcy5tyo_dW6g";
-/// `KEY` as PKCS#8 (`openssl pkcs8 -topk8 -nocrypt`).
+/// `LOGIN_KEY` as PKCS#8 (`openssl pkcs8 -topk8 -nocrypt`).
 const KEY_PKCS8: &str = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgUNkdTM4bU/Or7oXS\naMyU5KnWzI30tE8G4cygIVdNxeGhRANCAAT2qGP4q1x0ePWRWDDFZZbD762qiHsf\ntQezuheHyMFuAXjuutgYL612OIhocrd0G+90TswaPkex6nMubcqP3Vuo\n-----END PRIVATE KEY-----\n";
-/// `KEY` without its public point (`openssl ec -no_public`).
+/// `LOGIN_KEY` without its public point (`openssl ec -no_public`).
 const KEY_WITHOUT_POINT: &str = "-----BEGIN EC PRIVATE KEY-----\nMDECAQEEIFDZHUzOG1Pzq+6F0mjMlOSp1syN9LRPBuHMoCFXTcXhoAoGCCqGSM49\nAwEH\n-----END EC PRIVATE KEY-----\n";
 /// aws-sdk-rust's `DPoP` test key, and the coordinates its own test pins: a
 /// second outside implementation, the `p256` crate, computed them.
@@ -85,10 +61,10 @@ const SECP256K1_PKCS8: &str = "-----BEGIN PRIVATE KEY-----\nMIGEAgEAMBAGByqGSM49
 /// and its armour among them. No error, log line or `Debug` rendering
 /// carries one.
 const SECRETS: [&str; 9] = [
-    CACHED_SECRET,
-    CACHED_SESSION_TOKEN,
-    CACHED_REFRESH_TOKEN,
-    CACHED_ID_TOKEN,
+    LOGIN_CACHED_SECRET,
+    LOGIN_CACHED_SESSION_TOKEN,
+    LOGIN_CACHED_REFRESH_TOKEN,
+    LOGIN_CACHED_ID_TOKEN,
     LOGIN_SECRET_KEY,
     LOGIN_SESSION_TOKEN,
     LOGIN_REFRESH_TOKEN,
@@ -102,40 +78,12 @@ fn assert_no_secret(text: &str) {
     }
 }
 
-fn now_seconds() -> i64 {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("a clock after the epoch")
-        .as_secs();
-    i64::try_from(seconds).expect("a representable instant")
-}
-
 fn seconds_of(instant: SystemTime) -> i64 {
     let seconds = instant
         .duration_since(UNIX_EPOCH)
         .expect("an instant after the epoch")
         .as_secs();
     i64::try_from(seconds).expect("a representable instant")
-}
-
-/// A sign-in as `aws login` files it, its set lapsing `expires_in` seconds
-/// from now, beside a field no CLI writes yet.
-fn signed_in(expires_in: i64) -> Value {
-    json!({
-        "accessToken": {
-            "accessKeyId": CACHED_ACCESS_KEY,
-            "secretAccessKey": CACHED_SECRET,
-            "sessionToken": CACHED_SESSION_TOKEN,
-            "accountId": ACCOUNT,
-            "expiresAt": iso8601(now_seconds() + expires_in),
-        },
-        "tokenType": "aws_sigv4",
-        "refreshToken": CACHED_REFRESH_TOKEN,
-        "idToken": CACHED_ID_TOKEN,
-        "clientId": CLIENT,
-        "dpopKey": KEY,
-        "laterField": {"kept": true},
-    })
 }
 
 /// A cache directory of the test's own, and the file `key` names in it -
@@ -184,57 +132,13 @@ fn proof_of(request: &Recorded) -> (Value, Value) {
     (decode(header), decode(claims))
 }
 
-/// The header the proofs `KEY` signs carry.
+/// The header the proofs `LOGIN_KEY` signs carry.
 fn key_header() -> Value {
     json!({
         "typ": "dpop+jwt",
         "alg": "ES256",
         "jwk": {"kty": "EC", "x": KEY_X, "y": KEY_Y, "crv": "P-256"},
     })
-}
-
-/// The records the crate logs under `yggdryl.aws.login`, at `level` and
-/// above, while this is held. The tree is the process's, so this holds it.
-struct Logged {
-    collect: Arc<Collect>,
-    _tree: MutexGuard<'static, ()>,
-}
-
-impl Logged {
-    fn at(level: Level) -> Self {
-        let tree = serial();
-        // Nothing else in this binary configures the tree: a record nobody
-        // collects is dropped, as it was before the tree was installed,
-        // rather than written to standard error by the last resort.
-        logging::set_last_resort(None);
-        logging::install().expect("the tree is the facade's backend");
-        let logger = logging::get_logger(LOGGER);
-        logger.set_level(level);
-        let collect = Collect::shared();
-        logger.add_handler(collect.clone());
-        Self {
-            collect,
-            _tree: tree,
-        }
-    }
-
-    /// The records kept so far about the sign-in `session`.
-    fn about(&self, session: &str) -> Vec<Kept> {
-        self.collect
-            .take()
-            .into_iter()
-            .filter(|kept| kept.line.contains(session))
-            .collect()
-    }
-}
-
-impl Drop for Logged {
-    fn drop(&mut self) {
-        let logger = logging::get_logger(LOGGER);
-        let handler: Arc<dyn Handler> = self.collect.clone();
-        logger.remove_handler(&handler);
-        logger.set_level(Level::NOTSET);
-    }
 }
 
 /// An endpoint that accepts `times` connections and closes each unanswered.
@@ -252,10 +156,13 @@ fn hanging_up(times: usize) -> String {
 #[test]
 fn the_cache_file_is_the_sha256_of_the_session() {
     let directory = Path::new("cache");
-    let filed = directory.join(format!("{SESSION_KEY}.json"));
-    assert_eq!(cache_path(directory, SESSION), filed);
+    let filed = directory.join(format!("{LOGIN_SESSION_KEY}.json"));
+    assert_eq!(cache_path(directory, LOGIN_SESSION), filed);
     // The AWS tools trim a profile's value; the file is the trimmed session's.
-    assert_eq!(cache_path(directory, &format!("  {SESSION}\t")), filed);
+    assert_eq!(
+        cache_path(directory, &format!("  {LOGIN_SESSION}\t")),
+        filed
+    );
     assert_eq!(
         cache_path(directory, OTHER_SESSION),
         directory.join(format!("{OTHER_SESSION_KEY}.json"))
@@ -381,15 +288,17 @@ fn the_fips_and_dual_stack_hosts_are_the_rules_own_and_a_region_chooses_no_other
 }
 
 #[test]
-fn a_set_that_lasts_is_answered_with_no_request() {
+fn a_set_that_lasts_beyond_the_five_minute_window_is_answered_with_no_request() {
+    assert_eq!(REFRESH_WINDOW, Duration::from_secs(5 * 60));
     let identity = Identity::start();
-    let document = signed_in(3600);
-    let (directory, file) = filed("login-lasts", SESSION_KEY, &document);
+    // A minute beyond the window.
+    let document = login_document(360);
+    let (directory, file) = filed("login-lasts", LOGIN_SESSION_KEY, &document);
 
-    let found = sign(&identity, &directory, SESSION).expect("the cached set");
-    assert_eq!(found.access_key_id(), CACHED_ACCESS_KEY);
-    assert_eq!(found.session_token(), Some(CACHED_SESSION_TOKEN));
-    assert_eq!(found.account_id(), Some(ACCOUNT));
+    let found = sign(&identity, &directory, LOGIN_SESSION).expect("the cached set");
+    assert_eq!(found.access_key_id(), LOGIN_CACHED_ACCESS_KEY);
+    assert_eq!(found.session_token(), Some(LOGIN_CACHED_SESSION_TOKEN));
+    assert_eq!(found.account_id(), Some(LOGIN_ACCOUNT));
     let lapses = found.expires_at().expect("a sign-in's set lapses");
     assert_eq!(
         iso8601(seconds_of(lapses)),
@@ -399,38 +308,21 @@ fn a_set_that_lasts_is_answered_with_no_request() {
     assert_eq!(read(&file), document);
 }
 
-#[test]
-fn the_window_is_five_minutes() {
-    assert_eq!(REFRESH_WINDOW, Duration::from_secs(5 * 60));
-    let identity = Identity::start();
-
-    // A minute beyond the window: the cached set, and nothing asked.
-    let (directory, _) = filed("login-window-beyond", SESSION_KEY, &signed_in(360));
-    let found = sign(&identity, &directory, SESSION).expect("the cached set");
-    assert_eq!(found.access_key_id(), CACHED_ACCESS_KEY);
-    assert_eq!(identity.request_count(), 0);
-
-    // A minute inside it: one refresh, though the set still stands.
-    let (directory, _) = filed("login-window-inside", SESSION_KEY, &signed_in(240));
-    let found = sign(&identity, &directory, SESSION).expect("a refreshed set");
-    assert_eq!(found.access_key_id(), LOGIN_ACCESS_KEY);
-    assert_eq!(identity.request_count(), 1);
-}
-
+/// A minute inside the window: one refresh, though the set still stands.
 #[test]
 fn a_set_inside_the_window_is_refreshed_by_one_proven_request() {
     let identity = Identity::start();
-    identity.require_login_refresh_token(Some(CACHED_REFRESH_TOKEN));
-    let document = signed_in(240);
-    let (directory, file) = filed("login-refresh", SESSION_KEY, &document);
+    identity.require_login_refresh_token(Some(LOGIN_CACHED_REFRESH_TOKEN));
+    let document = login_document(240);
+    let (directory, file) = filed("login-refresh", LOGIN_SESSION_KEY, &document);
 
     let asked = now_seconds();
-    let found = sign(&identity, &directory, SESSION).expect("a refreshed set");
+    let found = sign(&identity, &directory, LOGIN_SESSION).expect("a refreshed set");
     let answered = now_seconds();
     assert_eq!(found.access_key_id(), LOGIN_ACCESS_KEY);
     assert_eq!(found.session_token(), Some(LOGIN_SESSION_TOKEN));
     // A refresh states no account: the sign-in's is carried over.
-    assert_eq!(found.account_id(), Some(ACCOUNT));
+    assert_eq!(found.account_id(), Some(LOGIN_ACCOUNT));
     let lapses = seconds_of(found.expires_at().expect("a sign-in's set lapses"));
     assert!(
         (asked + LOGIN_EXPIRES_IN..=answered + LOGIN_EXPIRES_IN).contains(&lapses),
@@ -454,9 +346,9 @@ fn a_set_inside_the_window_is_refreshed_by_one_proven_request() {
     assert_eq!(
         body,
         json!({
-            "clientId": CLIENT,
+            "clientId": LOGIN_CLIENT,
             "grantType": "refresh_token",
-            "refreshToken": CACHED_REFRESH_TOKEN,
+            "refreshToken": LOGIN_CACHED_REFRESH_TOKEN,
         })
     );
     let (header, claims) = proof_of(&request);
@@ -472,64 +364,63 @@ fn a_set_inside_the_window_is_refreshed_by_one_proven_request() {
         "accessKeyId": LOGIN_ACCESS_KEY,
         "secretAccessKey": LOGIN_SECRET_KEY,
         "sessionToken": LOGIN_SESSION_TOKEN,
-        "accountId": ACCOUNT,
+        "accountId": LOGIN_ACCOUNT,
         "expiresAt": iso8601(lapses),
     });
     expected["refreshToken"] = json!(LOGIN_REFRESH_TOKEN);
     assert_eq!(read(&file), expected);
 
     // Read again, the refreshed document is the set: nothing more is asked.
-    let again = sign(&identity, &directory, SESSION).expect("the refreshed set, filed");
+    let again = sign(&identity, &directory, LOGIN_SESSION).expect("the refreshed set, filed");
     assert_eq!(again, found);
     assert_eq!(identity.request_count(), 1);
 }
 
 #[test]
-fn an_ended_sign_in_is_a_refusal_naming_aws_login() {
-    for code in ["TOKEN_EXPIRED", "USER_CREDENTIALS_CHANGED"] {
+fn a_refusal_of_the_service_is_named_with_its_way_out_and_not_tried_again() {
+    for (status, code, named) in [
+        (401, "TOKEN_EXPIRED", "the sign-in has ended"),
+        (401, "USER_CREDENTIALS_CHANGED", "the password changed"),
+        (403, "INSUFFICIENT_PERMISSIONS", "signin:CreateOAuth2Token"),
+    ] {
         let identity = Identity::start();
-        identity.refuse_login(401, code, 1);
-        let document = signed_in(-60);
-        let (directory, file) = filed(&format!("login-ended-{code}"), SESSION_KEY, &document);
+        identity.refuse_login(status, code, 1);
+        let document = login_document(-60);
+        let (directory, file) = filed(
+            &format!("login-refused-{code}"),
+            LOGIN_SESSION_KEY,
+            &document,
+        );
 
-        let error = sign(&identity, &directory, SESSION).expect_err("a lapsed set, refused");
-        let message = error.to_string();
-        assert!(message.contains(&format!("401 {code}")), "{message}");
-        assert!(message.contains(SESSION), "{message}");
-        assert!(message.contains(WAY_OUT), "{message}");
-        assert!(message.contains("refused as scripted"), "{message}");
+        let message = sign(&identity, &directory, LOGIN_SESSION)
+            .expect_err(code)
+            .to_string();
+        for part in [
+            format!("{status} {code}"),
+            named.to_owned(),
+            "refused as scripted".to_owned(),
+            LOGIN_SESSION.to_owned(),
+            WAY_OUT.to_owned(),
+        ] {
+            assert!(message.contains(&part), "{code}: {part} in {message}");
+        }
         assert_no_secret(&message);
-        // The service's verdict is not tried again, and the CLI's document
-        // is left as it was.
-        assert_eq!(identity.request_count(), 1);
-        assert_eq!(read(&file), document);
+        // The CLI's document is left as it was.
+        assert_eq!(identity.request_count(), 1, "{code}");
+        assert_eq!(read(&file), document, "{code}");
     }
-}
-
-#[test]
-fn a_missing_permission_is_named() {
-    let identity = Identity::start();
-    identity.refuse_login(403, "INSUFFICIENT_PERMISSIONS", 1);
-    let (directory, _) = filed("login-permission", SESSION_KEY, &signed_in(-60));
-
-    let error = sign(&identity, &directory, SESSION).expect_err("a refused refresh");
-    let message = error.to_string();
-    assert!(
-        message.contains("403 INSUFFICIENT_PERMISSIONS"),
-        "{message}"
-    );
-    assert!(message.contains("signin:CreateOAuth2Token"), "{message}");
-    assert!(message.contains(SESSION), "{message}");
-    assert!(message.contains(WAY_OUT), "{message}");
-    assert_no_secret(&message);
 }
 
 #[test]
 fn a_throttle_or_a_server_failure_is_tried_again_with_a_fresh_proof() {
     let identity = Identity::start();
     identity.fail_next(500, 2);
-    let (directory, _) = filed("login-server-failure", SESSION_KEY, &signed_in(-60));
-    let found = sign(&identity, &directory, SESSION).expect("the third attempt's set");
+    let (directory, _) = filed(
+        "login-server-failure",
+        LOGIN_SESSION_KEY,
+        &login_document(-60),
+    );
+    let found = sign(&identity, &directory, LOGIN_SESSION).expect("the third attempt's set");
     assert_eq!(found.access_key_id(), LOGIN_ACCESS_KEY);
     let statuses: Vec<u16> = identity
         .requests()
@@ -540,8 +431,8 @@ fn a_throttle_or_a_server_failure_is_tried_again_with_a_fresh_proof() {
 
     let identity = Identity::start();
     identity.refuse_login(429, "INVALID_REQUEST", 1);
-    let (directory, _) = filed("login-throttle", SESSION_KEY, &signed_in(-60));
-    let found = sign(&identity, &directory, SESSION).expect("the second attempt's set");
+    let (directory, _) = filed("login-throttle", LOGIN_SESSION_KEY, &login_document(-60));
+    let found = sign(&identity, &directory, LOGIN_SESSION).expect("the second attempt's set");
     assert_eq!(found.access_key_id(), LOGIN_ACCESS_KEY);
     let requests = identity.requests();
     let statuses: Vec<u16> = requests.iter().map(|request| request.status).collect();
@@ -557,15 +448,15 @@ fn a_throttle_or_a_server_failure_is_tried_again_with_a_fresh_proof() {
 
 #[test]
 fn a_refresh_failing_while_the_set_stands_keeps_it_and_says_so() {
-    let logged = Logged::at(Level::WARNING);
+    let logged = Logged::at(LOGGER, Level::WARNING);
     let identity = Identity::start();
     identity.fail_next(503, 3);
-    let document = signed_in(120);
+    let document = login_document(120);
     let (directory, file) = filed("login-kept", OTHER_SESSION_KEY, &document);
 
     let found = sign(&identity, &directory, OTHER_SESSION).expect("the set in hand");
-    assert_eq!(found.access_key_id(), CACHED_ACCESS_KEY);
-    assert_eq!(found.account_id(), Some(ACCOUNT));
+    assert_eq!(found.access_key_id(), LOGIN_CACHED_ACCESS_KEY);
+    assert_eq!(found.account_id(), Some(LOGIN_ACCOUNT));
     assert_eq!(identity.request_count(), 3);
     assert_eq!(read(&file), document);
 
@@ -590,9 +481,9 @@ fn a_refresh_failing_while_the_set_stands_keeps_it_and_says_so() {
 
 #[test]
 fn a_refresh_says_when_the_new_set_lapses_and_nothing_secret() {
-    let logged = Logged::at(Level::DEBUG);
+    let logged = Logged::at(LOGGER, Level::DEBUG);
     let identity = Identity::start();
-    let (directory, _) = filed("login-logged", OTHER_SESSION_KEY, &signed_in(60));
+    let (directory, _) = filed("login-logged", OTHER_SESSION_KEY, &login_document(60));
 
     let found = sign(&identity, &directory, OTHER_SESSION).expect("a refreshed set");
     let lapses = seconds_of(found.expires_at().expect("a sign-in's set lapses"));
@@ -615,12 +506,12 @@ fn a_refresh_says_when_the_new_set_lapses_and_nothing_secret() {
 fn a_lapsed_set_whose_refresh_fails_is_a_refusal() {
     let identity = Identity::start();
     identity.fail_next(503, 3);
-    let (directory, _) = filed("login-lapsed", SESSION_KEY, &signed_in(-60));
+    let (directory, _) = filed("login-lapsed", LOGIN_SESSION_KEY, &login_document(-60));
 
-    let error = sign(&identity, &directory, SESSION).expect_err("nothing stands");
+    let error = sign(&identity, &directory, LOGIN_SESSION).expect_err("nothing stands");
     let message = error.to_string();
     assert!(message.contains("503"), "{message}");
-    assert!(message.contains(SESSION), "{message}");
+    assert!(message.contains(LOGIN_SESSION), "{message}");
     assert!(message.contains(WAY_OUT), "{message}");
     assert_no_secret(&message);
     assert_eq!(identity.request_count(), 3);
@@ -628,11 +519,17 @@ fn a_lapsed_set_whose_refresh_fails_is_a_refusal() {
 
 #[test]
 fn a_service_that_cannot_be_reached_is_named() {
-    let (directory, _) = filed("login-unreached", SESSION_KEY, &signed_in(-60));
+    let (directory, _) = filed("login-unreached", LOGIN_SESSION_KEY, &login_document(-60));
     let unreached = hanging_up(3);
 
-    let error = credentials(&unreached, &directory, SESSION, PROFILE, SystemTime::now())
-        .expect_err("no answer");
+    let error = credentials(
+        &unreached,
+        &directory,
+        LOGIN_SESSION,
+        PROFILE,
+        SystemTime::now(),
+    )
+    .expect_err("no answer");
     let message = error.to_string();
     assert!(
         message.contains(&format!(
@@ -640,7 +537,7 @@ fn a_service_that_cannot_be_reached_is_named() {
         )),
         "{message}"
     );
-    assert!(message.contains(SESSION), "{message}");
+    assert!(message.contains(LOGIN_SESSION), "{message}");
     assert!(message.contains(WAY_OUT), "{message}");
     assert_no_secret(&message);
 }
@@ -648,11 +545,11 @@ fn a_service_that_cannot_be_reached_is_named() {
 #[test]
 fn no_sign_in_filed_is_a_refusal_naming_the_file_and_aws_login() {
     let identity = Identity::start();
-    let (directory, file) = cache("login-missing", SESSION_KEY);
+    let (directory, file) = cache("login-missing", LOGIN_SESSION_KEY);
 
-    let error = sign(&identity, &directory, SESSION).expect_err("nothing filed");
+    let error = sign(&identity, &directory, LOGIN_SESSION).expect_err("nothing filed");
     let message = error.to_string();
-    assert!(message.contains(SESSION), "{message}");
+    assert!(message.contains(LOGIN_SESSION), "{message}");
     assert!(
         message.contains(&format!("is not filed at {}", file.display())),
         "{message}"
@@ -668,10 +565,10 @@ fn a_document_that_is_not_one_is_named() {
         ("login-truncated", "{\"accessToken\": {", "is not JSON"),
         ("login-array", "[]", "is not a JSON object"),
     ] {
-        let (directory, file) = cache(name, SESSION_KEY);
+        let (directory, file) = cache(name, LOGIN_SESSION_KEY);
         std::fs::create_dir_all(&directory).expect("a cache directory");
         std::fs::write(&file, text).expect("a filed document");
-        let error = sign(&identity, &directory, SESSION).expect_err(expected);
+        let error = sign(&identity, &directory, LOGIN_SESSION).expect_err(expected);
         let message = error.to_string();
         assert!(message.contains(expected), "{message}");
         assert!(message.contains(&file.display().to_string()), "{message}");
@@ -682,19 +579,24 @@ fn a_document_that_is_not_one_is_named() {
 
 #[test]
 fn each_field_a_refresh_needs_is_required_and_named() {
-    let path = Path::new("cache").join(format!("{SESSION_KEY}.json"));
+    let path = Path::new("cache").join(format!("{LOGIN_SESSION_KEY}.json"));
     let refused = |document: &Value, field: &str| {
-        let error = parse(document.to_string().as_bytes(), SESSION, PROFILE, &path)
-            .expect_err("a document lacking a field");
+        let error = parse(
+            document.to_string().as_bytes(),
+            LOGIN_SESSION,
+            PROFILE,
+            &path,
+        )
+        .expect_err("a document lacking a field");
         let message = error.to_string();
         assert!(message.contains(&format!("lacks {field}")), "{message}");
-        assert!(message.contains(SESSION), "{message}");
+        assert!(message.contains(LOGIN_SESSION), "{message}");
         assert!(message.contains(&path.display().to_string()), "{message}");
         assert!(message.contains(WAY_OUT), "{message}");
         assert_no_secret(&message);
     };
     for field in ["accessToken", "refreshToken", "dpopKey", "clientId"] {
-        let mut document = signed_in(3600);
+        let mut document = login_document(3600);
         document.as_object_mut().expect("an object").remove(field);
         refused(&document, field);
     }
@@ -704,7 +606,7 @@ fn each_field_a_refresh_needs_is_required_and_named() {
         "sessionToken",
         "expiresAt",
     ] {
-        let mut document = signed_in(3600);
+        let mut document = login_document(3600);
         document["accessToken"]
             .as_object_mut()
             .expect("an object")
@@ -712,39 +614,54 @@ fn each_field_a_refresh_needs_is_required_and_named() {
         refused(&document, &format!("accessToken.{field}"));
     }
     // An empty value is no value.
-    let mut document = signed_in(3600);
+    let mut document = login_document(3600);
     document["refreshToken"] = json!("");
     refused(&document, "refreshToken");
 
     // An expiry naming no instant is named as such.
-    let mut document = signed_in(3600);
+    let mut document = login_document(3600);
     document["accessToken"]["expiresAt"] = json!("soon");
-    let error = parse(document.to_string().as_bytes(), SESSION, PROFILE, &path)
-        .expect_err("an expiry that is no instant");
+    let error = parse(
+        document.to_string().as_bytes(),
+        LOGIN_SESSION,
+        PROFILE,
+        &path,
+    )
+    .expect_err("an expiry that is no instant");
     assert!(
         error.to_string().contains("accessToken.expiresAt"),
         "{error}"
     );
 
     // The account is the one field a set signs without.
-    let mut document = signed_in(3600);
+    let mut document = login_document(3600);
     document["accessToken"]
         .as_object_mut()
         .expect("an object")
         .remove("accountId");
-    let token = parse(document.to_string().as_bytes(), SESSION, PROFILE, &path)
-        .expect("a set with no account");
+    let token = parse(
+        document.to_string().as_bytes(),
+        LOGIN_SESSION,
+        PROFILE,
+        &path,
+    )
+    .expect("a set with no account");
     assert_eq!(token.credentials().account_id(), None);
 }
 
 #[test]
 fn a_document_reads_and_renders_back_whole() {
-    let path = Path::new("cache").join(format!("{SESSION_KEY}.json"));
-    let document = signed_in(3600);
-    let token =
-        parse(document.to_string().as_bytes(), SESSION, PROFILE, &path).expect("a filed sign-in");
-    assert_eq!(token.client_id(), CLIENT);
-    assert_eq!(token.credentials().access_key_id(), CACHED_ACCESS_KEY);
+    let path = Path::new("cache").join(format!("{LOGIN_SESSION_KEY}.json"));
+    let document = login_document(3600);
+    let token = parse(
+        document.to_string().as_bytes(),
+        LOGIN_SESSION,
+        PROFILE,
+        &path,
+    )
+    .expect("a filed sign-in");
+    assert_eq!(token.client_id(), LOGIN_CLIENT);
+    assert_eq!(token.credentials().access_key_id(), LOGIN_CACHED_ACCESS_KEY);
     let rendered: Value = serde_json::from_str(&token.render()).expect("JSON");
     assert_eq!(rendered, document);
 
@@ -764,7 +681,7 @@ fn a_document_reads_and_renders_back_whole() {
         "clientId": "arn:aws:signin:::devtools/same-device",
         "dpopKey": "-----BEGIN EC PRIVATE KEY-----\ntest\n-----END EC PRIVATE KEY-----\n"
     }"#;
-    let token = parse(sample.as_bytes(), SESSION, PROFILE, &path).expect("the SDK's sample");
+    let token = parse(sample.as_bytes(), LOGIN_SESSION, PROFILE, &path).expect("the SDK's sample");
     assert_eq!(
         token.credentials().expires_at(),
         Some(UNIX_EPOCH + Duration::from_secs(1_640_467_800))
@@ -774,22 +691,22 @@ fn a_document_reads_and_renders_back_whole() {
 
 #[test]
 fn debug_renders_no_secret() {
-    let path = Path::new("cache").join(format!("{SESSION_KEY}.json"));
+    let path = Path::new("cache").join(format!("{LOGIN_SESSION_KEY}.json"));
     let token = parse(
-        signed_in(3600).to_string().as_bytes(),
-        SESSION,
+        login_document(3600).to_string().as_bytes(),
+        LOGIN_SESSION,
         PROFILE,
         &path,
     )
     .expect("a filed sign-in");
     let rendered = format!("{token:?}");
     assert_no_secret(&rendered);
-    assert!(rendered.contains(CACHED_ACCESS_KEY), "{rendered}");
-    assert!(rendered.contains(CLIENT), "{rendered}");
+    assert!(rendered.contains(LOGIN_CACHED_ACCESS_KEY), "{rendered}");
+    assert!(rendered.contains(LOGIN_CLIENT), "{rendered}");
 
     let identity = Identity::start();
-    let (directory, _) = filed("login-debug", SESSION_KEY, &signed_in(-60));
-    let found = sign(&identity, &directory, SESSION).expect("a refreshed set");
+    let (directory, _) = filed("login-debug", LOGIN_SESSION_KEY, &login_document(-60));
+    let found = sign(&identity, &directory, LOGIN_SESSION).expect("a refreshed set");
     let rendered = format!("{found:?}");
     assert_no_secret(&rendered);
     assert!(rendered.contains(LOGIN_ACCESS_KEY), "{rendered}");
@@ -798,11 +715,11 @@ fn debug_renders_no_secret() {
 #[test]
 fn a_key_the_proof_cannot_be_signed_with_is_a_refusal_before_any_request() {
     let identity = Identity::start();
-    let mut document = signed_in(-60);
+    let mut document = login_document(-60);
     document["dpopKey"] = json!(KEY_WITHOUT_POINT);
-    let (directory, _) = filed("login-pointless", SESSION_KEY, &document);
+    let (directory, _) = filed("login-pointless", LOGIN_SESSION_KEY, &document);
 
-    let error = sign(&identity, &directory, SESSION).expect_err("no proof can be signed");
+    let error = sign(&identity, &directory, LOGIN_SESSION).expect_err("no proof can be signed");
     let message = error.to_string();
     assert!(
         message.contains("holds a DPoP key that states no public point"),
@@ -816,38 +733,28 @@ fn a_key_the_proof_cannot_be_signed_with_is_a_refusal_before_any_request() {
 #[test]
 fn the_jwk_is_the_point_outside_implementations_derive() {
     let expected = (KEY_X.to_owned(), KEY_Y.to_owned());
-    assert_eq!(jwk(KEY), Ok(expected.clone()));
+    assert_eq!(jwk(LOGIN_KEY), Ok(expected.clone()));
     assert_eq!(jwk(SDK_KEY), Ok((SDK_X.to_owned(), SDK_Y.to_owned())));
     // PKCS#8 holds the same pair.
     assert_eq!(jwk(KEY_PKCS8), Ok(expected.clone()));
     // A document escaped twice leaves a literal `\n`, read as the break it
     // meant.
-    assert_eq!(jwk(&KEY.replace('\n', "\\n")), Ok(expected));
+    assert_eq!(jwk(&LOGIN_KEY.replace('\n', "\\n")), Ok(expected));
 }
 
 #[test]
-fn a_key_without_its_point_is_refused() {
-    let cause = jwk(KEY_WITHOUT_POINT).expect_err("signing needs the point");
-    assert_eq!(cause, "states no public point");
-}
-
-#[test]
-fn a_key_on_another_curve_is_refused() {
-    let cause = jwk(SECP256K1_KEY).expect_err("a secp256k1 key");
-    assert_eq!(
-        cause,
-        "is on the curve 1.3.132.0.10, not on P-256 (1.2.840.10045.3.1.7)"
-    );
+fn a_key_that_cannot_sign_a_proof_is_refused_by_name() {
     let cause = jwk(SECP256K1_PKCS8).expect_err("a secp256k1 PKCS#8 key");
     assert!(
         cause.starts_with("is not a PKCS#8 P-256 key pair"),
         "{cause}"
     );
-}
-
-#[test]
-fn a_key_that_is_not_one_is_refused_by_name() {
     for (pem, expected) in [
+        (KEY_WITHOUT_POINT, "states no public point"),
+        (
+            SECP256K1_KEY,
+            "is on the curve 1.3.132.0.10, not on P-256 (1.2.840.10045.3.1.7)",
+        ),
         ("not a key", "is not PEM: it has no BEGIN line"),
         (
             "-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----\n",
@@ -875,7 +782,7 @@ fn a_key_that_is_not_one_is_refused_by_name() {
 fn a_proof_is_a_compact_jws_over_es256_naming_its_request() {
     let url = "https://eu-west-3.signin.aws.amazon.com/v1/token";
     let identifier = "0b0f2f27-4a54-4b21-8a5c-6f1e0d2c9a10";
-    let proof = proof(KEY, url, 1_800_000_000, identifier).expect("a proof");
+    let proof = proof(LOGIN_KEY, url, 1_800_000_000, identifier).expect("a proof");
     // base64url as JWS spells it: no padding anywhere.
     assert!(!proof.contains('='), "{proof}");
     let parts: Vec<&str> = proof.split('.').collect();

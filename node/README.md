@@ -360,10 +360,9 @@ The required mode is `'overwrite'`, `'append'`, or `'merge'` and is checked
 before a one-shot reader, exporter, or iterable is inspected.
 
 Every record write answers an `IOResult` - an async record write a promise of
-one - stating the rows it read from its source (`readRows`), wrote
-(`writtenRows`) and skipped (`skippedRows`: kept out by the options' `where`,
-or cut off a last batch by a bound), as the core counted them. A write cut
-into several commits answers their sum; `add` sums two results the same way.
+one - counting the rows it read (`readRows`), wrote (`writtenRows`) and skipped
+(`skippedRows`: kept out by `where`, or cut off by a bound); a write cut into
+several commits answers their sum, as `add` sums two results.
 
 `isIo()` is the general capability check: byte values and tabular media return
 true, while a container holding neither returns false. `rowSize` and

@@ -36,13 +36,10 @@ use super::tls::ClientConfigs;
 const BROKEN_FOR: Duration = Duration::from_secs(300);
 /// The receive window of one stream, the client's and the server's alike.
 ///
-/// The window is what bounds the gaps a lossy path can leave in a stream:
-/// quinn reassembles one out of at most [`QUIC_STREAM_CHUNKS`] pieces that
-/// do not touch and closes the whole connection past that ("too many gaps
-/// in stream buffer"), and a window in which every other datagram was lost
-/// holds one piece per two datagrams. 4 MiB held some 1900 of them, so a
-/// starved receiver dropping datagrams of a large body lost the connection;
-/// 1 MiB, close to quinn's own default, holds under 500.
+/// It bounds the gaps a lossy path leaves in a stream: quinn closes the
+/// connection past [`QUIC_STREAM_CHUNKS`] disjoint pieces ("too many gaps in
+/// stream buffer"), and a window losing every other datagram holds one piece
+/// per two datagrams - under 500 at 1 MiB, some 1900 at 4 MiB.
 pub(crate) const STREAM_WINDOW: u32 = 1 << 20;
 /// The receive window of the whole connection.
 pub(crate) const CONNECTION_WINDOW: u32 = 16 << 20;

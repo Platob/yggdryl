@@ -146,11 +146,10 @@ struct Endpoint {
     /// Whether the account is a path segment ahead of the container, which is
     /// how the Azure emulators address one.
     account_in_path: bool,
-    /// The path a gateway mounts Amazon S3 below, as sent - empty, or
-    /// `/gateway/s3` with no trailing `/` - which every request path is put
-    /// under, as botocore puts it. Only the AWS dialect keeps one: an Azure
-    /// emulator's path is the account `account_in_path` adds, and Google's
-    /// requests name their whole path.
+    /// The path a gateway mounts Amazon S3 below - empty, or `/gateway/s3`
+    /// with no trailing `/` - that every request path is put under, as
+    /// botocore does. AWS only: an Azure emulator's path is its account, and
+    /// Google's requests name their whole path.
     prefix: String,
 }
 
@@ -216,10 +215,7 @@ struct Answer {
 impl Answer {
     /// One header's value, matched without regard to case.
     fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(header, _)| header.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value.as_str())
+        header_value(&self.headers, name)
     }
 }
 
@@ -456,9 +452,9 @@ impl Client {
     /// The order is the same for every store - an explicit endpoint, then the
     /// URL's own, then the environment, then the store's published host - and
     /// only the last two steps know which store this is. The environment is
-    /// asked only when neither of the first two answers, so a refusal it
-    /// holds - a profile naming a `[services]` section nobody wrote - is no
-    /// refusal of a client that named its endpoint.
+    /// asked only when neither of the first two answers, so its refusal - a
+    /// profile naming a `[services]` section nobody wrote - never refuses a
+    /// client that named its endpoint.
     fn endpoint_of(
         provider: Provider,
         url: &Url,
@@ -644,10 +640,10 @@ impl Client {
     /// The endpoint is read once, as the URL it is: a bare `host` or
     /// `host:port` is reached over `https`, a port is the decimal number the
     /// URL grammar spells, and an IPv6 literal keeps its brackets. User
-    /// information and a query are no part of where the store is. The path is
-    /// answered as written, its trailing `/` dropped - the prefix a gateway
-    /// mounts Amazon S3 below, or the account an Azure emulator is named by -
-    /// and never reaches the host a request is addressed and signed to.
+    /// information and a query are dropped; the path - a gateway's prefix, or
+    /// an Azure emulator's account - is answered apart as written, its
+    /// trailing `/` dropped, and never reaches the host a request is
+    /// addressed and signed to.
     fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>, String)> {
         let refuse = |reason: &str| {
             Error::Io(std::io::Error::new(
@@ -839,20 +835,17 @@ impl Client {
         }
     }
 
-    /// Whether a refusal says the keys that signed the attempt are no longer
-    /// accepted - a set the store knows lapsed before the session thought it
-    /// would, a key it does not recognize - in which case the session is told,
-    /// and the request is signed once more, once, when the session now
-    /// answers another set: the same set would be refused the same way.
+    /// Whether a refusal says the attempt's keys are no longer accepted -
+    /// lapsed, or unknown to the store - in which case the session is told,
+    /// and the request goes once more, once, only when the session then
+    /// answers another set.
     ///
-    /// The key is read off the attempt's own `Authorization` header rather
-    /// than the client's shared signer, which another request may already
-    /// have refilled with a fresh set. A `HEAD` answers its refusal with no
-    /// body, so a lapsed temporary set reads as a bare `400` or `403`: the
-    /// session reads its sources again without holding anything against the
-    /// key, which may be fine, and the request goes again only if they now
-    /// answer another set. When nothing answers, the session's refusal -
-    /// every source and why - is the error rather than the store's.
+    /// The key is read off the attempt's own `Authorization` header, not a
+    /// shared signer another request may have refilled. A `HEAD` refusal
+    /// has no body, so a bare `400` or `403` of a temporary set has the
+    /// session read its sources again, holding nothing against the key.
+    /// When no source answers, the error is the session's refusal - every
+    /// source and why - rather than the store's.
     fn refresh_on_expiry(
         &self,
         request: &Request<'_>,

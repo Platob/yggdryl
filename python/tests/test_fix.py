@@ -4998,29 +4998,26 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
     source.media_type = Url("file:///ulbridge.log").media_type
     codec = _fixed_batch(seed_batch)
 
-    parsed = codec.parse_text_serie(source.read_serie(options=options))
-    assert isinstance(parsed, yggdryl.SerieReader)
-    walked = codec.lifecycle_serie(parsed)
+    def parsed() -> yggdryl.SerieReader:
+        reader = codec.parse_text_serie(source.read_serie(options=options))
+        assert isinstance(reader, yggdryl.SerieReader)
+        return reader
+
+    def arrow_parsed() -> pa.RecordBatchReader:
+        return codec.parse_text_arrow_reader(source.read_arrow_reader(options=options))
+
+    walked = codec.lifecycle_serie(parsed())
     assert isinstance(walked, yggdryl.SerieReader)
     rows = sum(len(record) for record in walked)
-
-    arrow = codec.lifecycle_arrow_reader(
-        codec.parse_text_arrow_reader(source.read_arrow_reader(options=options))
-    ).read_all()
-    assert rows == arrow.num_rows > 0
+    assert rows == codec.lifecycle_arrow_reader(arrow_parsed()).read_all().num_rows > 0
 
     # A table read back feeds the walk and the books as messages.
-    messages = list(
-        codec.messages_serie(codec.parse_text_serie(source.read_serie(options=options)))
-    )
-    assert len(messages) == codec.parse_text_arrow_reader(
-        source.read_arrow_reader(options=options)
-    ).read_all().num_rows
-    market = codec.market_data_serie(codec.parse_text_serie(source.read_serie(options=options)))
+    messages = list(codec.messages_serie(parsed()))
+    assert len(messages) == arrow_parsed().read_all().num_rows
+    market = codec.market_data_serie(parsed())
     assert isinstance(market, yggdryl.SerieReader)
     assert sum(len(record) for record in market) > 0
-    books = codec.book_serie(codec.lifecycle(messages), 900_000)
-    assert isinstance(books, yggdryl.SerieReader)
+    assert isinstance(codec.book_serie(codec.lifecycle(messages), 900_000), yggdryl.SerieReader)
 
 
 # The key every table of the capture pipeline declares: when a row happened
@@ -5269,9 +5266,7 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     text_row = lines.field
 
     text = _capture_table(tmp_path / "text", text_row)
-    appended = text.append_serie(lines)
-    assert appended == IOResult(144, 144)
-    assert appended.skipped_rows == 0
+    assert text.append_serie(lines) == IOResult(144, 144)
     assert text.row_size() == 144
     assert text.format_version == 3
 
@@ -5316,8 +5311,7 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     stream = walked()
     fix = _capture_table(tmp_path / "fix", stream.field)
     written = fix.overwrite_serie(stream)
-    assert written.read_rows == written.written_rows == fix.row_size() > 0
-    assert written.skipped_rows == 0
+    assert fix.row_size() > 0 and written == IOResult(fix.row_size(), fix.row_size())
     # The Arrow doors over the same stored text walk the same rows.
     assert (
         codec.lifecycle_arrow_reader(

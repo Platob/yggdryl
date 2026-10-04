@@ -69,19 +69,9 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     inner.bound_location().cloned().map(yggdryl::fs::located)
 }
 
-/// Hold the resource `location` names, on the store its scheme selects.
-///
-/// The core's one dispatcher decides: an `http` or `https` URL is the `GET` of
-/// that resource, an object-store URL the native store, a `file:` URL whose
-/// fragment names an archive member that member, an `s3tables:` URL the
-/// catalog, the namespace or the table it names in its table bucket,
-/// anything else local - and a scheme no backend speaks is refused by that
-/// scheme. An identifier crosses as it was named and the core locates it, so
-/// an ARN that states more than its location - a table's, in a table bucket -
-/// is read whole. Construction touches nothing but a table bucket's table,
-/// sent here under no properties: a table's ARN one `GetTable`, a location
-/// one `GetTableMetadataLocation` after the one `ListTableBuckets` per page
-/// that finds the bucket, since nothing states its ARN or account.
+/// Hold the resource `location` names, on the store its scheme selects:
+/// [`Holder::from_url`] under no properties, so an identifier crosses whole
+/// and a scheme no backend speaks is refused by that scheme.
 pub(crate) fn located_holder(location: impl AsRef<yggdryl::Uri>) -> PyResult<Holder> {
     Holder::from_url(location, std::iter::empty::<(&str, &str)>())
         .map_err(crate::holder::fs::storage_error)
@@ -352,14 +342,6 @@ impl PyIOBase {
         Holder::local(path).map_err(crate::holder::fs::storage_error)
     }
 
-    /// Describe the resource `url` names, on the store its scheme selects.
-    ///
-    /// A location is what says which backend it belongs to, so this is the one
-    /// place that decides. Nothing is opened or contacted here either way.
-    fn located_url(url: &yggdryl::Url) -> PyResult<Holder> {
-        located_holder(url)
-    }
-
     /// Build a second holder on the same location.
     ///
     /// A handle owns backend state - such as a mapping or an open descriptor -
@@ -374,7 +356,7 @@ impl PyIOBase {
         let url = self.inner()?.url().ok_or_else(|| {
             PyValueError::new_err("an in-memory resource has no location to rebuild from")
         })?;
-        Self::located_url(url)
+        located_holder(url)
     }
 
     /// Build a container handle on the same location.
@@ -527,9 +509,8 @@ impl PyIOBase {
 
     /// Resolve and validate one explicit mode before touching an input value.
     ///
-    /// `None` is a zero row or byte limit, which admits no input row: the
-    /// write is done having read nothing, and its door answers the empty
-    /// `IOResult`.
+    /// `None` is a zero row or byte limit: the write is done, having read
+    /// nothing, and its door answers the empty `IOResult`.
     fn write_options(
         &mut self,
         mode: IOMode,
@@ -617,14 +598,8 @@ impl PyIOBase {
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Write one Arrow C stream with resolved options and explicit intent,
-    /// the GIL released.
-    ///
-    /// A C stream's producer takes the interpreter for itself where it needs
-    /// it, and it may be a core reader come back through `pyarrow` - a parse
-    /// spread over worker threads, whose warnings reach Python's `logging`.
-    /// A worker that logs takes the GIL, so the thread waiting on it must
-    /// not hold it: held, the two wait on each other for good.
+    /// [`Self::write_reader`] over an Arrow C stream, the GIL released: its
+    /// producer may be a parse whose workers take the GIL to log.
     fn write_stream(
         &mut self,
         py: Python<'_>,
@@ -641,10 +616,8 @@ impl PyIOBase {
     /// The one write every `*_serie` method is: the options resolved and
     /// their zero counts refused before `value` is read, so no refusal pulls
     /// a one-shot source; then `value` read once as the shape it holds and
-    /// written by the core - off the GIL when the rows are native or cross
-    /// the Arrow C stream, whose producer takes the interpreter for itself,
-    /// under it when they are a Python stream this binding pulls, whose
-    /// every pull would take it back.
+    /// written by the core - off the GIL unless it is a Python stream this
+    /// binding pulls, whose every pull would take it back.
     fn write_source(
         &mut self,
         value: &Bound<'_, PyAny>,
@@ -787,9 +760,8 @@ impl PyIOBase {
     /// a nameless stream - `io.BytesIO`, a socket wrapper, a decompressor -
     /// captures its *content*. An in-memory handle likewise captures content,
     /// media type included. For named locations nothing is opened, created,
-    /// or read here, per the laziness contract - but a table an Amazon S3
-    /// Tables table bucket keeps, which its service describes at
-    /// construction.
+    /// or read here, per the laziness contract - but an Amazon S3 Tables
+    /// table, which its service describes.
     ///
     /// A `pyarrow.fs.FileSystem` as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
@@ -858,10 +830,8 @@ impl PyIOBase {
                 Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes)),
             );
         }
-        // The identifier as it was named: the core locates it, and reads
-        // off it what its location alone does not say. Detached: a table
-        // bucket's table is described by its service, and a core thread
-        // that logs takes the GIL; the error is mapped once reattached.
+        // Detached, the error mapped once reattached: an S3 Tables table is
+        // described by its service, and a core thread that logs takes the GIL.
         let location = core_uri_from_value(value)?;
         let holder = py
             .detach(move || Holder::from_url(&location, std::iter::empty::<(&str, &str)>()))
@@ -1663,11 +1633,7 @@ impl PyIOBase {
     /// This is the generic write: `options` and the properties beside it -
     /// `field`, `select`, `filter`, `merge_by`, a row bound, a cadence -
     /// apply exactly as they do to every record write, and neither given,
-    /// the handle's own apply.
-    ///
-    /// Every record write answers the core's `IOResult`: the rows read off
-    /// `value`, the rows that reached this resource, and the rows a `where`
-    /// or a bound kept out.
+    /// the handle's own apply. Every record write answers an `IOResult`.
     #[pyo3(signature = (value, mode = "overwrite", *, options = None, **properties))]
     fn write_serie(
         &mut self,
@@ -2529,8 +2495,7 @@ impl PyIOBase {
     /// This typed entry point accepts a `pyarrow.RecordBatchReader` or another
     /// Arrow C stream reader. Tables, held record batches, and row records use
     /// their dedicated adapters. The explicit method name is authoritative;
-    /// `merge_by_names` never changes overwrite into merge. Answers the
-    /// core's `IOResult`, as every record write does.
+    /// `merge_by_names` never changes overwrite into merge.
     #[pyo3(signature = (reader, *, options = None, **properties))]
     fn overwrite_arrow_reader(
         &mut self,

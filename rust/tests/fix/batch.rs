@@ -1096,17 +1096,7 @@ fn lifecycle_over_rows_reading_an_absent_group_back_empty_yields_the_identities_
     // read back yields, message for message, the identity and the content
     // code the walk over the rows written yields.
     let codec = codec();
-    let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
-        .with_media_type(
-            yggdryl::Url::from_str("file:///ulbridge.log")
-                .expect("a URL")
-                .media_type(),
-        );
-    let mut options = yggdryl::text::TextOptions::new()
-        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
-        .expect("the bridge's row header compiles")
-        .with_timezone(yggdryl::Timezone::UTC);
-    options.start_rownum = Some(1);
+    let (source, options) = bridge_capture();
     let messages: Vec<FixMsg> = yggdryl::text::read_text_lines(&source, &options)
         .expect("a line reader")
         .map(|line| line.expect("a line"))
@@ -3133,9 +3123,9 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
     );
 }
 
-/// The bundled bridge capture as the text rows a read answers: its own row
-/// header, each line numbered, the clock read in UTC.
-fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) {
+/// The bundled bridge capture and the options its text rows are read under:
+/// its own row header, each line numbered, the clock read in UTC.
+fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::text::TextOptions) {
     let source = yggdryl::holder::Buffer::from_bytes(include_bytes!("ulbridge.log").to_vec())
         .with_media_type(
             yggdryl::Url::from_str("file:///ulbridge.log")
@@ -3147,7 +3137,7 @@ fn bridge_capture() -> (yggdryl::holder::Buffer, yggdryl::media::RecordOptions) 
         .expect("the bridge's row header compiles")
         .with_timezone(yggdryl::Timezone::UTC);
     options.start_rownum = Some(1);
-    (source, options.into())
+    (source, options)
 }
 
 /// Every record a serie face answered, as the batch it is.
@@ -3177,6 +3167,7 @@ fn each_serie_face_yields_exactly_the_rows_its_arrow_door_yields() {
     use yggdryl::IOMedia;
     let codec = codec();
     let (source, options) = bridge_capture();
+    let options = yggdryl::media::RecordOptions::from(options);
     let text = || source.read_arrow_reader(&options).expect("a text reader");
     let read = || source.read_serie(Some(&options)).expect("a text serie");
 
@@ -3255,6 +3246,7 @@ fn the_serie_faces_answer_alike_on_several_threads() {
     let one = codec();
     let four = codec().with_threads(4);
     let (source, options) = bridge_capture();
+    let options = yggdryl::media::RecordOptions::from(options);
     let read = || source.read_serie(Some(&options)).expect("a text serie");
     let walk = |codec: &FixCodec| {
         serie_batches(

@@ -1,11 +1,8 @@
 //! `rust/src/s3tables/`, whole, against the live service: one table's life
-//! in a table bucket of the operator's own account, commit included.
-//!
-//! The fake every other suite here runs on is written from the same reading
-//! of the service as the client, so the two can agree and both be wrong;
-//! this is the run that asks the service itself. It is ignored, because it
-//! needs an account, and it never passes silently: unset, the variable that
-//! turns it on is what the failure names.
+//! in a table bucket of the operator's own account, commit included - the
+//! check the fake, written from the client's own reading, cannot make.
+//! Ignored, because it needs an account, and never passing silently: unset,
+//! the failure names the variable that turns it on.
 //!
 //! ```bash
 //! YGGDRYL_S3TABLES_PROFILE=<a signed-in profile> \
@@ -25,7 +22,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use yggdryl::aws::Session;
 use yggdryl::s3::S3Options;
 use yggdryl::s3tables::S3Tables;
-use yggdryl::{Arn, DataType, Field, IOBase, StructType, TimeUnit, Timezone, Url};
+use yggdryl::{Arn, IOBase, Url};
+
+use crate::mod_::schema;
 
 /// The variable that turns the run on, naming the profile it signs as.
 const PROFILE: &str = "YGGDRYL_S3TABLES_PROFILE";
@@ -83,16 +82,6 @@ fn unique() -> u64 {
     // The process is spread over every bit, so any eight hex digits of the
     // result carry both.
     clock ^ u64::from(std::process::id()).wrapping_mul(0x9E37_79B9_7F4A_7C15)
-}
-
-/// Three columns: a required `id`, a `symbol`, and an instant in UTC.
-fn schema() -> yggdryl::Result<Field> {
-    Ok(DataType::from(StructType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("symbol"),
-        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?.nullable_field("ts"),
-    ])?)
-    .required_field("row"))
 }
 
 /// The steps, each stopping the run at its first failure: the cleanup that
@@ -174,8 +163,7 @@ fn run(trial: &mut Trial) {
         return;
     }
 
-    let table =
-        schema().and_then(|schema| tables.create_table(&bucket, NAMESPACE, TABLE, Some(&schema)));
+    let table = tables.create_table(&bucket, NAMESPACE, TABLE, Some(&schema()));
     let Some(created) = trial.step("create table", TABLE, table) else {
         return;
     };

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::credentials::Credentials;
-use crate::auth::{Secret, instant, instant_from_millis, iso8601, write_private};
+use crate::auth::{Secret, instant, instant_from_millis, iso8601, refusal, write_private};
 use crate::{Error, Result};
 
 /// The scope a sign-in registers for when the profile names none.
@@ -704,13 +704,6 @@ fn transport_failure(endpoint: &str, error: &impl std::fmt::Display) -> Error {
     Error::Io(std::io::Error::new(
         std::io::ErrorKind::ConnectionAborted,
         format!("could not reach IAM Identity Center through {endpoint}: {error}"),
-    ))
-}
-
-fn refusal(message: impl Into<String>) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        message.into(),
     ))
 }
 

@@ -1,10 +1,7 @@
-"""The suite's process-wide seals.
-
-`FixCodec.from_env` resolves the process's instrument registry in-process
-(`IsinRegistry.from_env`), from `YGGDRYL_ISIN_REGISTRY_URI` else the home's
-`~/.config/yggdryl/isin/`: the variable is pointed at a folder of this
-session's own before any test module imports, so no test reads or lays out
-the real one.
+"""The suite's process-wide seals: `YGGDRYL_ISIN_REGISTRY_URI` names a
+folder of this session's own before any test module imports, so
+`IsinRegistry.from_env` and `FixCodec.from_env` never read or lay out the
+real `~/.config/yggdryl/isin/`.
 """
 
 from __future__ import annotations

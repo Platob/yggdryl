@@ -12,8 +12,8 @@
 
 use super::bucket::{absent_is_done, bucket_label};
 use super::client::{
-    Call, Reader, S3Tables, SERVICE, body, check_name, check_version_token, echo, invalid_input,
-    label,
+    Call, Reader, S3Tables, SERVICE, body, check_name, check_version_token, invalid_input, label,
+    refuse_arn,
 };
 use super::listing::{Page, TableSummaries};
 use super::namespace::check_namespace;
@@ -218,28 +218,20 @@ impl S3Tables {
     /// table bucket `bucket`, with one `PUT`, and answer its ARN and first
     /// version token.
     ///
-    /// A `schema` is sent as the table's Iceberg schema, so the service
-    /// writes the first metadata file itself: the schema as Iceberg
-    /// expresses it, a column that carries no Iceberg field id yet numbered
-    /// above the highest one present, the way a table's own metadata
-    /// numbers it. What the schema declares beside its columns goes with
-    /// it - its `PARTITION:by` (or its marked partition columns) as the
-    /// table's partition spec, its `SORT:by` as the table's write order -
-    /// so a declared layout is the table's, never dropped on the way.
-    /// Without a schema the table has no metadata location until something
-    /// commits one.
+    /// A `schema` is sent as the table's Iceberg schema - a column with no
+    /// field id numbered above the highest present - with its `PARTITION:by`
+    /// (or marked partition columns) as the partition spec and its `SORT:by`
+    /// as the write order, and the service writes the first metadata file.
+    /// Without one the table has no metadata location until a commit.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`](crate::Error::Parse) for an ARN or a name
-    /// the model refuses, and the Iceberg writers' refusal of a `schema`
-    /// that is not a non-null struct, holds a type Iceberg cannot spell or
-    /// declares a partition or an order no Iceberg spec holds, before any
-    /// request;
-    /// [`Error::Conflict`](crate::Error::Conflict) when the namespace
-    /// already holds a table of that name; and the service's refusal
-    /// otherwise - a namespace that is not there is its `404`, since what
-    /// is missing is not the table.
+    /// Before any request, [`Error::Parse`](crate::Error::Parse) for an ARN
+    /// or a name the model refuses, and the Iceberg writers' refusal of a
+    /// `schema` that is not a non-null struct or that no Iceberg schema,
+    /// spec or order can state; [`Error::Conflict`](crate::Error::Conflict)
+    /// when the namespace holds a table of that name; the service's refusal
+    /// otherwise - a missing namespace is its `404`.
     pub fn create_table(
         &self,
         bucket: &Arn,
@@ -263,7 +255,7 @@ impl S3Tables {
             "CreateTable",
             format!("/tables/{}/{}", bucket_label(bucket)?, label(namespace)),
             addressed(bucket, namespace, name),
-            crate::json::into_bytes(&Scalar::from_struct(members)?)?,
+            body(members)?,
         )
         .in_bucket(bucket)
         .conflict_as(KIND);
@@ -302,10 +294,8 @@ impl S3Tables {
     /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
     /// with one `GET`.
     ///
-    /// The ARN names a table by the identifier the service gave it, which
-    /// neither a rename nor a move to another namespace changes, so the
-    /// answer is what says which namespace holds the table now and what it
-    /// is called there.
+    /// The identifier survives a rename or a move, so the answer says
+    /// which namespace holds the table now and what it is called there.
     ///
     /// # Errors
     ///
@@ -389,19 +379,18 @@ impl S3Tables {
                 }
             )));
         }
-        let members: Vec<(&str, Scalar)> = [
+        let members = [
             ("newNamespaceName", new_namespace),
             ("newName", new_name),
             ("versionToken", version_token),
         ]
         .into_iter()
-        .filter_map(|(member, value)| value.map(|value| (member, Scalar::from(value))))
-        .collect();
+        .filter_map(|(member, value)| value.map(|value| (member, Scalar::from(value))));
         let call = Call::put(
             "RenameTable",
             path,
             addressed(bucket, namespace, name),
-            crate::json::into_bytes(&Scalar::from_struct(members)?)?,
+            body(members)?,
         )
         .in_bucket(bucket);
         self.send(&call).map(drop)
@@ -537,21 +526,12 @@ pub(crate) fn check_table(name: &str) -> Result<()> {
 /// not `s3tables`, at the service field, or when its resource is not
 /// `bucket/<name>/table/<id>`, at the resource.
 pub(crate) fn bucket_of(table: &Arn) -> Result<Arn> {
-    let text = table.to_string();
-    let refuse = |position: usize| crate::Error::Parse {
-        target: "table arn",
-        position,
-        reason: smol_str::format_smolstr!(
-            "expected a table's ARN - arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id> - got {:?}",
-            echo(&text)
-        ),
-    };
-    if table.service() != SERVICE {
-        return Err(refuse("arn:".len() + table.partition().len() + 1));
-    }
-    // The ARN's own reading of its resource: one grammar, read in one place.
     let Some((bucket, _)) = table.identified_table() else {
-        return Err(refuse(text.len() - table.resource().len()));
+        return Err(refuse_arn(
+            table,
+            "table arn",
+            "a table's ARN - arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>",
+        ));
     };
     Arn::from_parts(
         table.partition(),
@@ -576,6 +556,6 @@ fn table_path(bucket: &Arn, namespace: &str, name: &str) -> Result<String> {
 
 /// What a refusal reports a table as: its table bucket's ARN, then its
 /// namespace and its name below it.
-fn addressed(bucket: &Arn, namespace: &str, name: &str) -> String {
+pub(crate) fn addressed(bucket: &Arn, namespace: &str, name: &str) -> String {
     format!("{bucket}/{namespace}/{name}")
 }

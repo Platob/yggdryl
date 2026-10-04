@@ -22,11 +22,9 @@
 //! `ICEBERG:` vocabulary so this module never spells a metadata key itself.
 //!
 //! A column's `doc` is none of them: it is the field's own
-//! [`Field::description`], written to the document and read back from it,
-//! because a field has one meaning however many catalogs quote it. A
-//! description is one line, so a line break or any other control character a
-//! writer left in a `doc` reads as a space, and a `doc` that says nothing as
-//! no description.
+//! [`Field::description`], written to the document and read back from it.
+//! A description is one line, so a control character a writer left in a
+//! `doc` reads as a space, and a `doc` that says nothing as no description.
 
 use std::borrow::Cow;
 

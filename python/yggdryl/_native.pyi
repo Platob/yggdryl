@@ -3501,18 +3501,12 @@ class Records:
     def __repr__(self) -> str: ...
 
 class IOResult:
-    """The rows one record write read, wrote and skipped.
+    """The rows one record write read, wrote and skipped - what a ``where``
+    kept out, or a bound cut off. A write cut into several commits answers
+    their sum. Immutable."""
 
-    Every record write of an ``IOBase`` answers one: ``read_rows`` is what
-    the write pulled from its source, ``written_rows`` what reached the
-    destination, and ``skipped_rows`` what was read and not written - the
-    rows a ``where`` kept out, the part of the last batch a bound cut off. A
-    write cut into several commits answers their sum. Immutable.
-    """
-
-    # `skipped_rows` absent is the read rows less the written, never below
-    # zero; stated, the three counts are taken as they are - what a sum of
-    # results holds, and what `repr`, pickle and copy rebuild from.
+    # `skipped_rows` omitted is the read rows not written, never below zero;
+    # stated, the three counts are taken as they are - a sum's own.
     def __init__(
         self,
         read_rows: int = 0,
@@ -6012,12 +6006,9 @@ class IcebergTable(Table):
     a warehouse table is here beside the table's own."""
 
     # `root` is the container handle the table lives in, or the table's
-    # location - a string, a path-like, a `Url`, a `Uri` or an `Arn` - which
-    # the core opens under `properties`: a folder any backend holds, or a
-    # table an Amazon S3 Tables table bucket keeps, named
-    # `s3tables://<bucket>/<namespace>/<table>` or, to open one, by its ARN.
-    # Properties beside a handle are refused: a handle root is reopened as the
-    # folder at its location, under the environment.
+    # location, which the core opens under `properties` - a folder, or
+    # `s3tables://<bucket>/<namespace>/<table>`, or, to open one, a table's
+    # ARN; properties beside a handle are refused.
     #
     # `partition_by` is a `PartitionSpec`, or the `PARTITION:by` entries the
     # core reads into one: a bare column an identity field, `days(ts)`,
@@ -7029,17 +7020,13 @@ class Identifiers:
 class IsinRegistry:
     """A table of instruments keyed by ISIN, shared behind one lock.
 
-    Each row holds the instrument's ``isin``, ``updunix`` (when the statement
-    that last moved it happened, a stamp), detailed ``cficode``, its
-    ``countrycode`` of issue, its ``forexcode`` pair, the ``miccode`` its
-    listing facts belong to, its ``ticker`` and trading ``currency`` and one
-    code per ``SecurityIDSource(22)`` type but the ISIN. A lifecycle learns
-    into it - keyed by a stated real ISIN - and fills from it what a message
-    leaves unsaid, a parse fills derived identifiers from it, and a valid
-    stated value fills and replaces whatever the time. Bound to the store it
-    was loaded from (``from_url``, ``from_env``) and committed back only
-    where it moved (``commit``). Equal only to itself; never hashed or
-    pickled: its rows cross out as an Arrow stream.
+    Each row holds the instrument's ``isin``, ``updunix``, ``cficode``,
+    ``countrycode``, ``forexcode``, ``miccode``, ``ticker``, ``currency`` and
+    one code per ``SecurityIDSource(22)`` type but the ISIN. A lifecycle
+    learns into it and fills from it, a parse fills derived identifiers from
+    it. Bound to the store it was loaded from (``from_url``, ``from_env``)
+    and committed back only where it moved (``commit``). Equal only to
+    itself; never hashed or pickled: its rows cross out as an Arrow stream.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -7047,7 +7034,7 @@ class IsinRegistry:
     def __init__(self, max_instruments: int = 16384) -> None: ...
     @staticmethod
     def from_url(location: object, max_instruments: int = 16384, **properties: str) -> IsinRegistry:
-        """A registry bound to the store a URL or path names and loaded from it: an Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an object store; a store holding nothing yet an empty first run."""
+        """A registry bound to the store a URL or path names and loaded from it, its columns named by the registry's own names or any spelling of an identifier type; a store holding nothing yet loads empty, laid out by the first ``commit``."""
         ...
     @staticmethod
     def from_env() -> IsinRegistry:
@@ -7067,7 +7054,7 @@ class IsinRegistry:
         """The rows as a snapshot stream in ISIN order, under the registry's row field."""
         ...
     def commit(self) -> IOResult:
-        """Writes the table to the store it is bound to, only where it moved: one overwrite of the snapshot; a clean registry costs no call."""
+        """Overwrites the bound store with the snapshot, only where it moved; a clean registry costs no call."""
         ...
     @property
     def is_dirty(self) -> bool: ...

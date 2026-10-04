@@ -85,9 +85,7 @@ pub(crate) fn container_field(
 ///
 /// Every write door - the overwrite, the append and the merge of each shape,
 /// and the generic `write_*` beside them - answers an
-/// [`IOResult`](crate::IOResult): the rows it read off its source, the rows
-/// that reached the destination, and the rows between the two that the
-/// options' `where` or a bound kept out.
+/// [`IOResult`](crate::IOResult).
 pub trait IOMedia: Send {
     /// Borrow this media value as the one positional storage abstraction.
     #[doc(hidden)]
@@ -582,9 +580,7 @@ pub trait IOMedia: Send {
     /// replacement, and `commit_batch_num` paces a stream whose rows would
     /// outgrow the spill folder.
     ///
-    /// The answer counts the whole write, every cadence included: the rows
-    /// pulled from `batches`, the rows the destination took, and the rows a
-    /// `where` kept out or a bound cut off the batch it fell in. It says
+    /// The answer counts the whole write, every cadence included, and says
     /// nothing of what was replaced.
     ///
     /// # Errors

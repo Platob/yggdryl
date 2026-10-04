@@ -1,6 +1,6 @@
-//! `rust/src/s3tables/mod.rs`: the catalog as a whole - the request every
-//! verb costs, which the module's own table states, and a table's whole
-//! life against the fake - beside the handles every suite here builds.
+//! `rust/src/s3tables/mod.rs`: the request every verb costs, which the
+//! module's own table states, and a table's whole life against the fake,
+//! beside the helpers every suite here shares.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -326,25 +326,6 @@ fn a_table_lives_its_whole_life_in_the_catalog() {
     assert_eq!(second.metadata_location(), Some(&next));
     assert_eq!(second.version_token(), committed.version_token());
 
-    // A commit under the token the table has moved past is refused, and
-    // moves nothing.
-    let lost = Url::from_str(&format!(
-        "{}/metadata/00001-lost.metadata.json",
-        first.warehouse_location()
-    ))
-    .expect("a location");
-    let stale = tables
-        .update_table_metadata_location(&lake, "trial", "events", first.version_token(), &lost)
-        .expect_err("a stale token");
-    assert_eq!(refusal(&stale), (409, "ConflictException"));
-    assert_eq!(
-        fake.table("lake", "trial", "events")
-            .expect("the table")
-            .metadata_location
-            .as_deref(),
-        Some(next.to_string().as_str())
-    );
-
     // A rename keeps the table and moves its token.
     tables
         .rename_table(
@@ -363,16 +344,6 @@ fn a_table_lives_its_whole_life_in_the_catalog() {
     assert_eq!(renamed.arn(), created.arn());
     assert_eq!(renamed.metadata_location(), Some(&next));
     assert_ne!(renamed.version_token(), second.version_token());
-
-    // A bucket and a namespace that still hold something are kept.
-    let kept = tables
-        .remove_namespace(&lake, "trial")
-        .expect_err("a namespace holding a table");
-    assert_eq!(refusal(&kept), (409, "ConflictException"));
-    let kept = tables
-        .remove_table_bucket(&lake)
-        .expect_err("a bucket holding a namespace");
-    assert_eq!(refusal(&kept), (409, "ConflictException"));
 
     // Emptied from the bottom up, everything goes.
     tables

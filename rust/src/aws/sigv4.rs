@@ -3,17 +3,11 @@
 //! Pure: `std`, `sha2` and `hmac` only. A client builds the wire request, hands its parts to
 //! [`Signer::sign`], and adds the headers it gets back. The scope names the service - `s3` for
 //! the object store, `sts` for the exchange that trades a role for a credential set, `s3tables`
-//! or `execute-api` for a catalog - and the service decides the one rule the two families of
-//! AWS services differ by, which the signer owns:
-//!
-//! - the S3 family ([`is_s3_family`]) signs the canonical URI as the path exactly as sent,
-//!   encoded once and never again;
-//! - every other service signs the path with its dot segments and empty segments removed and
-//!   then percent-encoded once more, so a `%3A` on the wire is `%253A` in the canonical request.
-//!
-//! That is botocore's `S3SigV4Auth` against its `SigV4Auth`. One departure from botocore holds
-//! for every service: `x-amz-content-sha256` is always sent and signed, which S3 requires and
-//! every other service accepts as one more signed header.
+//! or `execute-api` for a catalog - and the service decides the canonical URI: the S3 family
+//! ([`is_s3_family`]) signs the path exactly as sent, every other service the path with its dot
+//! and empty segments removed and percent-encoded once more (`%3A` signs as `%253A`), as
+//! botocore's `S3SigV4Auth` and `SigV4Auth` do. Unlike botocore, `x-amz-content-sha256` is always
+//! sent and signed, which S3 requires and every other service accepts.
 
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -43,16 +37,12 @@ const OWNED: [&str; 4] = [
     "x-amz-security-token",
 ];
 
-/// The signing names that sign as S3 does: the canonical URI is the path as
-/// sent, and an unhashed payload may be declared.
-///
-/// botocore signs these four through `S3SigV4Auth` and every other name
-/// through `SigV4Auth`. `s3-outposts` is also the signing name of the
-/// `s3outposts` control API, which botocore signs the generic way; its paths
-/// (`/S3Outposts/CreateEndpoint`) hold nothing the two rules encode
-/// differently, so the one answer is exact for both. A name that merely
-/// begins with `s3` - `s3tables`, `s3vectors`, `s3files` - is not of the
-/// family.
+/// The signing names botocore signs through `S3SigV4Auth`: the canonical URI
+/// is the path as sent, and an unhashed payload may be declared. `s3-outposts`
+/// is also the `s3outposts` control API's name, which botocore signs
+/// generically; its paths encode the same under both rules, so one answer is
+/// exact. A name that merely begins with `s3` - `s3tables`, `s3vectors` - is
+/// not of the family.
 const S3_FAMILY: [&str; 4] = ["s3", "s3express", "s3-object-lambda", "s3-outposts"];
 
 /// Whether `service`, a SigV4 signing name, signs by the S3 rules.
@@ -61,12 +51,10 @@ pub(crate) fn is_s3_family(service: &str) -> bool {
 }
 
 /// The access key id a Signature Version 4 `authorization` header names:
-/// what follows `Credential=` up to the scope's first `/`.
-///
-/// A client told its key was refused reads the key off the attempt it sent
-/// rather than off a signer, which another request may since have replaced.
+/// what follows `Credential=` up to the scope's first `/`. A refused request
+/// reads its key here, off the attempt it sent, rather than off a signer.
 pub(crate) fn signed_access_key(authorization: &str) -> Option<&str> {
-    let credential = &authorization[authorization.find("Credential=")? + "Credential=".len()..];
+    let (_, credential) = authorization.split_once("Credential=")?;
     credential.split('/').next().filter(|key| !key.is_empty())
 }
 

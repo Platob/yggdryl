@@ -116,16 +116,13 @@ impl Credentials {
 /// What a store's refusal says of the keys a request was signed with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// The set lapsed - S3's `ExpiredToken` and `TokenRefreshRequired`, the
-    /// query services' `ExpiredTokenException` - and a lapsed set never
-    /// comes back, so its key never signs again on the session.
+    /// The set lapsed (`ExpiredToken`, `ExpiredTokenException`,
+    /// `TokenRefreshRequired`): its key never signs again on the session.
     Lapsed,
-    /// The key or its token is not one the store knows - S3's
-    /// `InvalidAccessKeyId` and `InvalidToken`, the query services'
-    /// `InvalidClientTokenId`, the JSON services'
-    /// `UnrecognizedClientException`. IAM answers this for the few seconds
-    /// a new key takes to propagate, so the key is passed over for a pause
-    /// and read again after it, or as soon as the shared files move.
+    /// The key or its token is unknown (`InvalidAccessKeyId`,
+    /// `InvalidToken`, `InvalidClientTokenId`, `UnrecognizedClientException`),
+    /// which IAM also answers while a new key propagates: the key is passed
+    /// over for a pause, or until the shared files move.
     Unrecognized,
 }
 

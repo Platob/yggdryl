@@ -9,7 +9,7 @@ use crate::fake::{ACCOUNT, S3TablesFake};
 use crate::mod_::{LAKE_LABEL, arn, client, lake, refusal};
 
 #[test]
-fn a_listing_asks_for_a_page_only_when_the_one_before_it_is_drained() {
+fn a_listing_asks_for_a_page_only_when_the_one_before_it_is_drained_under_its_token() {
     let fake = S3TablesFake::start();
     let tables = client(&fake);
     for name in ["bucket-a", "bucket-b", "bucket-c", "bucket-d", "bucket-e"] {
@@ -38,25 +38,11 @@ fn a_listing_asks_for_a_page_only_when_the_one_before_it_is_drained() {
     assert!(buckets.next().is_none());
     assert!(buckets.next().is_none());
     assert_eq!(fake.request_count(), 3);
-}
 
-#[test]
-fn a_page_is_continued_by_the_token_the_one_before_it_answered() {
-    let fake = S3TablesFake::start();
-    let tables = client(&fake);
-    for name in ["bucket-a", "bucket-b", "bucket-c"] {
-        fake.seed_bucket(name);
-    }
-    fake.set_page_size(2);
-
-    assert_eq!(tables.table_buckets().count(), 3);
+    // The first page states the size and no token; the next hands the token
+    // back as answered - its `/`, `+` and `=` escaped on the wire.
     let recorded = fake.requests();
-    assert_eq!(recorded.len(), 2);
-    // The first page states the page size and no token.
     assert_eq!(recorded[0].target, "/buckets?maxBuckets=250");
-    // The second hands the token back as it was answered: the service's
-    // tokens are not URL-safe, so its `/`, `+` and `=` are escaped on the
-    // wire and arrive as they left.
     assert_eq!(
         recorded[1].target,
         "/buckets?continuationToken=after%2Fbucket-b%2B%3D&maxBuckets=250"

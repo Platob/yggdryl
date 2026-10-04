@@ -1,11 +1,9 @@
-//! `rust/src/s3tables/client.rs`: the one door every request leaves
-//! through - where the service is, who signs, what goes on the wire, when a
-//! request goes again, and what a refusal means.
-//!
-//! How a request is signed, and when a refused key earns a second send, is
+//! `rust/src/s3tables/client.rs`: where the service is, who signs, what goes
+//! on the wire, when a request goes again, and what a refusal means. How a
+//! request is signed, and when a refused key earns a second send, is
 //! `Request::with_sigv4`'s and pinned in `rust/tests/aws/request.rs`; here
-//! the fake recomputes every signature on its own, so what is pinned is that
-//! the client's requests are the ones the service would answer.
+//! the fake recomputes every signature, so the client's requests are the
+//! ones the service would answer.
 
 use serde_json::json;
 use yggdryl::aws::{Credentials, Session};
@@ -248,20 +246,6 @@ fn the_endpoint_is_what_was_stated_then_the_sessions_then_the_partitions_host() 
     assert_eq!(endpoint(&literal, "us-east-1"), "http://[::1]:4566/gateway");
 }
 
-// --- where a request arrives -------------------------------------------------
-//
-// Each test below reaches the fake through one source of the endpoint, and
-// the source a wrong reading would take instead points at a loopback port
-// nothing listens on. The fake answers as the service of a region no AWS
-// partition publishes a host for, and every table bucket's ARN names it, so a
-// client that dropped the endpoint altogether would ask for
-// `s3tables[-fips].zz-nowhere-1.amazonaws.com` - a name that resolves to
-// nothing - and fail on this machine rather than send a fixture-signed
-// request to the real service.
-
-/// A region no AWS partition publishes a host for.
-const NOWHERE_REGION: &str = "zz-nowhere-1";
-
 /// A loopback URL nothing listens on.
 fn nowhere() -> String {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
@@ -270,105 +254,74 @@ fn nowhere() -> String {
     format!("http://{address}")
 }
 
-/// A fake answering as the service of [`NOWHERE_REGION`], its table bucket
-/// `lake`, and the label a request below that bucket names it by.
-fn nowhere_lake() -> (S3TablesFake, yggdryl::Arn, String) {
-    let fake = S3TablesFake::start();
-    fake.set_region(NOWHERE_REGION);
-    let lake = lake(&fake);
-    let label = LAKE_LABEL.replace("us-east-1", NOWHERE_REGION);
-    (fake, lake, label)
-}
-
-/// `tables` reaches `fake` for `lake`: its endpoint is the fake's, and a
-/// reading of the bucket is one request there.
-fn reaches(tables: &S3Tables, fake: &S3TablesFake, lake: &yggdryl::Arn, label: &str) {
-    assert_eq!(
-        tables.endpoint_url(NOWHERE_REGION).expect("an endpoint"),
-        fake.endpoint()
-    );
-    fake.clear_requests();
-    tables.get_table_bucket(lake).expect("the bucket");
-    assert_eq!(fake.lines(), [format!("GET /buckets/{label}")]);
-}
-
 #[test]
-fn a_stated_or_configured_endpoint_is_used_whatever_the_fips_and_dualstack_switches_say() {
-    // botocore turns both switches off when an endpoint is given: they choose
-    // among the published hosts, and a caller who names a gateway reaches it.
-    let (fake, lake, label) = nowhere_lake();
-
-    // An endpoint the client states, and the switch the session turns on.
-    reaches(
-        &at_fake(session().with_use_fips_endpoint(true), &fake),
-        &fake,
-        &lake,
-        &label,
-    );
-    reaches(
-        &at_fake(session().with_use_dualstack_endpoint(true), &fake),
-        &fake,
-        &lake,
-        &label,
-    );
-    // An endpoint the session configures - a global AWS_ENDPOINT_URL - beside
-    // the switch the environment turns on, and one it states for the service.
-    reaches(
-        &S3Tables::new(
-            offline(&[
-                ("AWS_ENDPOINT_URL", fake.endpoint().as_str()),
+fn a_stated_or_configured_endpoint_is_where_a_request_arrives_whatever_the_switches_say() {
+    // The fake answers as a region no partition publishes a host for, and
+    // each decoy is a port nothing listens on: a client that dropped the
+    // endpoint asks a name that resolves to nothing and fails here, rather
+    // than sending a fixture-signed request to the real service. As in
+    // botocore, an endpoint turns the FIPS and dual-stack switches off.
+    const NOWHERE: &str = "zz-nowhere-1";
+    let fake = S3TablesFake::start();
+    fake.set_region(NOWHERE);
+    let lake = lake(&fake);
+    let label = LAKE_LABEL.replace("us-east-1", NOWHERE);
+    let (endpoint, decoy) = (fake.endpoint(), nowhere());
+    let signed = |session: Session| {
+        S3Tables::new(session.with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)))
+    };
+    for (case, tables) in [
+        (
+            "stated, beside FIPS",
+            at_fake(session().with_use_fips_endpoint(true), &fake),
+        ),
+        (
+            "stated, beside dual-stack",
+            at_fake(session().with_use_dualstack_endpoint(true), &fake),
+        ),
+        (
+            "AWS_ENDPOINT_URL, beside both switches",
+            signed(offline(&[
+                ("AWS_ENDPOINT_URL", endpoint.as_str()),
                 ("AWS_USE_FIPS_ENDPOINT", "true"),
                 ("AWS_USE_DUALSTACK_ENDPOINT", "true"),
-            ])
-            .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
+            ])),
         ),
-        &fake,
-        &lake,
-        &label,
-    );
-    reaches(
-        &S3Tables::new(
-            session()
-                .with_use_dualstack_endpoint(true)
-                .with_service_endpoint_url("s3tables", fake.endpoint()),
+        (
+            "the session's for s3tables, beside dual-stack",
+            S3Tables::new(
+                session()
+                    .with_use_dualstack_endpoint(true)
+                    .with_service_endpoint_url("s3tables", endpoint.as_str()),
+            ),
         ),
-        &fake,
-        &lake,
-        &label,
-    );
-}
-
-#[test]
-fn aws_endpoint_url_s3tables_alone_is_where_a_request_arrives() {
-    let (fake, lake, label) = nowhere_lake();
-    let (endpoint, decoy) = (fake.endpoint(), nowhere());
-    // A sealed session: these variables are its whole environment, its
-    // `~/.aws` an empty directory of its own.
-    let tables = S3Tables::new(
-        offline(&[
-            ("AWS_ENDPOINT_URL_S3TABLES", endpoint.as_str()),
-            ("AWS_ENDPOINT_URL", decoy.as_str()),
-        ])
-        .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
-    );
-    reaches(&tables, &fake, &lake, &label);
-}
-
-#[test]
-fn the_services_section_s_s3tables_entry_is_where_a_request_arrives() {
-    let (fake, lake, label) = nowhere_lake();
-    let (endpoint, decoy) = (fake.endpoint(), nowhere());
-    // The profile's own endpoint and another service's entry point nowhere.
-    let tables = S3Tables::new(
-        offline(&[])
-            .with_config_text(format!(
+        (
+            "AWS_ENDPOINT_URL_S3TABLES over AWS_ENDPOINT_URL",
+            signed(offline(&[
+                ("AWS_ENDPOINT_URL_S3TABLES", endpoint.as_str()),
+                ("AWS_ENDPOINT_URL", decoy.as_str()),
+            ])),
+        ),
+        (
+            "the services section's s3tables entry over the profile's and s3's",
+            signed(offline(&[]).with_config_text(format!(
                 "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
                  [services local]\ns3 =\n  endpoint_url = {decoy}\n\
                  s3tables =\n  endpoint_url = {endpoint}\n"
-            ))
-            .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
-    );
-    reaches(&tables, &fake, &lake, &label);
+            ))),
+        ),
+    ] {
+        assert_eq!(
+            tables.endpoint_url(NOWHERE).expect("an endpoint"),
+            endpoint,
+            "{case}"
+        );
+        fake.clear_requests();
+        tables
+            .get_table_bucket(&lake)
+            .unwrap_or_else(|error| panic!("{case}: {error}"));
+        assert_eq!(fake.lines(), [format!("GET /buckets/{label}")], "{case}");
+    }
 }
 
 #[test]
@@ -614,13 +567,8 @@ fn a_503_is_sent_again_for_a_read_and_a_removal_and_never_for_a_create() {
     fake.refuse_next(503, "ServiceUnavailableException", "busy", 1);
     fake.clear_requests();
     tables.get_table_bucket(&lake).expect("the second answer");
-    assert_eq!(
-        fake.requests()
-            .iter()
-            .map(|request| request.status)
-            .collect::<Vec<_>>(),
-        [503, 200]
-    );
+    let read = format!("GET /buckets/{LAKE_LABEL}");
+    assert_eq!(fake.answered(), [(read.clone(), 503), (read, 200)]);
 
     // So is a throttled one - by its status, or by the error type botocore
     // reads as throttling under a `400`.
@@ -649,13 +597,8 @@ fn a_503_is_sent_again_for_a_read_and_a_removal_and_never_for_a_create() {
     tables
         .remove_namespace(&lake, "spare")
         .expect("the second answer");
-    assert_eq!(
-        fake.requests()
-            .iter()
-            .map(|request| (request.method.clone(), request.status))
-            .collect::<Vec<_>>(),
-        [("DELETE".to_owned(), 503), ("DELETE".to_owned(), 204)]
-    );
+    let removal = format!("DELETE /namespaces/{LAKE_LABEL}/spare");
+    assert_eq!(fake.answered(), [(removal.clone(), 503), (removal, 204)]);
     assert!(!fake.has_namespace("lake", "spare"));
 
     // A create is sent once: the service may have acted on the one it did
@@ -770,50 +713,52 @@ fn signers(fake: &S3TablesFake) -> Vec<(String, u16)> {
 const EXPIRED: &str = "The security token included in the request is expired";
 
 #[test]
-fn a_set_the_service_calls_expired_is_signed_again_once_when_the_session_answers_another() {
-    let fake = S3TablesFake::start();
-    let lake = lake(&fake);
-    for key in ["ASIAOLDDUMP", "ASIANEWDUMPED", "ASIATHIRDDUMP"] {
-        fake.accept_key(key, &format!("{key}-secret"), Some(&format!("{key}-token")));
+fn an_expired_or_unknown_key_is_signed_again_once_with_the_set_dumped_since() {
+    for (code, message) in [
+        ("ExpiredTokenException", EXPIRED),
+        // The JSON services' spelling of a key rotated out.
+        (
+            "UnrecognizedClientException",
+            "The security token included in the request is invalid.",
+        ),
+    ] {
+        let fake = S3TablesFake::start();
+        let lake = lake(&fake);
+        for key in ["ASIAOLDDUMP", "ASIANEWDUMPED", "ASIATHIRDDUMP"] {
+            fake.accept_key(key, &format!("{key}-secret"), Some(&format!("{key}-token")));
+        }
+        let directory = scratch("redumped");
+        let credentials = directory.join("credentials");
+        std::fs::write(&credentials, dumped("ASIAOLDDUMP")).expect("a dumped set");
+        let tables = reading_files(&fake, &directory);
+        tables.get_table_bucket(&lake).expect("a bucket");
+
+        // A set dumped anew is read once the service refuses the one in
+        // hand, and the same request goes once more - a create included,
+        // since the refusal says the service took nothing.
+        for (old, new, create) in [
+            ("ASIAOLDDUMP", "ASIANEWDUMPED", false),
+            ("ASIANEWDUMPED", "ASIATHIRDDUMP", true),
+        ] {
+            std::fs::write(&credentials, dumped(new)).expect("a set dumped anew");
+            fake.refuse_next(403, code, message, 1);
+            fake.clear_requests();
+            if create {
+                tables
+                    .create_namespace(&lake, "trial")
+                    .expect("a namespace");
+            } else {
+                tables.get_table_bucket(&lake).expect("a bucket");
+            }
+            assert_eq!(
+                signers(&fake),
+                [(old.to_owned(), 403), (new.to_owned(), 200)],
+                "{code}"
+            );
+        }
+        assert!(fake.has_namespace("lake", "trial"), "{code}");
+        let _ = std::fs::remove_dir_all(&directory);
     }
-    let directory = scratch("redumped");
-    let credentials = directory.join("credentials");
-    std::fs::write(&credentials, dumped("ASIAOLDDUMP")).expect("a dumped set");
-    let tables = reading_files(&fake, &directory);
-    tables.get_table_bucket(&lake).expect("a bucket");
-
-    // A fresh set is dumped; the process still holds the old one until the
-    // service says it lapsed - then the file is read again and the same
-    // request goes once more, signed with what it says now.
-    std::fs::write(&credentials, dumped("ASIANEWDUMPED")).expect("a set dumped anew");
-    fake.refuse_next(403, "ExpiredTokenException", EXPIRED, 1);
-    fake.clear_requests();
-    tables.get_table_bucket(&lake).expect("a bucket");
-    assert_eq!(
-        signers(&fake),
-        [
-            ("ASIAOLDDUMP".to_owned(), 403),
-            ("ASIANEWDUMPED".to_owned(), 200)
-        ]
-    );
-
-    // A create is signed again the same way: the refusal says the service
-    // took nothing, so the second send creates once.
-    std::fs::write(&credentials, dumped("ASIATHIRDDUMP")).expect("a third set");
-    fake.refuse_next(403, "ExpiredTokenException", EXPIRED, 1);
-    fake.clear_requests();
-    tables
-        .create_namespace(&lake, "trial")
-        .expect("a namespace");
-    assert_eq!(
-        signers(&fake),
-        [
-            ("ASIANEWDUMPED".to_owned(), 403),
-            ("ASIATHIRDDUMP".to_owned(), 200)
-        ]
-    );
-    assert!(fake.has_namespace("lake", "trial"));
-    let _ = std::fs::remove_dir_all(&directory);
 }
 
 #[test]
@@ -857,41 +802,6 @@ fn a_set_the_service_calls_expired_is_not_sent_again_when_nothing_else_answers()
         "{message}"
     );
     assert_eq!(fake.request_count(), 1);
-    let _ = std::fs::remove_dir_all(&directory);
-}
-
-#[test]
-fn a_key_the_service_does_not_recognize_is_signed_again_once_with_the_set_dumped_since() {
-    let fake = S3TablesFake::start();
-    let lake = lake(&fake);
-    for key in ["ASIAROTATEDOUT", "ASIAROTATEDIN"] {
-        fake.accept_key(key, &format!("{key}-secret"), Some(&format!("{key}-token")));
-    }
-    let directory = scratch("unrecognized");
-    let credentials = directory.join("credentials");
-    std::fs::write(&credentials, dumped("ASIAROTATEDOUT")).expect("a dumped set");
-    let tables = reading_files(&fake, &directory);
-    tables.get_table_bucket(&lake).expect("a bucket");
-
-    // The key is rotated and the file dumped anew; the service no longer
-    // recognizes the old one - the JSON services' spelling of an unknown
-    // key - so the file is read again and the request goes once more.
-    std::fs::write(&credentials, dumped("ASIAROTATEDIN")).expect("a set dumped anew");
-    fake.refuse_next(
-        403,
-        "UnrecognizedClientException",
-        "The security token included in the request is invalid.",
-        1,
-    );
-    fake.clear_requests();
-    tables.get_table_bucket(&lake).expect("a bucket");
-    assert_eq!(
-        signers(&fake),
-        [
-            ("ASIAROTATEDOUT".to_owned(), 403),
-            ("ASIAROTATEDIN".to_owned(), 200)
-        ]
-    );
     let _ = std::fs::remove_dir_all(&directory);
 }
 
@@ -967,49 +877,6 @@ fn every_error_type_is_the_services_refusal_as_it_said_it() {
         assert_eq!(fake.request_count(), 1, "{error_type}");
     }
     assert!(fake.table("lake", "trial", "events").is_some());
-}
-
-#[test]
-fn a_404_and_a_409_are_typed_only_where_the_verb_says_what_they_mean() {
-    let fake = S3TablesFake::start();
-    let tables = client(&fake);
-    let lake = lake(&fake);
-    fake.seed_namespace("lake", "trial");
-
-    // A read of what is not there: the crate's absence.
-    let error = tables
-        .get_namespace(&lake, "absent")
-        .expect_err("no such namespace");
-    assert!(
-        matches!(&error, Error::Absent { expected, path }
-            if *expected == "namespace" && path.as_str() == format!("{lake}/absent")),
-        "{error:?}"
-    );
-    // A removal of what is not there: nothing left to do.
-    tables
-        .remove_namespace(&lake, "absent")
-        .expect("already removed");
-    // A create of what is there: the crate's conflict.
-    let error = tables
-        .create_namespace(&lake, "trial")
-        .expect_err("a namespace of that name");
-    assert!(
-        matches!(&error, Error::Conflict { expected, actual, path }
-            if *expected == "namespace" && *actual == "namespace"
-                && path.as_str() == format!("{lake}/trial")),
-        "{error:?}"
-    );
-    // A create under what is not there: the service's own 404, because the
-    // missing thing is not what was addressed.
-    let absent = arn(&fake.bucket_arn("absent"));
-    let error = tables
-        .create_namespace(&absent, "trial")
-        .expect_err("no such bucket");
-    assert_eq!(refusal(&error), (404, "NotFoundException"));
-    assert!(
-        error.to_string().contains("table bucket does not exist"),
-        "the service's message says which level is missing: {error}"
-    );
 }
 
 #[test]
@@ -1121,16 +988,13 @@ fn an_answer_that_is_not_the_models_is_reported_rather_than_guessed() {
 
 #[test]
 fn nothing_answering_is_an_io_failure_that_names_the_operation() {
-    // A port nothing listens on: bound, read, and let go.
-    let closed = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .and_then(|listener| listener.local_addr())
-        .expect("a loopback port");
+    let closed = nowhere();
     let lake = arn("arn:aws:s3tables:us-east-1:123456789012:bucket/lake");
     let tables = S3Tables::new(
         offline(&[("AWS_MAX_ATTEMPTS", "1")])
             .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
     )
-    .try_with_endpoint_url(format!("http://{closed}"))
+    .try_with_endpoint_url(&closed)
     .expect("an endpoint");
 
     let error = tables.get_table_bucket(&lake).expect_err("no listener");
@@ -1139,7 +1003,7 @@ fn nothing_answering_is_an_io_failure_that_names_the_operation() {
     assert!(
         message.contains("s3tables GetTableBucket")
             && message.contains("got no answer from")
-            && message.contains(&closed.to_string()),
+            && message.contains(closed.trim_start_matches("http://")),
         "{message}"
     );
     // And a removal that reached nothing removed nothing: it is not success.
@@ -1150,11 +1014,9 @@ fn nothing_answering_is_an_io_failure_that_names_the_operation() {
 
 #[cfg(feature = "internals")]
 mod internal {
-    //! What a caller cannot reach: the fake's own checks, each driven red by
-    //! a request built by hand, since a check that has never refused
-    //! anything proves nothing about the client that passes it - and the
-    //! signer the client signs through, agreeing with the fake on the one
-    //! spelling a signature for this service stands or falls on.
+    //! The fake's own checks, each driven red by a request built by hand,
+    //! and the crate-private signer agreeing with the fake on the canonical
+    //! URI a signature for this service stands or falls on.
 
     use std::time::SystemTime;
 

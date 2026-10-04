@@ -79,12 +79,9 @@ pub use sso::{DeviceAuthorization, Sso, SsoLogin};
 pub use sts::{AssumedRole, CredentialSource};
 
 /// One answer an identity service gave, read whole: its status, the error
-/// type it names in `x-amzn-ErrorType`, and its body.
-///
-/// Every identity call - STS, IAM Identity Center, the Sign-In service, the
-/// container endpoint, the instance metadata service - goes out through the
-/// session's [`crate::http::Session`], so the retries, the timeouts, the
-/// proxy rules and the CA bundle are the HTTP client's, stated per request.
+/// type it names in `x-amzn-ErrorType`, and its body. Every identity call
+/// goes out through the session's [`crate::http::Session`], so retries,
+/// timeouts, proxies and the CA bundle are the HTTP client's.
 pub(crate) struct Answer {
     pub(crate) status: u16,
     pub(crate) error_type: Option<String>,

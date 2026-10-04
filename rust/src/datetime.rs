@@ -534,12 +534,9 @@ temporal_leaf!(
 const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
 
 impl DateTime64 {
-    /// The datetime `text` spells, whether or not it states a zone.
-    ///
-    /// This is the crate's one reader of datetime text whose zone the text
-    /// may or may not state - an expiry a tool wrote, a capture, a parameter,
-    /// a cell, a document - over the ISO 8601 readers every text codec
-    /// shares, so no module pairs the two of them for itself:
+    /// The datetime `text` spells, whether or not it states a zone: the
+    /// crate's one reader of such text, over the ISO 8601 readers every text
+    /// codec shares.
     ///
     /// | Spelling | Example | Reads as |
     /// | --- | --- | --- |
@@ -549,13 +546,11 @@ impl DateTime64 {
     /// | no zone, `T` or a blank before the clock | `2026-10-03 03:20:00.250` | a wall clock in `naive` |
     /// | a bare date | `2026-10-03` | that day's midnight, a wall clock in `naive` |
     ///
-    /// It reads exactly what those readers read and nothing wider: text
-    /// with a blank before or after it is refused, as the value door of a
-    /// datetime refuses it, so a cell and the door never disagree. The
-    /// resolution is the one the digits spell - seconds for `03:20:00`,
-    /// milliseconds for `03:20:00.250`. A reading that states no zone is a
-    /// wall clock in `naive`: in [`Timezone::UTC`] it is that instant, in
-    /// [`Timezone::NAIVE`] it stays a wall clock meaning no instant.
+    /// Nothing wider: a blank before or after the text is refused, as the
+    /// datetime value door refuses it. The resolution is the one the digits
+    /// spell - seconds for `03:20:00`, milliseconds for `03:20:00.250`. A
+    /// reading stating no zone is a wall clock in `naive`: that instant in
+    /// [`Timezone::UTC`], no instant in [`Timezone::NAIVE`].
     ///
     /// ```
     /// use yggdryl::{DateTime64, TimeUnit, Timezone};

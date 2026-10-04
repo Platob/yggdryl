@@ -59,6 +59,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let size = crate::bench_profile::corpus(4_096, 32);
     let mut held = registry(size);
     let known = isin("FR", size / 2);
+    let xpar = Mic::new("XPAR").expect("a market");
 
     let mut nothing_new = stating(
         2,
@@ -67,7 +68,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             (IdType::Common, &format!("C-{}", size / 2)),
         ],
     );
-    nothing_new.set_miccode(Some(Mic::new("XPAR").expect("a market")), true);
+    nothing_new.set_miccode(Some(xpar.clone()), true);
     group.bench_function("learn_known", |bencher| {
         bencher.iter(|| held.learn(black_box(&nothing_new)));
     });
@@ -102,7 +103,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let ticker = format!("T{}", size / 2);
     let mut by_ticker = OrderEvent::at(3);
     by_ticker.set_ticker(Some(SmolStr::new(ticker)), true);
-    by_ticker.set_miccode(Some(Mic::new("XPAR").expect("a market")), true);
+    by_ticker.set_miccode(Some(xpar), true);
     group.bench_function("fill_by_ticker", |bencher| {
         bencher.iter_batched(
             || by_ticker.clone(),

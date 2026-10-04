@@ -1,28 +1,25 @@
 //! Where a table's current metadata document is named, when something
 //! other than the table's own folder names it.
 //!
-//! A table laid out as `HadoopTables` lays one out names its current
-//! document itself: `metadata/version-hint.text`, else the highest number a
-//! listing of `metadata/` shows. A table a catalog service keeps - an Amazon
-//! S3 Tables table, a REST catalog's - is named by the service instead, and
-//! the folder beside it may take neither a listing nor a delete. A
-//! [`MetadataPointer`] is that service, reduced to the two questions a table
-//! asks of it: which document is current now, and may this one replace it.
+//! A `HadoopTables` folder names its current document itself - the version
+//! hint, else a listing of `metadata/`. A table a catalog service keeps (an
+//! Amazon S3 Tables table, a REST catalog's) is named by the service, and
+//! its folder may take neither a listing nor a delete. A [`MetadataPointer`]
+//! is that service, reduced to two questions: which document is current,
+//! and may this one replace it.
 //!
-//! An [`IcebergTable`](super::IcebergTable) opened or created with a pointer
+//! A table opened or created with a pointer
 //! ([`IcebergTable::open_pointed`](super::IcebergTable::open_pointed),
 //! [`IcebergTable::create_pointed`](super::IcebergTable::create_pointed))
-//! reads the one document the pointer names and nothing else, writes each
-//! next document as `metadata/{version:05}-{uuid}.metadata.json` - the name
-//! Iceberg's own catalogs give one, the first numbered `00000` - and
-//! publishes it under the token the pointer last answered. No read and no
-//! commit lists the folder, writes a hint or removes a file: a document or a
-//! file a failed commit wrote stays where it is, unreferenced, for the
-//! store's own maintenance to collect. The table's own
+//! reads the one document the pointer names, writes each next one as
+//! `metadata/{version:05}-{uuid}.metadata.json` (the first `00000`) and
+//! publishes it under the token the pointer last answered. Nothing lists
+//! the folder, writes a hint or removes a file: what a failed commit wrote
+//! stays, unreferenced, for the store's own maintenance. The table's
 //! [`ls`](crate::IOBase::ls) is refused, touching nothing, and its
 //! [`remove`](crate::IOBase::remove) is the pointer's
-//! [`remove`](MetadataPointer::remove): the catalog that keeps the pointer
-//! keeps the table, and drops it - a pointer that drops nothing refuses.
+//! [`remove`](MetadataPointer::remove), refusing where the pointer drops
+//! nothing.
 //!
 //! ```
 //! use std::sync::{Arc, Mutex};
@@ -113,15 +110,9 @@ pub trait MetadataPointer: std::fmt::Debug + Send + Sync {
     fn publish(&self, token: &str, location: &Url) -> Result<PointerState>;
 
     /// Drop the table from the catalog that keeps it: what
-    /// [`IOBase::remove`](crate::IOBase::remove) of a pointed table asks,
-    /// since the catalog that keeps the pointer keeps the table and its
-    /// files, and removing the folder beside it would leave the catalog
-    /// naming a document that is gone.
-    ///
-    /// A table that is no longer there is already dropped, which is success.
-    /// The provided method refuses, touching nothing: a pointer over a
-    /// catalog that drops a table answers it - an Amazon S3 Tables table
-    /// with one `DeleteTable`.
+    /// [`IOBase::remove`](crate::IOBase::remove) of a pointed table asks. A
+    /// table no longer there is already dropped, which is success. The
+    /// provided method refuses, touching nothing.
     ///
     /// # Errors
     ///

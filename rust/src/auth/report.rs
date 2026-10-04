@@ -6,11 +6,8 @@
 //! configured and could not answer is kept, every source that was simply
 //! not there is kept beside it, and the refusal at the end names them all -
 //! or is no refusal at all, when nothing was configured, because an unsigned
-//! request against a public resource is a valid thing to send.
-//!
-//! Each entry is also logged at `DEBUG` as it is recorded, under the logger
-//! the walking module names, so a walk can be followed as it happens rather
-//! than only read back from its refusal.
+//! request against a public resource is a valid thing to send. Each entry
+//! is also logged at `DEBUG` under the walking module's logger.
 
 use crate::{Error, Result};
 
@@ -19,8 +16,7 @@ use crate::{Error, Result};
 pub struct Report {
     /// What was being looked for, for the refusal: `AWS credentials`.
     what: &'static str,
-    /// The `log` target the entries are logged under: the walking module's
-    /// path, which the logging tree reads as `yggdryl.aws.session`.
+    /// The `log` target the entries are logged under: the walking module's path.
     target: &'static str,
     failed: Vec<String>,
     absent: Vec<String>,
@@ -50,8 +46,7 @@ impl Report {
         self.absent.push(source.to_owned());
     }
 
-    /// Every source that was configured and could not answer, as
-    /// `source: reason`, in the order they were asked.
+    /// Every `source: reason` recorded as failed, in the order asked.
     pub fn failures(&self) -> &[String] {
         &self.failed
     }
@@ -73,11 +68,17 @@ impl Report {
                 self.absent.join(", ")
             ));
         }
-        Err(Error::Io(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            message,
-        )))
+        Err(refusal(message))
     }
+}
+
+/// A refusal of the credentials a provider looked for: `PermissionDenied`
+/// carrying `message`.
+pub fn refusal(message: impl Into<String>) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        message.into(),
+    ))
 }
 
 #[cfg(feature = "internals")]

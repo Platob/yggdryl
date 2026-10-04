@@ -872,13 +872,9 @@ pub(crate) fn parse_timestamp(text: &str) -> Result<(i64, TimeUnit, Timezone)> {
 }
 
 /// Parse a datetime whose zone the text may or may not state, in one pass:
-/// a naive reading where the text ends at its clock, the instant and its
-/// zone where one follows.
-///
-/// What [`parse_datetime`] and [`parse_timestamp`] read between them, for a
-/// caller that takes either and would otherwise read the text twice to
-/// learn which it is. A naive reading answers no zone and the local count;
-/// a zoned one answers the instant.
+/// what [`parse_datetime`] and [`parse_timestamp`] read between them. A
+/// naive reading answers the local count and no zone; a zoned one the
+/// instant and its zone.
 pub(crate) fn parse_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
     let (local, unit, end) = parse_datetime_at(text, "timestamp")?;
     if end == text.len() {
@@ -890,10 +886,9 @@ pub(crate) fn parse_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezon
 
 /// Parse a datetime as FIX spells one where the general readers stop.
 ///
-/// Everything [`parse_instant`] reads is read by it and as it stands -
-/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone - so the
-/// ordinary timestamp costs one pass. What is read here beside it is only
-/// what FIX and the bridges that carry it write and no other text does:
+/// Everything [`parse_instant`] reads, as it stands and in one pass -
+/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone - and
+/// beside it what only FIX and the bridges that carry it write:
 ///
 /// | Spelling | Example | Reads as |
 /// | --- | --- | --- |
@@ -902,16 +897,14 @@ pub(crate) fn parse_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezon
 /// | a clock stating its zone and no date, a `TZTimeOnly` | `07:39:12.123+05:30`, `07:39Z` | that instant on the epoch day |
 /// | a numeric offset closed by `s`, as a bridge writes one | `20260101-10:00:00 +0400s` | the instant the offset states: the letter adds nothing to it |
 ///
-/// The epoch day is the one choice that costs nothing for a time of day:
-/// the count is the time of day itself, and two readings still subtract.
-/// A clock stating neither a date nor a zone is local time, which an
-/// instant cannot hold, so it is refused - with the general reader's own
-/// refusal, which names the byte the text stopped being a datetime at.
-///
-/// A text that is read builds no refusal: the two spellings whose shape
-/// alone the general reader refuses - the digit run and the closed offset -
-/// are read before it is asked, and the two it refuses at a short clock
-/// cost it a refusal that holds nothing on the heap.
+/// On the epoch day the count is the time of day itself, and two readings
+/// still subtract. A clock stating neither a date nor a zone is local time,
+/// which no instant holds: it is refused with the general reader's own
+/// refusal, naming the byte it stopped at. A text that reads builds no
+/// refusal on the heap: the digit run and the closed offset, which the
+/// general reader refuses by shape alone, are read before it is asked, and
+/// the two it refuses at a short clock cost it a refusal holding nothing on
+/// the heap.
 pub(crate) fn parse_fix_instant(text: &str) -> Result<(i64, TimeUnit, Option<Timezone>)> {
     if let Some(read) = fix_shaped(text) {
         return Ok(read);

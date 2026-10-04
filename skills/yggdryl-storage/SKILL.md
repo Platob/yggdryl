@@ -54,7 +54,7 @@ Install and cross-language conventions are in `yggdryl`.
 | count calls | `Counted::new(h)`, `calls().get(Call::Pread)`, `counts()` | Rust only | Rust only |
 | write a log through a handle | `yggdryl::logging::FileHandler::new(h)`: one `append_bytes` per publish, `with_capacity(n)` over a remote store, `logging::shutdown()` before exit | `yggdryl.logging.FileHandler(location, capacity=0)`, a `logging.Handler` | `new logging.FileHandler(location, { capacity })` |
 | object store (`s3` feature) | `s3::file(url)?`, `s3::file_with(url, S3Options)?`, `s3::file_at(Provider::Aws, bucket, key)?` | `IOBase("gs://b/k")`, `S3File(url)`, `S3File(bucket, key, provider="s3", options={...})` | `new IOBase('az://c@acct.blob.core.windows.net/k')` |
-| an Amazon S3 Tables table bucket (`s3tables` feature) | no byte backend opens `s3tables://`: a handle on one is what it names - `Holder::from_url(location, &props)?` the catalog, a namespace or the Iceberg table (`yggdryl-warehouse`), `Catalog::from_url(&bucket_arn, &props)?` the catalog; its tables' files are `s3://<id>--table-s3` objects, written with `PutObject` and never listed or deleted - a table's own `ls` is refused, and its `remove` is one `DeleteTable` | `IOBase("s3tables://b/ns/t")`, `Catalog.from_url(arn, profile=...)` | `new IOBase('s3tables://b/ns/t')`, `warehouse.Catalog.fromUrl(arn, { profile })` |
+| an Amazon S3 Tables table bucket (`s3tables` feature) | no byte backend: `Holder::from_url(location, &props)?` is what it names - the catalog, a namespace or the Iceberg table (`yggdryl-warehouse`) - and `Catalog::from_url(&bucket_arn, &props)?` the catalog; a table's files are `s3://<id>--table-s3` objects written with `PutObject`, never listed or deleted: its `ls` is refused, its `remove` one `DeleteTable` | `IOBase("s3tables://b/ns/t")`, `Catalog.from_url(arn, profile=...)` | `new IOBase('s3tables://b/ns/t')`, `warehouse.Catalog.fromUrl(arn, { profile })` |
 | HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
 | many HTTP requests | `session.send_all(requests, Some(n))` (lazy, ordered) | `session.send_all(items, concurrency=n)` | `session.sendAll(items, n)` |
 | HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
@@ -144,15 +144,13 @@ Install and cross-language conventions are in `yggdryl`.
     skips the `HEAD`; `open()` before `buffered` on a remote handle.
 15. **Credentials resolve lazily, explicit wins.** Unset knobs come from the
     URL, the environment (`AWS_`, `GOOGLE_`, `AZURE_`, `YGGDRYL_`), the store's
-    files, then defaults; the AWS identity is botocore's chain through
-    `aws::Session` (Rust only: Python and Node take its knobs as `options`),
-    with the console sign-in `aws login` files. The shared files are read
-    again whenever either moved, so a set dumped anew into
-    `~/.aws/credentials` reaches a running process at its next request; a
-    lapsed set, or one a store refused, is passed over by name and the sources
-    after it are asked. The walk logs under `yggdryl.aws.session`, key ids
-    masked. `with_environment(false)` seals everything but explicit values -
-    see `references/backends.md`.
+    files, then defaults; the AWS identity is botocore's chain, the console
+    sign-in `aws login` files included, through `aws::Session` (Rust only:
+    Python and Node take its knobs as `options`). The shared files are read
+    again whenever either moved, so a fresh dump reaches a running process at
+    its next request; a lapsed or refused set is passed over by name. The walk
+    logs under `yggdryl.aws.session`, key ids masked. `with_environment(false)`
+    seals everything but explicit values - see `references/backends.md`.
 16. **HTTP is a handle and a client.** An `http`/`https` URL is a leaf: a
     whole read is one `GET`, a range one ranged `GET`, `size` one `HEAD`
     (none inside `open()`). A body read whole or streamed resumes a cut
@@ -216,7 +214,7 @@ Install and cross-language conventions are in `yggdryl`.
 | `s3://my.bucket.com/key` | a first part ending `.com`/`.io`/`.net` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |
 | a thread pool calling `session.get(url)` per URL | `session.send_all(urls, concurrency)`: one pool, ordered, lazy, the interpreter released |
-| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it. Rust: say it does no harm twice with `Request::with_idempotent(true)`, name the answers worth another attempt with `with_retry_on(\|status, headers, body\| ...)`, bound them with `with_max_attempts(n)`. Python and JavaScript send by the method's own idempotency: retry it yourself when it is safe |
+| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it. Rust: `Request::with_idempotent(true)` when a second send is harmless, `with_retry_on(\|status, headers, body\| ...)` for the answers worth another attempt, `with_max_attempts(n)` to bound them; Python and JavaScript: retry it yourself when it is safe |
 | `Client(...).session(http_version=2)` on a client built without it | refused by name: the pool's knobs are the client's - `Client({"http_version": "2"}).session(...)` |
 | `http_version=3` against a plain `http://` origin | QUIC needs TLS: it answers as `2` (`h2c`); HTTP/3 is an `https` origin |
 | `session.get(url).content` on a large download | `get(url, stream=True)` and `iter_content(n)` / Rust `stream()?`: the body stays on the wire and resumes |

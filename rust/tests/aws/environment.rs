@@ -212,10 +212,13 @@ mod internal {
     ];
 
     #[test]
-    fn every_variable_the_session_reads_is_left_to_it() {
+    fn every_variable_the_session_reads_is_left_to_it_in_any_case() {
         for name in READ_BY_THE_SESSION {
             assert!(is_native(name), "{name} is the session's to read");
+            let lower = name.to_ascii_lowercase();
+            assert!(is_native(&lower), "{lower} is the session's to read");
         }
+        assert!(is_native("Aws_Endpoint_Url_Sts"));
     }
 
     #[test]
@@ -227,24 +230,6 @@ mod internal {
             "AWS_ENDPOINT_URL_DYNAMODB",
         ] {
             assert!(is_native(name), "{name} names one service's endpoint");
-        }
-    }
-
-    #[test]
-    fn a_variable_the_session_reads_is_its_own_in_any_case() {
-        // A name is the session's whatever its case: on Windows the session
-        // reads `aws_endpoint_url_s3` as `AWS_ENDPOINT_URL_S3`, and on POSIX
-        // it is a name the AWS tools never read - neither is the sweep's to
-        // turn into a knob of its own.
-        for name in [
-            "aws_endpoint_url_s3",
-            "Aws_Endpoint_Url_Sts",
-            "aws_endpoint_url",
-            "aws_ignore_configured_endpoint_urls",
-            "aws_region",
-            "aws_access_key_id",
-        ] {
-            assert!(is_native(name), "{name} is the session's to read");
         }
     }
 

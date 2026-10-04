@@ -9,7 +9,7 @@ use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{Error, IOBase, IOMedia, IOMode, IOResult, MimeType, Result, Url};
 
-use super::{IsinEntry, IsinRegistry, IsinTable};
+use super::{IsinEntry, IsinRegistry};
 
 /// Where a registry's rows are kept: the holder, and the holder's own record
 /// options, resolved once when the registry was bound - what the rows are
@@ -25,12 +25,10 @@ pub(crate) struct Store {
 impl Store {
     /// Binds `holder` under its own record options - its encoding, or the
     /// encoding of the record leaves under it, an Iceberg table's its data
-    /// files' - a folder listing no record leaf, or plain text alone (a
-    /// README beside the parts), laid out as Arrow IPC by the first commit.
-    /// A leaf names its encoding by its name, so one this build has no
-    /// record encoding for is refused by it; a location inside an Iceberg
-    /// table - one partition of it - is refused by name, since a registry
-    /// is replaced whole.
+    /// files'; a folder listing no record leaf, or plain text alone, is laid
+    /// out as Arrow IPC by the first commit. A leaf of an encoding this
+    /// build has no medium for is refused, and so is a partition of an
+    /// Iceberg table, since a registry is replaced whole.
     fn bind(holder: Holder) -> Result<Self> {
         let container = holder.is_container();
         #[cfg(feature = "iceberg")]
@@ -151,18 +149,18 @@ impl IsinRegistry {
         self.store.as_ref().map(|store| &store.holder)
     }
 
-    /// Writes the table to the holder it is bound to, only where it moved
-    /// since it was loaded or last committed, so the store holds exactly
-    /// the snapshot ([`Self::into_arrow_reader`]) whatever its layout: a
-    /// leaf rewritten whole in one overwrite, an emptied registry
-    /// truncating it; an Iceberg table replaced in one atomic snapshot,
-    /// every row of every partition, an emptied registry one empty
-    /// snapshot that keeps the table a table; a plain folder's record parts
-    /// of the store's encoding removed - a leaf of another encoding or a
-    /// file that is no record part never touched - then the snapshot laid
-    /// out as one part under the layout the folder spells, none where the
-    /// registry is empty. A clean registry touches the store with no call
-    /// and answers no rows. Clean after.
+    /// Writes the table to the holder it is bound to where it moved since
+    /// the load or the last commit, leaving the store exactly the snapshot
+    /// ([`Self::into_arrow_reader`]):
+    ///
+    /// - a leaf: one overwrite, truncated when the registry is empty;
+    /// - an Iceberg table: one atomic snapshot replacing every partition,
+    ///   an empty one - still a table - when the registry is empty;
+    /// - a plain folder: its record parts of the store's encoding removed,
+    ///   no other file touched, then one part laid out under the folder's
+    ///   layout, none when the registry is empty.
+    ///
+    /// A clean registry costs no call and answers no rows. Clean after.
     ///
     /// # Errors
     ///
@@ -181,7 +179,7 @@ impl IsinRegistry {
             if self.table.is_empty() {
                 located.clear()?;
             } else {
-                located.overwrite_whole(Self::snapshot_reader(&self.table)?)?;
+                located.overwrite_whole(self.table.snapshot()?)?;
             }
             self.dirty = false;
             let rows = self.table.len() as u64;
@@ -198,26 +196,12 @@ impl IsinRegistry {
         let result = if self.table.is_empty() {
             IOResult::default()
         } else {
-            let snapshot = Self::snapshot_reader(&self.table)?;
+            let snapshot = self.table.snapshot()?;
             store
                 .holder
                 .write_arrow_reader(snapshot, IOMode::Overwrite, &store.write_options())?
         };
         self.dirty = false;
         Ok(result)
-    }
-
-    /// The rows of `table` as the stream [`Self::into_arrow_reader`] answers.
-    fn snapshot_reader(table: &IsinTable) -> Result<crate::arrow::BatchReader> {
-        Ok(crate::arrow::rows::reader(
-            &super::FIELD,
-            super::Snapshot {
-                rows: std::sync::Arc::clone(&table.rows),
-                after: None,
-            },
-            None,
-            None,
-            None,
-        )?)
     }
 }

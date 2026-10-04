@@ -2906,12 +2906,10 @@ export declare class FixCodec {
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /**
-   * A codec over the registry the process environment names,
-   * `FixRegistry.fromEnv()`, sharing the instrument registry it names
-   * too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
-   * - pinned by the options the constructor takes. The one constructor
-   * that attaches the process's own; `new FixCodec(...)` attaches none,
-   * and a commit of what the walks learned is always the caller's.
+   * A codec over `FixRegistry.fromEnv()` sharing `IsinRegistry.fromEnv()`
+   * unless `isinRegistry` names another, pinned by the options the
+   * constructor takes; `new FixCodec(...)` attaches none. A commit of
+   * what the walks learned is the caller's.
    */
   static fromEnv(options?: FixCodecOptions | undefined | null): FixCodec
   /** The dictionary this codec resolves against, sharing it. */
@@ -4530,20 +4528,15 @@ export declare class IcebergTable {
   /**
    * Create a table, writing its first metadata document.
    *
-   * `root` is the container handle the table lives in, or its location -
-   * text, a `Url`, a `Uri`, a `Urn` or an `Arn` - which the core opens by
-   * itself under `properties`: a folder any backend holds, or
-   * `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
-   * Tables table bucket keeps, registered there and committed through
-   * its control plane, its namespace made on the way where the bucket
-   * does not hold it. Properties beside a handle are refused: a handle
-   * root is reopened as the folder at its location, under the
-   * environment.
-   *
-   * `version` omitted is 2 over a handle; over a location it is the
-   * `format-version` property, else the lowest version that states the
-   * schema - 3 for a nanosecond timestamp, a variant or an unknown
-   * column, else 2.
+   * `root` is the container handle the table lives in - reopened as the
+   * folder at its location under the environment, so properties beside it
+   * are refused - or its location, which the core opens under
+   * `properties`: a folder any backend holds, or
+   * `s3tables://<bucket>/<namespace>/<table>` for an Amazon S3 Tables
+   * table, its namespace made on the way where the bucket lacks it.
+   * `version` omitted is 2 over a handle; over a location, the
+   * `format-version` property, else the lowest version stating the
+   * schema.
    *
    * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
    * `PARTITION:by` entries to partition on: a bare column - `venue` - is an
@@ -4560,24 +4553,17 @@ export declare class IcebergTable {
    */
   static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null): IcebergTable
   /**
-   * Open the table `root` names.
-   *
-   * A container handle is the folder the table lives in. A location -
-   * text, a `Url`, a `Uri`, a `Urn` or an `Arn` - is opened by the core
-   * under `properties`: a folder any backend holds, or a table an Amazon
-   * S3 Tables table bucket keeps, named
-   * `s3tables://<bucket>/<namespace>/<table>` or by its own ARN.
+   * Open the table `root` names: the folder a container handle is, or a
+   * location the core opens under `properties` - a folder, or an Amazon
+   * S3 Tables table by its `s3tables:` location or its ARN.
    */
   static open(root: LocationInput, properties?: Record<string, string | number | boolean> | null): IcebergTable
   /**
    * Open the table if it exists, creating it otherwise.
    *
-   * `root`, `version` and `properties` are read as
-   * [`create`](Self::create) reads them. Like it, `partitionBy` is a spec,
-   * the `PARTITION:by` entries one is read from, `null` for none, or -
-   * omitted - the schema's own declaration, and unnumbered schema columns
-   * are numbered automatically; an existing table is opened as it is and
-   * `schema` describes only the table this call would create.
+   * Every argument reads as [`create`](Self::create) reads it; an
+   * existing table is opened as it is and `schema` describes only the
+   * table this call would create.
    */
   static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null): IcebergTable
   /**
@@ -4725,9 +4711,9 @@ export declare class IcebergTable {
    */
   append(batches: JsBatchReader, options?: IcebergOptions | undefined | null): void
   /**
-   * Replace the partitions `batches` fall in as a new snapshot: every
-   * row of an unpartitioned table, and of a partitioned one the
-   * partitions the rows touch - no row replaces nothing there, and
+   * Replace the partitions `batches` fall in as a new snapshot - every
+   * row of an unpartitioned table, only the partitions the rows touch of a
+   * partitioned one, so no row replaces nothing there;
    * `overwriteWhere(null, [])` empties it.
    *
    * The previous snapshot stays readable; only the current pointer moves.
@@ -5036,8 +5022,8 @@ export declare class IOBase {
    * `Arn` - naming a location, or another handle. A name is resolved the
    * way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
    * opens the path that name spells. Per the laziness contract, nothing is
-   * opened, created, or read here - but a table an Amazon S3 Tables table
-   * bucket keeps, which its service describes at construction.
+   * opened, created, or read here - but an S3 Tables table, which its
+   * service describes.
    *
    * An Arrow file system handler as the first argument names the *backend*
    * rather than the location, so the second says where on it:
@@ -5477,8 +5463,8 @@ export declare class IOBase {
    *
    * This is the native-reader publication hook. The incoming stream is cast
    * to `options.field` once in the core, and a match key is refused because
-   * overwrite never infers merge intent. Answers the rows the write read,
-   * wrote and skipped.
+   * overwrite never infers merge intent. Every record write answers its
+   * `IOResult`.
    */
   overwriteArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
@@ -5486,7 +5472,6 @@ export declare class IOBase {
    *
    * Both sides stream: what is stored is chained ahead of what arrives, and
    * incoming batches are cast to the target shape as they are pulled.
-   * Answers the rows the write read, wrote and skipped.
    */
   appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
@@ -5495,7 +5480,6 @@ export declare class IOBase {
    * A non-empty match key is required. The core keeps the incoming reader
    * streaming, applies `options.field` once, and publishes through the
    * implementor's overwrite hook without casting the shaped rows twice.
-   * Answers the rows the write read, wrote and skipped.
    */
   mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /** Decode this location as a host-independent forward-slash path. */
@@ -5542,20 +5526,14 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
- * The rows one record write read, wrote and skipped.
- *
- * Every record write of an `IOBase` answers one: `readRows` is what the
- * write pulled from its source, `writtenRows` what reached the destination,
- * `skippedRows` what was read and not written - the rows a `where` kept
- * out, the part of the last batch a bound cut off.
+ * The rows one record write read, wrote and skipped - what a `where` kept
+ * out, or a bound cut off. Every record write of an `IOBase` answers one.
  */
 export declare class IOResult {
   /**
-   * The result of a write that read `readRows` and wrote `writtenRows`,
-   * each `0` when absent, the rest of what it read skipped - or, where
-   * `skippedRows` is stated, the three counts as they are: a sum of
-   * results states its own skipped rows, which `readRows - writtenRows`
-   * need not be.
+   * Each count is `0` when absent. Omitted, `skippedRows` is the rows read
+   * and not written; stated, the three counts are taken as they are - a
+   * sum's own.
    */
   constructor(readRows?: number | undefined | null, writtenRows?: number | undefined | null, skippedRows?: number | undefined | null)
   /** The rows the write pulled from its source. */
@@ -5566,10 +5544,7 @@ export declare class IOResult {
   get skippedRows(): number
   /** Whether the write read no row at all: its source was empty. */
   isEmpty(): boolean
-  /**
-   * The two results summed count by count, as one write cut into several
-   * commits answers.
-   */
+  /** The two results summed count by count. */
   add(other: IOResult): IOResult
   /** Whether `other` states the same three counts. */
   equals(other: IOResult): boolean
@@ -5585,13 +5560,10 @@ export declare class IOResult {
 export type JsIOResult = IOResult
 
 /**
- * A table of instruments keyed by ISIN - each row the instrument's CFI
- * code, its country of issue, its currency pair, its market, its ticker
- * and trading currency and one code per `SecurityIDSource(22)` type - that
- * a lifecycle learns into and fills from, and a parse fills from. Bound to
- * the store it was loaded from, committed back only where it moved.
- * Mutable and shared: equal only to itself; its rows cross out as an Arrow
- * stream.
+ * A table of instruments keyed by ISIN that a lifecycle learns into and
+ * fills from, and a parse fills from; bound to the store it was loaded
+ * from and committed back only where it moved. Mutable and shared: equal
+ * only to itself; its rows cross out as an Arrow stream.
  */
 export declare class IsinRegistry {
   /**
@@ -5601,29 +5573,24 @@ export declare class IsinRegistry {
    */
   constructor(maxInstruments?: number | undefined | null)
   /**
-   * A registry bound to the store `location` names and loaded from it:
-   * a URL of any scheme this build holds, a path or an `IOBase` - an
-   * Arrow IPC leaf, Parquet, a folder of parts, an Iceberg table, an
-   * object store - under the `properties` a `with (...)` clause would
-   * state, its columns named by the registry's own names or any spelling
-   * of an identifier type; a store holding nothing yet is an empty first
-   * run, laid out by the first `commit`. Clean after the load.
+   * A registry bound to the store `location` names and loaded from it,
+   * clean: a URL or a path under the `properties` a `with (...)` clause
+   * would state, or an `IOBase`, its columns named by the registry's own
+   * names or any spelling of an identifier type. A store holding nothing
+   * yet loads empty, laid out by the first `commit`.
    */
   static fromUrl(location: LocationInput, maxInstruments?: number | undefined | null, properties?: Record<string, string> | undefined | null): IsinRegistry
   /**
-   * The registry the process environment names, loaded on the first
-   * call and shared with every later one and with `FixCodec.fromEnv`:
-   * an installed registry, else the store `YGGDRYL_ISIN_REGISTRY_URI`
-   * names - a URL of any scheme, a path, `~` the home - else
-   * `~/.config/yggdryl/isin/`, a folder of Arrow IPC parts the first
-   * `commit` lays out; with no home, an empty registry bound to nothing.
-   * A failed load throws and is retried by the next call.
+   * The process's registry, loaded on the first call and shared with
+   * every later one and with `FixCodec.fromEnv`: an installed one, else
+   * the store `YGGDRYL_ISIN_REGISTRY_URI` names, else
+   * `~/.config/yggdryl/isin/`; with no home, an empty registry bound to
+   * nothing. A failed load throws and is retried.
    */
   static fromEnv(): IsinRegistry
   /**
-   * Installs `registry` as the one every later `fromEnv` answers - this
-   * very table, shared - before anything resolves one; throws once the
-   * default has resolved or been installed.
+   * Installs `registry` - this very table, shared - as the one every
+   * later `fromEnv` answers; throws once one has resolved.
    */
   static installEnv(registry: IsinRegistry): void
   /**
@@ -5633,8 +5600,8 @@ export declare class IsinRegistry {
    */
   static fromArrowReader(reader: BatchReader, maxInstruments?: number | undefined | null): IsinRegistry
   /**
-   * Folds the rows `location` holds in, by the update rule, leaving the
-   * registry bound to the store it was; how many rows it read.
+   * Folds the rows `location` holds in, by the update rule, its store
+   * unchanged; how many rows it read.
    */
   extendFromHandle(location: LocationInput): number
   /**
@@ -5651,13 +5618,10 @@ export declare class IsinRegistry {
    */
   intoArrowReader(): BatchReader
   /**
-   * Writes the table to the store it is bound to, only where it moved
-   * since it was loaded or last committed: one overwrite of the whole
-   * snapshot, a leaf rewritten, a folder's parts replaced by one, an
-   * Iceberg table replaced in one atomic snapshot, an emptied registry
-   * clearing the store. The `IOResult` of the write, empty for a clean
-   * registry, which touches the store with no call. Throws on a registry
-   * bound to no store.
+   * Overwrites the store it is bound to with the whole snapshot, only
+   * where it moved since it was loaded or last committed; the write's
+   * `IOResult`, empty for a clean registry, which touches the store with
+   * no call. Throws when bound to none.
    */
   commit(): IOResult
   /** Whether the table moved since it was loaded or last committed. */
@@ -5675,11 +5639,9 @@ export declare class IsinRegistry {
   /**
    * Folds one row - an object of column names to cells, `isin` required
    * - into the row of its ISIN by the update rule: a stated valid value
-   * fills a column the row lacks and replaces one it holds that
-   * differs, whatever the time, a code that is no real value of its
-   * type dropped; a compatible CFI code refines the held one and a
-   * contradicting one replaces it; a ticker or a listing code stated on
-   * another market switches the listing whole. Whether anything moved.
+   * fills a column the row lacks and replaces one it holds that differs,
+   * whatever the time, a code that is no real value of its type dropped.
+   * Whether anything moved.
    */
   merge(entry: Record<string, unknown>): boolean
   /** Removes the row of `isin`, answering it as a plain object, or `null`. */
@@ -5691,19 +5653,14 @@ export declare class IsinRegistry {
   /** The most instruments it holds. */
   get maxInstruments(): number
   /**
-   * Learns what a message states about its instrument - keyed by its
-   * stated real ISIN, dated at its `currunix`: its CFI code, its market,
-   * its ticker, its currency, the pair it states and its real
-   * equivalents. Whether anything moved.
+   * Learns what a message states about its instrument, keyed by its
+   * stated real ISIN and dated at its `currunix`. Whether anything moved.
    */
   learn(message: FixMsg): boolean
   /**
    * Fills what a message leaves unsaid about its instrument from the row
-   * its ISIN names, else its ticker on its market - each equivalent and
-   * the pair as a `derived` identifier, the ticker on its own market,
-   * its CFI code where the row's refines it, the currency on the same
-   * stated market under the row's ticker - never its wire. Whether
-   * anything moved.
+   * its ISIN, else its ticker on its market, names - never its wire.
+   * Whether anything moved.
    */
   fill(message: FixMsg): boolean
   /** `learn`, then `fill`. Whether anything moved in either. */
@@ -8786,9 +8743,8 @@ export declare class SchemaUpdate {
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): void
   /**
-   * Record a new documentation string on the column at `path`: the
-   * column's own description, which the schema states as its `doc`. An
-   * empty one clears it.
+   * Record the description - the schema's `doc` - of the column at
+   * `path`; an empty one clears it.
    */
   updateDoc(path: string, doc: string): void
   /** Record that the column at `path` becomes optional. */

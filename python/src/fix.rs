@@ -82,16 +82,19 @@ fn merge_report(python: Python<'_>, merge: FixMerge) -> PyResult<Bound<'_, PyDic
 /// whichever role it actually is rather than as a container: a folder handle
 /// reads as its leaves end to end, which is no one dictionary. A handle
 /// crosses as itself rather than being rebuilt, so bytes held in memory are
-/// readable and no second mapping is opened.
-pub(crate) fn read_located<T>(
+/// readable and no second mapping is opened. `read` runs detached from the
+/// GIL, which a core thread that logs takes.
+pub(crate) fn read_located<T: Send>(
+    py: Python<'_>,
     location: &Bound<'_, PyAny>,
-    read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T>,
+    read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T> + Send,
 ) -> PyResult<T> {
     if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
-        return read(handle.inner()?.as_io()).map_err(value_error);
+        let holder = handle.inner()?;
+        return py.detach(|| read(holder.as_io())).map_err(value_error);
     }
-    let url = core_url_from_value(location)?;
-    read(located_holder(&url)?.as_io()).map_err(value_error)
+    let holder = located_holder(&core_url_from_value(location)?)?;
+    py.detach(|| read(holder.as_io())).map_err(value_error)
 }
 
 /// One entry as the tuple Python reads: `(tag, name, value, entries)`.
@@ -424,7 +427,7 @@ impl PyFixRegistry {
         location: &Bound<'_, PyAny>,
         dialect: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
-        let (registry, roots) = read_located(location, |handle| {
+        let (registry, roots) = read_located(location.py(), location, |handle| {
             CoreFixRegistry::from_cfb_file(handle, dialect)
         })?;
         Ok((
@@ -535,7 +538,9 @@ impl PyFixRegistry {
         dialect: Option<&str>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let registry = self.inner_mut()?;
-        let merge = read_located(location, |handle| registry.add_cfb_file(handle, dialect))?;
+        let merge = read_located(python, location, |handle| {
+            registry.add_cfb_file(handle, dialect)
+        })?;
         merge_report(python, merge)
     }
 
@@ -607,7 +612,7 @@ impl PyFixRegistry {
         location: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let registry = self.inner_mut()?;
-        let merge = read_located(location, |handle| registry.add_json_file(handle))?;
+        let merge = read_located(python, location, |handle| registry.add_json_file(handle))?;
         merge_report(python, merge)
     }
 
@@ -1389,6 +1394,18 @@ fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 /// One message, refusing anything else where it is met.
 fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
     Ok(item.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone())
+}
+
+/// `messages` pulled one `FixMsg` at a time, a failure of the iterable the
+/// last item: the error of the batch it would have landed in.
+fn pulled_messages(
+    messages: &Bound<'_, PyAny>,
+) -> PyResult<impl Iterator<Item = Result<CoreFixMsg, CoreError>> + Send + 'static> {
+    let pulled = Pulled::new(messages, message_of)?;
+    let failed = pulled.failed.clone();
+    Ok(pulled.map(Ok).chain(std::iter::from_fn(move || {
+        failed.take().map(|error| Err(python_failure(error)))
+    })))
 }
 
 /// A stream of messages, one at a time.
@@ -2627,10 +2644,10 @@ impl PyFixMsg {
 /// it only carries what Python said across. A stage is a call: the stream
 /// methods take any iterable and answer a lazy [`FixMessages`](PyFixMessages),
 /// and the Arrow methods take and answer a `pyarrow.RecordBatchReader` over
-/// the C stream interface, one batch at a time. Each Arrow method has a serie
-/// face - `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
-/// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answering
-/// a native `SerieReader` that a write takes off the GIL.
+/// the C stream interface, one batch at a time. The serie faces -
+/// `parse_text_serie`, `lifecycle_serie`, `market_data_serie`,
+/// `messages_serie`, `serie_reader`, `book_serie`, `market_serie` - answer a
+/// native `SerieReader` that a write takes off the GIL.
 #[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixCodec {
     inner: CoreFixCodec,
@@ -2645,27 +2662,12 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'_, PyAny>> {
         batch_reader_to_pyarrow(py, reader.map_err(value_error)?)
     }
-
-    /// Runs a core stream door with the GIL released.
-    ///
-    /// A door may read its source as its reader is built - a walk reads its
-    /// first batch there - and the source may be a parse spread over worker
-    /// threads. A worker that warns takes the GIL to reach Python's
-    /// `logging`, so the thread waiting on that worker must not hold it:
-    /// held, the two wait on each other for good. One thread never showed
-    /// it, because the worker was this thread. A parse door also takes the
-    /// instrument registry's lock as it opens, and a registry verb run
-    /// detached under that lock may warn, so no door takes the lock with
-    /// the GIL held either.
-    fn released<T, F>(py: Python<'_>, door: F) -> T
-    where
-        F: FnOnce() -> T + Send,
-        T: Send,
-    {
-        py.detach(door)
-    }
 }
 
+// A door that may wait on a parse spread over worker threads runs detached:
+// a worker that warns takes the GIL to reach `logging`, and a parse door
+// takes the instrument registry's lock, so neither is waited on with the
+// GIL held.
 #[pymethods]
 impl PyFixCodec {
     // A codec shares the dictionary it resolves against, which is mutable,
@@ -2673,13 +2675,11 @@ impl PyFixCodec {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// A codec over the registry the process environment names,
-    /// `FixRegistry.from_env()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.from_env()` - unless the `isin_registry` pin
-    /// names another - pinned by the keywords the constructor takes. The
-    /// one constructor that attaches the process's own; `FixCodec(...)`
-    /// attaches none, and a commit of what the walks learned is always the
-    /// caller's.
+    /// A codec over `FixRegistry.from_env()` and, unless `isin_registry` is
+    /// pinned, `IsinRegistry.from_env()`, pinned by the keywords the
+    /// constructor takes. The one constructor that attaches the process's
+    /// own; `FixCodec(...)` attaches none. A commit of what the walks learned
+    /// is the caller's.
     #[classmethod]
     #[pyo3(signature = (**pins))]
     fn from_env<'py>(
@@ -3053,7 +3053,7 @@ impl PyFixCodec {
     /// One captured line, whatever it is wrapped in: its messages.
     fn parse_line(&self, py: Python<'_>, row: &[u8]) -> PyResult<PyFixMessages> {
         let inner = &self.inner;
-        Self::released(py, || inner.parse_line(row))
+        py.detach(|| inner.parse_line(row))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3070,7 +3070,7 @@ impl PyFixCodec {
         let failed = pulled.failed.clone();
         let inner = &self.inner;
         Ok(PyFixMessages::pulling(
-            Self::released(py, || inner.parse_lines(pulled)),
+            py.detach(|| inner.parse_lines(pulled)),
             failed,
         ))
     }
@@ -3078,7 +3078,7 @@ impl PyFixCodec {
     /// One numeric frame, read by the pairs it states.
     fn parse_fix_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
         let inner = &self.inner;
-        Self::released(py, || inner.parse_fix_line(body))
+        py.detach(|| inner.parse_fix_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3086,7 +3086,7 @@ impl PyFixCodec {
     /// One bridge frame, whose keys are names rather than tags.
     fn parse_ullink_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
         let inner = &self.inner;
-        Self::released(py, || inner.parse_ullink_line(body))
+        py.detach(|| inner.parse_ullink_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3094,7 +3094,7 @@ impl PyFixCodec {
     /// One FIXML row, whose fields are XML attributes.
     fn parse_fixml_line(&self, py: Python<'_>, body: &[u8]) -> PyResult<PyFixMsg> {
         let inner = &self.inner;
-        Self::released(py, || inner.parse_fixml_line(body))
+        py.detach(|| inner.parse_fixml_line(body))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3110,7 +3110,7 @@ impl PyFixCodec {
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         let inner = &self.inner;
-        Self::released(py, || inner.parse_pairs(borrowed))
+        py.detach(|| inner.parse_pairs(borrowed))
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -3150,7 +3150,7 @@ impl PyFixCodec {
     fn parse_text_line(&self, py: Python<'_>, line: &PyTextLine) -> PyResult<PyFixMessages> {
         let inner = &self.inner;
         let line = line.as_core();
-        Self::released(py, || inner.parse_text_line(line))
+        py.detach(|| inner.parse_text_line(line))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3175,7 +3175,7 @@ impl PyFixCodec {
         let failed = pulled.failed.clone();
         let inner = &self.inner;
         Ok(PyFixMessages::pulling(
-            Self::released(py, || inner.parse_text_lines(pulled)),
+            py.detach(|| inner.parse_text_lines(pulled)),
             failed,
         ))
     }
@@ -3209,7 +3209,7 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
         let inner = &self.inner;
-        let parsed = Self::released(py, || inner.parse_text_arrow_reader(source));
+        let parsed = py.detach(|| inner.parse_text_arrow_reader(source));
         Self::reader_to_pyarrow(py, parsed)
     }
 
@@ -3234,7 +3234,7 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
         let inner = &self.inner;
-        let walked = Self::released(py, || inner.lifecycle_arrow_reader(source));
+        let walked = py.detach(|| inner.lifecycle_arrow_reader(source));
         Self::reader_to_pyarrow(py, walked)
     }
 
@@ -3269,11 +3269,7 @@ impl PyFixCodec {
         messages: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let schema = core_field_from_value(schema)?;
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
     }
 
@@ -3309,11 +3305,7 @@ impl PyFixCodec {
         let filter = filter
             .map(crate::expression::filter_from_value)
             .transpose()?;
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         Self::reader_to_pyarrow(
             py,
             self.inner
@@ -3358,11 +3350,7 @@ impl PyFixCodec {
         py: Python<'py>,
         messages: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         Self::reader_to_pyarrow(py, self.inner.market_arrow_reader(messages))
     }
 
@@ -3383,18 +3371,16 @@ impl PyFixCodec {
     ) -> PyResult<Bound<'py, PyAny>> {
         let source = batch_reader_from_value(source)?;
         let inner = &self.inner;
-        let lifted = Self::released(py, || inner.market_data_arrow_reader(source));
+        let lifted = py.detach(|| inner.market_data_arrow_reader(source));
         Self::reader_to_pyarrow(py, lifted)
     }
 
     /// `parse_text_arrow_reader` answered as a native `SerieReader`.
     ///
-    /// `source` is a `Serie`, a `ChunkedSerie`, a `SerieReader` - such as
-    /// `IOBase.read_serie` answers - or anything `SerieReader.from_` reads.
-    /// A native source crosses as the batches it already is, and the answer
-    /// stays native: handed to `append_serie` or `overwrite_serie`, or to
-    /// another serie face, it is written or read off the GIL with no
-    /// `pyarrow` stream between, nothing cast or copied.
+    /// `source` is a `Serie`, a `ChunkedSerie`, a `SerieReader` or anything
+    /// `SerieReader.from_` reads; a native source crosses as the batches it
+    /// already is and the answer stays native - no `pyarrow` stream between,
+    /// so a following `append_serie` writes off the GIL.
     fn parse_text_serie(
         &self,
         py: Python<'_>,
@@ -3402,7 +3388,7 @@ impl PyFixCodec {
     ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
-        Self::released(py, || inner.parse_text_serie(source))
+        py.detach(|| inner.parse_text_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
@@ -3417,7 +3403,7 @@ impl PyFixCodec {
     ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
-        Self::released(py, || inner.lifecycle_serie(source))
+        py.detach(|| inner.lifecycle_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
@@ -3431,18 +3417,17 @@ impl PyFixCodec {
     ) -> PyResult<PySerieReader> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
-        Self::released(py, || inner.market_data_serie(source))
+        py.detach(|| inner.market_data_serie(source))
             .map(PySerieReader::from)
             .map_err(value_error)
     }
 
     /// `messages` over the sources `parse_text_serie` takes: the messages a
-    /// stream of FIX rows holds, so a table read back with `read_serie`
-    /// feeds `lifecycle` and the book doors.
+    /// stream of FIX rows holds.
     fn messages_serie(&self, py: Python<'_>, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let source = serie_source_of(source)?;
         let inner = &self.inner;
-        Self::released(py, || inner.messages_serie(source))
+        py.detach(|| inner.messages_serie(source))
             .map(PyFixMessages::over)
             .map_err(value_error)
     }
@@ -3455,11 +3440,7 @@ impl PyFixCodec {
         messages: &Bound<'_, PyAny>,
     ) -> PyResult<PySerieReader> {
         let schema = core_field_from_value(schema)?;
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         self.inner
             .serie_reader(schema, messages)
             .map(PySerieReader::from)
@@ -3478,11 +3459,7 @@ impl PyFixCodec {
         let filter = filter
             .map(crate::expression::filter_from_value)
             .transpose()?;
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         self.inner
             .book_serie(messages, snapshot_millis, filter.as_ref())
             .map(PySerieReader::from)
@@ -3492,11 +3469,7 @@ impl PyFixCodec {
     /// `market_arrow_reader` answered as a native `SerieReader` of lifted
     /// `marketdata` rows.
     fn market_serie(&self, messages: &Bound<'_, PyAny>) -> PyResult<PySerieReader> {
-        let pulled = Pulled::new(messages, message_of)?;
-        let failed = pulled.failed.clone();
-        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
-            failed.take().map(|error| Err(python_failure(error)))
-        }));
+        let messages = pulled_messages(messages)?;
         self.inner
             .market_serie(messages)
             .map(PySerieReader::from)
@@ -3559,7 +3532,7 @@ impl PyFixCodec {
         let field = core_field_from_value(field)?;
         let source = batch_reader_from_value(source)?;
         let inner = &self.inner;
-        let formatted = Self::released(py, || inner.format_arrow_reader(source, &field));
+        let formatted = py.detach(|| inner.format_arrow_reader(source, &field));
         Self::reader_to_pyarrow(py, formatted)
     }
 
@@ -3605,8 +3578,8 @@ impl PyFixCodec {
     /// a binary file-like object with `write`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
     /// `fixentries` column is refused before a row is read. One batch is
-    /// held at a time. The source is drained with the GIL released, each
-    /// line taking it for its own `write`.
+    /// held at a time, drained with the GIL released, each line taking it
+    /// for its own `write`.
     fn write_arrow_reader(
         &self,
         py: Python<'_>,
@@ -3616,7 +3589,7 @@ impl PyFixCodec {
         let source = batch_reader_from_value(source)?;
         let mut writer = PythonWriter::new(sink);
         let inner = &self.inner;
-        let written = Self::released(py, || inner.write_arrow_reader(source, &mut writer));
+        let written = py.detach(|| inner.write_arrow_reader(source, &mut writer));
         // The sink's own failure is the one to raise: the core reports it
         // as the write it wrapped.
         writer.finish()?;

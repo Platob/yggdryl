@@ -2,46 +2,29 @@
 //! `rust/tests/support/s3tables.rs`: the in-process fake of the Amazon S3
 //! Tables control plane the `s3tables` suites run against.
 //!
-//! One loopback listener keeps table buckets, namespaces and tables, answers
-//! the fifteen operations the client speaks in the shapes and with the error
-//! types botocore's model states - `GetTable` by a table's bucket, namespace
-//! and name, or by the `tableArn` alone - and moves a table's version token
-//! on every change to it. A stale token is a `409 ConflictException`, and so is
-//! deleting a bucket that still holds a namespace or a namespace that still
-//! holds a table.
+//! One loopback listener keeps table buckets, namespaces and tables and
+//! answers the fifteen operations in botocore's shapes and error types -
+//! `GetTable` by name or by `tableArn` alone; a table's version token moves
+//! on every change, and a stale token or a deletion of a level that still
+//! holds one is a `409 ConflictException`. It is its own socket because
+//! `http::Server` refuses a path segment that decodes to a separator, and
+//! every label below a table bucket is an ARN. It names nothing of the
+//! crate, so nothing it checks is checked by the code under test: the
+//! SHA-256 and the HMAC are `ring`'s, the percent-coding and the canonical
+//! request follow the SigV4 specification.
 //!
-//! It is a socket of its own rather than routes on the crate's
-//! `http::Server`: that server refuses, before any route, a path one of
-//! whose segments decodes to a separator, and the label of every operation
-//! below a table bucket is an ARN - `...bucket%2Flake`. It is also a leaf
-//! file that names nothing of the crate, so nothing it checks is checked by
-//! the code under test: the SHA-256 and the HMAC are `ring`'s, the
-//! percent-coding and the canonical request are written here from the
-//! Signature Version 4 specification.
-//!
-//! Every request is checked on its own before it is answered:
-//!
-//! - an `authorization` header whose credential scope is
-//!   `<date>/<region>/s3tables/aws4_request` for the fake's region, signing
-//!   at least `host` and `x-amz-date` - botocore signs no more for this
-//!   service, and the service asks no more;
-//! - `x-amz-content-sha256`, where one is sent, equal to the SHA-256 of the
-//!   body received - the service hashes the body itself and signs that;
-//! - the signature itself, recomputed from the request as it arrived with
-//!   the canonical request the specification gives every service but Amazon
-//!   S3: the path as sent with its empty and dot segments removed, encoded
-//!   again, and the query decoded and encoded again pair by pair, sorted;
-//! - every path segment percent-encoded exactly once, and the table bucket
-//!   ARN a label or a query names a well-formed one;
-//! - `content-type: application/json` on a request that carries a body, and
-//!   the session token of a temporary set, sent and signed;
-//! - what the model bounds: a version token of at least one character, a
-//!   rename that names a target, and a partition spec or a write order whose
-//!   fields name columns of the schema beside them.
-//!
-//! A request that fails one is refused the way the service refuses it and
-//! recorded as a violation; dropping a fake that still holds one fails the
-//! test, so a broken request cannot hide behind a mapped error.
+//! Every request is checked before it is answered - the credential scope
+//! `<date>/<region>/s3tables/aws4_request` signing at least `host` and
+//! `x-amz-date` (botocore signs no more for this service), a stated
+//! `x-amz-content-sha256` equal to the body's, the signature recomputed over
+//! the path normalized and encoded again and the query decoded, encoded
+//! again and sorted, each segment encoded once, a well-formed table bucket
+//! ARN, `application/json` on a body, a temporary set's token sent and
+//! signed, and the model's bounds: a version token of at least one
+//! character, a rename that names a target, a partition spec or write order
+//! whose fields name columns of the schema beside them. A failure is
+//! refused as the service refuses it and recorded as a violation; dropping
+//! a fake that holds one fails the test.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -69,8 +52,6 @@ pub struct Recorded {
     pub method: String,
     /// The request target exactly as sent, query included.
     pub target: String,
-    /// The path exactly as sent, without the query.
-    pub path: String,
     /// The query pairs, percent-decoded, in wire order.
     pub query: Vec<(String, String)>,
     /// Headers with lowercase names, in wire order.
@@ -83,18 +64,12 @@ pub struct Recorded {
 impl Recorded {
     /// One header.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(held, _)| held == name)
-            .map(|(_, value)| value.as_str())
+        lookup(&self.headers, name)
     }
 
     /// One query parameter, decoded.
     pub fn query(&self, name: &str) -> Option<&str> {
-        self.query
-            .iter()
-            .find(|(held, _)| held == name)
-            .map(|(_, value)| value.as_str())
+        lookup(&self.query, name)
     }
 
     /// The body as the JSON document it is, `null` for none.
@@ -153,13 +128,11 @@ impl Table {
     }
 }
 
-#[derive(Default)]
 struct Namespace {
     created: u64,
     tables: BTreeMap<String, Table>,
 }
 
-#[derive(Default)]
 struct Bucket {
     created: u64,
     namespaces: BTreeMap<String, Namespace>,
@@ -212,6 +185,12 @@ impl State {
 
     fn table_arn(&self, bucket: &str, table: &Table) -> String {
         format!("{}/table/{}", self.bucket_arn(bucket), table.id)
+    }
+
+    /// Record that `request` broke a rule the service holds it to.
+    fn violation(&mut self, request: &Request, what: impl std::fmt::Display) {
+        self.violations
+            .push(format!("{} {}: {what}", request.method, request.target));
     }
 }
 
@@ -427,6 +406,14 @@ impl S3TablesFake {
         self.requests().iter().map(Recorded::line).collect()
     }
 
+    /// `METHOD target` and the status of every request handled so far.
+    pub fn answered(&self) -> Vec<(String, u16)> {
+        self.requests()
+            .iter()
+            .map(|request| (request.line(), request.status))
+            .collect()
+    }
+
     pub fn request_count(&self) -> usize {
         self.inner.state().recorded.len()
     }
@@ -456,28 +443,25 @@ impl S3TablesFake {
         payload_hash: &str,
     ) -> String {
         let region = self.inner.state().region.clone();
-        let mut signed: Vec<&(String, String)> = headers.iter().collect();
-        signed.sort();
-        let names: Vec<&str> = signed.iter().map(|(name, _)| name.as_str()).collect();
-        let names = names.join(";");
+        let mut signed: Vec<(&str, &str)> = headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        signed.sort_unstable();
         let datetime = signed
             .iter()
-            .find(|(name, _)| name == "x-amz-date")
-            .map(|(_, value)| value.clone())
+            .find(|(name, _)| *name == "x-amz-date")
+            .map(|(_, value)| *value)
             .expect("an x-amz-date among the signed headers");
-        let mut request = format!(
-            "{method}\n{canonical_uri}\n{}\n",
-            canonical_query(query).expect("a query that decodes")
-        );
-        for (name, value) in &signed {
-            request.push_str(&format!("{name}:{}\n", value.trim()));
-        }
-        request.push_str(&format!("\n{names}\n{payload_hash}"));
-        let signature = signature(SECRET_KEY, &datetime, &region, &request);
+        let query = canonical_query(query).expect("a query that decodes");
+        let request = canonical_request(method, canonical_uri, &query, &signed, payload_hash);
+        let names: Vec<&str> = signed.iter().map(|(name, _)| *name).collect();
         format!(
             "AWS4-HMAC-SHA256 Credential={ACCESS_KEY}/{}/{region}/s3tables/aws4_request, \
-             SignedHeaders={names}, Signature={signature}",
-            &datetime[..8]
+             SignedHeaders={}, Signature={}",
+            &datetime[..8],
+            names.join(";"),
+            signature(SECRET_KEY, datetime, &region, &request)
         )
     }
 }
@@ -516,17 +500,11 @@ struct Request {
 
 impl Request {
     fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(held, _)| held == name)
-            .map(|(_, value)| value.as_str())
+        lookup(&self.headers, name)
     }
 
     fn query(&self, name: &str) -> Option<&str> {
-        self.query
-            .iter()
-            .find(|(held, _)| held == name)
-            .map(|(_, value)| value.as_str())
+        lookup(&self.query, name)
     }
 
     fn json(&self) -> Value {
@@ -595,7 +573,6 @@ fn serve(inner: &Inner, mut stream: TcpStream) {
         state.recorded.push(Recorded {
             method: request.method.clone(),
             target: request.target.clone(),
-            path: request.path.clone(),
             query: request.query.clone(),
             headers: request.headers.clone(),
             body: String::from_utf8_lossy(&request.body).into_owned(),
@@ -647,10 +624,8 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         let (name, value) = header.split_once(':')?;
         headers.push((name.trim().to_ascii_lowercase(), value.trim().to_owned()));
     }
-    let length: usize = headers
-        .iter()
-        .find(|(name, _)| name == "content-length")
-        .and_then(|(_, value)| value.parse().ok())
+    let length: usize = lookup(&headers, "content-length")
+        .and_then(|value| value.parse().ok())
         .unwrap_or(0);
     let mut body = vec![0; length];
     if length > 0 {
@@ -687,18 +662,12 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
 fn answer(state: &mut State, request: &Request) -> Response {
     if let Err((refusal, violation)) = verify(state, request) {
         if let Some(violation) = violation {
-            state.violations.push(format!(
-                "{} {}: {violation}",
-                request.method, request.target
-            ));
+            state.violation(request, violation);
         }
         return refusal;
     }
     if let Some(violation) = out_of_bounds(request) {
-        state.violations.push(format!(
-            "{} {}: {violation}",
-            request.method, request.target
-        ));
+        state.violation(request, violation);
         return Response::bad_request("1 validation error detected.");
     }
     match state.refusals.pop_front() {
@@ -714,10 +683,10 @@ fn answer(state: &mut State, request: &Request) -> Response {
         match decode(segment) {
             Some(label) if encode(&label, false) == segment => labels.push(label),
             _ => {
-                state.violations.push(format!(
-                    "{} {}: the path segment {segment:?} is not percent-encoded once",
-                    request.method, request.target
-                ));
+                state.violation(
+                    request,
+                    format_args!("the path segment {segment:?} is not percent-encoded once"),
+                );
                 return Response::bad_request("The request path is malformed.");
             }
         }
@@ -735,17 +704,9 @@ fn answer(state: &mut State, request: &Request) -> Response {
                 rest @ ..,
             ],
         ) => {
-            let Some(bucket) = state.bucket_of(arn) else {
-                if !is_table_bucket_arn(arn) {
-                    state.violations.push(format!(
-                        "{} {}: the label {arn:?} is not a table bucket ARN",
-                        request.method, request.target
-                    ));
-                    return Response::bad_request("The table bucket ARN is malformed.");
-                }
-                // A well-formed ARN of another region or account names no
-                // bucket here.
-                return Response::not_found("table bucket");
+            let bucket = match bucket_named(state, request, arn) {
+                Ok(bucket) => bucket,
+                Err(refusal) => return refusal,
             };
             match (method, *collection, rest) {
                 ("GET", "buckets", []) => get_bucket(state, &bucket),
@@ -779,11 +740,25 @@ fn answer(state: &mut State, request: &Request) -> Response {
 
 /// A method and path no operation of the model has.
 fn unknown(state: &mut State, request: &Request) -> Response {
-    state.violations.push(format!(
-        "{} {}: no operation of the model has this method and path",
-        request.method, request.target
-    ));
+    state.violation(
+        request,
+        "no operation of the model has this method and path",
+    );
     Response::error(404, "UnknownOperationException", "Unknown operation.")
+}
+
+/// The bucket a table bucket ARN names here: a malformed ARN is a
+/// violation, and a well-formed one of another region or account names no
+/// bucket.
+fn bucket_named(state: &mut State, request: &Request, arn: &str) -> Result<String, Response> {
+    if let Some(bucket) = state.bucket_of(arn) {
+        return Ok(bucket);
+    }
+    if !is_table_bucket_arn(arn) {
+        state.violation(request, format_args!("{arn:?} is not a table bucket ARN"));
+        return Err(Response::bad_request("The table bucket ARN is malformed."));
+    }
+    Err(Response::not_found("table bucket"))
 }
 
 /// What a failed check answers, and the violation it records - none for a
@@ -901,20 +876,17 @@ fn verify(state: &State, request: &Request) -> Result<(), Refused> {
             request.raw_query
         )));
     };
-    let mut canonical = format!(
-        "{}\n{}\n{query}\n",
-        request.method,
-        // Every service but Amazon S3: the path as sent, its empty and dot
-        // segments removed, encoded again.
-        encode(&remove_dot_segments(&request.path), true),
-    );
+    let mut headers = Vec::with_capacity(names.len());
     for name in &names {
         let Some(value) = request.header(name) else {
             return Err(invalid(format!("{name} is signed and not sent")));
         };
-        canonical.push_str(&format!("{name}:{}\n", value.trim()));
+        headers.push((*name, value));
     }
-    canonical.push_str(&format!("\n{signed}\n{payload_hash}"));
+    // Every service but Amazon S3: the path as sent, its empty and dot
+    // segments removed, encoded again.
+    let uri = encode(&remove_dot_segments(&request.path), true);
+    let canonical = canonical_request(&request.method, &uri, &query, &headers, &payload_hash);
     let expected = signature(secret, datetime, region, &canonical);
     if expected != presented {
         return Err(invalid(format!(
@@ -1351,20 +1323,20 @@ fn is_table_arn(arn: &str) -> bool {
 /// has moved it.
 fn get_table_by_arn(state: &mut State, request: &Request, arn: &str) -> Response {
     if !is_table_arn(arn) {
-        state.violations.push(format!(
-            "{} {}: the query's tableArn {arn:?} is not a table ARN",
-            request.method, request.target
-        ));
+        state.violation(
+            request,
+            format_args!("the query's tableArn {arn:?} is not a table ARN"),
+        );
         return Response::bad_request("The table ARN is malformed.");
     }
     if ["tableBucketARN", "namespace", "name"]
         .iter()
         .any(|other| request.query(other).is_some())
     {
-        state.violations.push(format!(
-            "{} {}: a table addressed by its ARN is addressed by nothing else",
-            request.method, request.target
-        ));
+        state.violation(
+            request,
+            "a table addressed by its ARN is addressed by nothing else",
+        );
         return Response::bad_request("The request addresses a table two ways.");
     }
     let state = &*state;
@@ -1387,15 +1359,6 @@ fn get_table(state: &mut State, request: &Request) -> Response {
     if let Some(arn) = request.query("tableArn") {
         return get_table_by_arn(state, request, arn);
     }
-    if let Some(arn) = request.query("tableBucketARN")
-        && !is_table_bucket_arn(arn)
-    {
-        state.violations.push(format!(
-            "{} {}: the query's tableBucketARN {arn:?} is not a table bucket ARN",
-            request.method, request.target
-        ));
-    }
-    let state = &*state;
     let (Some(arn), Some(namespace), Some(name)) = (
         request.query("tableBucketARN"),
         request.query("namespace"),
@@ -1403,14 +1366,11 @@ fn get_table(state: &mut State, request: &Request) -> Response {
     ) else {
         return Response::bad_request("The request names no table.");
     };
-    let Some(bucket) = state.bucket_of(arn) else {
-        if !is_table_bucket_arn(arn) {
-            return Response::bad_request("The table bucket ARN is malformed.");
-        }
-        // A well-formed ARN of another region or account names no bucket
-        // here.
-        return Response::not_found("table bucket");
+    let bucket = match bucket_named(state, request, arn) {
+        Ok(bucket) => bucket,
+        Err(refusal) => return refusal,
     };
+    let state = &*state;
     match table_of(state, &bucket, namespace, name) {
         Ok(table) => Response::json(200, &table_document(state, &bucket, namespace, name, table)),
         Err(refusal) => refusal,
@@ -1697,6 +1657,32 @@ fn decode(text: &str) -> Option<String> {
         }
     }
     String::from_utf8(out).ok()
+}
+
+/// The value of the first of `pairs` named `name`.
+fn lookup<'a>(pairs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    pairs
+        .iter()
+        .find(|(held, _)| held == name)
+        .map(|(_, value)| value.as_str())
+}
+
+/// The canonical request Signature Version 4 signs, `headers` in the order
+/// they are signed.
+fn canonical_request(
+    method: &str,
+    uri: &str,
+    query: &str,
+    headers: &[(&str, &str)],
+    payload_hash: &str,
+) -> String {
+    let mut request = format!("{method}\n{uri}\n{query}\n");
+    for (name, value) in headers {
+        request.push_str(&format!("{name}:{}\n", value.trim()));
+    }
+    let names: Vec<&str> = headers.iter().map(|(name, _)| *name).collect();
+    request.push_str(&format!("\n{}\n{payload_hash}", names.join(";")));
+    request
 }
 
 /// The canonical query of a query string as sent, as the service computes

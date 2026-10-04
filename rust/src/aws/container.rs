@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use super::credentials::{self, Credentials};
-use crate::auth::Environment;
+use crate::auth::{Environment, refusal};
 use crate::{Error, Result, Scheme, Url};
 
 /// Where the ECS container agent serves credentials from.
@@ -161,13 +161,6 @@ fn allowed_full_uri(text: &str) -> Option<Url> {
             address.is_loopback() || address == Ipv6Addr::new(0xfd00, 0x0ec2, 0, 0, 0, 0, 0, 0x23)
         });
     allowed.then_some(url)
-}
-
-fn refusal(message: impl Into<String>) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        message.into(),
-    ))
 }
 
 #[cfg(feature = "internals")]

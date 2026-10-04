@@ -4403,10 +4403,7 @@ declare module './index' {
     readTextLines(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): TextLineIterator
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowReader(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): BatchReader
-    /**
-     * Replace this resource's rows with one native reader. Every record
-     * write answers the rows it read, wrote and skipped.
-     */
+    /** Replace this resource's rows with one native reader; every record write answers its `IOResult`. */
     overwriteArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
@@ -4867,11 +4864,7 @@ export interface SchemaUpdate {
   dropColumn(path: string): SchemaUpdate
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): SchemaUpdate
-  /**
-   * Record a new documentation string on the column at `path`: the column's
-   * own description, which the schema states as its `doc`. An empty one
-   * clears it.
-   */
+  /** Record the description - the schema's `doc` - of the column at `path`; an empty one clears it. */
   updateDoc(path: string, doc: string): SchemaUpdate
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): SchemaUpdate
@@ -5291,9 +5284,8 @@ export interface Fix {
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
    * options' `timezone`, never the file's modification time. The other
    * four captures are named for the fields they fill - `msgsessionid`,
-   * `msgctxid`, `msgseqnum` and `msgpluginid` - so the header carries no
-   * column of its own; the thread that wrote a line and the level it was
-   * logged at are matched and lifted into no column. Its
+   * `msgctxid`, `msgseqnum` and `msgpluginid` - so the header adds no
+   * column; the thread and the log level are matched and dropped. Its
    * clock reads what bridges write, a point or a comma before three digits
    * or grouped microseconds, or no fraction at all, and a line a row header
    * does not match carries no capture context - which is what the lifecycle

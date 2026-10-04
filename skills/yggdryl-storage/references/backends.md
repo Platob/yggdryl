@@ -18,7 +18,7 @@ how a location is spelled, what configures it, and what each call costs.
 | `file:///x.zip#member/path` | ZIP member | `zip::from_url(&url)`, `zip::mount(holder)` | Rust only | Rust only |
 | `urn:ns:a:b` | the path the name spells, under the working directory | `Uri::locator` then a backend | `IOBase(Urn(...))` | `new IOBase(new Urn(...))` |
 | `arn:aws:s3:::bucket/key` | the `s3:` URL it names | `Arn::locator` | `IOBase(Arn(...))` | `new IOBase(new Arn(...))` |
-| `s3tables://...` | no byte backend: a table bucket's location is its catalog - `Catalog::from_url` answers `S3TablesCatalog` (`s3tables` feature), whose tables commit through the control plane, their files at the `s3:` warehouse location it answers; `s3tables::S3Tables` is the control plane's client | `Catalog::from_url(&bucket_arn, &props)?` | `Catalog.from_url(arn, profile=...)` | `warehouse.Catalog.fromUrl(arn, { profile })` |
+| `s3tables://...` | no byte backend (`s3tables` feature): the catalog, a namespace or the Iceberg table it names; the bucket's `S3TablesCatalog` commits through the control plane, whose client is `s3tables::S3Tables`, its tables' files at the `s3:` warehouse location it answers | `Holder::from_url(location, &props)?`, `Catalog::from_url(&bucket_arn, &props)?` | `IOBase(location)`, `Catalog.from_url(arn, profile=...)` | `new IOBase(location)`, `warehouse.Catalog.fromUrl(arn, { profile })` |
 
 A handle reports the spelling it was handed (`s3a://` stays `s3a://`), and a
 child keeps its parent's spelling.
@@ -142,10 +142,9 @@ Rust builders: `S3Options::default().with_endpoint(..).with_region(..)
 Rust only: Python and Node expose no `Session`; an S3 handle there takes the
 same knobs by name through `options` and walks the same chain.
 
-The credential chain is botocore's, in botocore's order, with the console
-sign-in where botocore has it; a configured but broken source is recorded and
-passed over, and the walk refuses only when every source has been asked,
-naming each.
+The credential chain is botocore's, in its order, the console sign-in
+included; a configured but broken source is recorded and passed over, and the
+walk refuses only when every source has been asked, naming each.
 
 | Order | Source |
 | --- | --- |
@@ -164,8 +163,8 @@ naming each.
 | --- | --- |
 | laziness | `Session::new()` states nothing; the chain is walked once, on the first request, and cached |
 | refresh | a temporary set is replaced 15 minutes before it lapses (a console sign-in's, 5 minutes); a failed refresh keeps the set until it actually lapses; an unsigned answer is held 5 minutes, a failure 30 seconds |
-| shared files | `~/.aws/config` and `~/.aws/credentials` are read again whenever either moved (length or modification time) at every walk, after a store's refusal (`invalidate`, `invalidate_if`) and while an unsigned or failed answer is held: a set dumped anew is picked up with no restart |
-| passed over | a set whose expiry is before the machine's clock, or whose key a store refused, is passed over by name (key masked as `ASIA...DUMP`, with `write a fresh set under [default] in <path>, or sign in again`) and the sources after it are asked; `with_credentials` is never passed over |
+| shared files | `~/.aws/config` and `~/.aws/credentials` are read again whenever either moved (length or modification time), checked at every walk, after a store's refusal (`invalidate`, `invalidate_if`) and while an unsigned or failed answer is held: a set dumped anew needs no restart |
+| passed over | a set lapsed by the machine's clock, or whose key a store refused, is passed over by name (key masked as `ASIA...DUMP`, with `write a fresh set under [default] in <path>, or sign in again`) and the sources after it asked; `with_credentials` never is |
 | store refusals | `ExpiredToken`, `ExpiredTokenException`, `TokenRefreshRequired`: for good; `InvalidAccessKeyId`, `InvalidToken`, `InvalidClientTokenId`: 30 seconds or until the files move; the S3 client signs once more only when the session now answers another set |
 | dumped expiry | read under `aws_credential_expiration`, `x_security_token_expires`, `aws_session_expiration`, `aws_expiration` or `expiration`; two that disagree, or one nothing reads, is a named refusal |
 | pasted values | one pair of quotes and a ` #`/` ;` comment come off a credential value; `export AWS_ACCESS_KEY_ID=...`, `set AWS_...=...` and `$Env:AWS_...="..."` read as the key; `[default]   # note` is `[default]`; half a set is a named refusal; a BOM (UTF-8, UTF-16LE/BE) reads in its charset; an unreadable file is a named failure |
@@ -176,7 +175,7 @@ naming each.
 | logging | every walk logs under `yggdryl.aws.session` (`yggdryl.aws.login` for a refresh): each source asked at `DEBUG`, the answering source at `INFO` (`AWS credentials from <source>: key ASIA...ABCD, lapsing at ...`), a set passed over at `WARNING`; no secret, key ids masked; Rust `logging::get_logger("yggdryl.aws.session").set_level(Level::DEBUG)` after `logging::basic_config(...)`, Python `logging.getLogger("yggdryl.aws.session")` |
 | sealing | `Session::new().with_environment(false)` reads no variable and no file unless given (`with_config_text`, `with_variables`, `with_directory`) |
 | profile/region | `with_profile`, else `AWS_DEFAULT_PROFILE`, `AWS_PROFILE`; `with_region`, else `AWS_REGION`, the profile's own; these `AWS_*` variables are the session's, in any case, never swept into `S3Options` |
-| endpoint of a service | `endpoint_url(service)?`, botocore's order: `with_service_endpoint_url`, `with_endpoint_url` (stated, never ignored), then `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL`, the profile's `[services]` entry, its `endpoint_url`, else the published host; the variable is named after the service id - `AWS_ENDPOINT_URL_S3`, `_STS`, `_SSO`, `_SSO_OIDC`, `_SIGNIN`, `_S3TABLES` - never the endpoint prefix; `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` (the crate's boolean table, so `1` counts) skips the configured ones; a blank or whitespace-only variable is no source; a value naming no endpoint (`/`) and a profile naming a `[services]` section nobody wrote are refused by name; the endpoint's path is kept and a trailing `/` dropped - STS is sent there, every S3 and S3 Tables request under it - and it is used whatever the FIPS and dual-stack switches say; the IAM Identity Center portal and OIDC published hosts are built with both switches off; no endpoint is ever swept into `S3Options` under any prefix (`AWS_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT`, `YGGDRYL_METADATA_SERVICE_ENDPOINT` address nothing; `sts_endpoint=` stated as a property still does) |
+| endpoint of a service | `endpoint_url(service)?`, botocore's order: `with_service_endpoint_url`, `with_endpoint_url` (stated, never ignored), `AWS_ENDPOINT_URL_<SERVICE>` (the service id: `_S3`, `_STS`, `_SSO`, `_SSO_OIDC`, `_SIGNIN`, `_S3TABLES`), `AWS_ENDPOINT_URL`, the profile's `[services]` entry, its `endpoint_url`, else the published host (the portal's and OIDC's with FIPS and dual-stack off); `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` (the boolean table, so `1` counts) skips the configured ones; a blank or whitespace-only variable is no source; a value naming no endpoint (`/`) and a `[services]` section nobody wrote are refused by name; the path is kept and a trailing `/` dropped (STS is sent there, every S3 and S3 Tables request under it), whatever the FIPS and dual-stack switches say; no endpoint is swept into `S3Options` (`AWS_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT`, `YGGDRYL_METADATA_SERVICE_ENDPOINT` address nothing; a stated `sts_endpoint=` property does); see [where each service is reached](https://platob.github.io/yggdryl/holder/#where-each-service-is-reached) |
 | Google / Azure | `GoogleOptions::with_impersonation(sa)` signs one `iamcredentials` call; Azure takes an Entra ID application on `AzureOptions` |
 
 ### Encryption, retries, failures

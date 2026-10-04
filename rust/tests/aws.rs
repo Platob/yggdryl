@@ -13,13 +13,12 @@
 //! [`identity`] is not a suite: it is the in-process fake of every identity
 //! endpoint, declared here once so every suite over a socket shares it.
 //! [`logging`] is not one either: it is the logging tree's collector, which
-//! [`login`] reads the records the crate logs through.
+//! [`mod_`]'s `Logged` reads the crate's records through.
 
 #[cfg(feature = "aws")]
 #[path = "support/identity.rs"]
 mod identity;
-// Shared with the logging suite, which reads every item; this harness
-// reads the collector alone.
+// Shared with the logging suite; this harness reads part of it.
 #[cfg(feature = "aws")]
 #[allow(dead_code)]
 #[path = "support/logging.rs"]

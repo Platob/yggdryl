@@ -802,17 +802,21 @@ mod internal {
         // An instant spells `:`, which no Windows path can: the directory
         // name keeps letters, digits and `._+-` and writes `_` for the rest,
         // the manifest staying the authority on the value.
-        let mut schema = DataType::from(
-            StructType::from_fields([DataType::DateTime64 {
+        let spec_on = |name: &str, dtype: DataType| {
+            let mut schema = StructType::from_fields([dtype.required_field(name)])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("row");
+            assign_field_ids(&mut schema, 1).unwrap();
+            PartitionSpec::identity(1, &schema, &[name]).unwrap()
+        };
+        let spec = spec_on(
+            "part",
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            }
-            .required_field("part")])
-            .unwrap(),
-        )
-        .required_field("row");
-        assign_field_ids(&mut schema, 1).unwrap();
-        let spec = PartitionSpec::identity(1, &schema, &["part"]).unwrap();
+            },
+        );
         let value =
             Scalar::datetime64(900_000_000_000, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
         let path = spec.partition_path(&[value]).unwrap();
@@ -823,19 +827,7 @@ mod internal {
                     || matches!(character, '.' | '_' | '+' | '-' | '=')),
             "{path}"
         );
-        let venue = PartitionSpec::identity(
-            1,
-            &{
-                let mut schema = DataType::from(
-                    StructType::from_fields([DataType::utf8().required_field("venue")]).unwrap(),
-                )
-                .required_field("row");
-                assign_field_ids(&mut schema, 1).unwrap();
-                schema
-            },
-            &["venue"],
-        )
-        .unwrap();
+        let venue = spec_on("venue", DataType::utf8());
         assert_eq!(
             venue.partition_path(&[Scalar::from("a/b c:d")]).unwrap(),
             "venue=a_b_c_d"

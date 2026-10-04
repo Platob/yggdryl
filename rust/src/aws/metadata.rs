@@ -136,13 +136,14 @@ impl Imds {
     /// service that never answers - nothing took the connection, or nothing
     /// came back before the deadline - is not there.
     fn reach(&self, http: &crate::http::Session) -> Reach {
-        let request = match http.put(&format!("{}/latest/api/token", self.endpoint), "") {
-            Ok(request) => self.bounded(request),
-            Err(_) => return Reach::Unreachable,
-        };
-        let request = match request.with_header("x-aws-ec2-metadata-token-ttl-seconds", TOKEN_TTL) {
-            Ok(request) => request,
-            Err(_) => return Reach::Unreachable,
+        let Ok(request) = http
+            .put(&format!("{}/latest/api/token", self.endpoint), "")
+            .and_then(|request| {
+                self.bounded(request)
+                    .with_header("x-aws-ec2-metadata-token-ttl-seconds", TOKEN_TTL)
+            })
+        else {
+            return Reach::Unreachable;
         };
         match super::Answer::of(&request) {
             Ok(answer) if answer.status == 200 => {

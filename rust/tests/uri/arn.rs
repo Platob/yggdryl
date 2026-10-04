@@ -451,12 +451,12 @@ mod partition {
 
     #[test]
     fn a_region_no_partition_claims_is_in_aws_and_a_name_no_partition_bears_is_refused() {
-        for region in ["mars-north-1", "", "  eu-west-3 ", "US-GOV-WEST-1"] {
-            let expected = if region.trim().eq_ignore_ascii_case("us-gov-west-1") {
-                ArnPartition::AwsUsGov
-            } else {
-                ArnPartition::Aws
-            };
+        for (region, expected) in [
+            ("mars-north-1", ArnPartition::Aws),
+            ("", ArnPartition::Aws),
+            ("  eu-west-3 ", ArnPartition::Aws),
+            ("US-GOV-WEST-1", ArnPartition::AwsUsGov),
+        ] {
             assert_eq!(ArnPartition::from_region(region), expected, "{region:?}");
         }
         assert!("aws-moon".parse::<ArnPartition>().is_err());

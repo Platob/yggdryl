@@ -72,6 +72,20 @@ fn dumped(key: &str) -> String {
     )
 }
 
+/// A session [`reading_files`] under `directory`, already signing with the
+/// set for `key` its credentials file holds.
+fn holding(directory: &std::path::Path, key: &str) -> Session {
+    std::fs::write(directory.join("credentials"), dumped(key)).expect("a dumped set");
+    let session = reading_files(directory);
+    assert!(
+        session
+            .credentials(SystemTime::now())
+            .expect("a walk")
+            .is_some()
+    );
+    session
+}
+
 /// The instant an `x-amz-date` names.
 fn instant(amz_date: &str) -> SystemTime {
     let number = |range: std::ops::Range<usize>| -> i64 {
@@ -443,16 +457,9 @@ fn a_set_dumped_anew_signs_the_post_the_service_refused_the_old_one_for() {
 fn a_key_a_json_service_does_not_recognize_is_read_again_by_the_error_type_header() {
     let server = server();
     let directory = scratch("request-unrecognized");
-    let credentials = directory.join("credentials");
-    std::fs::write(&credentials, dumped("AKIAJUSTMADE")).expect("a dumped set");
-    let session = reading_files(&directory);
-    assert!(
-        session
-            .credentials(SystemTime::now())
-            .expect("a walk")
-            .is_some()
-    );
-    std::fs::write(&credentials, dumped("AKIAPROPAGATED")).expect("a set dumped anew");
+    let session = holding(&directory, "AKIAJUSTMADE");
+    std::fs::write(directory.join("credentials"), dumped("AKIAPROPAGATED"))
+        .expect("a set dumped anew");
     // The code in `x-amzn-ErrorType`, a documentation URL after it, and a
     // body that names nothing.
     refusing(&server, "/v1/tables", 1, || {
@@ -509,8 +516,7 @@ fn a_stated_set_the_service_refuses_is_sent_once_and_its_answer_handed_back_whol
 fn a_refusal_of_the_request_rather_than_its_key_is_never_sent_again() {
     let server = server();
     let directory = scratch("request-denied");
-    std::fs::write(directory.join("credentials"), dumped("ASIAALLOWEDNOT")).expect("a set");
-    let session = reading_files(&directory);
+    let session = holding(&directory, "ASIAALLOWEDNOT");
     for (status, error_type) in [
         (403, "AccessDeniedException"),
         (400, "ValidationException"),
@@ -536,15 +542,7 @@ fn a_refusal_of_the_request_rather_than_its_key_is_never_sent_again() {
 fn a_head_refused_with_no_body_goes_once_more_only_for_another_set() {
     let server = server();
     let directory = scratch("request-head");
-    let credentials = directory.join("credentials");
-    std::fs::write(&credentials, dumped("ASIAHEADOLD")).expect("a dumped set");
-    let session = reading_files(&directory);
-    assert!(
-        session
-            .credentials(SystemTime::now())
-            .expect("a walk")
-            .is_some()
-    );
+    let session = holding(&directory, "ASIAHEADOLD");
     let head = || {
         http()
             .head(&url(&server, "/v1/table"))
@@ -554,7 +552,8 @@ fn a_head_refused_with_no_body_goes_once_more_only_for_another_set() {
             .expect("an answer")
     };
 
-    std::fs::write(&credentials, dumped("ASIAHEADNEWER")).expect("a set dumped anew");
+    std::fs::write(directory.join("credentials"), dumped("ASIAHEADNEWER"))
+        .expect("a set dumped anew");
     refusing(&server, "/v1/table", 1, || {
         Ok(Response::new(Status::new(400).expect("a status")))
     });

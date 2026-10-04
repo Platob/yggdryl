@@ -519,11 +519,10 @@ pub struct FixCodec {
     /// The instrument registry every lifecycle this codec runs learns into
     /// and fills from, shared; none gives each walk its own, starting empty.
     isin_registry: Option<Arc<Mutex<IsinRegistry>>>,
-    /// The registry's table as the door this codec reads for fixed it, on
-    /// the thread that opened the door and under one lock: what every
-    /// message of that reading fills its derived identifiers from, and what
-    /// no worker reaches the lock for. None on a codec no door has read
-    /// through, which takes the table per message a singular door builds.
+    /// The registry's table, taken once by the door reading through this
+    /// codec ([`Self::reading`]) so no worker reaches the lock; none on a
+    /// codec no door has read through, where a singular door takes it per
+    /// message.
     instruments: Option<IsinTable>,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
@@ -719,11 +718,10 @@ impl FixCodec {
         }
     }
 
-    /// Opens a codec over the registry the process environment names,
-    /// [`FixRegistry::from_env`], sharing the instrument registry it names
-    /// too, [`IsinRegistry::from_env`] - the one codec constructor that
-    /// attaches the process's own; [`Self::new`] attaches none, and a
-    /// commit of what the walks learned is always the caller's
+    /// Opens a codec over the dictionary and the instrument registry the
+    /// process environment names ([`FixRegistry::from_env`],
+    /// [`IsinRegistry::from_env`]); [`Self::new`] attaches no instrument
+    /// registry. Committing what the walks learned is the caller's
     /// ([`IsinRegistry::commit`]).
     ///
     /// # Errors
@@ -1006,20 +1004,18 @@ impl FixCodec {
         }
     }
 
-    /// Shares `registry` with every lifecycle this codec runs, and with
-    /// every parse: each lifecycle learns what its messages state about
-    /// their instruments into it ([`IsinRegistry::learn`]) and fills what
-    /// they leave unstated from it ([`IsinRegistry::fill`]), so a walk run
-    /// after another starts from what the first learned; each parse door
-    /// fixes the registry's table once, as the door opens, under one lock
-    /// on the calling thread, and every message it reads takes from that
-    /// table the security identifiers it leaves unsaid - the ISIN its
-    /// ticker names on its market, every equivalent, the pair - as derived
-    /// identifiers, which reach no field, no wire and no part of its
-    /// identity. A parse learns nothing, and a learn while a door reads
-    /// reaches no message of it. Walks run one after another; walks run at
-    /// once on one registry interleave their learning. Without one, each
-    /// walk learns into its own, starting empty, and a parse fills nothing.
+    /// Shares `registry` with every lifecycle and every parse this codec
+    /// runs. A lifecycle learns what its messages state about their
+    /// instruments ([`IsinRegistry::learn`]) and fills what they leave
+    /// unstated ([`IsinRegistry::fill`]), so a walk starts from what the one
+    /// before learned; walks run at once on one registry interleave their
+    /// learning. A parse door takes the registry's table once, as it opens,
+    /// under one lock on the calling thread, and each message derives from
+    /// it the security identifiers it leaves unsaid - the ISIN its ticker
+    /// names on its market, every equivalent, the pair - reaching no field,
+    /// wire or identity; a parse learns nothing, and a learn while a door
+    /// reads reaches no message of it. Without one, each walk learns into
+    /// its own, starting empty, and a parse fills nothing.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {

@@ -963,6 +963,7 @@ struct Stored {
 }
 
 /// What one run read, wrote and held.
+#[derive(Default)]
 struct Outcome {
     input_bytes: u64,
     compressed_bytes: u64,
@@ -1101,16 +1102,22 @@ fn writing(table: &IcebergTable<LocalFolder>, shape: &Run) -> RecordOptions {
     options
 }
 
+/// The table's own read options, keeping only the rows `window` keeps
+/// where it states one.
+fn windowed(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> RecordOptions {
+    let options = table.record_options().expect("the table's options");
+    match window {
+        Some(window) => options.with_filter(window).expect("the window"),
+        None => options,
+    }
+}
+
 /// The table's rows in the table's own order, as the rows `row` types -
 /// the crate's datatypes again, the partition column dropped - and, where
 /// `window` states one, only those it keeps.
 fn stored(table: &IcebergTable<LocalFolder>, row: &Field, window: Option<&str>) -> SerieReader {
-    let mut options = table.record_options().expect("the table's options");
+    let mut options = windowed(table, window);
     options.set_field(row.clone());
-    let options = match window {
-        Some(window) => options.with_filter(window).expect("the window"),
-        None => options,
-    };
     table.read_serie(Some(&options)).expect("the table reads")
 }
 
@@ -1147,14 +1154,9 @@ fn held(table: &IcebergTable<LocalFolder>) -> Stored {
 /// `(partunix, currunix, seqnum, currhashcode)`, the two instants as their
 /// nanosecond counts.
 fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i64, i128, i128)> {
-    let options = table.record_options().expect("the table's options");
-    let options = match window {
-        Some(window) => options.with_filter(window).expect("the window"),
-        None => options,
-    };
     let mut keys = Vec::new();
     for batch in table
-        .read_serie(Some(&options))
+        .read_serie(Some(&windowed(table, window)))
         .expect("the table reads")
         .into_arrow_reader()
     {
@@ -1342,24 +1344,9 @@ fn run(shape: &Run) -> Outcome {
         input_bytes,
         compressed_bytes,
         files,
-        lines: 0,
-        messages: 0,
-        walked: 0,
-        books: 0,
-        deltas: 0,
-        batches: 0,
-        arrow_bytes: 0,
-        text: None,
-        fix: None,
-        snapshots: None,
-        flattened: None,
-        table_bytes: 0,
         baseline,
-        finale: None,
-        samples: Vec::new(),
-        watched_peak: None,
         generated_in,
-        streamed_in: Duration::ZERO,
+        ..Outcome::default()
     };
 
     if shape.stage == Stage::Lines {
@@ -1866,8 +1853,8 @@ fn the_generator_writes_fresh_copies_of_one_width() {
     assert_eq!(first.len(), LOG.len());
     assert_eq!(second.len(), LOG.len());
     assert_eq!(far.len(), LOG.len());
-    // Copy zero is the capture's own lines, in clock order: the same bytes,
-    // differently placed.
+    // Copy zero is the capture's own lines in clock order, its clocks
+    // written in UTC: not the capture's bytes reordered.
     let mut sorted_log: Vec<&[u8]> = LOG.split_inclusive(|byte| *byte == b'\n').collect();
     let mut sorted_first: Vec<&[u8]> = first.split_inclusive(|byte| *byte == b'\n').collect();
     sorted_log.sort_unstable();

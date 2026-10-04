@@ -520,13 +520,11 @@ pub(crate) fn parse_error(body: &[u8]) -> Option<(String, String)> {
 
 /// The scheme, the host with its port, and the path of an endpoint URL.
 ///
-/// The endpoint is read once, as the URL it is, so what is signed and what
-/// is dialed are one reading: a bare host or `host:port` is reached over
-/// `https`, `http` and `https` are the only schemes an STS endpoint has, and
-/// user information and a query are no part of where it is. Its path - a
-/// gateway mounting STS below one - is where every exchange is sent and what
-/// it signs, as botocore sends it: `/` where the endpoint has none, a
-/// trailing `/` dropped as the session drops it.
+/// The endpoint is read once, so what is signed and what is dialed are one
+/// reading: a bare host or `host:port` is reached over `https`, `http` and
+/// `https` are the only schemes, user information and a query are dropped,
+/// and the path - a gateway mounting STS below one - is kept, `/` where the
+/// endpoint has none and a trailing `/` dropped.
 fn split_endpoint(endpoint: &str) -> Result<(String, String, String)> {
     let refuse = |reason: &str| {
         Error::Io(std::io::Error::new(

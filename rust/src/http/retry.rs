@@ -243,8 +243,7 @@ pub mod internals {
     }
 
     /// Whether a request's error is a transport failure no answer's head
-    /// arrived for - the client's verdict on what came back, read beside
-    /// the verdicts on whether to try again.
+    /// arrived for.
     pub fn is_unanswered(error: &crate::Error) -> bool {
         crate::http::is_unanswered(error)
     }

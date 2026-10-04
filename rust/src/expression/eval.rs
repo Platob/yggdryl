@@ -35,6 +35,7 @@ use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::{encoded_value_of, is_blank_text};
 use crate::floating::f64_from_text;
 use crate::integer::integer_from_text_as;
+use crate::temporal::invalid_record_text;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
 /// One row's worth of context: its column values.
@@ -921,19 +922,12 @@ impl EpochPeriod {
             .and_then(NonZeroU32::new)
             .map(Self::Minutes)
             .ok_or_else(|| {
-                // The step as the grammar spells it, so `'x'` reads as text.
-                let spelled = Literal::infer(step.clone()).map_or_else(
-                    |_| SmolStr::new(step.kind()),
-                    |literal| format_smolstr!("{literal}"),
-                );
-                Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: format_smolstr!(
-                        "expected the step n of minutes(x, n) to be a whole number from 1 to {}, \
-                         got {spelled}",
-                        u32::MAX
-                    ),
-                }
+                invalid_record_text(format_smolstr!(
+                    "expected the step n of minutes(x, n) to be a whole number from 1 to {}, \
+                     got {}",
+                    u32::MAX,
+                    spelled_literal(step)
+                ))
             })
     }
 
@@ -1109,12 +1103,10 @@ const BUCKET_WIDTHS: &str = "a positive fixed-length width: a count and a unit o
 
 /// One `time_bucket(width, x)` floor, resolved once against `x`'s datatype.
 ///
-/// The one place the bucket rule lives: the row tier, the batch tier and the
-/// statistics evaluator all floor through [`Self::floor`], so a computed
-/// column and a filter on it cannot disagree about which bucket an instant
-/// falls in. The width and DuckDB's origin are both counted in `x`'s own
-/// unit, and the origin is held reduced modulo the width, so a floor is two
-/// remainders and a subtraction with no `i128` per value.
+/// The row tier, the batch tier and the statistics evaluator all floor
+/// through [`Self::floor`], so a computed column and a filter on it agree.
+/// Width and origin are counted in `x`'s unit, the origin reduced modulo the
+/// width, so a floor is two remainders and a subtraction, no `i128` per value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct TimeBucket {
     /// The width in `unit`, at least one.
@@ -1131,10 +1123,9 @@ impl TimeBucket {
     ///
     /// # Errors
     ///
-    /// Refuses a width that is not one of [`BUCKET_WIDTHS`], that is not a
-    /// whole number of `x`'s unit or - for a date - of days, or that is
-    /// wider than a count of that unit reaches; and an `x` that is neither a
-    /// date nor a timestamp.
+    /// Refuses a width that is not one of [`BUCKET_WIDTHS`], not a whole
+    /// number of `x`'s unit - of days for a date - or wider than a count of
+    /// that unit reaches; and an `x` that is no date or timestamp.
     pub(crate) fn new(width: &Scalar, dtype: &DataType) -> Result<Self> {
         let nanos = bucket_width_nanos(width)?;
         let (unit, date) = match unwrap_dictionary(dtype) {
@@ -1142,28 +1133,29 @@ impl TimeBucket {
             DataType::Date64 => (TimeUnit::Millisecond, true),
             DataType::DateTime64 { unit, .. } => (*unit, false),
             other => {
-                return Err(bucket_error(format_smolstr!(
+                return Err(invalid_record_text(format_smolstr!(
                     "expected x of time_bucket(width, x) to be a date or a timestamp, got {other}"
                 )));
             }
         };
-        let per_unit = crate::temporal::scalars::nanoseconds_per(unit)
-            .ok_or_else(|| bucket_error(format_smolstr!("expected a fixed unit, got {unit}")))?;
-        let spelled = spelled_width(width);
+        let per_unit = crate::temporal::scalars::nanoseconds_per(unit).ok_or_else(|| {
+            invalid_record_text(format_smolstr!("expected a fixed unit, got {unit}"))
+        })?;
+        let spelled = spelled_literal(width);
         if date && nanos % NANOS_PER_DAY != 0 {
-            return Err(bucket_error(format_smolstr!(
+            return Err(invalid_record_text(format_smolstr!(
                 "expected the width of time_bucket(width, x) over a date to be whole days, \
                  got {spelled}: a date has no clock"
             )));
         }
         if nanos % per_unit != 0 {
-            return Err(bucket_error(format_smolstr!(
+            return Err(invalid_record_text(format_smolstr!(
                 "expected the width of time_bucket(width, x) to be a whole number of {unit}, \
                  the unit of {dtype}, got {spelled}"
             )));
         }
         let step = i64::try_from(nanos / per_unit).map_err(|_| {
-            bucket_error(format_smolstr!(
+            invalid_record_text(format_smolstr!(
                 "expected the width of time_bucket(width, x) to be at most what {dtype} counts, \
                  got {spelled}"
             ))
@@ -1195,7 +1187,7 @@ impl TimeBucket {
             return Ok(Scalar::Null);
         };
         let floored = self.floor(count).ok_or_else(|| {
-            bucket_error(format_smolstr!(
+            invalid_record_text(format_smolstr!(
                 "expected time_bucket(width, x) to start the bucket of count {count} at a \
                  count {dtype} holds"
             ))
@@ -1216,17 +1208,10 @@ impl TimeBucket {
     }
 }
 
-fn bucket_error(reason: SmolStr) -> Error {
-    Error::InvalidRecord {
-        path: SmolStr::new_static("$"),
-        reason,
-    }
-}
-
-/// A width as the grammar spells it, so `'15m'` reads as the text it was.
-fn spelled_width(width: &Scalar) -> SmolStr {
-    Literal::infer(width.clone()).map_or_else(
-        |_| SmolStr::new(width.kind()),
+/// A constant as the grammar spells it, so `'15m'` reads as the text it was.
+fn spelled_literal(value: &Scalar) -> SmolStr {
+    Literal::infer(value.clone()).map_or_else(
+        |_| SmolStr::new(value.kind()),
         |literal| format_smolstr!("{literal}"),
     )
 }
@@ -1244,9 +1229,9 @@ fn bucket_width_nanos(width: &Scalar) -> Result<i128> {
     };
     match nanos {
         Some(nanos) if nanos > 0 => Ok(nanos),
-        _ => Err(bucket_error(format_smolstr!(
+        _ => Err(invalid_record_text(format_smolstr!(
             "expected the width of time_bucket(width, x) to be {BUCKET_WIDTHS}, got {}",
-            spelled_width(width)
+            spelled_literal(width)
         ))),
     }
 }

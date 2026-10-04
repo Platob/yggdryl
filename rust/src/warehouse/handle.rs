@@ -21,15 +21,12 @@ pub(crate) enum Site {
     Url(Url),
     /// A caller's filesystem and a path on it, re-held as it was bound.
     Bound(BoundLocation),
-    /// An object-store location opened under the session its owner signs
-    /// with - a catalog service's warehouse, reached as the catalog is - in
-    /// the region the owner knows it is in, and under the store's own knobs
-    /// the owner was given (`store`: where the store is, how it is
-    /// addressed, a key pair stated for it - what the store's reader takes
-    /// and the session does not), the object's effective properties read
-    /// over all of it. The knobs are the site's and never the object's:
-    /// nothing lists or prints them, and a bag stated on the object later
-    /// leaves them in place.
+    /// An object-store location - a catalog service's warehouse - opened
+    /// under the session and region its owner signs with and the store's own
+    /// knobs it was given (`store`: endpoint, addressing, a key pair), the
+    /// object's effective properties read over them. The knobs are the
+    /// site's, never the object's: nothing lists or prints them, and a bag
+    /// stated on the object later leaves them in place.
     #[cfg(feature = "s3tables")]
     Store {
         url: Url,

@@ -25,33 +25,6 @@ fn refusal(error: &Error) -> String {
 }
 
 #[test]
-fn a_pyiceberg_catalogs_client_properties_state_the_region_and_the_set() {
-    let session = sealed()
-        .with_properties([
-            ("uri", "https://s3tables.eu-west-3.amazonaws.com/iceberg"),
-            (
-                "warehouse",
-                "arn:aws:s3tables:eu-west-3:123456789012:bucket/lake",
-            ),
-            ("rest.sigv4-enabled", "true"),
-            ("rest.signing-name", "s3tables"),
-            ("client.region", "eu-west-3"),
-            ("client.access-key-id", "ASIACATALOG"),
-            ("client.secret-access-key", "catalog-secret"),
-            ("client.session-token", "catalog-token"),
-        ])
-        .expect("properties");
-    assert_eq!(session.region().as_deref(), Some("eu-west-3"));
-    let keys = session
-        .credentials(SystemTime::now())
-        .expect("a walk")
-        .expect("the stated set");
-    assert_eq!(keys.access_key_id(), "ASIACATALOG");
-    assert_eq!(keys.session_token(), Some("catalog-token"));
-    assert_eq!(session.credential_source(), Some("explicit credentials"));
-}
-
-#[test]
 fn the_bare_names_the_aws_names_and_the_client_names_are_one_name() {
     for (region, access, secret, token, profile) in [
         (
@@ -85,6 +58,13 @@ fn the_bare_names_the_aws_names_and_the_client_names_are_one_name() {
     ] {
         let session = sealed()
             .with_properties([
+                // What a PyIceberg catalog states beside them is nobody's.
+                (
+                    "uri",
+                    "https://s3tables.ap-southeast-1.amazonaws.com/iceberg",
+                ),
+                ("rest.sigv4-enabled", "true"),
+                ("rest.signing-name", "s3tables"),
                 (region, "ap-southeast-1"),
                 (access, "AKIAONE"),
                 (secret, "one-secret"),
@@ -104,6 +84,7 @@ fn the_bare_names_the_aws_names_and_the_client_names_are_one_name() {
             .expect("the stated set");
         assert_eq!(keys.access_key_id(), "AKIAONE", "{access}");
         assert_eq!(keys.session_token(), Some("one-token"), "{token}");
+        assert_eq!(session.credential_source(), Some("explicit credentials"));
         for name in [region, access, secret, token, profile] {
             assert!(Session::is_property(name), "{name}");
         }
@@ -155,29 +136,17 @@ fn a_catalogs_bearer_token_and_the_stores_own_names_are_not_read_here() {
 
 #[test]
 fn half_a_credential_set_is_refused_naming_the_half_that_is_missing() {
-    let error = sealed()
-        .with_properties([("client.access-key-id", "AKIAHALF")])
-        .expect_err("a key with no secret");
-    assert!(
-        refusal(&error).contains("the secret_access_key is missing"),
-        "{error}"
-    );
-
-    let error = sealed()
-        .with_properties([("aws_secret_access_key", "secret")])
-        .expect_err("a secret with no key");
-    assert!(
-        refusal(&error).contains("the access_key_id is missing"),
-        "{error}"
-    );
-
-    let error = sealed()
-        .with_properties([("session_token", "token")])
-        .expect_err("a token with no pair");
-    assert!(
-        refusal(&error).contains("the access_key_id and the secret_access_key are missing"),
-        "{error}"
-    );
+    for (name, missing) in [
+        ("client.access-key-id", "the secret_access_key is missing"),
+        ("aws_secret_access_key", "the access_key_id is missing"),
+        (
+            "session_token",
+            "the access_key_id and the secret_access_key are missing",
+        ),
+    ] {
+        let error = sealed().with_properties([(name, "half")]).expect_err(name);
+        assert!(refusal(&error).contains(missing), "{name}: {error}");
+    }
 }
 
 #[test]

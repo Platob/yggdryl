@@ -177,47 +177,35 @@ struct Opened {
     version: u32,
     /// The exact discovered metadata filename, including UUID and compression.
     metadata_file_name: SmolStr,
-    /// Where the pointer stood when the document was read or published - the
-    /// location it names and the token the next publication is conditioned
-    /// on - for a pointed table; `None` under the folder contract. A pointed
-    /// table created in memory and not yet published states no location.
+    /// Where the pointer stood when the document was read or published, for
+    /// a pointed table; `None` under the folder contract. A pointed table not
+    /// yet published states no location.
     pointed: Option<PointerState>,
 }
 
 impl IcebergTable<Handle> {
     /// Open the table a location names, under `properties`.
     ///
-    /// `location` is a [`Url`](crate::Url), or any identifier that locates
-    /// one ([`Uri::locator`](crate::Uri::locator)): a URN, an ARN. The table
-    /// is rooted on the handle [`Holder::from_url`] opens for the location
-    /// under `properties` - the names an object store's or an HTTP client's
-    /// own options read - resolved on the first verb that needs it and again
-    /// by every clone, and its current document is read as [`Self::open`]
-    /// reads it. The table states `properties` less the ones that store's
-    /// own reader took (who signs, where the store is, how it is addressed),
-    /// which are the handle's: it was rooted under all of them and every
-    /// clone opens under all of them, while what the table states is its
-    /// own description, listed by [`ObjectValue::properties`] and printed by
-    /// its `Debug`. A credential stated to open the folder therefore reaches
-    /// the storage and nothing else, as one stated to a table bucket's
-    /// catalog does; a local path reads none, so a table on one states
-    /// every property it was given.
+    /// `location` is a [`Url`](crate::Url) or any identifier that locates
+    /// one ([`Uri::locator`](crate::Uri::locator)). The table is rooted on
+    /// the handle [`Holder::from_url`] opens for it under `properties`,
+    /// resolved on first use and again by every clone, and its current
+    /// document is read as [`Self::open`] reads it. The table states
+    /// `properties` less the ones the store's own reader took - who signs,
+    /// where the store is, how it is addressed - so a credential reaches the
+    /// storage alone and is neither listed by [`ObjectValue::properties`]
+    /// nor printed by `Debug`; a local path takes none.
     ///
-    /// Under the `s3tables` feature a location in an Amazon S3 Tables table
-    /// bucket - `s3tables://<bucket>/<namespace>/<table>`, or a table's ARN,
-    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
-    /// is the table that bucket keeps: described, with its current document
-    /// named by the service and read on the first verb that needs it, its
-    /// files under the warehouse location the service chose, and every
-    /// commit published through the control plane. Who signs, the region and
-    /// the endpoint are read off `properties` as the bucket's catalog reads
-    /// them (`Catalog::from_url`) and kept by its session alone: such a
-    /// table states nothing, and inherits the properties less the ones the
-    /// session read. It costs one `GetTableMetadataLocation` -
-    /// one `GetTable` for an ARN, which names the table by an identifier and
-    /// is answered with its namespace and its name - and, where neither the
-    /// location nor a property states the bucket's ARN or its account, the
-    /// one `ListTableBuckets` that finds it.
+    /// Under the `s3tables` feature an `s3tables://<bucket>/<namespace>/<table>`
+    /// location, or a table's ARN, is the table that bucket keeps: its
+    /// document named by the service, every commit published through the
+    /// control plane. Who signs, the region and the endpoint are read off
+    /// `properties` as the bucket's catalog reads them
+    /// ([`Catalog::from_url`](crate::Catalog::from_url)) and kept by its
+    /// session alone, so such a table states none and inherits the others. It
+    /// costs one `GetTableMetadataLocation` (one `GetTable` for an ARN), plus
+    /// the one `ListTableBuckets` that finds the bucket where neither the
+    /// location nor a property states its ARN or its account.
     ///
     /// ```
     /// use yggdryl::iceberg::IcebergTable;
@@ -266,26 +254,23 @@ impl IcebergTable<Handle> {
     /// first metadata document.
     ///
     /// The location and the properties are read as [`Self::from_url`] reads
-    /// them. The schema is stored as Iceberg expresses it - a layout the
-    /// format does not state rewritten to the one it does, the columns
-    /// numbered above the highest identifier present. A `spec` left out is
-    /// the one the schema declares ([`PartitionSpec::from_schema`]), and a
-    /// `version` left out is the `format-version` property, else the lowest
-    /// version that states the schema: 3 for a nanosecond timestamp, a
-    /// variant or an unknown column, else 2. A `spec` built by hand names
-    /// its source columns by identifier, so its schema is numbered first
+    /// them, and the schema is stored as Iceberg expresses it - a layout the
+    /// format does not state rewritten to the one it does - numbered above
+    /// its highest identifier. A `spec` left out is the schema's own
+    /// ([`PartitionSpec::from_schema`]); a `version` left out is the
+    /// `format-version` property, else 3 for a nanosecond timestamp, a
+    /// variant or an unknown column and 2 otherwise. A hand-built `spec`
+    /// names its columns by identifier, so its schema is numbered first
     /// ([`super::assign_field_ids`]).
     ///
     /// Under the `s3tables` feature an `s3tables://<bucket>/<namespace>/<table>`
-    /// location registers the table in its table bucket and publishes its
-    /// first document through the control plane: `CreateTable` with no
-    /// schema, `GetTableMetadataLocation`, the document's one `PutObject`
-    /// and `UpdateTableMetadataLocation`. A namespace the bucket does not
-    /// hold yet is created on the way - the refused `CreateTable`, one
-    /// `CreateNamespace`, and the creation once more - which is this door's
-    /// alone: a catalog's own `create_table` descends through existing
-    /// namespaces only. A table's ARN names a table that exists, and is
-    /// refused.
+    /// location registers the table in its table bucket and costs
+    /// `CreateTable` (with no schema), `GetTableMetadataLocation`, one
+    /// `PutObject` and `UpdateTableMetadataLocation`; a namespace the bucket
+    /// lacks is created on the way (the refused `CreateTable`, one
+    /// `CreateNamespace`, the creation again), which a catalog's own
+    /// `create_table` never does. A table's ARN names a table that exists, and
+    /// is refused.
     ///
     /// ```
     /// use yggdryl::iceberg::{FormatVersion, IcebergTable};
@@ -345,19 +330,13 @@ impl IcebergTable<Handle> {
 
     /// Open the table a location names if it is there, creating it
     /// otherwise: [`Self::from_url`], and on absence
-    /// [`Self::create_from_url`].
+    /// [`Self::create_from_url`]. `version`, `schema` and `spec` describe
+    /// only the table a create would make.
     ///
-    /// An existing table is opened as it is; `version`, `schema` and `spec`
-    /// describe only the table this call would create.
-    ///
-    /// The location is resolved once for both halves: a folder's handle
-    /// comes back from the miss, and under the `s3tables` feature a table
-    /// bucket's location is read and its catalog built once, so a miss costs
-    /// the open's one refused request and nothing a second time - the
-    /// bucket's ARN, where only a listing finds it, is found once. A table's
-    /// ARN names a table by the identifier the service gave it, which no
-    /// create can make: one the bucket has no table of is
-    /// [`Error::Absent`], exactly as [`Self::from_url`] answers it.
+    /// The location is resolved once for both halves, so a miss costs the
+    /// open's one refused request and nothing a second time. A table's ARN
+    /// is never created: one the bucket has no table of is
+    /// [`Error::Absent`], as [`Self::from_url`] answers it.
     ///
     /// ```
     /// use yggdryl::iceberg::IcebergTable;
@@ -402,8 +381,8 @@ impl IcebergTable<Handle> {
         }
     }
 
-    /// Create the table on `root`, laid out as a create that states neither
-    /// a version nor a spec lays one out, stating `properties`.
+    /// Create the table on `root`, laid out by [`super::create_layout`],
+    /// stating `properties`.
     fn create_rooted(
         root: Handle,
         properties: &Properties,
@@ -415,14 +394,9 @@ impl IcebergTable<Handle> {
         Ok(Self::create(root, version, schema, spec)?.stating(properties))
     }
 
-    /// The table with `properties` stated, less the ones the store its root
-    /// opens on reads for itself ([`Holder::is_backend_property`]). The root
-    /// was built under all of them and every clone opens under all of them,
-    /// so who signs, where the store is and how it is addressed reach the
-    /// storage and nothing else - never [`ObjectValue::properties`], never
-    /// `Debug` - and what remains is the table's own description, as a
-    /// table bucket's catalog keeps the properties less the ones its session
-    /// read. The root's own bag is left as rooted, which is why this is not
+    /// The table stating `properties` less the ones its root's store reads
+    /// for itself ([`Holder::is_backend_property`]), which reach the storage
+    /// alone. The root's own bag is left as rooted, unlike
     /// [`with_properties`](Self::with_properties).
     fn stating(mut self, properties: &Properties) -> Self {
         self.stated = match self.root.url() {
@@ -440,9 +414,8 @@ impl IcebergTable<Handle> {
     ///
     /// A table a warehouse holds states properties, and one opened by its
     /// location states them less what its store read ([`Self::from_url`]);
-    /// one opened over a handle in
-    /// hand was opened by whoever handed the handle over, and its settings
-    /// are its [`options`](Self::options).
+    /// one opened over a handle in hand was opened by whoever handed the
+    /// handle over, and its settings are its [`options`](Self::options).
     #[must_use]
     pub fn with_properties(mut self, properties: Properties) -> Self {
         self.stated = properties;
@@ -620,20 +593,23 @@ fn next_pointed_version(held: &Opened) -> Result<u32> {
 /// the catalog that keeps the pointer keeps the table, and its warehouse
 /// location need take neither a listing nor a delete.
 fn kept_by_catalog<H: IOBase>(root: &H, operation: &'static str) -> Error {
-    Error::unsupported(
-        operation,
-        root.url()
-            .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string),
-    )
+    Error::unsupported(operation, location_text(root))
 }
 
 /// Report a pointer that names no document for the table at `root`.
 fn missing_pointed<H: IOBase>(root: &H) -> Error {
     invalid(format_smolstr!(
         "expected the metadata pointer of the table at {} to name a document, got none",
-        root.url()
-            .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string)
+        location_text(root)
     ))
+}
+
+/// A handle's location as a refusal names it: its URL, else
+/// `an unlocated folder`.
+fn location_text<H: IOBase + ?Sized>(handle: &H) -> String {
+    handle
+        .url()
+        .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string)
 }
 
 /// Read the current metadata document under `root`, when there is one:
@@ -694,14 +670,10 @@ impl<H: IOBase> IcebergTable<H> {
     /// Create a table whose current document `pointer` names, writing and
     /// publishing its first document.
     ///
-    /// This is [`Self::create`] for a table a catalog service keeps: the
-    /// pointer is read once, must name no document yet, and the first
-    /// document - `metadata/00000-{uuid}.metadata.json`, version 0 - is
-    /// published under the token it answered. Nothing is listed, no hint is
-    /// written, and every later commit publishes through the pointer the
-    /// same way ([`MetadataPointer`]). The default sort order is the one the
-    /// schema's `SORT:by` declares, else the spec's source columns, as
-    /// [`Self::create`] makes it.
+    /// [`Self::create`] for a table a catalog service keeps: the pointer is
+    /// read once and must name no document yet, and the first document -
+    /// `metadata/00000-{uuid}.metadata.json`, version 0 - is published under
+    /// the token it answered. Nothing is listed and no hint is written.
     ///
     /// # Errors
     ///
@@ -1891,27 +1863,21 @@ impl<H: IOBase> IcebergTable<H> {
         options.limit_arrow_reader(options.select().apply_arrow_reader(reader)?)
     }
 
-    /// The rows an options-driven read yields before the `select`, a `where`
-    /// that runs after it and the row bounds wrap them - partition after
-    /// partition in ascending tuple order, each partition's rows in the
-    /// table's default sort order - and whether that `where` runs after the
-    /// `select` (`true`) or was pushed into the plan whole with `scope`.
+    /// The rows an options-driven read yields before the `select`, a late
+    /// `where` and the row bounds wrap them, and whether that `where` runs
+    /// after the `select` (`true`) or was pushed into the plan with `scope`.
     ///
-    /// The plan is grouped by partition tuple ([`super::scan::partition_groups`]);
-    /// a group is decoded only when the one before it has been yielded, its
-    /// files read through the ordinary scan - in parallel where the plan is
-    /// worth it - and, where the order names a key the group does not hold
-    /// constant, landed into one chunked serie under the process spill bound
-    /// and sorted unless it already keeps the order: at most one partition
-    /// is held at once. A key the root does not read is not sorted on, nor
-    /// is any key after it. A table with no such key - unsorted, or sorted
-    /// only by its identity partition columns - streams its files in group
-    /// order and holds nothing, and its transport face is its scan, landing
-    /// nothing. A plan holding a file of another partition spec than the
-    /// default reads in plan order and proves nothing.
-    ///
-    /// The root declares what the stream proves ([`Self::read_order`]),
-    /// which [`IOMedia::read_arrow_field`] declares too.
+    /// Partitions arrive in ascending tuple order
+    /// ([`super::scan::partition_groups`]), each decoded once the one before
+    /// it was yielded, its rows in the table's default sort order: where the
+    /// order names a key the group does not hold constant, the group is held
+    /// under the process spill bound and sorted unless it already keeps the
+    /// order, at most one partition at once. A key the root does not read, and
+    /// any after it, is not sorted on. A table with no such key - unsorted, or
+    /// sorted only by identity partition columns - streams its files and holds
+    /// nothing. A plan holding a file of another partition spec reads in plan
+    /// order and proves nothing. The root declares what the stream proves
+    /// ([`Self::read_order`]), as [`IOMedia::read_arrow_field`] does.
     fn read_rows(
         &self,
         scope: Filter,
@@ -2078,17 +2044,12 @@ impl<H: IOBase> IcebergTable<H> {
         self.commit_append_on(batches, None)
     }
 
-    /// The rows of `batches` with every column the schema derives computed.
-    ///
-    /// A stored column declaring `TRANSFORM:expression` is computed from the
-    /// columns the rows carry before anything is cast or grouped, whatever
-    /// the rows carry under its own name - a table partitioned by a column
-    /// it derives states that column for every writer, as it computes every
-    /// other partition value, so what it stores is what its schema says and
-    /// a scan may bound the source by the partition. A schema deriving
-    /// nothing hands the reader back. The public commit doors and the
-    /// record doors derive; the crate's `_on` and cadence forms take rows
-    /// already derived.
+    /// The rows of `batches` with every column the schema derives
+    /// (`TRANSFORM:expression`) computed before anything is cast or grouped,
+    /// replacing whatever the rows carry under that name, so the table
+    /// stores what its schema says. A schema deriving nothing hands the
+    /// reader back. The public commit and record doors derive; the crate's
+    /// `_on` and cadence forms take rows already derived.
     fn derived(&self, batches: BatchReader) -> Result<BatchReader> {
         match crate::expression::Derivation::owning(self.schema()?)? {
             Some(derivation) => derivation.apply_arrow_reader(batches),
@@ -2111,16 +2072,13 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// Replace the partitions `batches` falls in as a new snapshot.
     ///
-    /// The incoming rows are grouped by partition tuple - the grouping an
-    /// append lays files out by - and every live file of a partition they
-    /// reach is dropped from the new snapshot, while every other file is
-    /// carried exactly as it is: same location, same statistics, same row
-    /// lineage. The partition is the unit: no stored row is read, joined or
-    /// rewritten, so this holds on every format version, and a source with
-    /// no row reaches no partition and commits nothing. An unpartitioned
-    /// table is one partition, replaced whole - and emptied by a source with
-    /// no row. [`Self::commit_overwrite_where`] replaces a stated scope
-    /// instead, every row when it states none.
+    /// Every live file of a partition the rows reach is dropped and every
+    /// other file carried as it is - location, statistics, row lineage - so
+    /// no stored row is read or rewritten and this holds on every format
+    /// version. A source with no row reaches no partition and commits
+    /// nothing; an unpartitioned table is one partition, replaced whole and
+    /// emptied by a source with no row. [`Self::commit_overwrite_where`]
+    /// replaces a stated scope instead.
     ///
     /// The previous snapshot is retained and still readable; only the current
     /// pointer moves, which is what makes an overwrite reversible.
@@ -2929,17 +2887,14 @@ impl<H: IOBase> IcebergTable<H> {
     /// [`Self::commit_document`] for a pointed table: the pointer is the
     /// version check and the publication in one.
     ///
-    /// Each attempt applies the change to the document held, writes the
-    /// next document and publishes it under the token held - nothing is
-    /// read first, the pointer's condition being the check. A refused
-    /// publication reads the pointer again, one answer and one document: a
-    /// commit that may rebase adopts that document and applies again, under
-    /// the folder contract's retry budget; one that may not is a
-    /// [`CommitConflict`] at once - versions never move back - unless the
-    /// pointer still names the document it planned against, a token moved
-    /// by a change that wrote no document, which it publishes again under
-    /// the new token. Nothing an attempt wrote is removed, and a failure
-    /// restores the document and the token held before the commit.
+    /// Nothing is read before an attempt publishes: the pointer's condition
+    /// is the check. A refused publication reads the pointer again - one
+    /// answer, one document: a commit that may rebase applies again onto
+    /// that document under the retry budget; one that may not is a
+    /// [`CommitConflict`] at once, unless the pointer still names the
+    /// document it planned against (a token moved by a change that wrote no
+    /// document), which it publishes again. Nothing an attempt wrote is
+    /// removed, and a failure restores the document and token held before.
     fn commit_pointed(
         &mut self,
         pointer: &dyn MetadataPointer,
@@ -3540,13 +3495,9 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, parent,
         child_by_path);
 
-    /// The files below the table: its folder's listing under the folder
-    /// contract.
-    ///
-    /// A table a [`MetadataPointer`] names lists nothing: its catalog's
-    /// warehouse location need not take a listing, and the table is read
-    /// through the one document its pointer names, so the listing is one
-    /// refusal saying so.
+    /// The files below the table: its folder's listing, or for a table a
+    /// [`MetadataPointer`] names one refusal, touching nothing - its
+    /// catalog's warehouse location need not take a listing.
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         if self.pointer.is_some() {
             return crate::Listing::failing(kept_by_catalog(
@@ -3638,16 +3589,11 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
     /// location instead. The handle itself stays usable and lazy, per the
     /// contract.
     ///
-    /// A table a [`MetadataPointer`] names is not its folder's to remove:
-    /// the catalog that keeps the pointer keeps the table, and removing the
-    /// files below it would leave the catalog naming a document that is
-    /// gone. Such a table is dropped by that catalog instead -
-    /// [`MetadataPointer::remove`], one `DeleteTable` for an Amazon S3
-    /// Tables table - and its folder is asked for nothing; the catalog drops
-    /// a table whole, so `recursive` chooses nothing there, and a table that
-    /// is already gone is dropped. The document this value read is forgotten
-    /// with the table: what it asks next is asked of the pointer again, so
-    /// the handle says the table is not there and a later verb fails as
+    /// A table a [`MetadataPointer`] names is dropped by the catalog that
+    /// keeps it - [`MetadataPointer::remove`], one `DeleteTable` for an
+    /// Amazon S3 Tables table - whatever `recursive` says, and its folder is
+    /// asked for nothing. The document this value read is forgotten, so what
+    /// it asks next is asked of the pointer again and a later verb fails as
     /// absent rather than commit to a table that is gone.
     ///
     /// # Errors
@@ -3789,16 +3735,12 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
     }
 
-    /// The stored schema as the metadata declares it, no data file opened.
-    ///
-    /// A declared schema is returned as it stands, as on every handle, but
-    /// for its `SORT:by`. Otherwise the answer is [`IcebergTable::schema`]
-    /// renamed to the options' root name - field identifiers and protocol
-    /// metadata included - where the base implementation would build a
-    /// reader and take the shape off its batches. Either way its `SORT:by`
-    /// is the order a record read of these options proves, which the
-    /// stream's root declares - none where it proves none - rather than the
-    /// order the table's writers keep.
+    /// The stored schema as the metadata declares it, no data file opened:
+    /// a declared schema as it stands, else [`IcebergTable::schema`] renamed
+    /// to the options' root name, field identifiers and protocol metadata
+    /// included. Either way its `SORT:by` is the order a
+    /// record read of these options proves - none where it proves none -
+    /// rather than the order the table's writers keep.
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let (landing, _) = self.read_landing(options)?;
         let sorted = self.read_sorting(&landing)?.len();
@@ -3936,8 +3878,8 @@ impl<H: IOBase> IcebergTable<H> {
     ///
     /// The rows are shaped onto the stored schema once - the columns it
     /// derives computed between the options' declared field and their
-    /// clauses - and cut into
-    /// cadences: every [`commit_batch_num`](IORecordOptions::commit_batch_num)
+    /// clauses - and cut into cadences: every
+    /// [`commit_batch_num`](IORecordOptions::commit_batch_num)
     /// batches where one is stated, else one commit when the source ends -
     /// the rows of every partition held under the process spill bound until
     /// then, so a stream of any length is one atomic snapshot, and
@@ -4208,16 +4150,13 @@ fn backoff_ms(attempt: u32, min: u64, max: u64) -> u64 {
 /// What one streamed write has replaced, carried across its commits.
 ///
 /// An overwrite of a partitioned table, and a merge keyed by the partition
-/// columns alone, replace the partitions their rows fall in. Cut into
-/// several commits by its cadence, such a write would replace each partition
-/// once per commit and keep only the last commit's rows, so
-/// [`IcebergTable::commit_overwrite_cadence`] and
-/// [`IcebergTable::commit_merge_cadence`] replace a partition on the first
-/// commit of a write that reaches it and append to it on every later one.
-/// An overwrite of a stated scope, or of an unpartitioned table, replaces
-/// on its first commit alone, which `scope` records. One value per write -
-/// a [`IcebergTable`] or [`super::Located`] stream, or a write session - and
-/// nothing a keyed merge records.
+/// columns alone, replace the partitions their rows fall in; cut into
+/// several commits, such a write replaces a partition on the first commit
+/// that reaches it and appends to it on every later one
+/// ([`IcebergTable::commit_overwrite_cadence`],
+/// [`IcebergTable::commit_merge_cadence`]). An overwrite of a stated scope,
+/// or of an unpartitioned table, replaces on its first commit alone, which
+/// `scope` records. One value per write; a keyed merge records nothing.
 ///
 /// Bounded by the partitions the write's rows fall in: one tuple each,
 /// held until the write ends, because a later commit may reach any of them.
@@ -5796,9 +5735,7 @@ fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
 fn missing_metadata(metadata_dir: &Holder) -> Error {
     invalid(format_smolstr!(
         "expected an Iceberg metadata document under {}, got none",
-        metadata_dir
-            .url()
-            .map_or_else(|| "an unlocated folder".to_owned(), ToString::to_string)
+        location_text(metadata_dir)
     ))
 }
 

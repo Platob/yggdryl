@@ -439,10 +439,10 @@ fn oriented<'node>(
 ///
 /// An epoch function over a column - `minutes(ts, 15)`, `years(day)` - or a
 /// `time_bucket('15 minutes', ts)` reads one column too, and it is monotone
-/// over it: every instant of a range
-/// floors into the range of its ends' periods, and a null floors to null. So
-/// its statistics are the column's mapped through the function, and a
-/// predicate on the function prunes by the same rules as one on the column.
+/// over it: every instant of a range floors into the range of its ends'
+/// periods, and a null floors to null. So its statistics are the column's
+/// mapped through the function, and a predicate on the function prunes by
+/// the same rules as one on the column.
 ///
 /// A period past `int32` answers null too, so an end whose period is past it
 /// bounds nothing on its side, and the column's null count is the

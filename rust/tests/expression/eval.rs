@@ -1533,20 +1533,18 @@ mod time_bucket {
         }
         // A width finer than the unit, a clock under a date, a computed
         // width, and an argument that is no date or timestamp.
-        let error = refused("time_bucket('1 ms', s)");
-        assert!(error.contains("whole number of s"), "{error}");
-        let error = refused("time_bucket('1500 ms', s)");
-        assert!(error.contains("whole number of s"), "{error}");
-        let error = refused("time_bucket('1 hour', d)");
-        assert!(error.contains("whole days"), "{error}");
-        let error = refused("time_bucket('12 hours', e)");
-        assert!(error.contains("whole days"), "{error}");
-        let error = refused("time_bucket(w, ns)");
-        assert!(error.contains("to be a constant"), "{error}");
-        let error = refused("time_bucket(null, ns)");
-        assert!(error.contains("to be a constant"), "{error}");
-        let error = refused("time_bucket('15 minutes', w)");
-        assert!(error.contains("a date or a timestamp"), "{error}");
+        for (text, expected) in [
+            ("time_bucket('1 ms', s)", "whole number of s"),
+            ("time_bucket('1500 ms', s)", "whole number of s"),
+            ("time_bucket('1 hour', d)", "whole days"),
+            ("time_bucket('12 hours', e)", "whole days"),
+            ("time_bucket(w, ns)", "to be a constant"),
+            ("time_bucket(null, ns)", "to be a constant"),
+            ("time_bucket('15 minutes', w)", "a date or a timestamp"),
+        ] {
+            let error = refused(text);
+            assert!(error.contains(expected), "{text}: {error}");
+        }
         // A bucket starting before the first count a timestamp holds is
         // refused by both tiers, never wrapped.
         let selector: Selector = "time_bucket('15 minutes', ns)".parse().unwrap();
@@ -1563,24 +1561,16 @@ mod time_bucket {
     fn a_batch_floors_every_present_row_and_keeps_every_null() {
         let schema = schema();
         let hour = 60 * MINUTE_NS;
-        let rows: Vec<Scalar> = (0..1_000_i64)
-            .map(|index| {
-                let value = if index % 7 == 0 {
-                    Scalar::Null
-                } else {
-                    nanos(index * 7 * MINUTE_NS - 500 * MINUTE_NS)
-                };
-                row(&schema, "ns", value)
-            })
+        let counts: Vec<Option<i64>> = (0..1_000_i64)
+            .map(|index| (index % 7 != 0).then(|| index * 7 * MINUTE_NS - 500 * MINUTE_NS))
             .collect();
-        let expected: Vec<Scalar> = (0..1_000_i64)
-            .map(|index| {
-                if index % 7 == 0 {
-                    Scalar::Null
-                } else {
-                    nanos((index * 7 * MINUTE_NS - 500 * MINUTE_NS).div_euclid(hour) * hour)
-                }
-            })
+        let rows: Vec<Scalar> = counts
+            .iter()
+            .map(|count| row(&schema, "ns", count.map_or(Scalar::Null, nanos)))
+            .collect();
+        let expected: Vec<Scalar> = counts
+            .iter()
+            .map(|count| count.map_or(Scalar::Null, |count| nanos(count.div_euclid(hour) * hour)))
             .collect();
         assert_eq!(answers("time_bucket('1 hour', ns)", &rows), expected);
     }

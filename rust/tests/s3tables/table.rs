@@ -1,7 +1,7 @@
-//! `rust/src/s3tables/table.rs`: the table verbs and the values they
-//! answer - a creation with and without a schema, a description by name and
-//! by the table's own ARN, the metadata location and the commit that moves
-//! it under a version token, a rename, a deletion.
+//! `rust/src/s3tables/table.rs`: the table verbs and their values - a
+//! creation with and without a schema, a description by name and by ARN, the
+//! metadata location and the commit that moves it under a version token, a
+//! rename, a deletion.
 
 use serde_json::json;
 use yggdryl::{DataType, DateTime64, Error, StructType, Timezone, Url};
@@ -646,20 +646,15 @@ fn removing_a_table_acts_once_under_its_token_and_an_absent_one_is_already_remov
     tables
         .remove_table(&lake, "trial", "events", None)
         .expect("nothing left to delete");
+    let removal = format!("DELETE /tables/{LAKE_LABEL}/trial/events");
     assert_eq!(
-        fake.requests()
-            .iter()
-            .map(|request| (request.line(), request.status))
-            .collect::<Vec<_>>(),
+        fake.answered(),
         [
             (
-                format!(
-                    "DELETE /tables/{LAKE_LABEL}/trial/events?versionToken={}",
-                    committed.version_token()
-                ),
+                format!("{removal}?versionToken={}", committed.version_token()),
                 204
             ),
-            (format!("DELETE /tables/{LAKE_LABEL}/trial/events"), 404)
+            (removal, 404)
         ]
     );
 }

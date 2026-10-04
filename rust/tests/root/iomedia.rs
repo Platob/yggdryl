@@ -2378,7 +2378,6 @@ mod results {
             }
             .unwrap();
             assert_eq!(result, IOResult::default(), "{intent}");
-            assert!(result.is_empty(), "{intent}");
         }
     }
 
@@ -2451,10 +2450,7 @@ mod results {
             .overwrite_arrow_reader(batches(&[&[1, 2], &[3, 4, 5]]), &filtered)
             .unwrap();
 
-        assert_eq!(
-            (result.read_rows, result.written_rows, result.skipped_rows),
-            (5, 3, 2)
-        );
+        assert_eq!(result, IOResult::new(5, 3));
         assert_eq!(rows(&handle, &plain), 3);
 
         // Every row kept out is a source that was read and a write of none.
@@ -2464,11 +2460,7 @@ mod results {
                 &plain.clone().with_filter("id > 9").unwrap(),
             )
             .unwrap();
-        assert_eq!(
-            (none.read_rows, none.written_rows, none.skipped_rows),
-            (2, 0, 2)
-        );
-        assert!(!none.is_empty());
+        assert_eq!(none, IOResult::new(2, 0));
         assert_eq!(rows(&handle, &plain), 3);
     }
 
@@ -2484,10 +2476,7 @@ mod results {
             .append_arrow_reader(batches(&[&[1, 2], &[3, 4], &[5, 6]]), &bounded)
             .unwrap();
 
-        assert_eq!(
-            (result.read_rows, result.written_rows, result.skipped_rows),
-            (4, 3, 1)
-        );
+        assert_eq!(result, IOResult::new(4, 3));
         assert_eq!(rows(&handle, &plain), 3);
     }
 
@@ -2505,10 +2494,7 @@ mod results {
         assert!(session.push(&mut handle, batches(&[&[3], &[4]])).unwrap());
         let result = session.finish(&mut handle).unwrap();
 
-        assert_eq!(
-            (result.read_rows, result.written_rows, result.skipped_rows),
-            (4, 3, 1)
-        );
+        assert_eq!(result, IOResult::new(4, 3));
         assert_eq!(rows(&handle, &plain), 3);
     }
 

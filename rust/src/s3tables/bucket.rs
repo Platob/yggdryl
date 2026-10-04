@@ -1,8 +1,6 @@
 //! Table buckets: the container a region's namespaces and tables live in.
 
-use smol_str::format_smolstr;
-
-use super::client::{Call, Reader, S3Tables, SERVICE, body, check_name, echo, label};
+use super::client::{Call, Reader, S3Tables, body, check_name, label, refuse_arn};
 use super::listing::{Page, TableBuckets};
 use crate::{Arn, DateTime64, Error, Result, Scalar};
 
@@ -134,29 +132,23 @@ fn bucket_path(bucket: &Arn) -> Result<String> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Parse`] when the ARN's service is not `s3tables`, at
-/// the service field, or when its resource is not `bucket/<name>`, at the
-/// resource: an ARN naming a table, an Amazon S3 bucket or another
-/// service's resource addresses no table bucket.
+/// Returns the [`not_a_table_bucket`] refusal for any other ARN.
 pub(crate) fn bucket_label(bucket: &Arn) -> Result<String> {
-    let text = bucket.to_string();
-    let refuse = |position: usize| Error::Parse {
-        target: "table bucket arn",
-        position,
-        reason: format_smolstr!(
-            "expected a table bucket ARN - arn:<partition>:s3tables:<region>:<account>:bucket/<name> - got {:?}",
-            echo(&text)
-        ),
-    };
-    if bucket.service() != SERVICE {
-        return Err(refuse("arn:".len() + bucket.partition().len() + 1));
-    }
-    // The ARN's own strict reading of its resource: one grammar, read in
-    // one place.
     if bucket.table_bucket().is_none() {
-        return Err(refuse(text.len() - bucket.resource().len()));
+        return Err(not_a_table_bucket(bucket));
     }
-    Ok(label(&text))
+    Ok(label(&bucket.to_string()))
+}
+
+/// The [`Error::Parse`] of an ARN that names no table bucket - a table, an
+/// Amazon S3 bucket, another service's resource - at its service field
+/// when that is not `s3tables`, else at its resource.
+pub(crate) fn not_a_table_bucket(arn: &Arn) -> Error {
+    refuse_arn(
+        arn,
+        "table bucket arn",
+        "a table bucket ARN - arn:<partition>:s3tables:<region>:<account>:bucket/<name>",
+    )
 }
 
 /// A delete's answer, with the service's own absence read as the deletion

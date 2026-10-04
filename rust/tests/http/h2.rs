@@ -11,6 +11,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use yggdryl::IOBase;
 use yggdryl::holder::{Buffer, Holder};
@@ -227,25 +228,23 @@ fn a_deadline_bounds_an_http2_attempt_as_it_does_an_http1_one() {
         .send()
         .unwrap();
     assert_eq!(warm.version(), HttpVersion::Http2);
-    server.inject("/hello", Fault::Delay(std::time::Duration::from_secs(2)), 1);
-    let started = std::time::Instant::now();
+    server.inject("/hello", Fault::Delay(Duration::from_secs(2)), 1);
+    let started = Instant::now();
 
     let error = session
         .get(&url(&server, "/hello"))
         .unwrap()
-        .with_deadline(std::time::Duration::from_millis(300))
+        .with_deadline(Duration::from_millis(300))
         .with_max_attempts(1)
         .send()
         .expect_err("the answer comes after the deadline");
 
     assert!(
-        started.elapsed() < std::time::Duration::from_millis(1_500),
+        started.elapsed() < Duration::from_millis(1_500),
         "{error:?}"
     );
-    match &error {
-        yggdryl::Error::Io(io) => {
-            assert_eq!(io.kind(), std::io::ErrorKind::TimedOut, "{io:?}");
-        }
-        other => panic!("expected a timeout, got {other:?}"),
-    }
+    let yggdryl::Error::Io(io) = &error else {
+        panic!("expected a timeout, got {error:?}");
+    };
+    assert_eq!(io.kind(), std::io::ErrorKind::TimedOut, "{io:?}");
 }

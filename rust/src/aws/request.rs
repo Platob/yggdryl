@@ -15,34 +15,29 @@ use smol_str::SmolStr;
 
 use super::Session;
 use super::sigv4::{self, EMPTY_PAYLOAD_SHA256, UNSIGNED_PAYLOAD};
+use crate::Result;
+use crate::auth::refusal;
 use crate::http::request::host_header;
 use crate::http::{Attempt, Headers, Method, Request, Status};
-use crate::{Error, Result};
 
 impl Request {
     /// Sign every attempt of this request with AWS Signature Version 4, as
     /// `session` answers, for `service` in `region`.
     ///
     /// `service` is the SigV4 signing name - `s3tables`, `execute-api`,
-    /// `glue` - and `region` the region the endpoint is in; both are part of
-    /// the signature's scope. Each attempt asks the session for its
-    /// credential set - so a set refreshed between two attempts signs the
-    /// second - and signs what is really sent: the hop's method, the host of
-    /// its URL with the port the URL names, the path as it is on the wire,
-    /// the query, the `content-type`, `content-md5` and `x-amz-*` headers
-    /// the attempt carries, and the SHA-256 of the body. The headers it adds
-    /// are `x-amz-date`, `x-amz-content-sha256`, `x-amz-security-token` for a
-    /// temporary set, and `authorization`.
+    /// `glue` - and `region` the endpoint's region. Each attempt signs with
+    /// the session's set at that moment, over what is really sent: the hop's
+    /// method, host and port, the path as on the wire, the query, the
+    /// `content-type`, `content-md5` and `x-amz-*` headers and the body's
+    /// SHA-256. It adds `x-amz-date`, `x-amz-content-sha256`,
+    /// `x-amz-security-token` for a temporary set, and `authorization`. The
+    /// S3 family signs the path as sent; every other service signs it
+    /// normalized and encoded once more, as botocore does.
     ///
-    /// The canonical URI follows the service: a service of the S3 family
-    /// signs the path as sent, every other one signs it normalized and
-    /// percent-encoded once more, as botocore does - so a path that carries
-    /// `%1F` or an encoded ARN signs as the service computes it.
-    ///
-    /// A refusal that says the key is no longer accepted - `ExpiredToken`, a
-    /// key the service does not recognize - is told to the session, and the
-    /// request goes out once more, whatever its method, when the session
-    /// then answers another set; the same set would be refused the same way.
+    /// A refusal saying the key is no longer accepted - `ExpiredToken`, an
+    /// unrecognized key - is told to the session, and the request goes out
+    /// once more, whatever its method, when the session then answers another
+    /// set.
     ///
     /// ```
     /// use yggdryl::aws::{Credentials, Session};
@@ -190,14 +185,6 @@ fn is_signed(name: &str) -> bool {
         || name
             .get(..6)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("x-amz-"))
-}
-
-/// A refusal to sign.
-fn refusal(message: String) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        message,
-    ))
 }
 
 #[cfg(feature = "internals")]

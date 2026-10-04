@@ -1,5 +1,4 @@
-//! `rust/src/s3tables/namespace.rs`: the namespace verbs and the value they
-//! answer.
+//! `rust/src/s3tables/namespace.rs`: the namespace verbs and their value.
 
 use yggdryl::{DateTime64, Error, Timezone};
 
@@ -104,8 +103,9 @@ fn a_namespace_that_is_already_there_is_a_conflict() {
         .expect_err("a namespace of that name");
     assert!(error.is_conflict());
     assert!(
-        matches!(&error, Error::Conflict { expected, path, .. }
-            if *expected == "namespace" && path.as_str() == format!("{lake}/trial")),
+        matches!(&error, Error::Conflict { expected, actual, path }
+            if *expected == "namespace" && *actual == "namespace"
+                && path.as_str() == format!("{lake}/trial")),
         "{error:?}"
     );
     assert_eq!(fake.request_count(), 1);
@@ -124,6 +124,10 @@ fn a_namespace_under_a_bucket_that_is_not_there_is_the_services_not_found() {
         .expect_err("no such bucket");
     assert_eq!(refusal(&error), (404, "NotFoundException"));
     assert!(!error.is_absent());
+    assert!(
+        error.to_string().contains("table bucket does not exist"),
+        "{error}"
+    );
     let error = tables
         .namespaces(&absent)
         .next()
@@ -182,16 +186,8 @@ fn removing_a_namespace_acts_once_and_an_absent_one_is_already_removed() {
     tables
         .remove_namespace(&lake, "trial")
         .expect("nothing left to delete");
-    assert_eq!(
-        fake.requests()
-            .iter()
-            .map(|request| (request.line(), request.status))
-            .collect::<Vec<_>>(),
-        [
-            (format!("DELETE /namespaces/{LAKE_LABEL}/trial"), 204),
-            (format!("DELETE /namespaces/{LAKE_LABEL}/trial"), 404)
-        ]
-    );
+    let removal = format!("DELETE /namespaces/{LAKE_LABEL}/trial");
+    assert_eq!(fake.answered(), [(removal.clone(), 204), (removal, 404)]);
 }
 
 #[test]

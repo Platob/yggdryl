@@ -95,26 +95,23 @@ test('reader, table, and record-batch entry points preserve explicit intent', (t
 
   for (const suffix of ['ArrowReader', 'ArrowTable', 'ArrowBatch']) {
     const handle = new IOBase(path.join(root, `${suffix}.arrows`))
+    const answered = [
+      handle[`overwrite${suffix}`](sourceFor(suffix, table())),
+      handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON']))),
+      handle[`merge${suffix}`](
+        sourceFor(suffix, table([2n, 4n], ['XPAR', 'XTKS'])),
+        handle.recordOptions().withMergeBy(['id']),
+      ),
+    ]
     // Each intent answers the rows it took from its source and wrote, never
     // the rows the resource holds after it.
     assert.deepEqual(
-      counts(handle[`overwrite${suffix}`](sourceFor(suffix, table()))),
-      [2, 2, 0],
-      suffix,
-    )
-    assert.deepEqual(
-      counts(handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON'])))),
-      [1, 1, 0],
-      suffix,
-    )
-    assert.deepEqual(
-      counts(
-        handle[`merge${suffix}`](
-          sourceFor(suffix, table([2n, 4n], ['XPAR', 'XTKS'])),
-          handle.recordOptions().withMergeBy(['id']),
-        ),
-      ),
-      [2, 2, 0],
+      answered.map(counts),
+      [
+        [2, 2, 0],
+        [1, 1, 0],
+        [2, 2, 0],
+      ],
       suffix,
     )
 

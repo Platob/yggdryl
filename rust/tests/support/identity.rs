@@ -13,8 +13,9 @@
 //! service (IMDSv2 token, role listing, role keys, the identity document).
 //! Every request is recorded so a test can count and
 //! inspect what went on the wire, and every answer is scripted by the
-//! setters below. It is a leaf file included with `#[path]`, so it names
-//! nothing of the crate.
+//! setters below. Beside it is the `aws login` sign-in a refresh starts
+//! from. It is a leaf file included with `#[path]`, so it names nothing of
+//! the crate.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -41,6 +42,27 @@ pub const LOGIN_REFRESH_TOKEN: &str = "login-rotated-refresh-token";
 pub const LOGIN_EXPIRES_IN: i64 = 900;
 /// The most a proof's `iat` may differ from the fake's clock, in seconds.
 const DPOP_SKEW: i64 = 60;
+
+/// The console sign-in aws-sdk-rust's own cache tests name.
+pub const LOGIN_SESSION: &str = "arn:aws:iam::0123456789012:user/Admin";
+/// `sha256(LOGIN_SESSION)`, the file `aws login` keeps it in: the name
+/// aws-sdk-rust's `determine_correct_cache_filenames` pins, which Python's
+/// `hashlib.sha256` answers too.
+pub const LOGIN_SESSION_KEY: &str =
+    "36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726";
+/// The SEC1 key aws-sdk-rust's login cache module documents as the one
+/// `aws login` files.
+pub const LOGIN_KEY: &str = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIFDZHUzOG1Pzq+6F0mjMlOSp1syN9LRPBuHMoCFXTcXhoAoGCCqGSM49\nAwEHoUQDQgAE9qhj+KtcdHj1kVgwxWWWw++tqoh7H7UHs7oXh8jBbgF47rrYGC+t\ndjiIaHK3dBvvdE7MGj5HsepzLm3Kj91bqA==\n-----END EC PRIVATE KEY-----\n";
+/// The client `aws login` signs in as.
+pub const LOGIN_CLIENT: &str = "arn:aws:signin:::devtools/same-device";
+/// The account a filed set names, which a refresh carries over.
+pub const LOGIN_ACCOUNT: &str = "012345678901";
+/// What a filed sign-in holds before a refresh.
+pub const LOGIN_CACHED_ACCESS_KEY: &str = "ASIACACHEDLOGIN";
+pub const LOGIN_CACHED_SECRET: &str = "cached-login-secret";
+pub const LOGIN_CACHED_SESSION_TOKEN: &str = "cached-login-session-token";
+pub const LOGIN_CACHED_REFRESH_TOKEN: &str = "cached-login-refresh-token";
+pub const LOGIN_CACHED_ID_TOKEN: &str = "cached-login-id-token";
 
 /// One request the server handled, as a test inspects it.
 #[derive(Clone, Debug)]
@@ -873,7 +895,28 @@ fn reason(status: u16) -> &'static str {
     }
 }
 
-fn now_seconds() -> i64 {
+/// A sign-in as `aws login` files it, its set lapsing `expires_in` seconds
+/// from now, beside a field no CLI writes yet.
+pub fn login_document(expires_in: i64) -> serde_json::Value {
+    serde_json::json!({
+        "accessToken": {
+            "accessKeyId": LOGIN_CACHED_ACCESS_KEY,
+            "secretAccessKey": LOGIN_CACHED_SECRET,
+            "sessionToken": LOGIN_CACHED_SESSION_TOKEN,
+            "accountId": LOGIN_ACCOUNT,
+            "expiresAt": iso8601(now_seconds() + expires_in),
+        },
+        "tokenType": "aws_sigv4",
+        "refreshToken": LOGIN_CACHED_REFRESH_TOKEN,
+        "idToken": LOGIN_CACHED_ID_TOKEN,
+        "clientId": LOGIN_CLIENT,
+        "dpopKey": LOGIN_KEY,
+        "laterField": {"kept": true},
+    })
+}
+
+/// The seconds since the epoch, now.
+pub fn now_seconds() -> i64 {
     i64::try_from(
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

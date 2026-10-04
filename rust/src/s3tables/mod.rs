@@ -1,24 +1,21 @@
 //! Amazon S3 Tables: the catalog of a table bucket.
 //!
-//! S3 Tables is Amazon's managed Iceberg store. A *table bucket* holds
-//! namespaces, a namespace holds tables, and each table is an Iceberg table
-//! whose files live at a warehouse location the service chooses - an `s3:`
-//! location ending `--table-s3`, read and written through the
-//! [`s3`](crate::s3) backend like any other - and whose current metadata
-//! file is named by the service rather than found by listing. This module is
-//! the client of that control plane: it creates, describes, lists and
-//! deletes the three levels, and moves a table's metadata location, which is
-//! what a commit to one of these tables is.
+//! S3 Tables is Amazon's managed Iceberg store: a *table bucket* holds
+//! namespaces, a namespace holds Iceberg tables, and each table's files live
+//! at an `s3:` warehouse location ending `--table-s3` that the service
+//! chooses and the [`s3`](crate::s3) backend reads and writes. The service,
+//! not a listing, names a table's current metadata file. This module is the
+//! client of that control plane: it creates, describes, lists and deletes the
+//! three levels, and moves a table's metadata location - a commit.
 //!
-//! [`S3Tables`] is the door. Every request it sends is an
+//! [`S3Tables`] is the door. Every request is an
 //! [`http::Request`](crate::http::Request) signed by
-//! [`Request::with_sigv4`](crate::http::Request::with_sigv4) for the
-//! `s3tables` service as an [`aws::Session`](crate::aws::Session) answers,
-//! sent over the session's own HTTP client to
-//! [`Session::service_endpoint`](crate::aws::Session::service_endpoint) -
-//! unless the client states its own. The service takes no anonymous
-//! request, so a session that answers no credential set is refused by name
-//! before anything is sent:
+//! [`Request::with_sigv4`](crate::http::Request::with_sigv4) for `s3tables`
+//! as an [`aws::Session`](crate::aws::Session) answers, sent over the
+//! session's own HTTP client to the endpoint the client states, else
+//! [`Session::service_endpoint`](crate::aws::Session::service_endpoint). The
+//! service takes no anonymous request, so a session answering no credential
+//! set is refused before anything is sent:
 //!
 //! ```
 //! use yggdryl::Arn;
@@ -55,9 +52,8 @@
 //!
 //! # The request count
 //!
-//! Every verb is one request, and a listing is one per page: nothing probes
-//! before it acts, and nothing is read back after a write. The suite counts
-//! them against a fake of the service rather than taking this table's word.
+//! Every verb is one request, and a listing one per page: nothing probes
+//! before it acts or reads back after a write.
 //!
 //! | verb | request |
 //! | --- | --- |
@@ -78,60 +74,50 @@
 //! | [`get_table_metadata_location`](S3Tables::get_table_metadata_location) | 1 `GET .../metadata-location` |
 //! | [`update_table_metadata_location`](S3Tables::update_table_metadata_location) | 1 `PUT .../metadata-location` |
 //!
-//! Two things add a request, and both are the service's doing. A read or a
-//! removal - the operations its model marks safe to send again - that meets
-//! a `5xx`, a `429`, an error type botocore reads as throttling or a
-//! transport failure is sent again under the HTTP client's attempts and
-//! backoff; a `PUT` that creates, renames or commits is sent once, because
-//! the service may have acted on the one it did not answer - a throttled one
-//! included, where botocore would send it again. And a request the service
-//! refuses because the key that signed it lapsed or is not recognized is
-//! signed and sent once more, only when the session then answers another
-//! set - [`Request::with_sigv4`](crate::http::Request::with_sigv4)'s rule.
+//! Two things add a request. A read or a removal that meets a `5xx`, a
+//! `429`, an error type botocore reads as throttling or a transport failure
+//! is sent again under the HTTP client's attempts and backoff; a `PUT` that
+//! creates, renames or commits is sent once, a throttled one included -
+//! where botocore would send it again - because the service may have acted
+//! on it. And a request refused because its key lapsed or is unknown is
+//! signed and sent once more when the session then answers another set -
+//! [`Request::with_sigv4`](crate::http::Request::with_sigv4)'s rule.
 //!
 //! # What an answer means
 //!
-//! Act once, then read the failure: a `get_*` verb the service answers
-//! `NotFoundException` is [`Error::Absent`](crate::Error::Absent); a
-//! `remove_*` verb it answers so has nothing left to do, which is success; a
-//! `create_*` verb it answers `ConflictException` is
+//! The error type decides, never the status alone - a gateway's `404` says
+//! nothing about a table. A `get_*` verb answered `NotFoundException` is
+//! [`Error::Absent`](crate::Error::Absent), a `remove_*` verb so answered
+//! succeeds, and a `create_*` verb answered `ConflictException` is
 //! [`Error::Conflict`](crate::Error::Conflict). Every other refusal is
-//! [`Error::Remote`](crate::Error::Remote) with the service's own status,
-//! error type and message - a `NotFoundException` from a verb that creates,
-//! renames, commits or lists included, because there the missing thing may
-//! be the table bucket or the namespace above what was addressed, and only
-//! the service's message says which. The error type decides, never the
-//! status alone: a `404` from a gateway is not the service saying a table
-//! is gone.
+//! [`Error::Remote`](crate::Error::Remote) with the service's status, error
+//! type and message - a `NotFoundException` from a create, rename, commit or
+//! listing included, since there the bucket or the namespace above may be
+//! what is missing.
 //!
 //! # A commit
 //!
 //! [`get_table_metadata_location`](S3Tables::get_table_metadata_location)
-//! answers where a table's current metadata file is, the warehouse the next
-//! one is written into, and a version token. Writing the next metadata file
-//! is the [`s3`](crate::s3) backend's work;
+//! answers the current metadata file, the warehouse the next one is written
+//! into, and a version token;
 //! [`update_table_metadata_location`](S3Tables::update_table_metadata_location)
-//! then names it as the table's own under that token. The token moves on
-//! every change to the table, so a commit made under one the table has moved
-//! past is refused with the service's `409` instead of replacing the commit
-//! that won.
+//! names the next file current under that token. The token moves on every
+//! change, so a commit under a stale one is the service's `409`, never a
+//! replaced winner.
 //!
 //! # Names
 //!
-//! The values are descriptions, never handles: [`TableDescription`] is what
-//! `GetTable` answers, [`NamespaceSummary`] and [`TableSummary`] are the
-//! model's own names for what a namespace reading and a listing answer, so
-//! none of them shadows the warehouse's [`Table`](crate::Table) and
-//! [`Namespace`](crate::Namespace), which hold one. The verbs are the
-//! crate's: `create_*`, `get_*`, `remove_*`, and the two the service names
-//! for itself, `rename_table` and `update_table_metadata_location`.
+//! The values are descriptions, never handles - [`TableDescription`],
+//! [`NamespaceSummary`], [`TableSummary`] are the model's names - so none
+//! shadows the warehouse's [`Table`](crate::Table) and
+//! [`Namespace`](crate::Namespace).
 //!
-//! The module is behind the non-default `s3tables` feature, which implies
-//! `s3` and `iceberg`.
+//! Behind the non-default `s3tables` feature, which implies `s3` and
+//! `iceberg`.
 
 mod bucket;
 mod catalog;
-pub(crate) mod client;
+mod client;
 mod listing;
 mod namespace;
 mod table;

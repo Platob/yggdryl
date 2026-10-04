@@ -1,17 +1,13 @@
 //! `rust/src/uri/handle.rs` over an Amazon S3 Tables table: what an
-//! identifier used as a handle costs in requests when the location it names
-//! is a table a table bucket keeps.
+//! identifier used as a handle costs in requests.
 //!
-//! A [`Uri`](yggdryl::Uri) resolves under no properties, so who signs and
-//! where the control plane is are the process environment's alone. A process
-//! has one environment, and writing it while another thread reads it is a
-//! data race, so this target owns its process and holds exactly one test:
-//! it points the environment at the fake control plane - the keys the fake
-//! accepts, its endpoint, its region, shared files and a home of this test's
-//! own - before anything reads it, and proves the session resolves the
-//! fake's endpoint before a request is sent. Every other suite states its
-//! identity on a sealed session or as properties and never touches the
-//! environment; the mirror of `handle.rs` is `rust/tests/uri/handle.rs`.
+//! A [`Uri`](yggdryl::Uri) resolves under the process environment alone, and
+//! writing the environment while another thread reads it is a data race, so
+//! this target owns its process and holds one test, which points the
+//! environment at the fake before anything reads it and proves the session
+//! resolves the fake's endpoint before a request is sent. Every other suite
+//! states its identity on a sealed session or as properties instead. The
+//! mirror of `handle.rs` is `rust/tests/uri/handle.rs`.
 
 #[cfg(feature = "s3tables")]
 #[path = "support/s3tables.rs"]

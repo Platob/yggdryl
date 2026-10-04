@@ -522,19 +522,15 @@ fn create_namespace(
 /// Iceberg's catalogs read it.
 const FORMAT_VERSION_PROPERTY: &str = "format-version";
 
-/// The format version a catalog creates a table at: the `format-version`
-/// property when the create states one, else the lowest version that can
-/// state `schema` - 3 when it holds a nanosecond timestamp, a variant or an
-/// unknown column, which no v2 reader takes, and 2 otherwise.
-///
-/// `schema` is the schema as Iceberg expresses it, after
-/// [`Field::into_scheme_compat`].
+/// The format version a create takes: the `format-version` property when
+/// stated, else 3 where `schema` (as Iceberg expresses it) holds a
+/// nanosecond timestamp, a variant or an unknown column, and 2 otherwise.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidRecord`] at `$.with.format-version` when the
 /// property is stated and is not 1, 2 or 3.
-pub(crate) fn format_version_for(schema: &Field, properties: &Properties) -> Result<FormatVersion> {
+fn format_version_for(schema: &Field, properties: &Properties) -> Result<FormatVersion> {
     if let Some(number) = properties.knob_count::<i64>(FORMAT_VERSION_PROPERTY)? {
         return FormatVersion::from_number(number).map_err(|_| Error::InvalidRecord {
             path: SmolStr::new_static("$.with.format-version"),
@@ -572,11 +568,9 @@ fn states_v3_types(node: &Field) -> bool {
 /// What a create lays a table out as: `field` as Iceberg expresses it - a
 /// layout the format does not state rewritten to the one it does, a column
 /// no type of its holds refused by path - numbered above the highest
-/// identifier it carries, then the partition spec and the format version.
-///
-/// A `spec` or a `version` the create states is taken as stated; one it
-/// leaves out is the schema's own: [`PartitionSpec::from_schema`], and
-/// [`format_version_for`].
+/// identifier it carries, then the partition spec and the format version,
+/// each as stated, else the schema's own ([`PartitionSpec::from_schema`],
+/// [`format_version_for`]).
 ///
 /// # Errors
 ///

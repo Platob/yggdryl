@@ -89,9 +89,6 @@ function installRecords({
   Table,
   nativeWriteMode,
 }) {
-  if (typeof IOResult !== 'function') {
-    throw new TypeError('native binding is missing IOResult')
-  }
   const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
@@ -722,15 +719,10 @@ function installRecords({
     return nativeWriteMode(mode)
   }
 
+  // A zero bound reads no source: an append answers the core's empty
+  // `IOResult`, and an overwrite publishes the explicitly typed empty value.
   function writeLimitIsZero(settings) {
     return settings.maxRowSize === 0 || settings.maxByteSize === 0
-  }
-
-  // An append bounded to no row reads no source and writes nothing, which is
-  // the core's own answer to that bound: its empty result, built by its
-  // constructor, so the source is never converted only to be handed over.
-  function emptyAppendResult() {
-    return new IOResult()
   }
 
   // Metadata must be an accessor, not a stored value or a method. Looking up
@@ -885,7 +877,7 @@ function installRecords({
           let settings = resolvedRecordOptions(this, options, properties)
           preflightWriteIntent(settings, intent)
           if (writeLimitIsZero(settings)) {
-            if (intent === 'append') return emptyAppendResult()
+            if (intent === 'append') return new IOResult()
             const converted = emptyRecordsReader(settings)
             return native.call(this, converted.reader, converted.settings)
           }
@@ -908,7 +900,7 @@ function installRecords({
         let settings = resolvedRecordOptions(this, options, properties)
         preflightWriteIntent(settings, intent)
         if (writeLimitIsZero(settings)) {
-          if (intent === 'append') return emptyAppendResult()
+          if (intent === 'append') return new IOResult()
           const converted = emptyRecordsReader(settings)
           return nativeWrite.call(
             this,
@@ -1007,7 +999,7 @@ function installRecords({
     }
     preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
-      if (intent === 'append') return emptyAppendResult()
+      if (intent === 'append') return new IOResult()
       // A limited merge was rejected by preflight. An overwrite bounded to no
       // row publishes the declared field's empty value without reading the
       // source; with no field declared, the source's own root names it.
@@ -1099,7 +1091,7 @@ function installRecords({
     const settings = resolvedRecordOptions(handle, options, properties)
     const defaultBatchRowSize = preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
-      if (intent === 'append') return emptyAppendResult()
+      if (intent === 'append') return new IOResult()
       // A limited merge was rejected by preflight. Overwrite still publishes
       // the explicitly typed empty value without inspecting the input.
       const converted = emptyRecordsReader(settings)

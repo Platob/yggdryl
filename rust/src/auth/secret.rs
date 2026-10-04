@@ -54,12 +54,10 @@ impl From<&str> for Secret {
 /// directories above it the same way, which is what the AWS tools do with
 /// every cache they keep a secret in.
 ///
-/// The file is replaced whole or not at all: the bytes go to a private
-/// sibling, are synced, and the sibling is renamed over `path` - the way
-/// botocore files its caches - so a reader beside the writer, the AWS CLI
-/// or another process, never reads half a document, and a writer killed
-/// mid-way leaves the previous one standing. A rotated refresh token lives
-/// in that file alone, so losing it is a sign-in lost.
+/// The file is replaced whole or not at all - a synced private sibling
+/// renamed over `path`, as botocore files its caches - so a concurrent
+/// reader never sees half a document and a killed writer leaves the
+/// previous one standing.
 ///
 /// # Errors
 ///

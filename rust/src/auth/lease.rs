@@ -15,7 +15,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "s3")]
 use super::Secret;
-use crate::{Error, Result, TimeUnit};
+use super::refusal;
+use crate::{Result, TimeUnit};
 
 /// A value that stops being accepted at an instant, or never.
 pub trait Expiring {
@@ -23,9 +24,7 @@ pub trait Expiring {
     fn expires_at(&self) -> Option<SystemTime>;
 
     /// How long before it lapses this value is replaced, when its source
-    /// keeps a window of its own - a sign-in whose sets last fifteen
-    /// minutes cannot be replaced fifteen minutes ahead; `None` takes the
-    /// lease's.
+    /// keeps a window of its own; `None` takes the lease's.
     fn refresh_window(&self) -> Option<Duration> {
         None
     }
@@ -156,7 +155,7 @@ impl<T: Expiring + Clone> Lease<T> {
                 return Ok(Some(held));
             }
             if paused && let Some(failure) = &state.failure {
-                return Err(repeated(failure));
+                return Err(refusal(failure));
             }
             return match obtain() {
                 Ok(Some(fresh)) => Ok(Some(self.adopt(&mut state, fresh, now))),
@@ -187,7 +186,7 @@ impl<T: Expiring + Clone> Lease<T> {
             return Ok(None);
         }
         if paused && let Some(failure) = &state.failure {
-            return Err(repeated(failure));
+            return Err(refusal(failure));
         }
         match obtain() {
             Ok(Some(found)) => Ok(Some(self.adopt(&mut state, found, now))),
@@ -219,10 +218,9 @@ impl<T: Expiring + Clone> Lease<T> {
         value.refresh_window().unwrap_or(self.window)
     }
 
-    /// Whether [`Self::get`] at `now` answers from a hold - nothing found,
-    /// or a failure inside its pause with nothing standing to answer
-    /// instead - without obtaining: what a holder whose sources can change
-    /// under it asks before deciding the hold no longer applies.
+    /// Whether [`Self::get`] at `now` would answer from a hold - nothing
+    /// found, or a failure inside its pause with nothing standing - rather
+    /// than obtain.
     pub fn is_holding(&self, now: SystemTime) -> bool {
         let state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         let stands = state
@@ -258,23 +256,12 @@ pub fn lapses_within<T: Expiring>(value: &T, now: SystemTime, window: Duration) 
         .is_some_and(|expiry| now.checked_add(window).is_none_or(|edge| edge >= expiry))
 }
 
-/// The failure answered again inside the pause.
-fn repeated(failure: &str) -> Error {
-    Error::Io(std::io::Error::new(
-        std::io::ErrorKind::PermissionDenied,
-        failure.to_owned(),
-    ))
-}
-
 /// The instant an expiry states, in any spelling a cloud's tools write one.
 ///
-/// The tools' own two habits are taken off here, where an expiry enters:
-/// blanks around the text, and the trailing `UTC` - with or without a blank
-/// before it - the AWS CLI's caches write for `Z`. What is left is read by
-/// [`DateTime64::from_text`](crate::DateTime64::from_text), the crate's one
-/// reader of datetime text, with a reading that names no zone taken as UTC,
-/// the only zone any of the tools means. Anything it cannot read answers
-/// `None`, so the value is treated as long-lived rather than lapsing at a
+/// Blanks and the trailing `UTC` the AWS CLI's caches write for `Z` are taken
+/// off, and the rest read by [`DateTime64::from_text`](crate::DateTime64::from_text),
+/// a reading that names no zone taken as UTC. Text it cannot read answers
+/// `None`: the value is treated as long-lived rather than lapsing at a
 /// guessed instant.
 pub fn instant(text: &str) -> Option<SystemTime> {
     let text = text.trim();

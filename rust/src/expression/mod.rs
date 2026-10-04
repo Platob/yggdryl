@@ -427,36 +427,30 @@ pub enum Function {
     /// number floored to a multiple.
     Truncate,
     /// `time_bucket(width, x)` - DuckDB's name and argument order: a date or
-    /// a timestamp floored to a multiple of a fixed-length width, answered
-    /// in `x`'s own datatype, its unit and zone kept.
+    /// a timestamp floored to a multiple of a fixed-length width, in `x`'s
+    /// own datatype, unit and zone kept.
     ///
-    /// `width` is a constant, written as text - a count and a unit, `'15
-    /// minutes'`, `'1 hour'`, `'30s'`, `'1.5h'`, `'2 days'`, `'1 week'`;
-    /// an ISO 8601 duration, `'PT15M'`; or a clock, `'00:15:00'` - or as a
-    /// `duration` literal. The units are `ns`, `us`, `ms`, `s`/`sec`,
-    /// `min`, `h`/`hr`, `d` and `w` with their long spellings; `m` names no
-    /// unit, because a minute and a month share it, and a month, a quarter
-    /// or a year is no fixed length. A width that is zero, negative, not a
-    /// constant, not a whole number of `x`'s unit, or - for a date - not a
-    /// whole number of days is refused naming the argument.
+    /// `width` is a constant: text - a count and a unit (`'15 minutes'`,
+    /// `'30s'`, `'1.5h'`, `'1 week'`), an ISO 8601 duration (`'PT15M'`) or a
+    /// clock (`'00:15:00'`) - or a `duration` literal. The units are `ns`,
+    /// `us`, `ms`, `s`/`sec`, `min`, `h`/`hr`, `d` and `w` with their long
+    /// spellings; `m` is none, a minute and a month sharing it, and a month,
+    /// a quarter or a year has no fixed length. A width that is zero,
+    /// negative, not a constant, not a whole number of `x`'s unit, or - for
+    /// a date - not whole days is refused naming it.
     ///
-    /// Buckets start at DuckDB's origin, Monday 2000-01-03 00:00:00, read
-    /// in UTC for a zoned value and as the wall clock for a naive one, and
-    /// the floor is Euclidean, so an instant before the origin lands in the
-    /// bucket below it. The origin is a whole number of days after the Unix
-    /// epoch, so every width that divides a day - `'15 minutes'`, `'1
-    /// hour'` - starts its buckets at the epoch as well; a week starts on a
-    /// Monday. A null `x` answers null. The floor is monotone in `x`, so a
-    /// range on `x` prunes through it.
+    /// Buckets start at DuckDB's origin, Monday 2000-01-03 00:00:00 - UTC
+    /// for a zoned value, the wall clock for a naive one - and the floor is
+    /// Euclidean, so an instant before the origin lands in the bucket below
+    /// it. A width dividing a day also starts its buckets at the epoch; a
+    /// week starts on a Monday. A null `x` answers null, and the floor is
+    /// monotone, so a range on `x` prunes through it.
     ///
     /// ```
     /// use yggdryl::{DataType, Scalar, Selector, StructType, TimeUnit, Timezone};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let ns = DataType::DateTime64 {
-    ///     unit: TimeUnit::Nanosecond,
-    ///     timezone: Timezone::UTC,
-    /// };
+    /// let ns = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?;
     /// let schema = StructType::from_fields([ns.clone().required_field("currunix")])
     ///     .map(DataType::from)?
     ///     .required_field("row");

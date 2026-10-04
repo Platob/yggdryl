@@ -391,9 +391,8 @@ impl Session {
         self.headers_reading(request, url, ranged, crate::auth::variable)
     }
 
-    /// [`Self::headers_for`], the environment the `.netrc` file is located
-    /// by read through `variable`: the process's in a request, a map in a
-    /// test.
+    /// [`Self::headers_for`], the `.netrc` file located through `variable`
+    /// rather than the process environment.
     pub(crate) fn headers_reading(
         &self,
         request: &Request,
@@ -447,9 +446,8 @@ impl Session {
     /// request's or the session's credential travels under (`X-Api-Key`),
     /// and a `Cookie` the caller stated - the jar's own cookies for `url` go
     /// back on, because they are that origin's, and so does the `.netrc`
-    /// entry for its host. What the request's per-attempt hook makes is
-    /// withheld beside them, where the hop's wire is built
-    /// ([`Self::exchange`]).
+    /// entry for its host. The per-attempt hook is withheld where the hop's
+    /// wire is built ([`Self::exchange`]).
     fn withhold_credentials(
         &self,
         request: &Request,
@@ -498,9 +496,8 @@ impl Session {
     /// `Location` is resolved through [`Url::join_reference`]; a `303`, and
     /// a `301` or `302` on `POST`, become a `GET` without the body, a `307`
     /// or `308` keep both; the credential is withheld from another origin,
-    /// and so is what the request's per-attempt hook would make - a proof
-    /// or a signature is a credential the caller stated for the origin it
-    /// named, so the hook is not called for that hop.
+    /// and the request's per-attempt hook and resend rule are not called
+    /// for that hop.
     /// Answers the final hop, its URL, the drained earlier hops oldest first,
     /// and the time the whole exchange took.
     ///
@@ -547,9 +544,8 @@ impl Session {
                 timeout,
             );
             if elsewhere {
-                // A proof or a signature made per attempt is the caller's
-                // credential for the origin the request named, and with
-                // none sent there is no refusal of one to mend.
+                // What the hook makes is a credential for the origin the
+                // request named; with none sent, no refusal is to mend.
                 wire.attempt_headers = None;
                 wire.resend_on = None;
             }

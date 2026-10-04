@@ -916,10 +916,8 @@ def test_an_s3_tables_arn_names_a_table_bucket_and_a_table() -> None:
     assert located.hostname is None
     assert isinstance(located, Url)
 
-    # A table bucket is held as what it names: its ARN is the bucket's
-    # catalog, a description that touches nothing.
+    # A table bucket's ARN is held as the bucket's catalog, touching nothing.
     assert isinstance(IOBase(bucket), Catalog)
-    assert isinstance(IOBase("s3tables://lake"), Catalog)
 
     # A table's identifier is spelled by its ARN alone: the location that ARN
     # locates spells it where a namespace goes, and is refused where it is

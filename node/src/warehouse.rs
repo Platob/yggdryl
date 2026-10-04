@@ -350,8 +350,6 @@ impl JsWarehouseCatalog {
         ts_args_type = "url: Url | string, properties?: Record<string, string | number | boolean> | null"
     )]
     pub fn from_url(url: UrlInput<'_>, properties: Option<Object<'_>>) -> Result<Self> {
-        // The identifier as named, located by the core: a table bucket's
-        // ARN states the region and the account its location does not.
         let location = identifier_from_input(url)?;
         CoreCatalog::from_url(&location, &properties_from_input(properties)?)
             .map(Self::from_core)
@@ -1309,9 +1307,8 @@ fn url_from_input(value: UrlInput<'_>) -> Result<yggdryl::Url> {
     }
 }
 
-/// The identifier an input names, as named: a door that reads more off an
-/// identifier than where it is - a table bucket's ARN states its region and
-/// its account - locates it itself.
+/// The identifier an input names, as named: a table bucket's ARN states the
+/// region and the account its location does not, so the core locates it.
 fn identifier_from_input(value: UrlInput<'_>) -> Result<yggdryl::Uri> {
     match value {
         Either::A(url) => Ok(url.inner.clone().into_uri()),

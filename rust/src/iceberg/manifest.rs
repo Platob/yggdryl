@@ -536,7 +536,7 @@ fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestM
     // report, so a malformed manifest fails the way it always has.
     if let Some(schema) = metadata.get_mut("schema")
         && let Ok(document) = crate::json::from_bytes(schema)
-        && let Some(bridged) = super::official::bridged_schema(&document)?
+        && let Some(bridged) = super::official::bridged_schema(&document, false)?
     {
         *schema = crate::json::into_bytes(&bridged)?;
     }
@@ -817,7 +817,7 @@ fn bridged_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
             continue;
         };
         let bridged = match name.as_str() {
-            "schema" => super::official::parser_view_schema(&document, nanoseconds)?,
+            "schema" => super::official::bridged_schema(&document, nanoseconds)?,
             "partition-spec" => super::official::bridged_partition_spec(&document)?,
             _ => None,
         };

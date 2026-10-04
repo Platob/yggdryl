@@ -9,14 +9,13 @@ use crate::{Error, IOResult, Result};
 
 /// The rows one write read and the rows it wrote, counted as they are pulled.
 ///
-/// A write's shaping sits between two readers: the source it was handed and
-/// the shaped stream its destination pulls. Each is wrapped once, here, so
-/// every door that shapes through this module answers its [`IOResult`]
-/// without counting anything itself: what the source yielded is read, what
-/// the destination pulled is written, and the difference - the rows the
-/// options' `where` kept out, the part of a last batch a bound cut off - is
-/// skipped. A write allocates its two counts once and each wrapper once,
-/// whatever its length, and a wrapper adds one atomic add per batch.
+/// The source a write was handed and the shaped stream its destination
+/// pulls are each wrapped once, so every door shaping through this module
+/// answers its [`IOResult`] without counting itself: what the source yielded
+/// is read, what the destination pulled is written, and the difference - what
+/// the options' `where` kept out or a bound cut off - is skipped. A write
+/// allocates its counts and wrappers once; a wrapper adds one atomic add per
+/// batch.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WriteCount(Arc<Rows>);
 
@@ -331,7 +330,7 @@ fn overwrite_arrow_reader_folder(
 /// publish through an implementor's required overwrite hook without applying
 /// an incoming-only transform to the stored rows, splitting recursively, or
 /// casting the incoming rows twice.
-pub(crate) fn prepare_arrow_write(
+fn prepare_arrow_write(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
 ) -> Result<(
@@ -343,15 +342,12 @@ pub(crate) fn prepare_arrow_write(
     prepare_arrow_write_onto(batches, options, None)
 }
 
-/// Shape one incoming stream and safely complete it onto a stored field once.
-///
-/// Table formats use this seam before splitting publication cadences. Their
-/// native commit may defensively inspect the exact shape again, but every
-/// declared cast, selection, limit, and safe stored-field completion has
-/// already happened here over the one streaming reader. The count beside
-/// the shaped reader is what the write read off its source and what its
-/// destination pulls.
-pub(crate) fn prepare_arrow_write_onto(
+/// Shape one incoming stream and safely complete it onto a stored field once:
+/// every declared cast, selection, limit, and safe stored-field completion
+/// happens here over the one streaming reader. The count beside the shaped
+/// reader is what the write read off its source and what its destination
+/// pulls.
+fn prepare_arrow_write_onto(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
     existing: Option<&crate::Field>,
@@ -374,12 +370,11 @@ pub(crate) fn prepare_arrow_write_onto(
 /// columns of its own.
 ///
 /// [`prepare_arrow_write_onto`] with one layer more: the `TRANSFORM:`
-/// columns `stored` declares are computed from the rows as the declared
-/// field leaves them, before the `where` and the `select` read them and
-/// before the stored cast - so a clause may name a derived column, and a
-/// required one is never refused as missing. The table owns what it
-/// derives, so a value the rows carry under a derived name is computed
-/// again; a stored field deriving nothing costs nothing.
+/// columns `stored` declares are computed after the declared cast and
+/// before the clauses and the stored cast, so a clause may name a derived
+/// column and a required one is never refused as missing. A value the rows
+/// carry under a derived name is computed again; a stored field deriving
+/// nothing costs nothing.
 #[cfg(feature = "iceberg")]
 pub(crate) fn prepare_arrow_write_deriving(
     batches: crate::arrow::BatchReader,

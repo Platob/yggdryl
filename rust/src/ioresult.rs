@@ -8,20 +8,16 @@ use serde::{Deserialize, Serialize};
 
 /// The rows one record write read, wrote and skipped.
 ///
-/// Every write door of [`IOMedia`](crate::IOMedia) answers one - the
-/// overwrite, the append and the merge of every shape, and the generic
-/// `write_*` beside them - so a caller knows what a write did without
-/// reading the destination back. `read_rows` is what the write pulled from
-/// its source, `written_rows` what reached the destination, and
-/// `skipped_rows` what was read and not written: the rows the options'
-/// `where` kept out, and the part of the last batch a row or byte bound cut
-/// off. A bound stops pulling, so what lies past it was never read and is
-/// neither read nor skipped.
-///
-/// A write that maps one row to one row answers
-/// `read_rows == written_rows + skipped_rows`. A `select` that unnests
-/// writes more rows than it read and skips none, so `skipped_rows` never
-/// goes below zero. A write cut into several commits answers their sum.
+/// Every write door of [`IOMedia`](crate::IOMedia) answers one, so a caller
+/// knows what a write did without reading the destination back.
+/// `read_rows` is what the write pulled from its source, `written_rows`
+/// what reached the destination, and `skipped_rows` what was read and not
+/// written: what the options' `where` kept out and the part of the last
+/// batch a row or byte bound cut off - a bound stops pulling, so nothing
+/// past it is read. A write mapping one row to one row answers
+/// `read_rows == written_rows + skipped_rows`; `skipped_rows` never goes
+/// below zero, because a `select` that unnests writes more than it read. A
+/// write cut into several commits answers their sum.
 ///
 /// ```
 /// use yggdryl::IOResult;

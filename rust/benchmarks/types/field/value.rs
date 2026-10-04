@@ -334,9 +334,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .into_arrow_field_ref()
             .expect("the static Iceberg field projects to Arrow");
 
-        group.bench_function("iceberg_spec_id_exact", |bencher| {
-            bencher.iter(|| black_box(&iceberg_field).as_iceberg().spec_id());
-        });
         group.bench_function("iceberg_schema_id_typed", |bencher| {
             bencher.iter(|| {
                 black_box(&iceberg_field)

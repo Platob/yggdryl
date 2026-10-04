@@ -166,12 +166,10 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
 
 /// Read timestamp or date text as a count of `unit`.
 ///
-/// The crate's one reader of datetime text,
-/// [`DateTime64::from_text`](crate::DateTime64::from_text), answers the count
-/// at the resolution the digits spell - seconds for `..:01Z`, nanoseconds for
-/// seven fractional digits - with a reading that names no zone, a bare date
-/// included, taken as UTC; that count is restated like every other intake:
-/// exactly into a finer unit, floored into a coarser one.
+/// [`DateTime64::from_text`](crate::DateTime64::from_text) reads it at the
+/// resolution the digits spell, a reading naming no zone - a bare date
+/// included - taken as UTC; the count is then restated exactly into a finer
+/// unit and floored into a coarser one.
 fn unix_from_text(text: &str, unit: TimeUnit) -> Result<i64> {
     let read = crate::DateTime64::from_text(text, crate::Timezone::UTC)?;
     restate_unix(read.count(), read.unit(), unit)

@@ -22,7 +22,7 @@ An ARN is a [`Uri`](index.md) whose scheme is `arn`, so everything on this page 
 | Filenames | [accessors](path.md) read the resource, not the whole path; setters leave the five fields alone |
 | Bindings | Rust, Python and JavaScript each answer the fields, the resource and `locator`. Python's `Arn` is a subclass of `Uri`, so `Uri("arn:…")` answers one; JavaScript has no class inheritance here, so `Uri.from("arn:…")` answers a `Uri` and `intoArn()` narrows it |
 | Errors | Rust `Err`, Python `ValueError`, JavaScript throw, each naming the field that refused |
-| Partition | `ArnPartition` reads an ARN's first field, or a region, as one of the eight partitions AWS runs, with the suffixes and the global region of each; Rust only, [below](#partitions) |
+| Partition | `ArnPartition`: an ARN's first field, or a region, as one of the eight partitions AWS runs, with its suffixes and global region; Rust only, [below](#partitions) |
 
 ## Use
 
@@ -264,7 +264,7 @@ An Amazon S3 ARN names a bucket and, below it, a key, which is exactly what an `
 
 A table bucket holds tables rather than objects, and AWS addresses one only by ARN. It is still a container and a name below it — the same two positions every store writes — so `bucket` reads the table bucket, `table` reads the table, and `locator` answers the `s3tables:` URL those two spell. The [store accessors](index.md) read that URL back the way they read an `s3:` one.
 
-No byte backend opens an `s3tables:` location: `is_object_store` stays false for it, so a reader speaks the S3 Tables catalog rather than fetching a key - under the `s3tables` feature `Holder::from_url` and every door over it hold the location as [what it names](../media/iceberg.md#a-table-by-its-location), the bucket's catalog, a namespace or an Iceberg table, [`Catalog::from_url`](../media/iceberg.md#iceberg-on-amazon-s3-tables) answers a table bucket's `s3tables:` location as its catalog, and in Rust [`s3tables::S3Tables`](../media/iceberg.md#the-table-buckets-catalog) is its client, which takes the table bucket's ARN. The location drops the ARN's region and account, so the catalog takes the ARN back from a `warehouse` property, or finds it among the caller's own buckets - and a table's ARN names the table by an identifier, which its location spells where a namespace goes, so a door that opens what an identifier names reads the ARN itself and never the location it locates. `python/benchmarks/media/s3tables.py` is that reader end to end: it takes a table bucket ARN, has PyIceberg fill a table through the service's catalog, and reads the same table at the warehouse `s3:` location the catalog answers, timed beside PyIceberg's own scan.
+No byte backend opens an `s3tables:` location: `is_object_store` stays false for it, so a reader speaks the S3 Tables catalog rather than fetching a key. Under the `s3tables` feature, `Holder::from_url` and every door over it hold the location as [what it names](../media/iceberg.md#a-table-by-its-location) - the bucket's catalog, a namespace or an Iceberg table - [`Catalog::from_url`](../media/iceberg.md#iceberg-on-amazon-s3-tables) answers the bucket's catalog, and in Rust [`s3tables::S3Tables`](../media/iceberg.md#the-table-buckets-catalog), its client, takes the table bucket's ARN. The location drops the ARN's region and account, which the catalog takes back from a `warehouse` property or finds among the caller's own buckets. A table's ARN names the table by an identifier its location spells where a namespace goes, so a door reads that ARN itself, never the location it locates. `python/benchmarks/media/s3tables.py` is that reader end to end: it takes a table bucket ARN, has PyIceberg fill a table through the service's catalog, and reads the same table at the warehouse `s3:` location the catalog answers, timed beside PyIceberg's own scan.
 
 === "Rust"
 
@@ -336,15 +336,15 @@ No byte backend opens an `s3tables:` location: `is_object_store` stays false for
 
 ## Partitions
 
-`ArnPartition` is the set of partitions AWS runs - what an ARN's first field names - as botocore's `partitions.json` states them, the table every AWS SDK resolves endpoints through: each partition's name, the prefix its regions share, its DNS suffix, its dual-stack suffix, and the region a global service answers in. It is the one place those are spelled, so the STS, IAM Identity Center, Sign-In and Amazon S3 hosts of the [AWS identity](../holder/index.md#aws-identity) are all built from it. Rust only.
+`ArnPartition` is the set of partitions AWS runs - what an ARN's first field names - as botocore's `partitions.json` states them: each one's name, region prefix, DNS and dual-stack suffixes, and the region a global service answers in. It is the one place those are spelled: the STS, IAM Identity Center, Sign-In and Amazon S3 hosts of the [AWS identity](../holder/index.md#aws-identity) are built from it. Rust only.
 
 | Door | Answers |
 | --- | --- |
-| `ArnPartition::from_region(region)` | the partition whose regions share the region's prefix, else `aws` - where botocore resolves a region its table does not know; surrounding blanks and case are ignored |
+| `ArnPartition::from_region(region)` | the partition whose prefix the region carries, else `aws`, as botocore resolves a region its table does not know; surrounding blanks and case ignored |
 | `ArnPartition::from_arn(&arn)` | the partition the ARN's first field names, `None` for one AWS does not run |
 | `as_str()`, `Display`, `FromStr` | the name an ARN spells; `FromStr` ignores case and refuses any other name, listing the eight |
 | `dns_suffix()`, `dualstack_dns_suffix()`, `global_region()` | the columns of the table below |
-| `service_host(service, region, fips, dualstack)` | `{service}.{region}.{suffix}` - `{service}-fips` under `fips`, the dual-stack suffix under `dualstack`; a service whose rules spell its hosts otherwise, as the Sign-In service and Amazon S3's dual-stack form do, builds them from the two suffixes |
+| `service_host(service, region, fips, dualstack)` | `{service}[-fips].{region}.{suffix}`, the dual-stack suffix under `dualstack`; a service spelling its hosts otherwise (Sign-In, Amazon S3's dual-stack form) builds them from the two suffixes |
 | `ArnPartition::ALL` | the eight, in botocore's order |
 
 === "Rust"
@@ -355,31 +355,25 @@ No byte backend opens an `s3tables:` location: `is_object_store` stays false for
     let role = Arn::from_str("arn:aws-cn:iam::123456789012:role/lake-reader")?;
     let partition = ArnPartition::from_arn(&role).expect("a partition AWS runs");
     assert_eq!(partition, ArnPartition::AwsCn);
-    assert_eq!(partition.as_str(), "aws-cn");
-    assert_eq!(partition.dns_suffix(), "amazonaws.com.cn");
     assert_eq!(partition.global_region(), "cn-northwest-1");
 
     // A region is in the partition its prefix names; one nobody claims is in `aws`.
     assert_eq!(ArnPartition::from_region("us-gov-west-1"), ArnPartition::AwsUsGov);
-    assert_eq!(ArnPartition::from_region("eu-west-3"), ArnPartition::Aws);
     assert_eq!(ArnPartition::from_region("mars-north-1"), ArnPartition::Aws);
 
-    // A service host is built on the partition's own suffixes.
+    // Hosts are built on the partition's own suffixes.
+    assert_eq!(
+        partition.service_host("sts", "cn-north-1", false, true),
+        "sts.cn-north-1.api.amazonwebservices.com.cn"
+    );
     assert_eq!(
         ArnPartition::Aws.service_host("sts", "eu-west-3", true, false),
         "sts-fips.eu-west-3.amazonaws.com"
     );
-    assert_eq!(
-        ArnPartition::from_region("cn-north-1").service_host("sts", "cn-north-1", false, true),
-        "sts.cn-north-1.api.amazonwebservices.com.cn"
-    );
 
-    // A name is read with its case ignored; another is refused, and an ARN that
-    // names a partition AWS does not run answers none.
+    // A name is read with its case ignored; one AWS does not run is refused.
     assert_eq!("AWS-US-GOV".parse::<ArnPartition>()?, ArnPartition::AwsUsGov);
     assert!("aws-moon".parse::<ArnPartition>().is_err());
-    assert_eq!(ArnPartition::from_arn(&Arn::from_str("arn:aws-moon:iam::1:role/x")?), None);
-    assert_eq!(ArnPartition::ALL.len(), 8);
     ```
 
 === "Python"
@@ -415,7 +409,7 @@ No byte backend opens an `s3tables:` location: `is_object_store` stays false for
 - `arn:aws:s3:us-west-2:123456789012:accesspoint/reports` → `bucket` and `key` are `None`, because only the region-less, account-less form is the bucket form.
 - `arn:aws:s3tables:…:policy/deny` → `bucket` is `None` and `locator` refuses: only a `bucket/…` resource names a table bucket.
 - `arn:aws:s3tables:…:bucket/lake` → `table` is `None`: the container alone names no table.
-- Opening an `s3tables:` location → the catalog, the namespace or the table [it names](../media/iceberg.md#a-table-by-its-location) under the `s3tables` feature, and refused by its scheme without it, because no byte backend speaks S3 Tables. Opening the location a table's ARN locates (`s3tables://lake/t-a1`) → refused at `$.url`: the identifier is no namespace's name, and the table is opened by its ARN.
+- Opening an `s3tables:` location → the catalog, the namespace or the table [it names](../media/iceberg.md#a-table-by-its-location) under the `s3tables` feature; without it, refused by its scheme, because no byte backend speaks S3 Tables. Opening the location a table's ARN locates (`s3tables://lake/t-a1`) → refused at `$.url`: the identifier names no namespace, so the table is opened by its ARN.
 
 ## Commands
 

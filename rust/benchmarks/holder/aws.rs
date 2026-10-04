@@ -3,17 +3,12 @@
 //! A session resolves once and answers from what it holds, so the only
 //! per-request cost is the cached answer; the parse of the shared files is
 //! paid once per session and grows with the number of profiles the machine
-//! has. A walk - the first ask, the one after a store's refusal, the one a
-//! set nearing its end causes - reads the files from disk when they moved,
-//! and passes over a set a store refused: each is measured on files a
-//! benchmark writes, so a regression in any shows beside the request counts
-//! the accounting tests hold. Signing is the one cost every attempt of a
-//! request signed through `Request::with_sigv4` pays: the cached signer, the
-//! SHA-256 of the body and the canonical request, measured on a 1 KiB JSON
-//! `POST` to a catalog path (built with `internals`, which reaches one
-//! attempt's signing at a stated instant). Under `s3tables`, what holding a
-//! table bucket's location costs sits beside them: its catalog and a
-//! namespace are descriptions, built from the properties with no request.
+//! has. A walk - the first ask, or the one a store's refusal causes - reads
+//! the files from disk again, measured per source on files the benchmark
+//! writes. Signing one attempt (`Request::with_sigv4`, reached under
+//! `internals`) and, under `s3tables`, holding a table bucket's location sit
+//! beside them, so a regression in any shows beside the request counts the
+//! accounting tests hold.
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -21,7 +16,6 @@ use std::time::SystemTime;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::aws::{Credentials, Session};
-use yggdryl::{Arn, ArnPartition};
 
 /// The profiles the largest configuration file holds.
 const PROFILES: usize = crate::bench_profile::corpus(256, 8);
@@ -74,22 +68,101 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("aws_session");
 
     // The per-request cost: a set in hand, answered without a walk.
-    let session = Session::new()
+    let stated = Session::new()
         .with_environment(false)
         .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
     let now = SystemTime::now();
-    session.credentials(now).expect("an explicit set");
+    stated.credentials(now).expect("an explicit set");
     group.bench_function("credentials_cached", |bencher| {
-        bencher.iter(|| {
-            black_box(
-                session
-                    .credentials(black_box(now))
-                    .expect("the set in hand"),
-            )
-        });
+        bencher.iter(|| black_box(stated.credentials(black_box(now)).expect("the set in hand")));
     });
 
+    // The endpoint arithmetic a client does at construction.
+    let session = Session::new()
+        .with_environment(false)
+        .with_use_fips_endpoint(true);
+    group.bench_function("sts_endpoint", |bencher| {
+        bencher.iter(|| black_box(session.sts_endpoint(black_box("eu-west-3"))));
+    });
+
+    // A walk from nothing held, per source: a temporary set dumped into the
+    // credentials file; that set's key refused, so the walk passes over it to
+    // the configuration file's; a console sign-in answered from the cache
+    // `aws login` filed, with no request.
+    let dumped = directory("walk", &[("credentials", DUMPED)]);
+    let refused = directory(
+        "refused",
+        &[
+            ("credentials", DUMPED),
+            (
+                "config",
+                "[default]\naws_access_key_id = AKIABENCHCONFIG\naws_secret_access_key = config-secret\n",
+            ),
+        ],
+    );
+    let signed_in = directory(
+        "login",
+        &[
+            (
+                "config",
+                "[profile console]\nlogin_session = arn:aws:iam::0123456789012:user/Admin\nregion = eu-west-3\n",
+            ),
+            (
+                "login/cache/36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json",
+                r#"{"accessToken":{"accessKeyId":"ASIABENCHLOGIN","secretAccessKey":"login-secret","sessionToken":"login-token","accountId":"012345678901","expiresAt":"2099-01-01T00:00:00Z"},"tokenType":"aws_sigv4","refreshToken":"login-refresh","clientId":"arn:aws:signin:::devtools/same-device","dpopKey":"-----BEGIN EC PRIVATE KEY-----\nnot read while the set lasts\n-----END EC PRIVATE KEY-----\n"}"#,
+            ),
+        ],
+    );
+    let refusing = reading(&refused);
+    refusing.invalidate_if("ASIABENCHDUMPED");
+    for (name, session) in [
+        ("walk_shared_credentials_file", reading(&dumped)),
+        ("walk_past_refused_key", refusing),
+        (
+            "walk_console_sign_in_cached",
+            reading(&signed_in).with_profile("console"),
+        ),
+    ] {
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                session.invalidate();
+                black_box(session.credentials(now).expect("a walk").expect("a set"))
+            });
+        });
+    }
+
+    // Holding a table bucket's location, as a URL (a namespace below it) and
+    // as its ARN (the catalog, through the ARN's own reading): descriptions
+    // built from the properties with no request.
+    #[cfg(feature = "s3tables")]
+    {
+        let properties = yggdryl::Properties::new()
+            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+            .with_property("secret_access_key", "wJalrXUtnFEMI");
+        let namespace = yggdryl::Url::from_str("s3tables://lake/desk").expect("a location");
+        let bucket = yggdryl::Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")
+            .expect("a table bucket's ARN");
+        group.bench_function("s3tables_namespace_by_location", |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    yggdryl::holder::Holder::from_url(black_box(&namespace), &properties)
+                        .expect("a namespace"),
+                )
+            });
+        });
+        group.bench_function("s3tables_catalog_by_arn", |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    yggdryl::holder::Holder::from_url(black_box(&bucket), &properties)
+                        .expect("a catalog"),
+                )
+            });
+        });
+    }
+
     // The per-session cost: both files parsed once and one profile found.
+    // Last but the signing, since the throughput it states holds for every
+    // row after it.
     for count in [1, PROFILES] {
         let text = configuration(count);
         let wanted = format!("desk-{}", count - 1);
@@ -109,145 +182,11 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
         );
     }
 
-    // The endpoint arithmetic a client does at construction.
-    let session = Session::new()
-        .with_environment(false)
-        .with_use_fips_endpoint(true);
-    group.bench_function("sts_endpoint", |bencher| {
-        bencher.iter(|| black_box(session.sts_endpoint(black_box("eu-west-3"))));
-    });
-
-    // A first walk: both files read from disk and parsed, the dumped set
-    // read with its expiry and admitted.
-    let dumped = directory("walk", &[("credentials", DUMPED)]);
-    group.bench_function("walk_shared_credentials_file", |bencher| {
-        bencher.iter(|| {
-            let session = reading(&dumped);
-            black_box(
-                session
-                    .credentials(now)
-                    .expect("a walk")
-                    .expect("the dumped set"),
-            )
-        });
-    });
-
-    // The walk a store's refusal causes: the files read again whatever their
-    // versions say, the chain walked again.
-    let session = reading(&dumped);
-    session.credentials(now).expect("a first walk");
-    group.bench_function("walk_after_invalidate", |bencher| {
-        bencher.iter(|| {
-            session.invalidate();
-            black_box(
-                session
-                    .credentials(now)
-                    .expect("a walk")
-                    .expect("the dumped set"),
-            )
-        });
-    });
-
-    // A refused key passed over by name to the configuration file's set.
-    let refused = directory(
-        "refused",
-        &[
-            ("credentials", DUMPED),
-            (
-                "config",
-                "[default]\naws_access_key_id = AKIABENCHCONFIG\naws_secret_access_key = config-secret\n",
-            ),
-        ],
-    );
-    let session = reading(&refused);
-    session.credentials(now).expect("a first walk");
-    session.invalidate_if("ASIABENCHDUMPED");
-    group.bench_function("walk_past_refused_key", |bencher| {
-        bencher.iter(|| {
-            session.invalidate();
-            black_box(
-                session
-                    .credentials(now)
-                    .expect("a walk")
-                    .expect("the config set"),
-            )
-        });
-    });
-
-    // A console sign-in `aws login` filed, answered from its cache with no
-    // request: the cache read, its document parsed, its set admitted.
-    let signed_in = directory(
-        "login",
-        &[
-            (
-                "config",
-                "[profile console]\nlogin_session = arn:aws:iam::0123456789012:user/Admin\nregion = eu-west-3\n",
-            ),
-            (
-                "login/cache/36db1d138ff460920374e4c3d8e01f53f9f73537e89c88d639f68393df0e2726.json",
-                r#"{"accessToken":{"accessKeyId":"ASIABENCHLOGIN","secretAccessKey":"login-secret","sessionToken":"login-token","accountId":"012345678901","expiresAt":"2099-01-01T00:00:00Z"},"tokenType":"aws_sigv4","refreshToken":"login-refresh","clientId":"arn:aws:signin:::devtools/same-device","dpopKey":"-----BEGIN EC PRIVATE KEY-----\nnot read while the set lasts\n-----END EC PRIVATE KEY-----\n"}"#,
-            ),
-        ],
-    );
-    let session = reading(&signed_in).with_profile("console");
-    session.credentials(now).expect("a first walk");
-    group.bench_function("walk_console_sign_in_cached", |bencher| {
-        bencher.iter(|| {
-            session.invalidate();
-            black_box(
-                session
-                    .credentials(now)
-                    .expect("a walk")
-                    .expect("the cached set"),
-            )
-        });
-    });
-
-    // The partition a role's ARN names and the host it is traded at.
-    group.bench_function("arn_partition_host", |bencher| {
-        bencher.iter(|| {
-            let arn = Arn::from_str(black_box("arn:aws-cn:iam::123456789012:role/lake-reader"))
-                .expect("an ARN");
-            let partition = ArnPartition::from_arn(&arn).expect("a partition");
-            black_box(partition.service_host("sts", partition.global_region(), false, true))
-        });
-    });
-    // What holding a table bucket's location costs: its catalog and a
-    // namespace below it are descriptions, built from the properties - who
-    // signs among them - with no request and no file read.
-    #[cfg(feature = "s3tables")]
-    {
-        let properties = yggdryl::Properties::new()
-            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
-            .with_property("secret_access_key", "wJalrXUtnFEMI");
-        let namespace = yggdryl::Url::from_str("s3tables://lake/desk").expect("a location");
-        let bucket = Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")
-            .expect("a table bucket's ARN");
-        group.bench_function("s3tables_namespace_by_location", |bencher| {
-            bencher.iter(|| {
-                black_box(
-                    yggdryl::holder::Holder::from_url(black_box(&namespace), &properties)
-                        .expect("a namespace"),
-                )
-            });
-        });
-        group.bench_function("s3tables_catalog_by_arn", |bencher| {
-            bencher.iter(|| {
-                black_box(
-                    yggdryl::holder::Holder::from_url(black_box(&bucket), &properties)
-                        .expect("a catalog"),
-                )
-            });
-        });
-    }
-    // What signing one attempt costs: a 1 KiB JSON `POST` whose path carries
-    // an encoded bucket ARN, so the canonical URI is made by the rule every
-    // service outside the S3 family signs by.
+    // Signing one attempt: a 1 KiB JSON `POST` whose path carries an encoded
+    // bucket ARN, so the canonical URI is made by the rule every service
+    // outside the S3 family signs by.
     #[cfg(feature = "internals")]
     {
-        let signing = Session::new()
-            .with_environment(false)
-            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"));
         let url = yggdryl::Url::from_str(
             "https://s3tables.eu-west-3.amazonaws.com/iceberg/v1/\
              arn%3Aaws%3As3tables%3Aeu-west-3%3A123456789012%3Abucket%2Flake/namespaces/a%1Fb/tables",
@@ -263,7 +202,7 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| {
                 black_box(
                     yggdryl::internals::aws_request::signed_headers(
-                        &signing,
+                        &stated,
                         "s3tables",
                         "eu-west-3",
                         yggdryl::http::Method::Post,

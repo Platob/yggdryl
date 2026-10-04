@@ -5,10 +5,13 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, MutexGuard};
 
 use yggdryl::aws::Session;
+use yggdryl::logging::{self, Handler, Level};
 
 use crate::identity::Identity;
+use crate::logging::{Collect, Kept, serial};
 
 /// A directory of this test's own under the platform's temporary one, empty
 /// when handed over, for the `~/.aws` a session is pointed at.
@@ -34,6 +37,55 @@ pub fn sealed(identity: &Identity, name: &str) -> Session {
         .with_endpoint_url(identity.endpoint())
         .with_metadata_endpoint(identity.endpoint())
         .with_region("eu-west-3")
+}
+
+/// The records the crate logs under `logger` at `level` and above, kept
+/// while this is held. The tree is the process's, so this holds it.
+pub struct Logged {
+    logger: &'static str,
+    collect: Arc<Collect>,
+    _tree: MutexGuard<'static, ()>,
+}
+
+impl Logged {
+    pub fn at(logger: &'static str, level: Level) -> Self {
+        let tree = serial();
+        // A record nobody collects is dropped rather than written to
+        // standard error by the last resort.
+        logging::set_last_resort(None);
+        logging::install().expect("the tree is the facade's backend");
+        let handle = logging::get_logger(logger);
+        handle.set_level(level);
+        let collect = Collect::shared();
+        handle.add_handler(collect.clone());
+        Self {
+            logger,
+            collect,
+            _tree: tree,
+        }
+    }
+
+    /// Every record kept so far, leaving none.
+    pub fn take(&self) -> Vec<Kept> {
+        self.collect.take()
+    }
+
+    /// The records kept so far whose line names `needle`, leaving none.
+    pub fn about(&self, needle: &str) -> Vec<Kept> {
+        self.take()
+            .into_iter()
+            .filter(|kept| kept.line.contains(needle))
+            .collect()
+    }
+}
+
+impl Drop for Logged {
+    fn drop(&mut self) {
+        let logger = logging::get_logger(self.logger);
+        let handler: Arc<dyn Handler> = self.collect.clone();
+        logger.remove_handler(&handler);
+        logger.set_level(Level::NOTSET);
+    }
 }
 
 #[test]

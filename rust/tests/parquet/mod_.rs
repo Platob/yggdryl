@@ -3049,6 +3049,21 @@ mod uuid_columns {
         ]
     }
 
+    /// The rows of [`rows`] as one batch under [`root`].
+    fn batch() -> RecordBatch {
+        Serie::from_scalars(root(), rows())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+    }
+
+    /// A Parquet file holding `encoded`, a writer's bytes.
+    fn written(name: &str, encoded: &[u8]) -> Parquet<Buffer> {
+        let mut handle = handle(name);
+        handle.write_all_bytes(encoded).unwrap();
+        Parquet::new(handle)
+    }
+
     /// Every sixteen-byte leaf of a file's footer, with its logical type.
     fn uuid_leaves(media: &Parquet<Buffer>) -> Vec<(String, Option<LogicalType>)> {
         let bytes = media.handle().read_all_bytes().unwrap();
@@ -3087,10 +3102,7 @@ mod uuid_columns {
     #[test]
     fn every_uuid_leaf_carries_the_uuid_logical_type_and_round_trips() {
         let root = root();
-        let batch = Serie::from_scalars(root.clone(), rows())
-            .unwrap()
-            .into_arrow_batch()
-            .unwrap();
+        let batch = batch();
         let mut media = Parquet::new(handle("uuids.parquet"));
         let options = media.record_options().unwrap();
         media
@@ -3117,10 +3129,7 @@ mod uuid_columns {
         // that never heard of it writes: sixteen bytes with no logical type,
         // the extension riding the embedded Arrow schema or nowhere at all.
         let root = root();
-        let batch = Serie::from_scalars(root.clone(), rows())
-            .unwrap()
-            .into_arrow_batch()
-            .unwrap();
+        let batch = batch();
         let bare = |batch: &RecordBatch, skip: bool| -> Parquet<Buffer> {
             let mut encoded = Vec::new();
             let mut writer = ArrowWriter::try_new_with_options(
@@ -3131,9 +3140,7 @@ mod uuid_columns {
             .unwrap();
             writer.write(batch).unwrap();
             writer.close().unwrap();
-            let mut handle = handle("legacy.parquet");
-            handle.write_all_bytes(&encoded).unwrap();
-            Parquet::new(handle)
+            written("legacy.parquet", &encoded)
         };
 
         let legacy = bare(&batch, false);
@@ -3202,9 +3209,7 @@ mod uuid_columns {
         .unwrap();
         writer.write(&batch).unwrap();
         writer.close().unwrap();
-        let mut handle = handle("foreign.parquet");
-        handle.write_all_bytes(&encoded).unwrap();
-        let media = Parquet::new(handle);
+        let media = written("foreign.parquet", &encoded);
 
         let (fields, read) = read_rows(&media, None);
         assert_eq!(

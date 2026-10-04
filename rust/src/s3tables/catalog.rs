@@ -1,31 +1,27 @@
 //! One table bucket as a warehouse catalog: its namespaces one level below
-//! it, its Iceberg tables below them, and every commit to one published
-//! through the control plane's metadata location.
+//! it, its Iceberg tables below them, every commit published through the
+//! control plane's metadata location.
 //!
 //! [`S3TablesCatalog`] and [`S3TablesNamespace`] answer the warehouse traits
-//! ([`CatalogValue`], [`NamespaceValue`], [`ObjectValue`]) the way
-//! [`IcebergCatalog`](crate::iceberg::IcebergCatalog) does for a folder. A
-//! table either answers is an [`IcebergTable`] over a [`Handle`] on the
-//! table's warehouse location - an `s3://...--table-s3` location reached
-//! through the [`s3`](crate::s3) backend under the catalog's session and
-//! properties - whose current document a [`MetadataPointer`] over
-//! `GetTableMetadataLocation` and `UpdateTableMetadataLocation` names. A
-//! warehouse location takes `PutObject` and `GetObject`; nothing here lists
-//! it or deletes from it: a table's own `ls` is refused, and its `remove`
-//! is the catalog's [`S3Tables::remove_table`], which drops it.
+//! as [`IcebergCatalog`](crate::iceberg::IcebergCatalog) does for a folder.
+//! Each table is an [`IcebergTable`] over a [`Handle`] on its
+//! `s3://...--table-s3` warehouse location, opened through the
+//! [`s3`](crate::s3) backend under the catalog's session and properties, its
+//! current document named by a [`MetadataPointer`] over
+//! `GetTableMetadataLocation` and `UpdateTableMetadataLocation`. The
+//! warehouse is asked `PutObject` and `GetObject` only: a table's `ls` is
+//! refused, and its `remove` is [`S3Tables::remove_table`].
 //!
 //! # A location
 //!
-//! `s3tables://<bucket>[/<namespace>[/<table>]]` names the bucket's catalog,
-//! one of its namespaces, or one of its tables - a trailing slash names
-//! nothing, and more than two segments below the bucket are refused at
-//! `$.url`. A table bucket's ARN names the catalog, and a table's ARN,
+//! `s3tables://<bucket>[/<namespace>[/<table>]]` names the catalog, a
+//! namespace or a table - a trailing slash names nothing, a deeper location
+//! is refused at `$.url`. A table bucket's ARN names the catalog, and a
+//! table's ARN,
 //! `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>`,
-//! the table that identifier is. That ARN is read as itself: the location
-//! it lowers to ([`Arn::locator`]) spells the identifier where a namespace
-//! goes. One reading answers every door that takes a location -
-//! [`Holder::from_url`](crate::holder::Holder::from_url), an identifier used
-//! as a handle, [`IcebergTable::from_url`] and its two creating forms.
+//! the table that identifier is - read as the ARN, never as the location it
+//! lowers to ([`Arn::locator`]), which spells the identifier where a
+//! namespace goes. Every door that takes a location reads it this one way.
 //!
 //! # The request count
 //!
@@ -54,8 +50,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::S3Tables;
+use super::bucket::not_a_table_bucket;
 use super::namespace::check_namespace;
-use super::table::{bucket_of, check_table};
+use super::table::{addressed, bucket_of, check_table};
 use crate::aws::Session;
 use crate::iceberg::{FormatVersion, IcebergTable, MetadataPointer, PartitionSpec, PointerState};
 use crate::warehouse::{Handle, Site, extended, path_text};
@@ -200,23 +197,17 @@ impl Place {
 }
 
 /// What a location names in an Amazon S3 Tables table bucket, under
-/// `properties`: the one reading every door that takes a location answers
-/// through.
+/// `properties` (read as [`S3TablesCatalog::from_location`] reads them): the
+/// one reading every door that takes a location answers through.
 ///
-/// `s3tables://<bucket>` and a table bucket's ARN are the bucket's
-/// [`S3TablesCatalog`], and `s3tables://<bucket>/<namespace>` one of its
-/// namespaces - a description each, and no request: a namespace the bucket
-/// does not hold says so on its first verb.
-/// `s3tables://<bucket>/<namespace>/<table>` is the table, at one
-/// `GetTableMetadataLocation`; a table's ARN is the table that identifier
-/// is, at one `GetTable`, whose answer names its namespace, its name and its
-/// warehouse location. Neither answer primes the table's pointer: an object
-/// may be read long after it is built, so its first read asks where its
-/// document is again.
-///
-/// The properties are read as [`S3TablesCatalog::from_location`] reads them,
-/// and the catalog is called what the `name` property says, else what the
-/// bucket is.
+/// The bucket's location or ARN is its [`S3TablesCatalog`] - called what the
+/// `name` property says, else what the bucket is - and
+/// `s3tables://<bucket>/<namespace>` a namespace: descriptions, at no
+/// request, so a namespace the bucket does not hold says so on its first
+/// verb. `s3tables://<bucket>/<namespace>/<table>` is the table, at one
+/// `GetTableMetadataLocation`, and a table's ARN the table it identifies, at
+/// one `GetTable`. Neither answer primes the table's pointer: its first read
+/// asks where its document is again.
 ///
 /// # Errors
 ///
@@ -260,14 +251,12 @@ pub(crate) fn not_a_table(location: &Uri, kind: IOKind) -> Error {
 /// `properties`: what [`IcebergTable::create_from_url`] answers for a table
 /// bucket's location.
 ///
-/// The table is laid out as a create that states neither a version nor a
-/// spec lays one out (`iceberg::create_layout`) and created as
-/// [`NamespaceValue::create_table`] creates one, with one repair that is
-/// this door's alone: a `CreateTable` the service answers
-/// `NotFoundException` - the namespace is not there - is followed by one
-/// `CreateNamespace`, whose conflict is another creator's success, and sent
-/// once more. The table states nothing of its own: the properties are its
-/// catalog's, less the ones the session read.
+/// Laid out by `iceberg::create_layout` and created as
+/// [`NamespaceValue::create_table`] creates one, with this door's one
+/// repair: a `CreateTable` answered `NotFoundException` - no namespace - is
+/// followed by one `CreateNamespace`, whose conflict is another creator's
+/// success, and sent once more. The table states no properties of its own:
+/// they are its catalog's, less the ones the session read.
 ///
 /// # Errors
 ///
@@ -310,30 +299,24 @@ pub(crate) fn create(
 /// [`IcebergTable::open_or_create_from_url`] answers for a table bucket's
 /// location.
 ///
-/// The location is read once and the bucket's catalog built once, so the
-/// open and the create that follows its miss sign as one session and share
-/// one resolution of the bucket's ARN: a location that states neither the
-/// ARN nor the account costs its one `ListTableBuckets` whichever of the two
+/// One reading of the location and one catalog serve the open and the
+/// create after its miss, so the bucket's ARN is resolved once - a location
+/// stating neither it nor the account costs one `ListTableBuckets` whichever
 /// ran. `s3tables://<bucket>/<namespace>/<table>` is opened at one
 /// `GetTableMetadataLocation` and, absent, created as [`create`] creates
-/// it - `version`, `schema` and `spec` describing only that table. A table's
-/// ARN is opened at one `GetTable` and never created: an identifier the
-/// bucket has no table of names nothing a create could make, so its absence
-/// is the answer. So is the absence of the bucket where only a listing
-/// finds its ARN, since the listing runs before the open; a bucket a
-/// stated ARN or account names resolves at no request, and one that is not
-/// there is then the open's miss and the create's refusal.
+/// it - `version`, `schema` and `spec` describing only that table. A
+/// table's ARN is opened at one `GetTable` and never created: an identifier
+/// names nothing a create could make.
 ///
 /// # Errors
 ///
 /// Returns [`Error::InvalidRecord`] at `$.url` for a location that names a
-/// bucket or a namespace rather than a table; [`Error::Absent`] for a
-/// table's ARN the bucket keeps no table of, and for a bucket the one
-/// `ListTableBuckets` finds none of where neither its ARN nor the account
-/// is stated - under a stated ARN or account, a bucket that is not there is
-/// the service's `NotFoundException` to the create, after the open's miss
-/// and the creation's two refused requests; the failures of [`create`]
-/// where it ran; and the service's own refusal.
+/// bucket or a namespace; [`Error::Absent`] for a table's ARN the bucket
+/// keeps no table of, and for a bucket the one `ListTableBuckets` finds none
+/// of where neither its ARN nor the account is stated - under a stated one,
+/// a missing bucket is the service's `NotFoundException` to the create,
+/// after the open's miss and the creation's two refused requests; the
+/// failures of [`create`] where it ran; and the service's own refusal.
 pub(crate) fn open_or_create(
     location: &Uri,
     properties: &Properties,
@@ -346,11 +329,8 @@ pub(crate) fn open_or_create(
     match &place.below {
         Below::Table(namespace, name) => {
             let namespace = catalog.namespace(namespace);
-            // Where only a listing finds the bucket's ARN, it runs before
-            // the open, so a bucket that is not there is the answer rather
-            // than a miss a create follows; a stated ARN or account resolves
-            // at no request, and a missing bucket is then the create's
-            // refusal.
+            // Resolved before the open: a bucket the listing finds none of
+            // is the answer, not a miss a create follows.
             namespace.bucket.arn()?;
             match namespace.opened(name) {
                 Err(error) if error.is_absent() => {
@@ -506,25 +486,21 @@ impl S3TablesCatalog {
     /// answers for one, `located` the table bucket's ARN when the location
     /// was given as it.
     ///
-    /// Who signs is [`Session::from_properties`] over them - with
-    /// PyIceberg's `s3tables.`-prefixed names read after the bare ones, so
-    /// `s3tables.profile-name` is a profile - and `s3tables.region` and
-    /// `s3tables.endpoint` are the client's region and endpoint. The
-    /// bucket's ARN is the one the location was given as, else the
-    /// `s3tables.warehouse` or `warehouse` property where one names the
-    /// bucket - the two refused where they disagree - else built from the
-    /// `account_id` property and the client's region, else found by name
-    /// among the caller's own table buckets on first use, since a bare
-    /// location states no account and no region.
+    /// Who signs is [`Session::from_properties`] over them, PyIceberg's
+    /// `s3tables.`-prefixed names read after the bare ones;
+    /// `s3tables.region` and `s3tables.endpoint` are the client's region and
+    /// endpoint. The bucket's ARN is the location's, else the
+    /// `s3tables.warehouse` or `warehouse` property naming the bucket -
+    /// refused where they disagree - else built from `account_id` and the
+    /// client's region, else found by name among the caller's table buckets
+    /// on first use.
     ///
     /// The catalog keeps, and hands every namespace and table under it, the
-    /// properties less the ones the session read and less the ones the
-    /// store's own reader takes (`S3Options::is_property`): who signs is the
-    /// session from here on, and where the store is, how it is addressed
-    /// and a key pair stated for it ride the site every table's storage
-    /// opens on, so no credential travels on in a bag a `Debug` or a
-    /// `properties` listing prints. The store signs as this session unless a
-    /// pair is stated for it.
+    /// properties less those the session read and those the store's reader
+    /// takes (`S3Options::is_property`), which ride every table's storage
+    /// site instead - so no credential is in a bag a
+    /// `Debug` or a `properties` listing prints. The store signs as this
+    /// session unless a pair is stated for it.
     pub(crate) fn from_location(
         name: SmolStr,
         url: &Url,
@@ -1041,20 +1017,17 @@ impl NamespaceValue for S3TablesNamespace {
     }
 
     /// Create the Iceberg table `name` from `field`: the schema as Iceberg
-    /// states it - a layout the format does not state rewritten to the one
-    /// it does, the columns numbered above the highest identifier present -
+    /// states it, numbered above the highest identifier present,
     /// partitioned as it declares ([`PartitionSpec::from_schema`]), at the
-    /// format version `properties` state under `format-version`, else the
-    /// lowest that states the schema: 3 for a nanosecond timestamp, a
+    /// `format-version` property, else 3 for a nanosecond timestamp, a
     /// variant or an unknown column, else 2.
     ///
-    /// `CreateTable` registers the table with no document, and its first
-    /// document - `metadata/00000-{uuid}.metadata.json` under the warehouse
-    /// location `GetTableMetadataLocation` answers - is written and named
-    /// current under that answer's token, so the schema, the spec and the
-    /// sort order the table keeps are the crate's own. A creation whose
-    /// first document is not published removes the table again under that
-    /// token, which a publication that took has moved past.
+    /// `CreateTable` registers the table with no document; the first one -
+    /// `metadata/00000-{uuid}.metadata.json` under the warehouse
+    /// `GetTableMetadataLocation` answers - is the crate's own, written and
+    /// named current under that answer's token. One not published removes
+    /// the table again under that token, which a publication that took has
+    /// moved past.
     fn create_table(&self, name: &str, field: &Field, properties: &Properties) -> Result<Table> {
         let (schema, spec, version) = crate::iceberg::create_layout(field, properties, None, None)?;
         self.register(name)?;
@@ -1144,7 +1117,7 @@ impl MetadataPointer for TablePointer {
             Err(Error::Remote { code, .. }) if code == "ConflictException" => Err(Error::conflict(
                 "table version",
                 "a newer table version",
-                format!("{}/{}/{}", self.bucket, self.namespace, self.name),
+                addressed(&self.bucket, &self.namespace, &self.name),
             )),
             Err(error) => Err(error),
         }
@@ -1161,13 +1134,7 @@ impl MetadataPointer for TablePointer {
 /// `s3tables://<name>` of a table bucket's ARN, refusing any other ARN.
 fn bucket_location(bucket: &Arn) -> Result<Url> {
     if bucket.table_bucket().is_none() {
-        return Err(Error::Parse {
-            target: "s3tables bucket",
-            position: 0,
-            reason: format_smolstr!(
-                "expected a table bucket's ARN, arn:<partition>:s3tables:<region>:<account>:bucket/<name>, got {bucket}"
-            ),
-        });
+        return Err(not_a_table_bucket(bucket));
     }
     bucket.locator()
 }

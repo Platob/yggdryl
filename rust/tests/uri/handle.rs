@@ -152,11 +152,9 @@ fn every_identifier_becomes_a_holder_of_what_it_names() -> Result<()> {
     Ok(())
 }
 
-/// A table bucket's ARN used as a handle is the bucket's catalog: resolving
-/// it builds a description and asks no verb of the service. Nothing counts
-/// requests here; what a table's location or ARN costs as a handle is
-/// counted against the fake control plane in `rust/tests/s3tables_handle.rs`,
-/// and a catalog's and a namespace's in `rust/tests/s3tables/catalog.rs`.
+/// A table bucket's ARN used as a handle is the bucket's catalog, resolved
+/// with no request; the request counts are pinned in
+/// `rust/tests/s3tables_handle.rs` and `rust/tests/s3tables/catalog.rs`.
 #[cfg(feature = "s3tables")]
 #[test]
 fn a_table_bucket_arn_is_the_catalog_it_names() -> Result<()> {

@@ -524,47 +524,24 @@ region = eu-west-3
             Some("http://localhost:4566"),
             "every service's"
         );
-        assert_eq!(
-            local
-                .service_endpoint_url("s3")
-                .expect("a section the profile defines"),
-            Some("http://localhost:9000")
-        );
-        assert_eq!(
-            local
-                .service_endpoint_url("S3")
-                .expect("a section the profile defines"),
-            Some("http://localhost:9000"),
-            "a service id folds"
-        );
-        assert_eq!(
-            local
-                .service_endpoint_url("Secrets Manager")
-                .expect("a section the profile defines"),
-            Some("http://localhost:9001"),
-            "a space is spelled as an underscore"
-        );
-        assert_eq!(
-            local
-                .service_endpoint_url("sso-oidc")
-                .expect("a section the profile defines"),
-            Some("http://localhost:9002"),
-            "a hyphen is spelled as an underscore"
-        );
-        assert_eq!(
-            local
-                .service_endpoint_url("dynamodb")
-                .expect("a section the profile defines"),
-            None,
-            "a service entry without endpoint_url states none"
-        );
-        assert_eq!(
-            local
-                .service_endpoint_url("sts")
-                .expect("a section the profile defines"),
-            None,
-            "a service with no entry"
-        );
+        for (service, expected) in [
+            ("s3", Some("http://localhost:9000")),
+            // A service id folds, a space or a hyphen spelled as an underscore.
+            ("S3", Some("http://localhost:9000")),
+            ("Secrets Manager", Some("http://localhost:9001")),
+            ("sso-oidc", Some("http://localhost:9002")),
+            // An entry without endpoint_url, and a service with no entry.
+            ("dynamodb", None),
+            ("sts", None),
+        ] {
+            assert_eq!(
+                local
+                    .service_endpoint_url(service)
+                    .expect("a section the profile defines"),
+                expected,
+                "{service}"
+            );
+        }
         assert_eq!(
             configured(CONFIG, "plain")
                 .service_endpoint_url("s3")
@@ -667,10 +644,6 @@ aws_access_key_id = AKIABOTH
 aws_secret_access_key = both-secret
 aws_security_token = security-token
 aws_session_token = session-token
-
-[half]
-aws_access_key_id = AKIAHALF
-region = eu-west-3
 ";
         let modern = read_profile("", CREDENTIALS, "modern").and_then(|modern| pair(&modern));
         assert_eq!(
@@ -699,25 +672,15 @@ region = eu-west-3
             Some("session-token"),
             "aws_session_token wins over its older name"
         );
-
-        let half = read_profile("", CREDENTIALS, "half").expect("a profile with half a pair");
-        let message = refusal(half.credentials());
-        assert!(
-            message.contains("half")
-                && message.contains("credentials file")
-                && message.contains("aws_access_key_id without aws_secret_access_key"),
-            "a key id without its secret is a refusal naming the profile, the file and the missing key: {message}"
-        );
-        assert!(
-            !message.contains("AKIAHALF"),
-            "no value is quoted: {message}"
-        );
-        assert_eq!(half.region(), Some("eu-west-3"));
     }
 
     #[test]
     fn half_a_set_is_a_refusal_naming_what_is_missing_and_nothing_is_no_set() {
         const CREDENTIALS: &str = "\
+[key_only]
+aws_access_key_id = AKIAHALF
+region = eu-west-3
+
 [secret_only]
 aws_secret_access_key = lonely-secret
 
@@ -728,23 +691,37 @@ aws_session_token = lonely-token
 region = eu-west-3
 ";
         let read = |name| read_profile("", CREDENTIALS, name).expect("the profile");
-        let message = refusal(read("secret_only").credentials());
-        assert!(
-            message.contains("aws_secret_access_key without aws_access_key_id"),
-            "{message}"
-        );
-        assert!(
-            !message.contains("lonely-secret"),
-            "the secret never renders: {message}"
-        );
-        let message = refusal(read("token_only").credentials());
-        assert!(
-            message.contains("aws_session_token without aws_access_key_id"),
-            "{message}"
-        );
-        assert!(
-            !message.contains("lonely-token"),
-            "the token never renders: {message}"
+        for (name, missing, value) in [
+            (
+                "key_only",
+                "aws_access_key_id without aws_secret_access_key",
+                "AKIAHALF",
+            ),
+            (
+                "secret_only",
+                "aws_secret_access_key without aws_access_key_id",
+                "lonely-secret",
+            ),
+            (
+                "token_only",
+                "aws_session_token without aws_access_key_id",
+                "lonely-token",
+            ),
+        ] {
+            let message = refusal(read(name).credentials());
+            let profile = format!("the profile {name}");
+            for part in [profile.as_str(), "credentials file", missing] {
+                assert!(message.contains(part), "{name}: {part} in {message}");
+            }
+            assert!(
+                !message.contains(value),
+                "{name}: no value renders: {message}"
+            );
+        }
+        assert_eq!(
+            read("key_only").region(),
+            Some("eu-west-3"),
+            "the rest of a half-set profile reads"
         );
         assert_eq!(
             pair(&read("region_only")),

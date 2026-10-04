@@ -1,13 +1,12 @@
 //! `rust/src/aws/sigv4.rs`: the request signing no caller can name.
 //!
-//! The signature is what every AWS request stands or falls on, and the only
-//! way to know it is right is to reproduce what the reference implementations
-//! produce - the canonical request, the string to sign, and the headers that
-//! come out: AWS's own published example vectors for the four S3 requests
-//! their reference page documents, and vectors botocore computed for a
-//! service outside the S3 family, whose canonical URI is made by the other
-//! rule. Everything a caller can observe of a signed request is pinned in
-//! `rust/tests/s3/client.rs` and `rust/tests/aws/request.rs`.
+//! The signature is what every AWS request stands or falls on, so it is
+//! pinned to what the reference implementations produce - the canonical
+//! request, the string to sign and the headers that come out: AWS's published
+//! vectors for four S3 requests, and botocore's for a service outside the S3
+//! family, whose canonical URI follows the other rule. What a caller observes
+//! of a signed request is pinned in `rust/tests/s3/client.rs` and
+//! `rust/tests/aws/request.rs`.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -460,218 +459,193 @@ fn catalog_signer(token: Option<&str>) -> Signer {
     )
 }
 
-/// The hash of the canonical request a signer signs, and the `authorization` it emits.
-fn signed(
-    signer: &Signer,
-    method: &str,
-    host: &str,
-    path: &str,
-    query: &[(&str, &str)],
-    headers: &[(&str, &str)],
-    payload_hash: &str,
-) -> (String, String) {
-    let (query, headers) = (pairs(query), pairs(headers));
-    let canonical = signer.canonical_headers(host, "20150830T123600Z", payload_hash, &headers);
-    let request = canonical_request(
-        method,
-        &signer.canonical_uri(path),
-        &query,
-        &canonical,
-        payload_hash,
-    );
-    let emitted = signer.sign(
-        method,
-        host,
-        path,
-        &query,
-        &headers,
-        payload_hash,
-        at(AUG_30_2015_123600),
-    );
-    let authorization = emitted
-        .into_iter()
-        .find(|(name, _)| name == "authorization")
-        .expect("an authorization header")
-        .1;
-    (sha256_hex(request.as_bytes()), authorization)
+/// One request botocore signed: what it is, and the hash of its canonical
+/// request and the `authorization` botocore computed for it.
+struct Vector<'a> {
+    case: &'a str,
+    signer: Signer,
+    method: &'a str,
+    host: &'a str,
+    path: &'a str,
+    query: &'a [(&'a str, &'a str)],
+    headers: &'a [(&'a str, &'a str)],
+    payload_hash: &'a str,
+    request_hash: &'a str,
+    /// The scope's service, the signed header names and the signature.
+    authorization: (&'a str, &'a str, &'a str),
 }
 
-fn botocore_authorization(service: &str, signed_headers: &str, signature: &str) -> String {
-    format!(
-        "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/{service}/aws4_request, \
-         SignedHeaders={signed_headers}, Signature={signature}"
-    )
+impl Vector<'_> {
+    /// The hash of the canonical request the signer signs, and the
+    /// `authorization` it emits.
+    fn signed(&self) -> (String, String) {
+        let (query, headers) = (pairs(self.query), pairs(self.headers));
+        let canonical = self.signer.canonical_headers(
+            self.host,
+            "20150830T123600Z",
+            self.payload_hash,
+            &headers,
+        );
+        let request = canonical_request(
+            self.method,
+            &self.signer.canonical_uri(self.path),
+            &query,
+            &canonical,
+            self.payload_hash,
+        );
+        let emitted = self.signer.sign(
+            self.method,
+            self.host,
+            self.path,
+            &query,
+            &headers,
+            self.payload_hash,
+            at(AUG_30_2015_123600),
+        );
+        let authorization = emitted
+            .into_iter()
+            .find(|(name, _)| name == "authorization")
+            .expect("an authorization header")
+            .1;
+        (sha256_hex(request.as_bytes()), authorization)
+    }
 }
 
 #[test]
-fn a_catalog_get_signs_its_path_encoded_once_more_as_botocore_does() {
-    let signer = catalog_signer(None);
-    let path = format!("{CATALOG_PREFIX}/namespaces/a%1Fb/tables");
+fn every_request_signs_as_botocore_signs_it() {
+    let tables = format!("{CATALOG_PREFIX}/namespaces/a%1Fb/tables");
     assert_eq!(
-        signer.canonical_uri(&path),
+        catalog_signer(None).canonical_uri(&tables),
         format!("{CANONICAL_PREFIX}/namespaces/a%251Fb/tables"),
         "an escape on the wire is escaped in the canonical request"
     );
-    let (request_hash, authorization) = signed(
-        &signer,
-        "GET",
-        CATALOG_HOST,
-        &path,
-        &[],
-        &[],
-        EMPTY_PAYLOAD_SHA256,
-    );
+    let namespaces = format!("{CATALOG_PREFIX}/namespaces");
+    let body_hash = sha256_hex(br#"{"namespace":["a","b"],"properties":{}}"#);
     assert_eq!(
-        request_hash,
-        "3358ffabb356e35767b50512f5d7585cb068cb3978434656cb3776f7e69fbc4f"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3tables",
-            "host;x-amz-content-sha256;x-amz-date",
-            "5700d6288c5d028115121dd9d24ac41de0d4e1b0823aa016b246413886647297",
-        )
-    );
-}
-
-#[test]
-fn a_catalog_get_signs_its_query_sorted_and_encoded_as_botocore_sends_it() {
-    // On the wire: `?pageToken=abc%2Fdef&pageSize=100`.
-    let (request_hash, authorization) = signed(
-        &catalog_signer(None),
-        "GET",
-        CATALOG_HOST,
-        &format!("{CATALOG_PREFIX}/namespaces/a%1Fb/tables"),
-        &[("pageToken", "abc/def"), ("pageSize", "100")],
-        &[],
-        EMPTY_PAYLOAD_SHA256,
-    );
-    assert_eq!(
-        request_hash,
-        "39d24edce1adfbfbc100c4968e60b9f2b3e390c7eb1ed36671e9113c6761e9d0"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3tables",
-            "host;x-amz-content-sha256;x-amz-date",
-            "75257237e7c4a403ed13c15fd282851dbaebf83a5bc3dd65120ba0a09b1e6f77",
-        )
-    );
-}
-
-#[test]
-fn a_catalog_post_signs_its_body_and_its_content_type_as_botocore_does() {
-    let body = br#"{"namespace":["a","b"],"properties":{}}"#;
-    let payload_hash = sha256_hex(body);
-    assert_eq!(
-        payload_hash,
+        body_hash,
         "9f5081f189782fbeec0701d3739a93a5412196c1c7397173834755d1f6cec17b"
     );
-    let (request_hash, authorization) = signed(
-        &catalog_signer(None),
-        "POST",
-        CATALOG_HOST,
-        &format!("{CATALOG_PREFIX}/namespaces"),
-        &[],
-        &[("Content-Type", "application/json")],
-        &payload_hash,
-    );
+    let s3 = Signer::new(BOTOCORE_ACCESS_KEY, BOTOCORE_SECRET_KEY, None, "us-east-1");
     assert_eq!(
-        request_hash,
-        "59682b817fa6424ae2e249b36ae5aed922d01dba98a50eb63190f697793053df"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3tables",
-            "content-type;host;x-amz-content-sha256;x-amz-date",
-            "3c7b5e27e613a07ffec7024db5b53f12f67b1888fd3b328cccd140383e527a97",
-        )
-    );
-}
-
-#[test]
-fn a_catalog_get_under_a_temporary_set_signs_its_token_as_botocore_does() {
-    let (request_hash, authorization) = signed(
-        &catalog_signer(Some(BOTOCORE_TOKEN)),
-        "GET",
-        CATALOG_HOST,
-        &format!("{CATALOG_PREFIX}/namespaces/a%1Fb/tables"),
-        &[],
-        &[],
-        EMPTY_PAYLOAD_SHA256,
-    );
-    assert_eq!(
-        request_hash,
-        "5503cd61a2497ec1035a3ae650cd2ced2e3907560c11c8f9775839ae9a1d1282"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3tables",
-            "host;x-amz-content-sha256;x-amz-date;x-amz-security-token",
-            "1825547c00e07fbcd20b6ef3ce314cffd0c734e624bb81c2363a95c6e5d4825e",
-        )
-    );
-}
-
-#[test]
-fn a_host_that_names_its_port_is_signed_with_it_as_botocore_does() {
-    // `http://127.0.0.1:4566/iceberg/v1/config?warehouse=<the bucket ARN, encoded>`.
-    let (request_hash, authorization) = signed(
-        &catalog_signer(None),
-        "GET",
-        "127.0.0.1:4566",
-        "/iceberg/v1/config",
-        &[(
-            "warehouse",
-            "arn:aws:s3tables:us-east-1:123456789012:bucket/lake",
-        )],
-        &[],
-        EMPTY_PAYLOAD_SHA256,
-    );
-    assert_eq!(
-        request_hash,
-        "6b547decf99f873889b8d0e5a88f9dac1b30ae4bb4e24f78ef28083ba4a1e604"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3tables",
-            "host;x-amz-content-sha256;x-amz-date",
-            "ca3619a9a590402b1bea52af33c2404a3cde4ccea2a598a2615907f5d571826c",
-        )
-    );
-}
-
-#[test]
-fn an_s3_request_still_signs_its_path_as_sent_as_botocore_does() {
-    // `S3SigV4Auth`, `GET https://examplebucket.s3.amazonaws.com/a%20b/c%2Fd.txt`.
-    let signer = Signer::new(BOTOCORE_ACCESS_KEY, BOTOCORE_SECRET_KEY, None, "us-east-1");
-    assert_eq!(signer.canonical_uri("/a%20b/c%2Fd.txt"), "/a%20b/c%2Fd.txt");
-    let (request_hash, authorization) = signed(
-        &signer,
-        "GET",
-        HOST,
+        s3.canonical_uri("/a%20b/c%2Fd.txt"),
         "/a%20b/c%2Fd.txt",
-        &[],
-        &[],
-        EMPTY_PAYLOAD_SHA256,
+        "S3 signs its path as sent"
     );
-    assert_eq!(
-        request_hash,
-        "0dd4646f198bd194881630eba5cb7d8333475d6053a0bee03bea4705721b6230"
-    );
-    assert_eq!(
-        authorization,
-        botocore_authorization(
-            "s3",
-            "host;x-amz-content-sha256;x-amz-date",
-            "193597080c2ec36d58ae5821fead6e1847327c2bccba64db0264b6d3c39d22ad",
-        )
-    );
+    let unsigned = "host;x-amz-content-sha256;x-amz-date";
+    for vector in [
+        Vector {
+            case: "a catalog GET, its path encoded once more",
+            signer: catalog_signer(None),
+            method: "GET",
+            host: CATALOG_HOST,
+            path: &tables,
+            query: &[],
+            headers: &[],
+            payload_hash: EMPTY_PAYLOAD_SHA256,
+            request_hash: "3358ffabb356e35767b50512f5d7585cb068cb3978434656cb3776f7e69fbc4f",
+            authorization: (
+                "s3tables",
+                unsigned,
+                "5700d6288c5d028115121dd9d24ac41de0d4e1b0823aa016b246413886647297",
+            ),
+        },
+        Vector {
+            case: "a catalog GET, its query sorted: `?pageToken=abc%2Fdef&pageSize=100`",
+            signer: catalog_signer(None),
+            method: "GET",
+            host: CATALOG_HOST,
+            path: &tables,
+            query: &[("pageToken", "abc/def"), ("pageSize", "100")],
+            headers: &[],
+            payload_hash: EMPTY_PAYLOAD_SHA256,
+            request_hash: "39d24edce1adfbfbc100c4968e60b9f2b3e390c7eb1ed36671e9113c6761e9d0",
+            authorization: (
+                "s3tables",
+                unsigned,
+                "75257237e7c4a403ed13c15fd282851dbaebf83a5bc3dd65120ba0a09b1e6f77",
+            ),
+        },
+        Vector {
+            case: "a catalog POST, its body and its content type",
+            signer: catalog_signer(None),
+            method: "POST",
+            host: CATALOG_HOST,
+            path: &namespaces,
+            query: &[],
+            headers: &[("Content-Type", "application/json")],
+            payload_hash: &body_hash,
+            request_hash: "59682b817fa6424ae2e249b36ae5aed922d01dba98a50eb63190f697793053df",
+            authorization: (
+                "s3tables",
+                "content-type;host;x-amz-content-sha256;x-amz-date",
+                "3c7b5e27e613a07ffec7024db5b53f12f67b1888fd3b328cccd140383e527a97",
+            ),
+        },
+        Vector {
+            case: "a catalog GET under a temporary set, its token",
+            signer: catalog_signer(Some(BOTOCORE_TOKEN)),
+            method: "GET",
+            host: CATALOG_HOST,
+            path: &tables,
+            query: &[],
+            headers: &[],
+            payload_hash: EMPTY_PAYLOAD_SHA256,
+            request_hash: "5503cd61a2497ec1035a3ae650cd2ced2e3907560c11c8f9775839ae9a1d1282",
+            authorization: (
+                "s3tables",
+                "host;x-amz-content-sha256;x-amz-date;x-amz-security-token",
+                "1825547c00e07fbcd20b6ef3ce314cffd0c734e624bb81c2363a95c6e5d4825e",
+            ),
+        },
+        Vector {
+            case: "a host naming its port: `http://127.0.0.1:4566/iceberg/v1/config?warehouse=...`",
+            signer: catalog_signer(None),
+            method: "GET",
+            host: "127.0.0.1:4566",
+            path: "/iceberg/v1/config",
+            query: &[(
+                "warehouse",
+                "arn:aws:s3tables:us-east-1:123456789012:bucket/lake",
+            )],
+            headers: &[],
+            payload_hash: EMPTY_PAYLOAD_SHA256,
+            request_hash: "6b547decf99f873889b8d0e5a88f9dac1b30ae4bb4e24f78ef28083ba4a1e604",
+            authorization: (
+                "s3tables",
+                unsigned,
+                "ca3619a9a590402b1bea52af33c2404a3cde4ccea2a598a2615907f5d571826c",
+            ),
+        },
+        Vector {
+            case: "`S3SigV4Auth`, its path as sent: `GET https://examplebucket.s3.amazonaws.com/a%20b/c%2Fd.txt`",
+            signer: s3,
+            method: "GET",
+            host: HOST,
+            path: "/a%20b/c%2Fd.txt",
+            query: &[],
+            headers: &[],
+            payload_hash: EMPTY_PAYLOAD_SHA256,
+            request_hash: "0dd4646f198bd194881630eba5cb7d8333475d6053a0bee03bea4705721b6230",
+            authorization: (
+                "s3",
+                unsigned,
+                "193597080c2ec36d58ae5821fead6e1847327c2bccba64db0264b6d3c39d22ad",
+            ),
+        },
+    ] {
+        let (request_hash, authorization) = vector.signed();
+        assert_eq!(request_hash, vector.request_hash, "{}", vector.case);
+        let (service, signed_headers, signature) = vector.authorization;
+        assert_eq!(
+            authorization,
+            format!(
+                "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/{service}/aws4_request, \
+                 SignedHeaders={signed_headers}, Signature={signature}"
+            ),
+            "{}",
+            vector.case
+        );
+    }
 }
 
 #[test]

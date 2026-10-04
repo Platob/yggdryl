@@ -557,9 +557,10 @@ fn star_projection_benchmarks(criterion: &mut Criterion) {
 
 /// The epoch periods over a timestamp column - the grammar's `years(ts)`
 /// through `minutes(ts, n)`, which an Iceberg partition transform computes
-/// too - against a kernel baseline that floors the counts to the quarter
-/// hour directly: the calendar periods read a civil date per row, the fixed
-/// ones divide, and the gap to the kernel is the price of the grammar.
+/// too, and `time_bucket`, the same floor kept an instant - against a kernel
+/// baseline that floors the counts to the quarter hour directly: the
+/// calendar periods read a civil date per row, the fixed ones divide, and
+/// the gap to the kernel is the price of the grammar.
 fn epoch_function_benchmarks(criterion: &mut Criterion) {
     use arrow_array::TimestampMicrosecondArray;
     use arrow_array::types::Int64Type;

@@ -419,31 +419,20 @@ test('a table bucket location names at most a namespace and a table', (t) => {
     's3tables.region': 'us-east-1',
     's3tables.endpoint': 'http://127.0.0.1:1',
   }
-  const deep = 's3tables://bucket/a/b/c'
-  for (const refused of [
-    () => iceberg.IcebergTable.open(deep, sealed),
-    () => iceberg.IcebergTable.create(deep, schema(), undefined, undefined, sealed),
-    () => iceberg.IcebergTable.openOrCreate(deep, schema(), undefined, undefined, sealed),
-    // A handle takes no properties: this one is refused before an identity
-    // is so much as built.
-    () => new IOBase(deep),
-  ]) {
-    assert.throws(refused, /\$\.url/)
-  }
-
-  // A bucket or a namespace is no table, whichever door is asked, and a
-  // create names one by its namespace and its name.
-  for (const location of ['s3tables://bucket', 's3tables://bucket/desk']) {
-    assert.throws(() => iceberg.IcebergTable.open(location, sealed), /\$\.url/)
-    assert.throws(
+  // Past a table, or a bucket or a namespace - which is no table - whichever
+  // door is asked.
+  for (const location of ['s3tables://bucket/a/b/c', 's3tables://bucket', 's3tables://bucket/desk']) {
+    for (const refused of [
+      () => iceberg.IcebergTable.open(location, sealed),
       () => iceberg.IcebergTable.create(location, schema(), undefined, undefined, sealed),
-      /\$\.url/,
-    )
-    assert.throws(
       () => iceberg.IcebergTable.openOrCreate(location, schema(), undefined, undefined, sealed),
-      /\$\.url/,
-    )
+    ]) {
+      assert.throws(refused, /\$\.url/, location)
+    }
   }
+  // A handle takes no properties: this one is refused before an identity is
+  // so much as built.
+  assert.throws(() => new IOBase('s3tables://bucket/a/b/c'), /\$\.url/)
 })
 
 test('a transform that cannot place a row is refused by name', (t) => {

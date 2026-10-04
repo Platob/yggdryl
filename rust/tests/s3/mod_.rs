@@ -146,6 +146,20 @@ pub fn payload(size: usize) -> Vec<u8> {
     (0..size).map(|index| (index % 251) as u8).collect()
 }
 
+/// A region no AWS partition publishes a host for: a client that reads no
+/// configured endpoint asks a name that resolves to nothing, and fails here
+/// rather than sending a fixture-signed request to AWS.
+pub const NOWHERE_REGION: &str = "zz-nowhere-1";
+
+/// A loopback URL nothing listens on, where a decoy source of an endpoint
+/// points: a client that read the wrong source fails on this machine.
+pub fn nowhere() -> String {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    drop(listener);
+    format!("http://{address}")
+}
+
 mod accounting {
     use yggdryl::IOBase;
 

@@ -148,8 +148,8 @@ Install and conventions are in `yggdryl`.
 | `Url("https://h/x").exists()` to probe a remote object | local only; open a handle and read (absence reads as empty) |
 | expecting `urn:isbn:` or `urn:a::b` to locate | `Urn` refuses an empty namespace-specific string; an empty `:` part makes `locator_path` refuse, since two names would spell one path |
 | setting a MIME type with no preferred extension | refused and the value is unchanged; use a registered type or `set_extension` |
-| parsing an `s3tables://` location to open bytes | it is a container, not an object store: `is_object_store()` is false and no byte backend opens it - a handle on one is the catalog, the namespace or the Iceberg table it names (`yggdryl-warehouse`) |
-| lowering a table's ARN with `locator()` before opening it | the location spells the table's identifier where a namespace goes, and is refused at `$.url`: hand the ARN itself to `Holder::from_url`, `IOBase(...)` or `IcebergTable` |
+| parsing an `s3tables://` location to open bytes | it is a container, not an object store: `is_object_store()` is false and no byte backend opens it - a handle on one is the catalog, namespace or Iceberg table it names (`yggdryl-warehouse`) |
+| lowering a table's ARN with `locator()` before opening it | the location spells the table's identifier where a namespace goes and is refused at `$.url`: hand the ARN itself to `Holder::from_url`, `IOBase(...)` or `IcebergTable` |
 
 ## Language references
 

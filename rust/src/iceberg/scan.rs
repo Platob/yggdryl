@@ -197,17 +197,12 @@ pub(super) fn period_column<'schema>(
     Some((source_column(spec, position, schema)?, period))
 }
 
-/// The column a derived partition column floors, with the bucket it floors
-/// to.
-///
-/// A table computes the columns its schema derives for every row written to
-/// it, so a column declaring `time_bucket(width, x)` holds the bucket `x`
-/// falls in: its partition value bounds `x` as the range
-/// `[start, start + width)`, exactly as a time transform's period bounds its
-/// source ([`period_column`]). That is what lets a window on `x` rule out a
-/// manifest by its summary of the bucket, without the predicate naming the
-/// bucket at all. Only a declaration over one top-level column of the
-/// bucket's own datatype answers.
+/// The column a derived `time_bucket(width, x)` partition column floors,
+/// with its bucket: the partition value bounds `x` to
+/// `[start, start + width)`, as a time transform's period bounds its source
+/// ([`period_column`]), so a window on `x` prunes by the bucket's summary.
+/// Only a declaration over one top-level column of the bucket's own
+/// datatype answers.
 pub(super) fn bucket_column<'schema>(
     column: &Field,
     schema: &'schema Field,
@@ -241,13 +236,9 @@ fn bucket_range(
         DataType::DateTime64 { unit, timezone } => Scalar::datetime64(count, *unit, *timezone).ok(),
         _ => None,
     };
-    let count = |value: &Scalar| match value {
-        Scalar::Date32(date) => Some(i64::from(date.count())),
-        other => other.temporal_count(),
-    };
-    let minimum = lower.and_then(count).and_then(at);
+    let minimum = lower.and_then(Scalar::temporal_count).and_then(at);
     let maximum = upper
-        .and_then(count)
+        .and_then(Scalar::temporal_count)
         .and_then(|start| start.checked_add(bucket.step() - 1))
         .and_then(at);
     (minimum, maximum)
@@ -1766,21 +1757,16 @@ pub(super) struct GroupScan {
 }
 
 /// The records an ordered read yields: partition after partition, each
-/// group's rows in the order `sorting` states.
+/// group's rows in the order `sorting` states, relabelled under `root`.
 ///
-/// A group is opened only when the one before it has yielded its last
-/// record, so a satisfied consumer - a row limit - never decodes the next.
-/// A group that needs no sort streams its scan's batches as they land; one
-/// that does lands them into one [`ChunkedSerie`](crate::ChunkedSerie) - spilled under the
-/// process bound as they arrive - and yields its chunks: as they landed
-/// where they already keep the order, chunk by chunk and edge by edge,
-/// else sorted out of core and merged. At most one group is held at once.
-/// Every record is relabelled under `root`, which declares what the read
-/// proves.
-///
-/// Two faces: [`Self::into_serie_reader`], the records, and
-/// [`Self::into_arrow_reader`], the transport - which, where no group needs
-/// a sort, is the scan itself and lands nothing.
+/// A group is opened only once the one before it is drained, so a satisfied
+/// row limit never decodes the next. A group needing no sort streams its
+/// scan's batches; one that does is held as one
+/// [`ChunkedSerie`](crate::ChunkedSerie) under the process spill bound and
+/// yielded as it landed where it keeps the order, else sorted and merged:
+/// at most one group is held. [`Self::into_serie_reader`] is the records,
+/// [`Self::into_arrow_reader`] the transport - the scan itself, landing
+/// nothing, where no group needs a sort.
 pub(super) struct Partitions {
     /// The groups not yet opened, in the order they are yielded.
     groups: std::vec::IntoIter<Vec<ScanPart>>,
@@ -1804,11 +1790,9 @@ enum Group {
 
 impl Partitions {
     /// The ordered read of `groups`, each decoded under `scan`, sorted by
-    /// `sorting`, and yielded under `root`.
-    ///
-    /// Groups needing no sort are never held, so their files stream as one
-    /// scan - the groups' files in group order - decoded side by side
-    /// across partitions where the plan is worth it, as any scan is.
+    /// `sorting`, and yielded under `root`. With no `sorting` the groups'
+    /// files stream as one scan, in group order, decoded side by side where
+    /// the plan is worth it.
     pub(super) fn new(
         groups: Vec<Vec<ScanPart>>,
         scan: GroupScan,
@@ -1868,13 +1852,10 @@ impl Partitions {
         self.open = None;
     }
 
-    /// The read's records, under `root`.
-    ///
-    /// Lazy, so no record is verified again on its way out: every group
-    /// was proven in its order where it was held - `keeps_order` read it
-    /// chunk by chunk and edge by edge, or `into_sort_by` laid it out - and
-    /// the groups arrive in tuple order, which is the order's own leading
-    /// keys wherever the root declares one ([`proven_order`]).
+    /// The read's records, under `root`, lazily: no record is verified
+    /// again, each group having been proven in its order where it was held
+    /// and the groups arriving in tuple order, the order's own leading keys
+    /// wherever the root declares one ([`proven_order`]).
     ///
     /// # Errors
     ///

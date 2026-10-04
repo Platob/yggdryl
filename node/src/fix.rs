@@ -2445,19 +2445,14 @@ impl JsFixCodec {
         Self::open(registry, options)
     }
 
-    /// A codec over the registry the process environment names,
-    /// `FixRegistry.fromEnv()`, sharing the instrument registry it names
-    /// too, `IsinRegistry.fromEnv()` - unless `isinRegistry` names another
-    /// - pinned by the options the constructor takes. The one constructor
-    /// that attaches the process's own; `new FixCodec(...)` attaches none,
-    /// and a commit of what the walks learned is always the caller's.
+    /// A codec over `FixRegistry.fromEnv()` sharing `IsinRegistry.fromEnv()`
+    /// unless `isinRegistry` names another, pinned by the options the
+    /// constructor takes; `new FixCodec(...)` attaches none. A commit of
+    /// what the walks learned is the caller's.
     #[napi(factory)]
     pub fn from_env(options: Option<FixCodecOptions<'_>>) -> Result<Self> {
-        let attach = options
-            .as_ref()
-            .is_none_or(|options| options.isin_registry.is_none());
         let mut codec = Self::open(None, options)?;
-        if attach {
+        if codec.inner.isin_registry().is_none() {
             let instruments = yggdryl::IsinRegistry::from_env().map_err(napi_error)?;
             codec.inner = codec.inner.with_isin_registry(Arc::clone(instruments));
         }

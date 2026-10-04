@@ -86,11 +86,11 @@ cross-language conventions are in `yggdryl`.
    an existing table, or register a `MediaTable` at the path first and write
    through it - the handle creates the leaf. An Iceberg catalog creates,
    through existing namespaces only: make `sales` before `sales.orders`, or
-   `tables.create("sales.orders", ..)` is the absence of `sales`. So does an
-   S3 Tables catalog, one namespace level deep: `catalog.namespaces.create("desk")`
-   then `desk.tables.create("quotes", field)` - the format version is the
-   `format-version` property, else 3 for a nanosecond timestamp, a variant or
-   an unknown column, else 2 (both Iceberg catalogs).
+   `tables.create("sales.orders", ..)` is the absence of `sales`. An S3 Tables
+   catalog creates one namespace level deep: `catalog.namespaces.create("desk")`,
+   then `desk.tables.create("quotes", field)`. Both take the format version
+   from `format-version`, else 3 for a nanosecond timestamp, a variant or an
+   unknown column, else 2.
 6. **Registration builds memory levels only.** A table registered at
    `lake.eu.trades` creates the memory catalog `lake` and namespace `eu` as
    needed; a path under a folder catalog, a folder namespace or a table is
@@ -147,14 +147,13 @@ cross-language conventions are in `yggdryl`.
 | `table.kind()` on a Rust `Table` with `IOBase` and `ObjectValue` both imported | `ObjectValue::kind(&table)` or `IOBase::kind(&table)` |
 | cloning a `MediaTable::bound(path, Holder::buffer(..))` and reading the clone | keep the original; a buffer has no location to rebuild from |
 | `Catalog::from_url` with `type = 'rest'` | this build has `memory` and `folder` catalogs, `hadoop` under `iceberg`, and the scheme `s3tables://` under `s3tables`; the refusal names them |
-| an S3 Tables bucket named by `s3tables://<bucket>` | a bare location states no region and no account: name the bucket by its ARN, which keeps both, or state `warehouse=<arn>` or `account_id=` to skip the one `ListTableBuckets` that finds it |
-| `ls()` on an S3 Tables table, or expecting `remove()` to delete its files | `ls` is refused, touching nothing, and `remove` is one `DeleteTable`: the bucket keeps the table and drops it, and its warehouse takes no listing or delete |
-| opening the location a table's ARN locates (`s3tables://<bucket>/<id>`) | refused at `$.url`: that spells the identifier where a namespace goes. Hand the ARN itself to the door, or name the table `s3tables://<bucket>/<namespace>/<table>` |
+| an S3 Tables bucket named by `s3tables://<bucket>` | a bare location states no region and no account: name the bucket by its ARN, or state `warehouse=<arn>` or `account_id=`, to skip the one `ListTableBuckets` that finds it |
+| `ls()` on an S3 Tables table, or expecting `remove()` or a failed commit to clean its warehouse | `ls` is refused, touching nothing; `remove` is one `DeleteTable`; a commit writes files and publishes one document through `UpdateTableMetadataLocation`. Nothing lists or deletes the warehouse - a failed commit's files stay for the bucket's own removal |
+| opening the location a table's ARN locates (`s3tables://<bucket>/<id>`) | refused at `$.url`: it spells the identifier where a namespace goes. Hand the ARN itself to the door, or name the table `s3tables://<bucket>/<namespace>/<table>` |
 | `s3tables://<bucket>/a/b/c` | a table bucket holds namespaces one level deep and tables below them: at most two segments, refused at `$.url` before any request |
-| `open_or_create` with a table's ARN, expecting a create | an identifier names nothing a create could make: the table is opened, or its absence is the answer. Name the table `s3tables://<bucket>/<namespace>/<table>` to create it |
-| reading `region`, `endpoint` or a credential back off `properties` of a table opened by its location | a located table states its properties less the ones its store read: who signs, where it is and how it is addressed stay on the handle it is rooted on, which every clone opens under, and nothing lists or prints them. A local path reads none, so a table on one states everything it was given; a table bucket's table states none - its session signs |
-| reading `kind()` in a loop on an identifier whose S3 Tables table is absent | an identifier used as a handle keeps a resolution that took and none that failed: each ask of an absent table is its request again (and the bucket listing, for a bare location). Open it once with `IcebergTable::from_url` and branch on the absence |
-| expecting an S3 Tables table's warehouse to be listed or cleaned | a commit writes files and publishes one document through `UpdateTableMetadataLocation`; nothing lists or deletes there - a failed commit's files stay for the bucket's own removal |
+| `open_or_create` with a table's ARN, expecting a create | an identifier names nothing a create could make: the table is opened, or absent. Name it `s3tables://<bucket>/<namespace>/<table>` to create it |
+| reading `region`, `endpoint` or a credential back off `properties` of a table opened by its location | a located table states its properties less the ones its store read - who signs, where it is, how it is addressed - which stay on the handle it is rooted on and every clone, listed and printed nowhere. A local path reads none, so a table on one states everything it was given; a table bucket's table states none - its session signs |
+| reading `kind()` in a loop on an identifier whose S3 Tables table is absent | an identifier used as a handle keeps a resolution that took, never one that failed: each ask is its request again (and the bucket listing, for a bare location). Open it once with `IcebergTable::from_url` and branch on the absence |
 | registering `lake` on `SystemWarehouse` in a test | a name unique to the process (`format!("test_{}", std::process::id())`), unregistered after |
 
 ## Language references

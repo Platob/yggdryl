@@ -56,15 +56,9 @@ fn a_private_write_replaces_the_file_whole_and_leaves_no_sibling() {
         std::fs::read(&path).expect("the file"),
         b"{\"second\":true}"
     );
-    let names: Vec<String> = std::fs::read_dir(path.parent().expect("a parent"))
+    let names: Vec<_> = std::fs::read_dir(path.parent().expect("a parent"))
         .expect("the directory")
-        .map(|entry| {
-            entry
-                .expect("an entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
+        .map(|entry| entry.expect("an entry").file_name())
         .collect();
     assert_eq!(names, ["token.json"], "no sibling is left behind");
     #[cfg(unix)]

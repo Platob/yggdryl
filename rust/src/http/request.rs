@@ -148,11 +148,9 @@ struct Meta {
     mtime: Option<i64>,
 }
 
-/// One attempt of a request: what a request's own hooks are shown of it.
-///
-/// [`Request::with_attempt_headers`] is shown the attempt as it is about to
-/// go out, so what it makes - a proof, a signature - covers what is really
-/// sent: the hop's method and URL, the headers already on it, and the body.
+/// One attempt of a request as its hooks see it about to go out - the hop's
+/// method and URL, the headers on it, the body - so a proof or a signature
+/// [`Request::with_attempt_headers`] makes covers what is sent.
 #[derive(Clone, Copy)]
 pub struct Attempt<'a> {
     number: u32,
@@ -653,15 +651,11 @@ impl Request {
         self
     }
 
-    /// Whether the request can do no harm twice, in place of what its
-    /// method says.
-    ///
-    /// The caller attests it: a `POST` whose service documents it idempotent,
-    /// such as an OAuth token refresh within its validity or a poll, is
-    /// retried after the server may have seen it, as a `GET` is; `false`
-    /// keeps a `GET` from going out twice. The retry budget, the attempts and the
-    /// `Retry-After` rules are the ones every retry reads, and a request
-    /// sent with [`Self::send_reader`] is never retried whatever this says.
+    /// Whether the request does no harm twice, in place of what its method
+    /// says: `true` retries a `POST` its service documents idempotent - an
+    /// OAuth refresh, a poll - as a `GET` is; `false` keeps a `GET` from being
+    /// sent again once the server may have seen it.
+    /// [`Self::send_reader`] is never retried whatever this says.
     ///
     /// ```
     /// use yggdryl::http::Request;
@@ -680,24 +674,15 @@ impl Request {
         self
     }
 
-    /// Headers computed for each attempt, merged over everything else the
-    /// attempt carries - the request's own headers, the session's, the
-    /// credential - a name both state taking the hook's value.
+    /// Headers made for each attempt from the [`Attempt`] about to go out -
+    /// its number from 1, the hop's method and URL, its headers, its body
+    /// (none when [streamed](Attempt::is_streamed)) - merged over everything
+    /// else it carries, a name both state taking the hook's value: a `DPoP`
+    /// proof or a signature that must be fresh and cover what is sent.
     ///
-    /// `headers` is called at the top of every attempt with the [`Attempt`]
-    /// as it is about to go out - its number from 1, the method and URL of
-    /// the hop it goes to, the headers already on it and the body - so a
-    /// value that must be fresh per attempt, or must cover what is sent - a
-    /// DPoP proof with its own `jti` and `iat`, a signature over the instant
-    /// and the payload - is made for each one. A body streamed by
-    /// [`Self::send_reader`] cannot be read beforehand: the attempt says so
-    /// ([`Attempt::is_streamed`]) and shows none. An error the hook returns
-    /// is the request's error, and is never retried.
-    ///
-    /// What it makes is a credential for the origin the request names: a
-    /// redirect followed inside that origin calls it for the hop, and one
-    /// followed to another origin does not, so nothing it would make is
-    /// sent there - as the `Authorization` the caller stated is not.
+    /// An error the hook returns is the request's, never retried. A redirect
+    /// inside the origin calls it for the hop; one to another origin does not,
+    /// so nothing it makes is sent there.
     ///
     /// ```
     /// use yggdryl::http::{Headers, Request};
@@ -706,14 +691,7 @@ impl Request {
     /// let request =
     ///     Request::get("https://api.example.com/v1/orders")?.with_attempt_headers(|attempt| {
     ///         let mut headers = Headers::new();
-    ///         let sent = format!(
-    ///             "{} {} {} {}",
-    ///             attempt.number(),
-    ///             attempt.method(),
-    ///             attempt.url(),
-    ///             attempt.body().map_or(0, <[u8]>::len),
-    ///         );
-    ///         headers.insert("x-attempt", &sent)?;
+    ///         headers.insert("x-attempt", &format!("{} {}", attempt.number(), attempt.url()))?;
     ///         Ok(headers)
     ///     });
     /// assert!(format!("{request:?}").contains("<attempt headers>"));
@@ -729,20 +707,15 @@ impl Request {
         self
     }
 
-    /// Whether an attempt the server refused goes out once more, whatever
-    /// its method.
-    ///
-    /// A `4xx` answer hands `rule` the attempt as it was sent - the headers
-    /// its hook made included - and the status, the headers and at most
-    /// 64 KiB of the body it was answered with. `true` says the refusal
-    /// proves the server did nothing and another attempt would go out
-    /// differently - signed by another key, say - so the request is sent
-    /// again at once: no pause, nothing drawn from the retry budget, and at
-    /// most once per hop. That is what separates it from
-    /// [`Self::with_retry_on`], which asks the same request again later and
-    /// only when it is idempotent. An error the rule returns is the
-    /// request's; an answer not sent again is handed back whole. A body
-    /// streamed by [`Self::send_reader`] is never sent again.
+    /// Send a refused attempt once more, whatever its method, when `rule` -
+    /// handed the attempt as sent (its hook's headers included) and the `4xx`
+    /// answer's status, headers and first 64 KiB of body - says the server did nothing and another attempt
+    /// would differ (another signing key): at once, with no pause and no
+    /// budget, at most once per hop, where [`Self::with_retry_on`] asks an
+    /// idempotent request again later. An error the rule returns is the
+    /// request's; an answer not resent is handed back whole; a
+    /// [`Self::send_reader`] body is never resent.
+    #[cfg(feature = "aws")]
     #[must_use]
     pub(crate) fn with_resend_on(
         mut self,
@@ -753,54 +726,41 @@ impl Request {
     }
 
     /// How many times this request is attempted, in place of the client's
-    /// `max_attempts`; zero is one.
-    ///
-    /// Every retry beyond the first attempt is still paid for out of the
-    /// client's one retry budget, so a request asking for more attempts than
-    /// the client grants others cannot retry past what the client's other
-    /// requests have left it.
+    /// `max_attempts`; zero is one. Every retry still draws on the client's
+    /// one budget.
     #[must_use]
     pub fn with_max_attempts(mut self, attempts: u32) -> Self {
         self.max_attempts = Some(attempts.max(1));
         self
     }
 
-    /// The bound on establishing this request's connection - the socket,
-    /// and the TLS handshake over it - in place of the pool's.
-    ///
-    /// A connection already open in the pool is reused and waits for
-    /// nothing; the bound is spent only where one is opened.
+    /// The bound on opening this request's connection - socket and TLS
+    /// handshake - in place of the pool's; a pooled connection waits for
+    /// nothing.
     #[must_use]
     pub fn with_connect_timeout(mut self, timeout: Duration) -> Self {
         self.connect_timeout = Some(timeout);
         self
     }
 
-    /// One bound on the whole of one attempt: resolving, connecting,
-    /// sending, the answer's head and its body together, beside the
-    /// per-phase bound [`Self::with_timeout`] sets.
-    ///
-    /// An attempt that runs out is a timeout the retry rules read as any
-    /// other, so an idempotent request is attempted again under a fresh
-    /// deadline; a body read past it fails as a cut transfer.
+    /// One bound on the whole of one attempt - connect, send, head and body -
+    /// beside the per-phase [`Self::with_timeout`]. Running out is a timeout
+    /// the retry rules read as any other, so an idempotent request is
+    /// attempted again under a fresh deadline; a body read past it fails as a
+    /// cut transfer.
     #[must_use]
     pub fn with_deadline(mut self, deadline: Duration) -> Self {
         self.deadline = Some(deadline);
         self
     }
 
-    /// Ask `rule` whether an answer is worth another attempt when its status
-    /// alone does not say so.
-    ///
-    /// For an idempotent request - declared with [`Self::with_idempotent`]
-    /// or by its method - whose answer is not a success and not a status the
-    /// client retries anyway ([`Status::is_retryable`]), the client reads at
-    /// most 64 KiB of the body and hands `rule` the status, the headers and
-    /// those bytes; `true` retries under the budget, the attempts, the
-    /// backoff and the `Retry-After` rules every retry reads. An answer not
-    /// retried is handed back with its body whole, the bytes the rule read
-    /// in front of the rest. A service that answers throttling as `400` with
-    /// a code in its body - AWS STS's `Throttling` - is read this way.
+    /// Ask `rule` whether an answer its status alone does not retry is worth
+    /// another attempt: for an idempotent request whose answer is neither a
+    /// success nor [`Status::is_retryable`], `rule` gets the status, the
+    /// headers and at most 64 KiB of the body, and `true` retries under the
+    /// rules every retry reads. An answer not retried is handed back whole.
+    /// Meant for a service that throttles as `400` with a code in its body, as
+    /// AWS STS does.
     ///
     /// ```
     /// use yggdryl::http::Request;
@@ -824,10 +784,9 @@ impl Request {
         self
     }
 
-    /// Whether this request goes to its server directly, never through a
-    /// proxy, whatever the options or the environment name: a link-local
-    /// metadata endpoint is reached from the host itself, and a proxy
-    /// between would answer for another.
+    /// Whether this request bypasses every proxy the options or the
+    /// environment name: a link-local metadata endpoint must be reached from
+    /// the host itself.
     #[must_use]
     pub fn with_direct(mut self, direct: bool) -> Self {
         self.direct = direct;
@@ -1825,10 +1784,9 @@ fn rows_at(body: &Scalar, path: &FieldPath) -> Option<usize> {
         .and_then(|value| value.sequence_rows().map(|rows| rows.len()))
 }
 
-/// The `Host` header a URL asks for: the host, with the port when it is
-/// not the scheme's default - an IPv6 literal in its brackets, as RFC 3986
-/// writes it and the transport sends it, so a signature over this host is
-/// a signature over the one sent.
+/// The `Host` header a URL asks for: the host, an IPv6 literal bracketed as
+/// the transport sends it, with the port when it is not the scheme's
+/// default - so a signature over it covers the host sent.
 pub(crate) fn host_header(url: &Url) -> String {
     let host = url.hostname().unwrap_or_default();
     let host = if host.contains(':') {

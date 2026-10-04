@@ -349,12 +349,15 @@ mod from_text {
     }
 
     #[test]
-    fn it_reads_nothing_the_iso_readers_do_not_so_a_cell_and_the_value_door_agree() {
-        // Blanks around the text and a tool's trailing `UTC` are the habits
-        // of one intake - an expiry's, `auth::instant` - and no part of the
-        // reading: the value door of a datetime refuses them, and a cell
-        // read through here must refuse them with it.
+    fn text_that_is_no_datetime_is_refused() {
+        // Surrounding blanks and a trailing `UTC` are one intake's habits
+        // (`auth::instant`), refused here as the value door refuses them.
         for text in [
+            "",
+            "soon",
+            "UTC",
+            "2026-13-03T03:20:00Z",
+            "2026-10-03T03:20:00Z trailing",
             " 2026-10-03",
             "2026-10-03 ",
             " 2026-10-03T03:20:00Z",
@@ -362,28 +365,12 @@ mod from_text {
             "2026-10-03T03:20:00UTC",
             "2026-10-03T03:20:00 UTC",
         ] {
-            for naive in [Timezone::UTC, Timezone::NAIVE] {
+            for zone in [Timezone::UTC, Timezone::NAIVE] {
                 assert!(
-                    DateTime64::from_text(text, naive).is_err(),
-                    "{text:?} is refused, as the value door refuses it"
+                    DateTime64::from_text(text, zone).is_err(),
+                    "{text:?} read as {zone} is no datetime"
                 );
             }
-        }
-    }
-
-    #[test]
-    fn text_that_is_no_datetime_is_refused() {
-        for text in [
-            "",
-            "soon",
-            "2026-13-03T03:20:00Z",
-            "2026-10-03T03:20:00Z trailing",
-            "UTC",
-        ] {
-            assert!(
-                DateTime64::from_text(text, Timezone::UTC).is_err(),
-                "{text:?} is no datetime"
-            );
         }
     }
 }

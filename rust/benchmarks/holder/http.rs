@@ -1,19 +1,15 @@
 //! HTTP access, against the crate's own server on loopback.
 //!
-//! The eight shapes a caller of an HTTP resource performs: the whole value,
-//! one range out of the end (a footer read), a full streamed drain, the same
-//! whole value from a route whose handler writes it chunk by chunk rather
-//! than holding it (`Response::with_writer`), one small JSON exchange, one
-//! small `GET` sent plain and again under the knobs a request states for
-//! itself - a per-attempt header hook and a retry rule - a walk of a
-//! paginated API, and a fan-out of many small requests over `send_all`. Each
-//! is a stated number of requests - one `GET`, one ranged `GET`, one `GET`,
-//! one `GET`, one `POST`, one `GET` twice over, one `GET` per page, one `GET`
-//! per request - which the accounting tests hold; what is measured here is
-//! everything around those round trips, so a per-request cost that crept in
-//! shows beside the counts. Nothing leaves the machine: the server is
-//! `yggdryl::http::Server` bound on `127.0.0.1:0`, serving a memory folder,
-//! fixed answers and one written route.
+//! The shapes a caller of an HTTP resource performs: the whole value, a
+//! footer range, a streamed drain, the whole value from a route that writes
+//! it chunk by chunk (`Response::with_writer`), one small JSON exchange, one
+//! small `GET` plain and under a request's own knobs, a paginated walk, and a
+//! `send_all` fan-out. Each is a number of requests the accounting tests
+//! hold; what is measured here is everything around those round trips, so a
+//! per-request cost that crept in shows beside the counts. Nothing leaves
+//! the machine: the server is `yggdryl::http::Server` bound on
+//! `127.0.0.1:0`, serving a memory folder, fixed answers and one written
+//! route.
 //!
 //! Built with `http2`, the `http_versions` group sends the same four shapes,
 //! one small `GET`, the whole resource read whole and written, and the
@@ -213,16 +209,14 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // One small GET, plain and then under the knobs a request states for
-    // itself: a header made per attempt, as a proof or a signature is, and a
-    // rule for the answers worth another attempt. The answer is a success,
-    // so the rule is never asked and nothing is retried: the pair is what
-    // carrying the knobs costs a request that needs neither.
-    let small = url("/pages/0");
+    // One small GET, plain and under a request's own knobs - a header made
+    // per attempt, as a signature is, and a retry rule. The answer succeeds,
+    // so nothing is retried: the gap is what carrying the knobs costs.
+    let first_page = url("/pages/0");
     group.bench_function("get_plain", |bencher| {
         bencher.iter(|| {
             let response = session
-                .get(black_box(&small))
+                .get(black_box(&first_page))
                 .expect("a request")
                 .send()
                 .expect("an answer");
@@ -232,7 +226,7 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
     group.bench_function("get_with_request_knobs", |bencher| {
         bencher.iter(|| {
             let response = session
-                .get(black_box(&small))
+                .get(black_box(&first_page))
                 .expect("a request")
                 .with_attempt_headers(|attempt| {
                     let mut headers = Headers::new();
@@ -251,11 +245,10 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
 
     // A walk of a paginated API: one GET per page, each next page found by
     // the automatic ladder in the page's own document.
-    let first = url("/pages/0");
     group.throughput(Throughput::Elements(PAGES as u64));
     group.bench_with_input(
         BenchmarkId::new("pages", PAGES),
-        &first,
+        &first_page,
         |bencher, first| {
             bencher.iter(|| {
                 let walked = session
@@ -273,11 +266,10 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
     // Many small requests on a thread pool, answered in order: what a
     // parallel walk to one host costs per request once its connections are
     // pooled.
-    let quote = url("/pages/0");
     group.throughput(Throughput::Elements(FAN_OUT as u64));
     group.bench_with_input(
         BenchmarkId::new("send_all", FAN_OUT),
-        &quote,
+        &first_page,
         |bencher, quote| {
             bencher.iter(|| {
                 let requests = (0..FAN_OUT)

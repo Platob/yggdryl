@@ -436,15 +436,15 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 2)
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - the one key - its CFI code, country,
+A lifecycle learns each message's ISIN - the one key - CFI code, country,
 market, ticker, currency, pair and security codes into an `IsinRegistry`, and
-fills what later messages of that instrument leave unsaid, as `derived`
-identifiers and the ticker, CFI and currency facts, never the wire; a parse
+fills what later messages of that instrument leave unsaid: `derived`
+identifiers, and the ticker, CFI and currency facts, never the wire. A parse
 through the same codec fills derived identifiers from the table its door
-fixed. A codec without one learns into a registry of each walk's own;
-`isinRegistry` shares one across walks run one after another, bound to a
-store with `fromUrl` and written back with `commit()` only where it moved,
-and `FixCodec.fromEnv()` shares the process's own, `IsinRegistry.fromEnv()`.
+fixed. A codec without one learns into each walk's own; `isinRegistry` shares
+one across walks run one after another, bound to a store with `fromUrl` and
+written back with `commit()` where it moved, and `FixCodec.fromEnv()` shares
+the process's own (`IsinRegistry.fromEnv()`).
 
 ```javascript
 const assert = require('node:assert/strict')

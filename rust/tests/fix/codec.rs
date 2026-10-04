@@ -4546,20 +4546,30 @@ mod threads {
             "Arrow output fuses at the first error"
         );
     }
-    /// The bridge capture's bodies as bytes.
-    fn bodies(held: &[TextLine]) -> Vec<Vec<u8>> {
-        held.iter().map(|line| line.body_bytes().to_vec()).collect()
-    }
 
-    /// A registry holding what the capture states about its instruments,
-    /// learned by walking it once on one thread, with a common code beside
-    /// every row that no message states - what a parse through the registry
-    /// fills, derived - committed to a buffer so it stands clean.
-    fn learned_registry(bare: &FixCodec, bodies: &[Vec<u8>]) -> Arc<Mutex<IsinRegistry>> {
+    /// A codec over the committed dictionary, the capture, its options, its
+    /// lines and their bodies, and the registry that codec learned walking
+    /// the capture once on one thread - a common code beside every row,
+    /// which no message states, so a parse through it fills one, derived -
+    /// committed to a buffer so it stands clean.
+    struct Learned(
+        FixCodec,
+        Buffer,
+        TextOptions,
+        Vec<TextLine>,
+        Vec<Vec<u8>>,
+        Arc<Mutex<IsinRegistry>>,
+    );
+
+    fn learned() -> Learned {
+        let bare = super::fixed_codec(super::committed_registry());
+        let (source, options) = capture();
+        let held = lines(&source, &options);
+        let bodies: Vec<Vec<u8>> = held.iter().map(|line| line.body_bytes().to_vec()).collect();
         let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
         let learning = bare.clone().with_isin_registry(Arc::clone(&instruments));
         let parsed: Vec<FixMsg> = learning
-            .parse_lines(bodies)
+            .parse_lines(&bodies)
             .filter_map(Result::ok)
             .collect();
         for walked in learning.lifecycle(parsed) {
@@ -4586,7 +4596,7 @@ mod threads {
         registry.commit().expect("committed");
         assert!(!registry.is_dirty());
         drop(registry);
-        instruments
+        Learned(bare, source, options, held, bodies, instruments)
     }
 
     /// The messages of `read` that carry a common code the table derived.
@@ -4601,11 +4611,7 @@ mod threads {
     /// on one thread and on four, and no door moves the registry.
     #[test]
     fn every_door_fills_from_one_table_alike_on_four_threads_and_moves_nothing() {
-        let bare = super::fixed_codec(super::committed_registry());
-        let (source, options) = capture();
-        let held = lines(&source, &options);
-        let bodies = bodies(&held);
-        let instruments = learned_registry(&bare, &bodies);
+        let Learned(bare, source, options, held, bodies, instruments) = learned();
         let before: Vec<IsinEntry> = instruments
             .lock()
             .expect("the registry")
@@ -4650,11 +4656,7 @@ mod threads {
     /// reaches no message of it.
     #[test]
     fn a_door_fixes_the_table_as_it_opens_and_no_worker_reaches_the_lock() {
-        let bare = super::fixed_codec(super::committed_registry());
-        let (source, options) = capture();
-        let held = lines(&source, &options);
-        let bodies = bodies(&held);
-        let instruments = learned_registry(&bare, &bodies);
+        let Learned(bare, source, options, held, bodies, instruments) = learned();
         let four = bare
             .with_isin_registry(Arc::clone(&instruments))
             .with_threads(4)
@@ -4750,12 +4752,8 @@ mod threads {
     /// through a row round trip.
     #[test]
     fn the_table_leaves_a_messages_identity_alone_and_feeds_nothing_back() {
-        let registry = super::committed_registry();
-        let bare = super::fixed_codec(Arc::clone(&registry));
-        let (source, options) = capture();
-        let held = lines(&source, &options);
-        let bodies = bodies(&held);
-        let instruments = learned_registry(&bare, &bodies);
+        let Learned(bare, source, options, held, bodies, instruments) = learned();
+        let registry = Arc::clone(bare.registry());
         let filling = bare.clone().with_isin_registry(Arc::clone(&instruments));
         let composed = |codec: &FixCodec| codec.clone().with_capture_names(options.capture_names());
         let identity = |message: &FixMsg| {

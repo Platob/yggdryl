@@ -566,29 +566,19 @@ mod time_bucket {
                 .unwrap()
                 .statistics_certainty(&bounds)
         };
-        let bucket = "time_bucket('15 minutes', currunix)";
-        assert_eq!(
-            certainty(&format!("{bucket} = '2024-01-01T00:15:00Z'")),
-            None
-        );
-        assert_eq!(
-            certainty(&format!("{bucket} = '2024-01-01T00:30:00Z'")),
-            Some(false)
-        );
-        assert_eq!(
-            certainty(&format!("{bucket} >= '2024-01-01T00:00:00Z'")),
-            Some(true)
-        );
-        assert_eq!(
-            certainty(&format!("{bucket} < '2024-01-01T00:00:00Z'")),
-            Some(false)
-        );
-        assert_eq!(
-            certainty(&format!(
-                "{bucket} between '2024-01-01T00:00:00Z' and '2024-01-01T00:15:00Z'"
-            )),
-            Some(true)
-        );
-        assert_eq!(certainty(&format!("{bucket} is null")), Some(false));
+        for (predicate, expected) in [
+            ("= '2024-01-01T00:15:00Z'", None),
+            ("= '2024-01-01T00:30:00Z'", Some(false)),
+            (">= '2024-01-01T00:00:00Z'", Some(true)),
+            ("< '2024-01-01T00:00:00Z'", Some(false)),
+            (
+                "between '2024-01-01T00:00:00Z' and '2024-01-01T00:15:00Z'",
+                Some(true),
+            ),
+            ("is null", Some(false)),
+        ] {
+            let text = format!("time_bucket('15 minutes', currunix) {predicate}");
+            assert_eq!(certainty(&text), expected, "{text}");
+        }
     }
 }

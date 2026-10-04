@@ -724,11 +724,10 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
 
 /// `time_bucket(width, x)` over `x`'s count buffer in one pass.
 ///
-/// The width is read and resolved once per batch; each present count is
-/// floored where it lies through [`TimeBucket::floor`], absent ones are not
-/// read, and the column keeps `x`'s datatype, zone included. A layout that
-/// is not the plain count array of `x`'s unit - a dictionary - takes the
-/// row walk, which answers the same values.
+/// The width resolves once per batch, each present count floors through
+/// [`TimeBucket::floor`] - an absent slot is not read - and the column keeps
+/// `x`'s datatype, zone included. Any other layout - a dictionary - takes the
+/// row walk.
 fn time_bucket(node: &Node, arguments: &[Node], context: &Context<'_>) -> Result<Vector> {
     use arrow_array::types::{
         Date32Type, Date64Type, TimestampMicrosecondType, TimestampMillisecondType,
@@ -763,8 +762,7 @@ fn time_bucket(node: &Node, arguments: &[Node], context: &Context<'_>) -> Result
     Ok(Vector::Column(floored))
 }
 
-/// One count array floored bucket by bucket, its datatype - a timestamp's
-/// zone - carried over.
+/// One count array floored bucket by bucket, its datatype carried over.
 fn bucketed<T>(array: &ArrayRef, bucket: TimeBucket) -> Result<ArrayRef>
 where
     T: arrow_array::ArrowPrimitiveType,

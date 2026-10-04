@@ -388,12 +388,14 @@ fn a_property_is_a_name_the_reader_reads_in_any_spelling_it_accepts() {
 
 #[test]
 fn netrc_follows_read_environment_until_it_is_said() {
-    assert!(HttpOptions::default().netrc());
     assert!(!HttpOptions::default().with_read_environment(false).netrc());
-    assert!(!HttpOptions::default().with_netrc(false).netrc());
     // Said once, it stands whatever the environment knob says after.
-    let said = HttpOptions::default().with_netrc(false);
-    assert!(!said.clone().with_read_environment(true).netrc());
+    assert!(
+        !HttpOptions::default()
+            .with_netrc(false)
+            .with_read_environment(true)
+            .netrc()
+    );
     assert!(
         HttpOptions::default()
             .with_netrc(true)

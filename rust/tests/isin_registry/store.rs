@@ -19,6 +19,29 @@ fn entry(text: &str, codes: &[(IdType, &str)]) -> IsinEntry {
     )
 }
 
+/// The row of `text` listed on `mic`.
+fn listed(text: &str, mic: &str) -> IsinEntry {
+    entry(text, &[]).with_miccode(Some(yggdryl::Mic::new(mic).unwrap()))
+}
+
+/// The registry the location `url` names, bound with no property.
+fn at(url: &Url) -> yggdryl::Result<IsinRegistry> {
+    IsinRegistry::from_url(url, std::iter::empty::<(&str, &str)>())
+}
+
+/// An Iceberg table at `root` over the registry's row, partitioned by
+/// market.
+#[cfg(feature = "iceberg")]
+fn create_by_market<H: IOBase>(root: H) {
+    use yggdryl::iceberg::{FIRST_PARTITION_ID, FormatVersion, IcebergTable, PartitionSpec};
+    let mut schema = IsinEntry::field()
+        .with_partition_fields(&["miccode"])
+        .unwrap();
+    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
+    IcebergTable::create(root, FormatVersion::V3, schema, spec).unwrap();
+}
+
 /// The folder `name` on `filesystem`, as a holder.
 #[cfg(feature = "iceberg")]
 fn folder_on(
@@ -204,8 +227,7 @@ fn a_folder_store_is_laid_out_by_the_first_dirty_commit_and_read_back_whole() {
     // folder rather than a leaf.
     let url = Url::from_location(&format!("{}/", root.display())).unwrap();
     assert!(url.has_trailing_slash(), "{url}");
-    let none: [(&str, &str); 0] = [];
-    let mut registry = IsinRegistry::from_url(&url, none).unwrap();
+    let mut registry = at(&url).unwrap();
     assert!(registry.is_empty() && !registry.is_dirty());
     assert!(!root.exists(), "nothing is laid out before a commit");
     registry
@@ -214,7 +236,7 @@ fn a_folder_store_is_laid_out_by_the_first_dirty_commit_and_read_back_whole() {
     registry.merge(entry(APPLE, &[])).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);
     assert!(root.join("part-0.arrows").is_file());
-    let back = IsinRegistry::from_url(&url, none).unwrap();
+    let back = at(&url).unwrap();
     assert!(back.iter().eq(registry.iter()));
     assert!(!back.is_dirty());
     // Rewritten in place: one part still.
@@ -224,11 +246,7 @@ fn a_folder_store_is_laid_out_by_the_first_dirty_commit_and_read_back_whole() {
     registry.commit().unwrap();
     assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
     assert_eq!(
-        IsinRegistry::from_url(&url, none)
-            .unwrap()
-            .get(HOLCIM)
-            .unwrap()
-            .get(&IdType::Common),
+        at(&url).unwrap().get(HOLCIM).unwrap().get(&IdType::Common),
         Some("C-1")
     );
     // Emptied: the part removed, a file that is no record part kept, and
@@ -238,7 +256,7 @@ fn a_folder_store_is_laid_out_by_the_first_dirty_commit_and_read_back_whole() {
     registry.commit().unwrap();
     assert!(!root.join("part-0.arrows").exists());
     assert!(root.join("README.md").is_file());
-    assert!(IsinRegistry::from_url(&url, none).unwrap().is_empty());
+    assert!(at(&url).unwrap().is_empty());
     let _ = std::fs::remove_dir_all(root.parent().unwrap());
 }
 
@@ -253,25 +271,20 @@ fn a_partitioned_folder_store_holds_exactly_the_snapshot_after_every_commit() {
     std::fs::create_dir_all(root.join("miccode=XNAS")).unwrap();
     std::fs::write(root.join("README.md"), b"the instrument registry").unwrap();
     let url = Url::from_location(&format!("{}/", root.display())).unwrap();
-    let none: [(&str, &str); 0] = [];
-    let mut registry = IsinRegistry::from_url(&url, none).unwrap();
+    let mut registry = at(&url).unwrap();
     assert!(registry.is_empty() && !registry.is_dirty());
-    registry
-        .merge(entry(HOLCIM, &[]).with_miccode(Some(yggdryl::Mic::new("XSWX").unwrap())))
-        .unwrap();
-    registry
-        .merge(entry(APPLE, &[]).with_miccode(Some(yggdryl::Mic::new("XNAS").unwrap())))
-        .unwrap();
+    registry.merge(listed(HOLCIM, "XSWX")).unwrap();
+    registry.merge(listed(APPLE, "XNAS")).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);
     assert!(root.join("miccode=XSWX/part-0.arrows").is_file());
     assert!(root.join("miccode=XNAS/part-0.arrows").is_file());
-    let back = IsinRegistry::from_url(&url, none).unwrap();
+    let back = at(&url).unwrap();
     assert!(back.iter().eq(registry.iter()));
     // A removal reaches the partition the row was stored in.
     registry.remove(HOLCIM).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 1);
     assert!(!root.join("miccode=XSWX/part-0.arrows").exists());
-    let back = IsinRegistry::from_url(&url, none).unwrap();
+    let back = at(&url).unwrap();
     assert_eq!(back.len(), 1);
     assert!(back.get(APPLE).is_some());
     assert!(root.join("README.md").is_file());
@@ -280,7 +293,7 @@ fn a_partitioned_folder_store_holds_exactly_the_snapshot_after_every_commit() {
     registry.commit().unwrap();
     assert!(!root.join("miccode=XNAS/part-0.arrows").exists());
     assert!(root.join("README.md").is_file());
-    assert!(IsinRegistry::from_url(&url, none).unwrap().is_empty());
+    assert!(at(&url).unwrap().is_empty());
     let _ = std::fs::remove_dir_all(root.parent().unwrap());
 }
 
@@ -290,8 +303,7 @@ fn a_partitioned_folder_store_holds_exactly_the_snapshot_after_every_commit() {
 fn a_leaf_of_an_unknown_encoding_is_refused_at_the_binding() {
     let root = crate::scratch("unknown");
     let url = Url::from_path(root.join("instruments.xyz")).unwrap();
-    let none: [(&str, &str); 0] = [];
-    assert!(IsinRegistry::from_url(&url, none).is_err());
+    assert!(at(&url).is_err());
     assert!(!root.join("instruments.xyz").exists());
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -348,21 +360,11 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
     // registry is gone from the partition it was stored in, and an emptied
     // registry empties every partition; a location inside the table - one
     // partition of it - is refused at the binding.
-    use yggdryl::iceberg::FIRST_PARTITION_ID;
     let partitioned = || folder_on(&filesystem, "partitioned");
-    let mut schema = IsinEntry::field()
-        .with_partition_fields(&["miccode"])
-        .unwrap();
-    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
-    IcebergTable::create(partitioned(), FormatVersion::V3, schema, spec).unwrap();
+    create_by_market(partitioned());
     let mut registry = IsinRegistry::from_holder(partitioned()).unwrap();
-    registry
-        .merge(entry(HOLCIM, &[]).with_miccode(Some(yggdryl::Mic::new("XSWX").unwrap())))
-        .unwrap();
-    registry
-        .merge(entry(APPLE, &[]).with_miccode(Some(yggdryl::Mic::new("XNAS").unwrap())))
-        .unwrap();
+    registry.merge(listed(HOLCIM, "XSWX")).unwrap();
+    registry.merge(listed(APPLE, "XNAS")).unwrap();
     assert_eq!(registry.commit().unwrap().written_rows, 2);
     assert_eq!(IsinRegistry::from_holder(partitioned()).unwrap().len(), 2);
     registry.remove(HOLCIM).unwrap();
@@ -379,12 +381,7 @@ fn an_iceberg_table_store_is_replaced_in_one_snapshot_and_emptied_as_one() {
     // memory filesystem does not resolve.
     let root = crate::scratch("inside");
     let local = |name: &str| yggdryl::local::LocalFolder::new(root.join(name)).unwrap();
-    let mut schema = IsinEntry::field()
-        .with_partition_fields(&["miccode"])
-        .unwrap();
-    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    let spec = PartitionSpec::from_schema(FIRST_PARTITION_ID, &schema).unwrap();
-    IcebergTable::create(local("table"), FormatVersion::V3, schema, spec).unwrap();
+    create_by_market(local("table"));
     for inside in ["table/miccode=XNAS", "table/data/miccode=XNAS"] {
         let refused = IsinRegistry::from_holder(local(inside))
             .unwrap_err()

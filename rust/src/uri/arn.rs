@@ -336,14 +336,10 @@ impl Arn {
             .filter(|table| !table.is_empty())
     }
 
-    /// Return the table bucket and the identifier of the table this ARN
-    /// names, when it is an Amazon S3 Tables table's own ARN:
-    /// `bucket/<name>/table/<id>`, each one segment, and nothing else.
-    ///
-    /// The strict reading beside [`table`](Self::table), which answers
-    /// whatever the resource spells below its bucket the way the location
-    /// the ARN lowers to does. A door that addresses the service by the ARN
-    /// asks this one: the service identifies a table by exactly that shape.
+    /// Return the table bucket and the table identifier of an Amazon S3
+    /// Tables table's own ARN: exactly `bucket/<name>/table/<id>`, each one
+    /// segment - the shape the service identifies a table by, where
+    /// [`table`](Self::table) answers whatever lies below the bucket.
     #[cfg(feature = "s3tables")]
     pub(crate) fn identified_table(&self) -> Option<(&str, &str)> {
         if self.service() != "s3tables" {
@@ -354,23 +350,17 @@ impl Arn {
         (!id.is_empty() && !id.contains('/')).then_some((bucket, id))
     }
 
-    /// Return the table bucket this ARN names, when it is an Amazon S3
-    /// Tables table bucket's own ARN: `bucket/<name>`, one segment and
-    /// nothing below it.
-    ///
-    /// The strict reading beside [`bucket`](Self::bucket), which answers the
-    /// container of any resource spelling one. A door that addresses the
-    /// service by a table bucket asks this one: the service identifies a
-    /// table bucket by exactly that shape, and a trailing slash or an empty
-    /// identifier below the name is nothing it has.
+    /// Return the table bucket of an Amazon S3 Tables table bucket's own
+    /// ARN: exactly `bucket/<name>`, one segment, no trailing slash - the
+    /// shape the service identifies a bucket by, where
+    /// [`bucket`](Self::bucket) answers the container of any resource.
     #[cfg(feature = "s3tables")]
     pub(crate) fn table_bucket(&self) -> Option<&str> {
         if self.service() != "s3tables" {
             return None;
         }
-        // Read off the resource itself: the split every location reads by
-        // folds `bucket/<name>/` into the name, and that slash is a shape the
-        // service has not.
+        // Off the resource itself: `table_bucket_resource` folds a trailing
+        // slash into the name.
         let name = self.resource().strip_prefix("bucket/")?;
         (!name.is_empty() && !name.contains('/')).then_some(name)
     }
@@ -629,15 +619,13 @@ impl Arn {
     }
 }
 
-/// One of the partitions AWS runs: a set of regions with DNS names and ARNs
-/// of its own, named by an ARN's first field.
+/// One of the partitions AWS runs - a set of regions with DNS names and ARNs
+/// of its own - named by an ARN's first field.
 ///
-/// The table is botocore's `partitions.json`, the one every AWS SDK resolves
-/// endpoints through: each partition's name, the prefix its regions share,
-/// its DNS suffix and its dual-stack one, and the region a global service
-/// answers in. It is what turns a region into a host, so a partition's
-/// suffixes are spelled here once and every client - STS, IAM Identity
-/// Center, the Sign-In service, Amazon S3 - builds its hosts from them.
+/// Transcribed from botocore's `partitions.json`: each partition's name,
+/// region prefix, DNS and dual-stack suffixes, and global region. Every
+/// client - STS, IAM Identity Center, Sign-In, Amazon S3 - builds its hosts
+/// from these suffixes.
 ///
 /// ```
 /// use yggdryl::{Arn, ArnPartition};
@@ -786,13 +774,10 @@ impl ArnPartition {
         }
     }
 
-    /// The host `service` answers at in `region`, in the form the endpoint
-    /// rules of most services share: `{service}.{region}.{suffix}`, the
-    /// service written `{service}-fips` under `fips`, and the dual-stack
-    /// suffix under `dualstack`. A service whose rules spell its hosts
-    /// otherwise - the Sign-In service, Amazon S3's own dual-stack form -
-    /// builds them from [`Self::dns_suffix`] and
-    /// [`Self::dualstack_dns_suffix`] instead.
+    /// The host `service` answers at in `region`, as most services' endpoint
+    /// rules spell it: `{service}[-fips].{region}.{suffix}`, the dual-stack
+    /// suffix under `dualstack`. Sign-In and Amazon S3's dual-stack form
+    /// spell theirs otherwise, from the two suffixes.
     pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String {
         let service = if fips {
             format!("{service}-fips")

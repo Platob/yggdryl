@@ -30,8 +30,9 @@ fn a_bucket_name_the_model_refuses_costs_no_request() {
     let tables = client(&fake);
 
     // 3 to 63 of the digits, the lower-case letters and the hyphen: each
-    // refusal is at the first byte that breaks the rule.
-    let long = "a".repeat(64);
+    // refusal is at the first byte that breaks the rule, and quotes the name
+    // but never the whole of a long one.
+    let (long, huge) = ("a".repeat(64), "A".repeat(10_000));
     for (name, position) in [
         ("", 0),
         ("ab", 2),
@@ -40,6 +41,7 @@ fn a_bucket_name_the_model_refuses_costs_no_request() {
         ("dot.ted", 3),
         ("espa\u{f1}ol", 4),
         (long.as_str(), 63),
+        (huge.as_str(), 0),
     ] {
         let error = tables
             .create_table_bucket(name)
@@ -59,6 +61,7 @@ fn a_bucket_name_the_model_refuses_costs_no_request() {
             }
             other => panic!("expected a refused name for {name:?}, got {other:?}"),
         }
+        assert!(error.to_string().len() < 300, "{error}");
     }
     // The longest and the shortest names the model allows go out.
     tables
@@ -66,19 +69,6 @@ fn a_bucket_name_the_model_refuses_costs_no_request() {
         .expect("63 characters");
     tables.create_table_bucket("a-1").expect("3 characters");
     assert_eq!(fake.request_count(), 2);
-}
-
-#[test]
-fn a_refusal_quotes_a_name_and_never_the_whole_of_a_long_one() {
-    let fake = S3TablesFake::start();
-    let tables = client(&fake);
-
-    let message = tables
-        .create_table_bucket(&"A".repeat(10_000))
-        .expect_err("a refused name")
-        .to_string();
-    assert!(message.len() < 300, "{} bytes", message.len());
-    assert_eq!(fake.request_count(), 0);
 }
 
 #[test]
@@ -154,16 +144,8 @@ fn removing_a_bucket_acts_once_and_an_absent_one_is_already_removed() {
     tables
         .remove_table_bucket(&lake)
         .expect("nothing left to delete");
-    assert_eq!(
-        fake.requests()
-            .iter()
-            .map(|request| (request.line(), request.status))
-            .collect::<Vec<_>>(),
-        [
-            (format!("DELETE /buckets/{LAKE_LABEL}"), 204),
-            (format!("DELETE /buckets/{LAKE_LABEL}"), 404)
-        ]
-    );
+    let removal = format!("DELETE /buckets/{LAKE_LABEL}");
+    assert_eq!(fake.answered(), [(removal.clone(), 204), (removal, 404)]);
 }
 
 #[test]

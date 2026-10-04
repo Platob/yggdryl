@@ -1792,13 +1792,10 @@ impl FixMsg {
     }
 
     /// [`Self::settle`] less the identity: every fact a write reached stated
-    /// again, the cross codes in step, and the code and the identity left as
-    /// they were. No fact here reads the code or the identity - the cross
-    /// element of a message in no chain is the identity, and the stamp
-    /// states it again - which is what lets a fold of several statements
-    /// settle its facts at every step and [stamp](Self::stamp_identity) once
-    /// after the last: the identity is a function of the facts, so stamping
-    /// once states what stamping at every step would have left.
+    /// again and the cross codes in step, the code and the identity left as
+    /// they were. No fact here reads either, so a fold of several statements
+    /// settles at every step and [stamps](Self::stamp_identity) once after
+    /// the last.
     pub(super) fn settle_facts(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
@@ -3604,46 +3601,36 @@ impl FixMsg {
         }
     }
 
-    /// The security identifiers `table` holds for this message's instrument
-    /// that it leaves unsaid, derived ([`IsinTable::fill_identifiers`]) -
-    /// what a parse takes from the table its door fixed - and, where any
-    /// landed, the market facts they imply ([`Market::fill_market`]): the
-    /// national number the derived ISIN embeds, the unit a pair deals in.
-    /// Nothing here reaches a field, the wire, the row's word or the
-    /// identity, so the caller stamps once after it. Whether anything
-    /// moved.
-    pub(super) fn fill_instrument_ids(&mut self, table: &IsinTable) -> bool {
-        let moved = table.fill_identifiers(self);
-        if moved {
+    /// Derives the security identifiers `table` holds for this message's
+    /// instrument that it leaves unsaid ([`IsinTable::fill_identifiers`]) -
+    /// what a parse takes from its door's table - then, where any landed,
+    /// the market facts they imply ([`Market::fill_market`]). Nothing here
+    /// reaches a field, the wire, the row's word or the identity, so the
+    /// caller stamps once after it.
+    pub(super) fn fill_instrument_ids(&mut self, table: &IsinTable) {
+        if table.fill_identifiers(self) {
             self.event.fill_market();
         }
-        moved
     }
 
-    /// What the lifecycle fills from `table`
-    /// ([`IsinTable::fill_unsettled`]): the identifiers
-    /// [`Self::fill_instrument_ids`] derives, the ticker on the same market,
-    /// the CFI code where the row's refines it and the currency on the same
-    /// stated market under the row's ticker - then the market facts they
-    /// imply, and nothing more: a parsed message is settled already, and a
-    /// fill moves nothing its identity reads. Whether anything moved.
-    pub(super) fn fill_instrument(&mut self, table: &IsinTable) -> bool {
-        let moved = table.fill_unsettled(self);
-        if moved {
+    /// What the lifecycle fills from `table` ([`IsinTable::fill_unsettled`]):
+    /// the identifiers [`Self::fill_instrument_ids`] derives, the ticker,
+    /// the CFI code and the currency, then the market facts they imply and
+    /// nothing more - a parsed message is settled already, and no fill moves
+    /// what its identity reads.
+    pub(super) fn fill_instrument(&mut self, table: &IsinTable) {
+        if table.fill_unsettled(self) {
             self.event.fill_market();
         }
-        moved
     }
 
     /// The country of issue the message states that its ISIN does not
     /// already say: `CountryOfIssue(470)` where ISO 3166 lists it and it is
-    /// not the prefix of the real ISIN the message names. The crate's rule
-    /// lands that prefix on every ISO-prefixed message stating no country,
-    /// and a landed value is indistinguishable from a stated one, so a
-    /// `470` equal to the prefix states nothing a walk may learn: a
-    /// country held beside the ISIN stands until a message states another,
-    /// and an explicit [`IsinRegistry::merge`] stating the prefix is what
-    /// takes a wrong one back.
+    /// not the prefix of the message's real ISIN. A rule lands that prefix
+    /// on every ISO-prefixed message stating no country, so a `470` equal to
+    /// it states nothing a walk may learn: a held country stands until a
+    /// message states another or an [`IsinRegistry::merge`] states the
+    /// prefix.
     pub(super) fn stated_country(&self) -> Option<Country> {
         let stated = self.get_by_tag(COUNTRYOFISSUE_TAG)?;
         let country = Country::new(stated.as_str()?)
@@ -3656,12 +3643,11 @@ impl FixMsg {
         (prefix != Some(country.as_str())).then_some(country)
     }
 
-    /// The security identifiers derived of another instrument taken back
-    /// and what `table` holds of this one derived: what a batch entry does
-    /// once it has restated its own instrument over the batch's, whose
-    /// overlay it was cloned with. The pair FX detection derived stands,
-    /// since the entry's own symbol detected its own. Settled facts are
-    /// left as they are; the caller stamps the identity after.
+    /// What a batch entry does once it has restated its own instrument over
+    /// the batch's: the identifiers derived of the batch's instrument taken
+    /// back - the pair FX detection derived off the entry's own symbol kept -
+    /// and what `table` holds of the entry's derived. Settled facts stand;
+    /// the caller stamps the identity after.
     pub(super) fn refill_instrument_ids(&mut self, table: Option<&IsinTable>) {
         let stale: Vec<IdType> = self
             .derived
@@ -3686,12 +3672,12 @@ impl FixMsg {
     /// intake's own clock - takes `TransactTime(60)` as its instant where it
     /// states one with a clock, and a resend's `OrigSendingTime(122)` as its
     /// creation where that is earlier, its stand-in sending clock moved to
-    /// the same instant, and settles what the clock moves and nothing else
-    /// (`settle_clock`): the fields stood still, so the derivations
-    /// the parse landed and the identifiers it derived stand, and only the
-    /// execution instant a report dates from itself and the identity the
-    /// instant derives move. A stated sending clock stands: the parse dated
-    /// the message by what it said, and the walk does not second-guess it.
+    /// the same instant, and settles only what the clock moves
+    /// (`settle_clock`) - the execution instant a report dates from itself,
+    /// and the identity - as no field moved, so the derivations the parse
+    /// landed and the identifiers it derived stand. A stated sending clock
+    /// stands: the parse dated the message by what it said, and the walk
+    /// does not second-guess it.
     /// No delay bounds this one: a clock nobody stated is no reference to
     /// measure a distance from, which is why the parse's own
     /// [`FixCodec::official_time_delay_ms`](super::FixCodec::official_time_delay_ms)

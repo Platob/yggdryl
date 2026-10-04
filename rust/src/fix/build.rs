@@ -2503,30 +2503,21 @@ fn serie_of(field: &Field, item: Field) -> Field {
     )
 }
 
-/// The value one FIX wire spelling states, where FIX spells it its own way.
+/// The value one FIX wire spelling states, where FIX spells it its own way:
+/// a datetime, read by [`DateTime64::from_fix_text`](crate::DateTime64) -
+/// the codec parses none of it. A boolean is not one: `Y`, `N` and a
+/// bridge's `yes` or `no` are spellings the generic value contract reads.
 ///
-/// A boolean is not one: `Y`, `N` and a bridge's `yes` or `no` are spellings
-/// the generic value contract reads, as a column cast does. A datetime is,
-/// and the codec parses none of it: every datetime field is read by
-/// [`DateTime64::from_fix_text`](crate::DateTime64), the datetime's own
-/// reader, which takes the crate's ISO spellings as they stand -
-/// `20260821-10:30:00.123456`, the bare `20260821`, a stated zone, an offset
-/// after one blank - and the four only FIX writes: a bridge's one digit
-/// run, a clock that stops at its minutes, a `TZTimeOnly` read on the epoch
-/// day, and a numeric offset closed by `s`.
+/// `UTCTimestamp` (a date, no zone), `TZTimestamp` (both) and `TZTimeOnly`
+/// (a zone, no date) all land on `DateTime64`. The zone a value states
+/// outranks the column's, and a value stating none is a wall clock in the
+/// column's zone - what `UTCTimestamp` means by saying nothing. A column
+/// stating no zone - a `LocalMktDate`, a `LocalMktDatetime` - holds a local
+/// market value, so a reading stating a zone is left to the value contract,
+/// which refuses it.
 ///
-/// Three FIX datatypes land on `DateTime64` and this reads all three, because
-/// only their spelling differs: `UTCTimestamp` states a date and no zone,
-/// `TZTimestamp` states both, and `TZTimeOnly` states a zone and no date. The
-/// zone a value states outranks the column's; a value stating none is a wall
-/// clock in the column's zone, which is what `UTCTimestamp` means by saying
-/// nothing; and a column stating no zone - a `LocalMktDate`, a
-/// `LocalMktDatetime` - holds a local market value, so a reading that states
-/// a zone is not one and is left to the value contract, which refuses it.
-///
-/// What is answered is the typed value, in the column's own zone - the
-/// instant is the same under any - so the value contract restates the unit
-/// and reads no text a second time.
+/// The answer is the typed value in the column's own zone, so the value
+/// contract restates the unit and reads no text a second time.
 pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
     let DataType::DateTime64 { timezone, .. } = dtype else {
         return None;

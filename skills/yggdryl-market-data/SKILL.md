@@ -310,14 +310,14 @@ Hold these facts:
   type alone for the base source, and `Identifier("fix:clordid", value)` is the
   base `clordid`.
 - An `IsinRegistry` fills what an element leaves unsaid about its instrument
-  from what earlier elements stated - keyed by the ISIN alone, a ticker
-  leading to it on its market, a RIC or a Bloomberg symbol only an equivalent
-  - as `derived` identifiers, so a filled code reads back `is_derived`, plus
-  the ticker, the CFI code and the listing's currency as market facts; a
-  valid stated value fills and replaces whatever the time. The bindings'
+  from what earlier elements stated: identifiers as `derived` (a filled code
+  reads back `is_derived`), and the ticker, CFI code and listing currency as
+  market facts. It is keyed by the ISIN alone - a ticker leads to it on its
+  market, a RIC or a Bloomberg symbol is only an equivalent - and a valid
+  stated value fills and replaces whatever the time. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every
-  message, and a parse fills the identifiers from the table its door fixed.
-  Bind one to a store with `from_url` and write it back with `commit()`.
+  message, and a parse fills identifiers from the table its door fixed. Bind
+  one to a store with `from_url` and write it back with `commit()`.
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a

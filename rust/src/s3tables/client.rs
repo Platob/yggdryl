@@ -125,13 +125,10 @@ impl S3Tables {
         self
     }
 
-    /// Reach the service at `url`, whatever the session or the region says;
-    /// a blank URL states none.
-    ///
-    /// The URL is read here, once: an `http` or `https` origin, and the path
-    /// a gateway mounts the service under. Every request goes there whatever
-    /// the session's FIPS and dual-stack switches say, as botocore sends one
-    /// given an endpoint.
+    /// Reach the service at `url` - an `http` or `https` origin and the path
+    /// a gateway mounts it under, read once - whatever the session, the
+    /// region or the FIPS and dual-stack switches say; a blank URL states
+    /// none.
     ///
     /// # Errors
     ///
@@ -187,22 +184,18 @@ impl S3Tables {
 
     /// The endpoint requests for `region` go to: what was stated on the
     /// client, else [`Session::service_endpoint`] for `s3tables` - the
-    /// endpoint the session states or configures for the service
-    /// (`AWS_ENDPOINT_URL_S3TABLES`, `AWS_ENDPOINT_URL`, the profile's
-    /// `[services]` entry `s3tables`, its `endpoint_url`), else the published
-    /// host of the region's partition, `https://s3tables[-fips].{region}.{suffix}`
-    /// with the dual-stack suffix as the session's switches say.
-    ///
-    /// A stated or configured endpoint is used whatever the FIPS and
-    /// dual-stack switches say: they choose among the published hosts, and
-    /// botocore turns both off when an endpoint is given.
+    /// session's stated or configured endpoint (`AWS_ENDPOINT_URL_S3TABLES`,
+    /// `AWS_ENDPOINT_URL`, the profile's `[services]` entry `s3tables`, its
+    /// `endpoint_url`), else the region's published host,
+    /// `https://s3tables[-fips].{region}.{suffix}`, under its FIPS and
+    /// dual-stack switches, which choose among published hosts only, as
+    /// botocore's do.
     ///
     /// # Errors
     ///
     /// What the session refuses of the configured endpoint
-    /// ([`Session::endpoint_url`]), and a configured endpoint the client
-    /// cannot send to, refused as [`Self::try_with_endpoint_url`] refuses
-    /// one.
+    /// ([`Session::endpoint_url`]), and a configured endpoint refused as
+    /// [`Self::try_with_endpoint_url`] refuses one.
     pub fn endpoint_url(&self, region: &str) -> Result<String> {
         self.endpoint(region).map(|endpoint| endpoint.0)
     }
@@ -215,11 +208,9 @@ impl S3Tables {
         }
     }
 
-    /// Send `call` and read its answer: one request, signed with Signature
-    /// Version 4 for `s3tables` as the session answers, plus the ones the
-    /// HTTP client repeats for a call the service marks safe to send again,
-    /// plus one more when the service says the key that signed it is no
-    /// longer accepted and the session then answers another.
+    /// Send `call` and read its answer: one SigV4-signed request, plus the
+    /// HTTP client's repeats of a call safe to send again, plus one when the
+    /// service refuses the signing key and the session answers another.
     ///
     /// # Errors
     ///
@@ -263,7 +254,7 @@ impl S3Tables {
 /// Where requests go: `scheme://host[:port]`, then the path a gateway
 /// mounts the service under, without a trailing slash - read once, holding
 /// no user information, so nothing that renders it can leak a credential.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 struct Endpoint(String);
 
 impl Endpoint {
@@ -774,7 +765,7 @@ impl<'a> Reader<'a> {
 /// # Errors
 ///
 /// Returns the JSON codec's refusal of a value it cannot write.
-pub(crate) fn body<const N: usize>(members: [(&'static str, Scalar); N]) -> Result<Vec<u8>> {
+pub(crate) fn body(members: impl IntoIterator<Item = (&'static str, Scalar)>) -> Result<Vec<u8>> {
     crate::json::into_bytes(&Scalar::from_struct(members)?)
 }
 
@@ -829,8 +820,25 @@ pub(crate) fn check_version_token(token: &str) -> Result<()> {
     Ok(())
 }
 
+/// The refusal of `arn` where `expected` - a shape of `s3tables` ARN - is
+/// asked for: at its service field when that is not `s3tables`, else at its
+/// resource.
+pub(crate) fn refuse_arn(arn: &Arn, target: &'static str, expected: &str) -> Error {
+    let text = arn.to_string();
+    let position = if arn.service() == SERVICE {
+        text.len() - arn.resource().len()
+    } else {
+        "arn:".len() + arn.partition().len() + 1
+    };
+    Error::Parse {
+        target,
+        position,
+        reason: format_smolstr!("expected {expected} - got {:?}", echo(&text)),
+    }
+}
+
 /// At most [`ECHO_BYTES`] of `text`, for a refusal to quote.
-pub(crate) fn echo(text: &str) -> &str {
+fn echo(text: &str) -> &str {
     let mut end = text.len().min(ECHO_BYTES);
     while !text.is_char_boundary(end) {
         end -= 1;

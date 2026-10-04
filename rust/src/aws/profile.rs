@@ -232,16 +232,14 @@ impl Profile {
         self.get("endpoint_url")
     }
 
-    /// The `endpoint_url` of `service` in the `[services]` section the
-    /// profile names, when it names one that states it. `service` is the
-    /// service id, read as [`Session::endpoint_url`](super::Session::endpoint_url)
-    /// reads it.
+    /// The `endpoint_url` of `service` - a service id, read as
+    /// [`Session::endpoint_url`](super::Session::endpoint_url) reads it - in
+    /// the `[services]` section the profile names, when it states one.
     ///
     /// # Errors
     ///
     /// A profile whose `services` names a section that defines nothing - a
-    /// misspelt name, an empty section, no name at all - as botocore
-    /// refuses it, rather than leaving the published host a typo would.
+    /// misspelt name, an empty section, no name - as botocore refuses it.
     pub fn service_endpoint_url(&self, service: &str) -> Result<Option<&str>> {
         let Some((name, table)) = &self.services else {
             return Ok(None);
@@ -511,9 +509,8 @@ fn redacted_all(tables: &BTreeMap<String, Table>) -> BTreeMap<&str, BTreeMap<&st
 }
 
 /// The key a service's `[services]` entry or `AWS_ENDPOINT_URL_` variable
-/// is spelled under: the service id - botocore's `serviceId`, never the
-/// endpoint prefix or the signing name - lower case, a hyphen or a space as
-/// `_`, which is botocore's own transformation: `SSO OIDC` is `sso_oidc`.
+/// is spelled under: botocore's `serviceId` lower case, a hyphen or a space
+/// as `_` - `SSO OIDC` is `sso_oidc`.
 pub(crate) fn service_key(service: &str) -> String {
     service.trim().to_ascii_lowercase().replace(['-', ' '], "_")
 }
@@ -537,14 +534,12 @@ fn nested<'a>(table: &'a Table, name: &str, key: &str) -> Option<&'a str> {
     }
 }
 
-/// The names an expiry is written under beside a set in a shared file: the
-/// file spelling of `AWS_CREDENTIAL_EXPIRATION` first, then the spellings
-/// the tools that dump temporary sets write - saml2aws and gimme-aws-creds
-/// (`x_security_token_expires`), yawsso (`aws_session_expiration`),
-/// aws-azure-login (`aws_expiration`) and aws-mfa (`expiration`). The AWS
-/// CLI reads none of them; a set that states one is refreshed before it
-/// lapses rather than signed with after.
-pub(crate) const EXPIRY_KEYS: [&str; 5] = [
+/// The names an expiry is written under beside a set in a shared file:
+/// `AWS_CREDENTIAL_EXPIRATION`'s file spelling, then those saml2aws,
+/// gimme-aws-creds, yawsso, aws-azure-login and aws-mfa write. The AWS CLI
+/// reads none of them; a set that states one is refreshed before it lapses
+/// rather than signed with after.
+const EXPIRY_KEYS: [&str; 5] = [
     "aws_credential_expiration",
     "x_security_token_expires",
     "aws_session_expiration",
@@ -692,10 +687,9 @@ fn parse(text: &str, style: Style) -> Vec<(Header, Table)> {
 /// `key = value` or `key: value`, split at the first delimiter, both trimmed.
 ///
 /// A line pasted from the shell block the IAM Identity Center portal and
-/// `aws configure export-credentials` print reads as the key it sets:
-/// `export AWS_ACCESS_KEY_ID="..."` (a POSIX shell), `set AWS_...=` (the
-/// Windows command prompt), `$Env:AWS_...="..."` (PowerShell). None of those
-/// words begins a key the AWS tools define.
+/// `aws configure export-credentials` print - `export `, `set ` or `$Env:`
+/// before the key - reads as the key it sets; none of those words begins a
+/// key the AWS tools define.
 fn split_pair(line: &str) -> Option<(&str, &str)> {
     let line = SHELL_PREFIXES
         .iter()
@@ -744,7 +738,7 @@ fn header(inner: &str, style: Style) -> Header {
 ///
 /// The tools apply it to a `[profile "my name"]` header and to a
 /// `credential_process` line, so both are read by one splitter.
-pub(crate) fn split_words(text: &str) -> Vec<String> {
+fn split_words(text: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut in_word = false;
@@ -801,14 +795,12 @@ pub(crate) fn split_words(text: &str) -> Vec<String> {
     words
 }
 
-/// Split a `credential_process` line into its program and arguments the way
-/// the AWS tools do on the platform that runs it: POSIX words
-/// ([`split_words`]) everywhere but Windows, where the line is read as the
-/// Microsoft C runtime reads a command line - only a blank or a tab
-/// separates, only a double quote groups, and a backslash is literal unless
-/// it runs up to a double quote, where each pair is one backslash and an odd
-/// one out escapes the quote. So `C:\Tools\vault.exe export dev` is the
-/// program `C:\Tools\vault.exe`, as botocore's Windows splitter reads it.
+/// Split a `credential_process` line into its program and arguments as the
+/// AWS tools do on the platform that runs it: POSIX words ([`split_words`]),
+/// or on Windows the Microsoft C runtime's rules - blanks and tabs separate,
+/// double quotes group, and a backslash is literal unless it runs up to a
+/// double quote, where each pair is one backslash and an odd one out escapes
+/// the quote - so `C:\Tools\vault.exe` stays one program.
 pub(crate) fn split_command(text: &str, windows: bool) -> Vec<String> {
     if !windows {
         return split_words(text);

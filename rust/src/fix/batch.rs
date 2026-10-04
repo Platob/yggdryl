@@ -676,15 +676,12 @@ impl FixCodec {
 /// [`append_serie`](crate::IOMedia::append_serie) without leaving the serie
 /// vocabulary.
 ///
-/// Each is a redirect and moves no row. A source crosses in as the stream of
-/// the batches it already is ([`SerieSource::into_reader`] then
-/// [`SerieReader::into_arrow_reader`]): transport, so a reader another face
-/// answered hands its door's own reader back. The answer is read under the
-/// root its door writes, which is the reader's own schema, so its one plan
-/// is the identity: handed on as a source it is the door's reader again,
-/// untouched, and only a caller reading its records lands a batch - sharing
-/// its buffers, and reading once each row of a leaf whose layout is not its
-/// datatype's whole contract, because the batch crossed a reader.
+/// Each is a redirect and moves no row: a source crosses in as the batches
+/// it already is ([`SerieSource::into_reader`]), and the answer is read
+/// under the root its door writes, one identity plan - so handed on as a
+/// source it is the door's own reader again, and only a caller reading its
+/// records lands a batch - sharing its buffers, and proving once each row
+/// of a leaf whose layout is not its datatype's whole contract.
 impl FixCodec {
     /// [`Self::parse_text_arrow_reader`] over any [`SerieSource`], answered
     /// as a [`SerieReader`] under the root that door writes - the capture's

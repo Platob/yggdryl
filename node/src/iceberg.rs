@@ -542,21 +542,17 @@ fn format_version(value: Option<u32>) -> Result<Option<FormatVersion>> {
         .transpose()
 }
 
-/// What a table door's `root` names beside the `properties` stated with it:
-/// a handle in hand, as the container it addresses, or the table's location
-/// as it was named, which the core opens by itself under the properties.
+/// A table door's `root`: a handle, as the container it addresses, or the
+/// location as named, which the core opens under the properties beside it.
 enum TableRoot {
     /// Boxed: a holder is several times the size of a location.
     Handle(Box<yggdryl::holder::Holder>),
     Location(yggdryl::Uri, yggdryl::Properties),
 }
 
-/// Read a table door's `root` and `properties`.
-///
-/// A handle root is reopened as the folder at its location, under the
-/// environment - nothing its builder stated is carried - so properties
-/// beside one have nothing to open and are refused by name rather than
-/// dropped.
+/// Read a table door's `root` and `properties`. A handle is reopened as the
+/// folder at its location, under the environment - nothing its builder stated
+/// is carried - so properties beside one are refused by name.
 fn table_root(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result<TableRoot> {
     let properties = crate::warehouse::properties_from_input(properties)?;
     match table_root_from_input(root)? {
@@ -578,11 +574,8 @@ fn table_root(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result
 /// `truncate(name, 4) as prefix` a derived one - declared on a copy of the
 /// root and read into a spec by the core's one rule, which refuses an entry
 /// no spec can hold by naming it. `null` is unpartitioned whatever the schema
-/// declares, and an omitted argument states nothing: it is skipped rather
-/// than defaulted here, so a location root hands the absence to the core,
-/// whose create derives the spec from the schema as it stores it, and a
-/// handle root - whose core door takes a spec - reads the schema's own
-/// declaration through [`declared_spec`].
+/// declares; omitted is `None`, which a location root leaves to the core and
+/// a handle root reads from the schema's own declaration.
 fn stated_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<Option<CorePartitionSpec>> {
     match value {
         Either4::A(spec) => Ok(Some(spec.inner.clone())),
@@ -601,8 +594,7 @@ fn stated_spec(value: PartitionInput<'_>, schema: &CoreField) -> Result<Option<C
 }
 
 /// The spec a handle root is created under: the one stated, else the
-/// schema's own `PARTITION:by` declaration - a schema declaring nothing
-/// unpartitioned.
+/// schema's own declaration.
 fn declared_spec(
     stated: Option<CorePartitionSpec>,
     schema: &CoreField,
@@ -1512,20 +1504,15 @@ impl JsTable {
 impl JsTable {
     /// Create a table, writing its first metadata document.
     ///
-    /// `root` is the container handle the table lives in, or its location -
-    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - which the core opens by
-    /// itself under `properties`: a folder any backend holds, or
-    /// `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
-    /// Tables table bucket keeps, registered there and committed through
-    /// its control plane, its namespace made on the way where the bucket
-    /// does not hold it. Properties beside a handle are refused: a handle
-    /// root is reopened as the folder at its location, under the
-    /// environment.
-    ///
-    /// `version` omitted is 2 over a handle; over a location it is the
-    /// `format-version` property, else the lowest version that states the
-    /// schema - 3 for a nanosecond timestamp, a variant or an unknown
-    /// column, else 2.
+    /// `root` is the container handle the table lives in - reopened as the
+    /// folder at its location under the environment, so properties beside it
+    /// are refused - or its location, which the core opens under
+    /// `properties`: a folder any backend holds, or
+    /// `s3tables://<bucket>/<namespace>/<table>` for an Amazon S3 Tables
+    /// table, its namespace made on the way where the bucket lacks it.
+    /// `version` omitted is 2 over a handle; over a location, the
+    /// `format-version` property, else the lowest version stating the
+    /// schema.
     ///
     /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
     /// `PARTITION:by` entries to partition on: a bare column - `venue` - is an
@@ -1571,13 +1558,9 @@ impl JsTable {
         .map_err(napi_error)
     }
 
-    /// Open the table `root` names.
-    ///
-    /// A container handle is the folder the table lives in. A location -
-    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - is opened by the core
-    /// under `properties`: a folder any backend holds, or a table an Amazon
-    /// S3 Tables table bucket keeps, named
-    /// `s3tables://<bucket>/<namespace>/<table>` or by its own ARN.
+    /// Open the table `root` names: the folder a container handle is, or a
+    /// location the core opens under `properties` - a folder, or an Amazon
+    /// S3 Tables table by its `s3tables:` location or its ARN.
     #[napi(
         factory,
         ts_args_type = "root: LocationInput, properties?: Record<string, string | number | boolean> | null"
@@ -1595,12 +1578,9 @@ impl JsTable {
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// `root`, `version` and `properties` are read as
-    /// [`create`](Self::create) reads them. Like it, `partitionBy` is a spec,
-    /// the `PARTITION:by` entries one is read from, `null` for none, or -
-    /// omitted - the schema's own declaration, and unnumbered schema columns
-    /// are numbered automatically; an existing table is opened as it is and
-    /// `schema` describes only the table this call would create.
+    /// Every argument reads as [`create`](Self::create) reads it; an
+    /// existing table is opened as it is and `schema` describes only the
+    /// table this call would create.
     #[napi(
         factory,
         ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null"
@@ -2040,9 +2020,9 @@ impl JsTable {
         })
     }
 
-    /// Replace the partitions `batches` fall in as a new snapshot: every
-    /// row of an unpartitioned table, and of a partitioned one the
-    /// partitions the rows touch - no row replaces nothing there, and
+    /// Replace the partitions `batches` fall in as a new snapshot - every
+    /// row of an unpartitioned table, only the partitions the rows touch of a
+    /// partitioned one, so no row replaces nothing there;
     /// `overwriteWhere(null, [])` empties it.
     ///
     /// The previous snapshot stays readable; only the current pointer moves.
@@ -2547,9 +2527,8 @@ impl JsSchemaUpdate {
         self.inner.rename_column(&path, name);
     }
 
-    /// Record a new documentation string on the column at `path`: the
-    /// column's own description, which the schema states as its `doc`. An
-    /// empty one clears it.
+    /// Record the description - the schema's `doc` - of the column at
+    /// `path`; an empty one clears it.
     #[napi]
     pub fn update_doc(&mut self, path: String, doc: String) {
         self.inner.update_doc(&path, doc);
