@@ -146,6 +146,12 @@ struct Endpoint {
     /// Whether the account is a path segment ahead of the container, which is
     /// how the Azure emulators address one.
     account_in_path: bool,
+    /// The path a gateway mounts Amazon S3 below, as sent - empty, or
+    /// `/gateway/s3` with no trailing `/` - which every request path is put
+    /// under, as botocore puts it. Only the AWS dialect keeps one: an Azure
+    /// emulator's path is the account `account_in_path` adds, and Google's
+    /// requests name their whole path.
+    prefix: String,
 }
 
 impl Endpoint {
@@ -187,7 +193,11 @@ impl Endpoint {
         if path.is_empty() {
             path.push('/');
         }
-        path
+        if self.prefix.is_empty() {
+            path
+        } else {
+            format!("{}{path}", self.prefix)
+        }
     }
 }
 
@@ -445,7 +455,10 @@ impl Client {
     ///
     /// The order is the same for every store - an explicit endpoint, then the
     /// URL's own, then the environment, then the store's published host - and
-    /// only the last two steps know which store this is.
+    /// only the last two steps know which store this is. The environment is
+    /// asked only when neither of the first two answers, so a refusal it
+    /// holds - a profile naming a `[services]` section nobody wrote - is no
+    /// refusal of a client that named its endpoint.
     fn endpoint_of(
         provider: Provider,
         url: &Url,
@@ -459,12 +472,22 @@ impl Client {
         // is the location a caller handed over rather than a default.
         let explicit = options.endpoint().map(str::to_owned);
         let from_url = url.store_endpoint().map(str::to_owned);
-        let ambient = Self::ambient_endpoint(provider, options, session);
         let account = Self::azure_account(provider, url, options, handed);
-        let named = explicit.or(from_url).or(ambient);
-        let (scheme, host, port) = match named {
+        let named = match explicit.or(from_url) {
+            Some(named) => Some(named),
+            None => Self::ambient_endpoint(provider, options, session)?,
+        };
+        let (scheme, host, port, path) = match named {
             Some(endpoint) => Self::split_endpoint(&endpoint)?,
-            None => Self::published_host(provider, url, options, session, account.as_deref())?,
+            None => {
+                let (scheme, host, port) =
+                    Self::published_host(provider, url, options, session, account.as_deref())?;
+                (scheme, host, port, String::new())
+            }
+        };
+        let prefix = match provider {
+            Provider::Aws => path,
+            Provider::Google | Provider::Azure => String::new(),
         };
         let lowered = host.to_ascii_lowercase();
         let path_style = match provider {
@@ -518,17 +541,22 @@ impl Client {
             path_style,
             account,
             account_in_path,
+            prefix,
         })
     }
 
     /// The endpoint the environment and a store's own files name, and the
     /// one stated on the session or the Azure options where the options
     /// consult no environment.
+    ///
+    /// # Errors
+    ///
+    /// What the session refuses of the configured S3 endpoint.
     fn ambient_endpoint(
         provider: Provider,
         options: &S3Options,
         session: &Session,
-    ) -> Option<String> {
+    ) -> Result<Option<String>> {
         let from_environment = match provider {
             // `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, the profile's
             // `[services]` entry, then its `endpoint_url`: the session's
@@ -555,7 +583,7 @@ impl Client {
             }
             Provider::Google | Provider::Azure => None,
         };
-        from_environment.or_else(|| options.azure().endpoint().map(str::to_owned))
+        Ok(from_environment.or_else(|| options.azure().endpoint().map(str::to_owned)))
     }
 
     /// The host the store publishes, when nothing named another.
@@ -611,15 +639,16 @@ impl Client {
         Ok(("https".to_owned(), host, None))
     }
 
-    /// Split `https://host:port` into its parts, defaulting the scheme.
+    /// Split `https://host:port/path` into its parts, defaulting the scheme.
     ///
     /// The endpoint is read once, as the URL it is: a bare `host` or
     /// `host:port` is reached over `https`, a port is the decimal number the
-    /// URL grammar spells, and an IPv6 literal keeps its brackets. What an
-    /// endpoint carries beyond where the store is - user information, a path
-    /// such as the account an Azure emulator is named by, a query - is no part
-    /// of the host a request is addressed and signed to.
-    fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
+    /// URL grammar spells, and an IPv6 literal keeps its brackets. User
+    /// information and a query are no part of where the store is. The path is
+    /// answered as written, its trailing `/` dropped - the prefix a gateway
+    /// mounts Amazon S3 below, or the account an Azure emulator is named by -
+    /// and never reaches the host a request is addressed and signed to.
+    fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>, String)> {
         let refuse = |reason: &str| {
             Error::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -646,7 +675,12 @@ impl Client {
         if host.is_empty() {
             return Err(refuse("got no host"));
         }
-        Ok((url.scheme().as_str().to_owned(), host.to_owned(), port))
+        Ok((
+            url.scheme().as_str().to_owned(),
+            host.to_owned(),
+            port,
+            url.path().as_str().trim_end_matches('/').to_owned(),
+        ))
     }
 
     /// The signing region the URL, the options and the session name.
@@ -2672,6 +2706,7 @@ pub mod internals {
                 path_style,
                 account: account.map(str::to_owned),
                 account_in_path,
+                prefix: String::new(),
             })
         }
 
@@ -2741,12 +2776,12 @@ pub mod internals {
             super::Client::url_credentials(url)
         }
 
-        /// The scheme, host and port one endpoint spelling splits into.
+        /// The scheme, host, port and path one endpoint spelling splits into.
         ///
         /// # Errors
         ///
         /// Returns a refusal when the endpoint names a port that is not one.
-        pub fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>)> {
+        pub fn split_endpoint(endpoint: &str) -> Result<(String, String, Option<u16>, String)> {
             super::Client::split_endpoint(endpoint)
         }
 

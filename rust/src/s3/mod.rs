@@ -115,7 +115,7 @@ mod folder;
 pub mod google;
 pub(crate) mod options;
 mod path;
-mod properties;
+pub(crate) mod properties;
 mod provider;
 mod request;
 pub(crate) mod xml;

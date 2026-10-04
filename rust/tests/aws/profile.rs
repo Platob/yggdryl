@@ -507,6 +507,14 @@ dynamodb =
 [profile elsewhere]
 services = nowhere
 
+[profile emptied]
+services = empty
+
+[services empty]
+
+[profile unnamed]
+services =
+
 [profile plain]
 region = eu-west-3
 ";
@@ -517,40 +525,77 @@ region = eu-west-3
             "every service's"
         );
         assert_eq!(
-            local.service_endpoint_url("s3"),
+            local
+                .service_endpoint_url("s3")
+                .expect("a section the profile defines"),
             Some("http://localhost:9000")
         );
         assert_eq!(
-            local.service_endpoint_url("S3"),
+            local
+                .service_endpoint_url("S3")
+                .expect("a section the profile defines"),
             Some("http://localhost:9000"),
             "a service id folds"
         );
         assert_eq!(
-            local.service_endpoint_url("Secrets Manager"),
+            local
+                .service_endpoint_url("Secrets Manager")
+                .expect("a section the profile defines"),
             Some("http://localhost:9001"),
             "a space is spelled as an underscore"
         );
         assert_eq!(
-            local.service_endpoint_url("sso-oidc"),
+            local
+                .service_endpoint_url("sso-oidc")
+                .expect("a section the profile defines"),
             Some("http://localhost:9002"),
             "a hyphen is spelled as an underscore"
         );
         assert_eq!(
-            local.service_endpoint_url("dynamodb"),
+            local
+                .service_endpoint_url("dynamodb")
+                .expect("a section the profile defines"),
             None,
             "a service entry without endpoint_url states none"
         );
         assert_eq!(
-            local.service_endpoint_url("sts"),
+            local
+                .service_endpoint_url("sts")
+                .expect("a section the profile defines"),
             None,
             "a service with no entry"
         );
         assert_eq!(
-            configured(CONFIG, "elsewhere").service_endpoint_url("s3"),
-            None,
-            "a services name no section defines"
+            configured(CONFIG, "plain")
+                .service_endpoint_url("s3")
+                .expect("no section named"),
+            None
         );
-        assert_eq!(configured(CONFIG, "plain").service_endpoint_url("s3"), None);
+
+        // A section the profile names and nobody wrote - or wrote empty, or
+        // did not name at all - is refused as botocore refuses it, rather than
+        // leaving the published host a typo would.
+        for (name, expected) in [
+            (
+                "elsewhere",
+                "names services nowhere, which no [services nowhere] section defines",
+            ),
+            (
+                "emptied",
+                "names services empty, which no [services empty] section defines",
+            ),
+            (
+                "unnamed",
+                "states services without naming a [services] section",
+            ),
+        ] {
+            let message = refusal(configured(CONFIG, name).service_endpoint_url("s3"));
+            assert!(
+                message.contains(&format!("the profile {name}")),
+                "{message}"
+            );
+            assert!(message.contains(expected), "{message}");
+        }
     }
 
     #[test]

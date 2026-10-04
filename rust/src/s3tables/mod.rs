@@ -43,10 +43,12 @@
 //! assert!(tables.create_table_bucket("Lake").is_err());
 //! assert!(tables.get_namespace(&lake, "no-hyphens").is_err());
 //!
-//! // A custom endpoint beside the FIPS switch is the service's own refusal.
+//! // An endpoint the caller states is where every request goes: the FIPS and
+//! // dual-stack switches choose among the published hosts, and botocore
+//! // turns both off beside one.
 //! let gateway = S3Tables::new(session.with_use_fips_endpoint(true))
 //!     .try_with_endpoint_url("http://localhost:4566")?;
-//! assert!(gateway.endpoint_url(&region).is_err());
+//! assert_eq!(gateway.endpoint_url(&region)?, "http://localhost:4566");
 //! # Ok(())
 //! # }
 //! ```

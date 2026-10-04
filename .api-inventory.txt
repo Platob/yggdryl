@@ -2070,12 +2070,14 @@ pub struct ZipPath
       with_ca_bundle
   pub fn assumed_role, sso, anonymous, reads_environment, sso_login
   pub fn variable, profile_name, directory, config_file, credentials_file, profile,
-      available_profiles, region, instance_region, endpoint_url, use_fips_endpoint,
-      use_dualstack_endpoint, sts_regional_endpoints, sts_endpoint, max_attempts, ca_bundle
+      available_profiles, region, instance_region, use_fips_endpoint,
+      use_dualstack_endpoint, sts_regional_endpoints, max_attempts, ca_bundle
   pub fn credentials(&self, now: SystemTime) -> Result<Option<Credentials>>
   pub fn credential_source, invalidate, login
   pub fn invalidate_if(&self, access_key_id: &str) -> bool  (a store refused that key: it never signs again on the session, the walk passing over a source answering it by name; the set in hand forgotten when it is that key's)
-  pub fn service_endpoint(&self, service: &str, region: &str) -> String  (the one endpoint door: the configured endpoint_url(service), else `https://{service}[-fips].{region}.{suffix}` from the region's ArnPartition under the session's FIPS and dual-stack switches; `service` the endpoint id, not always the signing name; STS keeps its legacy global rule over it)
+  pub fn service_endpoint(&self, service: &str, region: &str) -> Result<String>  (the one endpoint door: endpoint_url(service), else `https://{service}[-fips].{region}.{suffix}` from the region's ArnPartition under the session's FIPS and dual-stack switches; `service` both the service id the configured endpoint is looked up by and the endpoint prefix the host is built from, so it fits a service whose two agree; STS keeps its legacy global rule over it)
+  pub fn endpoint_url(&self, service: &str) -> Result<Option<String>>  (botocore's configured endpoint: stated per service, stated for all, AWS_ENDPOINT_URL_<SERVICE ID>, AWS_ENDPOINT_URL, the profile's [services] entry, its endpoint_url - the configured four skipped under AWS_IGNORE_CONFIGURED_ENDPOINT_URLS; a value naming no endpoint and a [services] section nobody wrote refused by name)
+  pub fn sts_endpoint(&self, region: &str) -> Result<String>
   pub const PROPERTY_NAMES: [&'static str; 32]  [rust/src/aws/properties.rs]  (the identity property names as this crate spells them)
   pub fn from_properties<K, V>(properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where K: AsRef<str>, V: AsRef<str>
   pub fn with_properties<K, V>(&self, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where K: AsRef<str>, V: AsRef<str>  (the one reader of AWS identity properties: bare names, `aws_` names and PyIceberg's `client.*` - region, the pair and its token, anonymous, profile, a role, a sign-in, the shared files, the endpoint switches, the metadata service; case, `-`, `_`, `.` alike; never `token`, never `s3.*`; an unknown name ignored, half a set or half a sign-in refused naming what is missing; S3Options::with_properties delegates its identity names to it)
@@ -2087,7 +2089,8 @@ pub struct ZipPath
       expires_at, account_id, is_temporary
 
   pub struct Profile  [rust/src/aws/profile.rs]
-  pub fn name, get, flag, nested, s3, iter, region, output, endpoint_url, service_endpoint_url,
+  pub fn service_endpoint_url(&self, service: &str) -> Result<Option<&str>>  (refused where the profile's `services` names a section nobody wrote)
+  pub fn name, get, flag, nested, s3, iter, region, output, endpoint_url,
       sso_session_name, credential_process, login_session, assumed_role, sso
   pub fn credentials(&self) -> Result<Option<Credentials>>  (the credentials file's set, else the configuration file's; its expiry read from aws_credential_expiration, x_security_token_expires, aws_session_expiration, aws_expiration or expiration; a half set or an expiry nothing reads refused naming the profile and the file)
 
@@ -2116,7 +2119,7 @@ pub struct ZipPath
   pub fn try_with_endpoint_url(mut self, url: impl AsRef<str>) -> Result<Self>  (over the session's and the partition's host, read once; blank states none; not http or https, no host, a query, a fragment or user information refused as Error::Parse, the user information never repeated)
   pub fn session(&self) -> &Session
   pub fn region_of(&self, bucket: Option<&Arn>) -> Result<String>  (stated on the client, else the table bucket ARN's, else the session's; none refused naming how to state one; one that is no host label refused as Error::Parse naming where it came from)
-  pub fn endpoint_url(&self, region: &str) -> Result<String>  (stated, else `Session::service_endpoint("s3tables", region)`: the session's configured endpoint, else `https://s3tables[-fips].{region}.{suffix}` with the session's FIPS and dual-stack switches; a stated or configured endpoint beside either switch refused with the service's own `Invalid Configuration: ... and custom endpoint are not supported`)
+  pub fn endpoint_url(&self, region: &str) -> Result<String>  (stated, else `Session::service_endpoint("s3tables", region)?`: the session's stated or configured endpoint - AWS_ENDPOINT_URL_S3TABLES, AWS_ENDPOINT_URL, the profile's `[services]` entry `s3tables`, its `endpoint_url` - else `https://s3tables[-fips].{region}.{suffix}` with the session's FIPS and dual-stack switches; a stated or configured endpoint used whatever either switch says, as botocore uses one; what the session refuses of a configured endpoint, and one carrying a query, a fragment or user information, refused)
 
   pub fn create_table_bucket(&self, name: &str) -> Result<Arn>  (1 `PUT /buckets`; a name not 3 to 63 of 0-9, a-z and `-` refused before any request; `ConflictException` is Error::Conflict)
   pub fn get_table_bucket(&self, bucket: &Arn) -> Result<TableBucket>  (1 `GET`; `NotFoundException` is Error::Absent; an ARN whose service is not `s3tables` or whose resource is not `bucket/<name>` refused before any request)

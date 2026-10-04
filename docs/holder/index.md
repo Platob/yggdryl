@@ -423,7 +423,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 `uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://localhost/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
 
-No host is ever made up. A local file names none: `file:///path` is this machine by RFC 8089 on every platform, so no host is added to a file URL that did not state one, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A buffer and a location on a filesystem that answers in this process name `localhost`, the one name the crate writes for this machine. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is the machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell; intake reads it as this machine, and no URL the crate writes names it. A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment (`AWS_ENDPOINT_URL_S3`, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
+No host is ever made up. A local file names none: `file:///path` is this machine by RFC 8089 on every platform, so no host is added to a file URL that did not state one, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A buffer and a location on a filesystem that answers in this process name `localhost`, the one name the crate writes for this machine. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is the machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell; intake reads it as this machine, and no URL the crate writes names it. A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment and files (the session's [configured endpoint](#where-each-service-is-reached) for Amazon S3, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
 
 === "Rust"
 
@@ -4075,7 +4075,7 @@ assert_eq!(azure.key(), "part.parquet");
 
 ### Configuration
 
-Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins. The variables the AWS tools read for themselves - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest - are not swept: they are the [session's](#aws-identity), read with the precedence those tools give them.
+Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins. The variables the AWS tools read for themselves - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest, in any case - are not swept: they are the [session's](#aws-identity), read with the precedence those tools give them. Nor is any endpoint, under any prefix - a store's, STS's (`sts_endpoint`, `role_sts_endpoint`) or the instance metadata service's (`ec2_metadata_service_endpoint`, `metadata_service_endpoint`, `ec2_metadata_endpoint`): where a store is, the environment says through that store's own reader alone - the session's [configured endpoint](#where-each-service-is-reached) for Amazon S3, `STORAGE_EMULATOR_HOST` for Google, `AZURE_STORAGE_BLOB_ENDPOINT` for Azure - below an endpoint the options state and the one the URL names, and where STS and the metadata service are, through the session's `AWS_ENDPOINT_URL_STS` and `AWS_EC2_METADATA_SERVICE_ENDPOINT`. A swept endpoint would be a stated one, over `AWS_ENDPOINT_URL_<SERVICE>` and the profile and past the ignore flag, so `AWS_ENDPOINT`, `AWS_S3_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT` and `YGGDRYL_METADATA_SERVICE_ENDPOINT` address nothing, and an Azure variable never addresses an `s3://` location. Stated as a property (`sts_endpoint=...`), each is the endpoint it names.
 
 ```rust
 use yggdryl::s3::{Credentials, S3Options};
@@ -4107,8 +4107,8 @@ assert_eq!(
 );
 
 // A deployment that spells its configuration its own way gets every knob -
-// `TRADING_ENDPOINT`, `TRADING_SSE_TYPE`, `TRADING_ROLE_ARN` - rather than the
-// handful someone remembered to wire up.
+// `TRADING_REGION`, `TRADING_SSE_TYPE`, `TRADING_ROLE_ARN` - rather than the
+// handful someone remembered to wire up; an endpoint no prefix sweeps.
 let options = S3Options::default().with_environment_prefix("TRADING_");
 assert_eq!(options.environment_prefixes().len(), 5);
 
@@ -4208,7 +4208,8 @@ Session::new()                                   // states nothing; resolves laz
 session.credentials(now) -> Result<Option<Credentials>>   // the chain, walked once, refreshed in time
 session.credential_source() -> Option<&'static str>       // which source answered: "environment", "login", ...
 session.invalidate() / invalidate_if(key_id)              // a store refused the set: forget it, read the files again
-session.profile() / region() / endpoint_url("s3") / sts_endpoint(region) / login()
+session.profile() / region() / login()
+session.endpoint_url("s3")? / sts_endpoint(region)?    // where a service is reached, or a named refusal
 ```
 
 The chain is botocore's, in botocore's order, with the console sign-in `aws login` files where botocore has it. The last column is the name `credential_source`, the log and a refusal call a source by.
@@ -4247,7 +4248,7 @@ assert_eq!(
     session.assumed_role().and_then(AssumedRole::session_name),
     Some("power-desk")
 );
-assert_eq!(session.sts_endpoint("eu-west-3"), "https://sts.eu-west-3.amazonaws.com");
+assert_eq!(session.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
 
 // The options carry it, and every handle built on them shares its answers.
 let options = S3Options::default().with_session(session.clone());
@@ -4291,10 +4292,10 @@ let session = Session::new()
     ])
     .with_directory("/nonexistent/.aws");
 assert_eq!(session.region().as_deref(), Some("ap-southeast-1"));
-assert_eq!(session.endpoint_url("s3").as_deref(), Some("http://localhost:9000"));
-assert_eq!(session.endpoint_url("sts"), None);
+assert_eq!(session.endpoint_url("s3")?.as_deref(), Some("http://localhost:9000"));
+assert_eq!(session.endpoint_url("sts")?, None);
 assert_eq!(
-    session.sts_endpoint("ap-southeast-1"),
+    session.sts_endpoint("ap-southeast-1")?,
     "https://sts-fips.ap-southeast-1.amazonaws.com"
 );
 ```
@@ -4319,6 +4320,71 @@ let part = s3::file_with(
     S3Options::default().with_session(session),
 )?;
 let _ = part.read_range_bytes(0, 8)?;
+```
+
+#### Where each service is reached
+
+Every AWS endpoint the crate calls is the session's `endpoint_url(service)` - botocore's configured endpoint, in botocore's order - else the host the region's [partition](../uri/arn.md#partitions) publishes.
+
+| # | source | |
+| --- | --- | --- |
+| 1 | `with_service_endpoint_url(service, url)`, then `with_endpoint_url(url)` | stated: never ignored |
+| 2 | `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL` | configured |
+| 3 | the `endpoint_url` of the service's entry in the `[services <name>]` section the profile's `services` names, then the profile's own `endpoint_url` | configured |
+| 4 | the published host: under `use_fips_endpoint` and `use_dualstack_endpoint` for Amazon S3, STS, S3 Tables and Sign-In; with both off, whatever they say, for the IAM Identity Center portal and OIDC; STS's global host for the older regions under `sts_regional_endpoints = legacy` | |
+
+| service the crate calls | variable | `[services]` key | published host |
+| --- | --- | --- | --- |
+| Amazon S3, every request of an `s3://` handle | `AWS_ENDPOINT_URL_S3` | `s3` | `s3.{region}.{suffix}`, and its FIPS, dual-stack and accelerate forms |
+| STS: `AssumeRole`, `AssumeRoleWithWebIdentity` | `AWS_ENDPOINT_URL_STS` | `sts` | `sts.{region}.{suffix}`, and its FIPS and dual-stack forms |
+| IAM Identity Center portal: `GetRoleCredentials` | `AWS_ENDPOINT_URL_SSO` | `sso` | `portal.sso.{region}.{suffix}`, FIPS and dual-stack off |
+| IAM Identity Center OIDC: a refresh, a device sign-in | `AWS_ENDPOINT_URL_SSO_OIDC` | `sso_oidc` | `oidc.{region}.{suffix}`, FIPS and dual-stack off |
+| AWS Sign-In: an `aws login` refresh | `AWS_ENDPOINT_URL_SIGNIN` | `signin` | `{region}.signin.aws.amazon.com`, and its FIPS and dual-stack forms |
+| Amazon S3 Tables: every request of `S3Tables` and of the `S3TablesCatalog` over it ([Iceberg](../media/iceberg.md#iceberg-on-amazon-s3-tables)) | `AWS_ENDPOINT_URL_S3TABLES` | `s3tables` | `s3tables.{region}.{suffix}`, and its FIPS and dual-stack forms; an endpoint the client states (`try_with_endpoint_url`, the catalog's `s3tables.endpoint`) over all of it |
+
+- **The variable is named after the service id**, as botocore names it - upper case, a space or a hyphen as `_`, so `SSO OIDC` is `AWS_ENDPOINT_URL_SSO_OIDC` - never after the endpoint prefix (`oidc`) or the signing name.
+- **The ignore flag switches 2 and 3 off, never 1.** `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, else the profile's `ignore_configured_endpoint_urls`, is read - as `AWS_USE_FIPS_ENDPOINT` and `AWS_USE_DUALSTACK_ENDPOINT` are, and their profile keys - through the crate's one [boolean table](#durations-counts-sizes-and-flags): `true`, `1`, `yes`, `on` and the rest of it are true, which is wider than botocore's `true` alone, so `=1` ignores the configured endpoints here and not there. A blank or whitespace-only variable is unset, as every variable is in this crate, so the profile's flag is read next, where botocore stops at it as false.
+- **A blank or whitespace-only variable or value is no source; one that names no endpoint is refused.** `AWS_ENDPOINT_URL_S3=/` is refused naming the variable, as botocore refuses it, rather than ending at the published host.
+- **A profile naming a `[services]` section nobody wrote is refused**, naming the profile and the section, once a lookup reaches step 3 - a misspelt `services = locl`, an empty section, a `services =` naming none - rather than leaving the published host a typo would. A lookup that ends before step 3 never reaches it.
+- **A configured endpoint's path is kept; a trailing `/` is dropped.** An STS exchange is sent to and signed over the path, and every Amazon S3 request is sent under it - `AWS_ENDPOINT_URL_S3=http://gateway:9000/s3/` reads `s3://trades/a` at `/s3/trades/a` - and both drop a query and user information the endpoint carries. S3 Tables sends every request under the path too, and refuses an endpoint carrying a query, a fragment or user information. The portal, OIDC and Sign-In requests append their operation's path (`/token`, `/federation/credentials`, `/v1/token`) to the endpoint as written. Every one is used whatever `use_fips_endpoint` and `use_dualstack_endpoint` say: the switches choose among the published hosts, as botocore turns both off beside a given endpoint.
+- **An S3 handle ranks it below what names the store itself**: an endpoint its options state, then the one its URL names (`s3://localhost:9000/trades/a`, `s3://trades.s3.eu-west-3.amazonaws.com/a`), then the configured one ([Configuration](#configuration)).
+- **The instance metadata service and the container endpoint are no services**: `AWS_EC2_METADATA_SERVICE_ENDPOINT` and `AWS_CONTAINER_CREDENTIALS_FULL_URI` move them, never `AWS_ENDPOINT_URL`.
+
+```rust
+use yggdryl::aws::Session;
+
+// The environment and the files a session is handed, in place of the
+// machine's own: each service is reached where its own variable says, else
+// where the generic one says.
+let session = Session::new()
+    .with_variables([
+        ("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/"),
+        ("AWS_ENDPOINT_URL", "http://localhost:4566"),
+    ])
+    .with_directory("/nonexistent/.aws")
+    .with_config_text(
+        "[default]\nservices = local\n\n[services local]\nsts =\n  endpoint_url = http://localhost:4600\n",
+    );
+assert_eq!(session.endpoint_url("sso-oidc")?.as_deref(), Some("http://localhost:4566/oidc"));
+assert_eq!(session.endpoint_url("sso")?.as_deref(), Some("http://localhost:4566"));
+assert_eq!(session.sts_endpoint("eu-west-3")?, "http://localhost:4566");
+
+// The generic variable gone, the profile's `[services]` entry answers STS.
+let filed = session.with_variables([("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/")]);
+assert_eq!(filed.sts_endpoint("eu-west-3")?, "http://localhost:4600");
+assert_eq!(filed.endpoint_url("s3")?, None);
+
+// Configured endpoints ignored: what was stated still stands.
+let ignoring = filed.with_variables([("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")]);
+assert_eq!(ignoring.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
+let stated = ignoring.with_service_endpoint_url("sts", "http://localhost:4700");
+assert_eq!(stated.sts_endpoint("eu-west-3")?, "http://localhost:4700");
+
+// A section nobody wrote is a refusal, never the published host.
+let misspelt = filed
+    .with_variables::<&str, &str>([])
+    .with_config_text("[default]\nservices = locl\n");
+assert!(misspelt.sts_endpoint("eu-west-3").is_err());
 ```
 
 #### The shared files
@@ -4540,7 +4606,7 @@ A request the [HTTP client](#http) sends to any AWS service is signed by the sam
 | Door | Contract |
 | --- | --- |
 | `Request::with_sigv4(&session, service, region)` | `service` is the SigV4 signing name (`s3tables`, `execute-api`, `glue`). Each attempt asks the session for its set, so a refreshed one signs the next attempt, and signs what is sent: the hop's method, the `Host` with the port the URL names, the path as it is on the wire, the query, the `content-type`, `content-md5` and `x-amz-*` headers, and the SHA-256 of the body. Adds `x-amz-date`, `x-amz-content-sha256`, `x-amz-security-token` for a temporary set, and `authorization` |
-| `Session::service_endpoint(service, region)` | the endpoint configured for the service (`with_service_endpoint_url`, `AWS_ENDPOINT_URL_<SERVICE>`, the profile's `[services]` entry), else `https://{service}[-fips].{region}.{suffix}` from the region's [partition](../uri/arn.md), FIPS and dual-stack as the session says. `service` is the endpoint id, which is not always the signing name |
+| `Session::service_endpoint(service, region)` | `endpoint_url(service)` - stated, then `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL`, the profile's `[services]` entry and `endpoint_url` ([Where each service is reached](#where-each-service-is-reached)) - else `https://{service}[-fips].{region}.{suffix}` from the region's [partition](../uri/arn.md), FIPS and dual-stack as the session says; refused as `endpoint_url` refuses. `service` is both the service id the configured endpoint is looked up by and the endpoint prefix the host is built from, so the door fits a service whose two agree - `s3tables`, `sts`, `glue`; one whose names differ (SSO OIDC's prefix is `oidc`) asks `endpoint_url` by its service id and builds its own host. Neither is always the signing name |
 | `Session::with_properties(pairs)`, `Session::from_properties(pairs)` | the one reader of AWS identity properties: `region`; `access_key_id`, `secret_access_key`, `session_token`; `anonymous`; `profile`; a role (`role_arn`, `role_session_name`, `external_id`, `role_duration`, `sts_region`, `sts_endpoint`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file`); a sign-in (`sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session`); `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle`; `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`; the `ec2_metadata_*` and `metadata_service_*` knobs. Case, `-`, `_` and `.` are alike, and a leading `aws_` or `client.` is dropped, so `AWS_REGION` and PyIceberg's `client.region` are `region` |
 
 - **The canonical URI follows the service.** S3's family (`s3`, `s3express`, `s3-object-lambda`, `s3-outposts`) signs the path as sent. Every other service signs it with empty and dot segments removed and every segment percent-encoded once more, as botocore does: a path carrying `%1F` or an encoded ARN signs as `%251F` and `%253A`. The signer is pinned against vectors botocore computed.
@@ -4565,7 +4631,7 @@ A request the [HTTP client](#http) sends to any AWS service is signed by the sam
     ])?;
     let region = session.region().expect("the stated region");
     assert_eq!(
-        session.service_endpoint("s3tables", &region),
+        session.service_endpoint("s3tables", &region)?,
         "https://s3tables.eu-west-3.amazonaws.com"
     );
 

@@ -219,7 +219,7 @@ impl Identity {
             "role_duration" | "role_session_duration" | "assume_role_duration_seconds" => {
                 self.role_duration = Some(seconds(name, value)?);
             }
-            "sts_endpoint" | "role_sts_endpoint" => self.sts_endpoint = text(),
+            key if EndpointName::of(key) == Some(EndpointName::Sts) => self.sts_endpoint = text(),
             "sts_region" | "role_region" => self.sts_region = text(),
             "mfa_serial" | "role_mfa_serial" => self.mfa_serial = text(),
             "source_profile" | "role_source_profile" => self.source_profile = text(),
@@ -241,9 +241,9 @@ impl Identity {
             "ec2_metadata_disabled" | "metadata_disabled" => {
                 self.metadata_disabled = Some(flag(name, value)?);
             }
-            "ec2_metadata_service_endpoint"
-            | "metadata_service_endpoint"
-            | "ec2_metadata_endpoint" => self.metadata_endpoint = text(),
+            key if EndpointName::of(key) == Some(EndpointName::Metadata) => {
+                self.metadata_endpoint = text();
+            }
             "metadata_service_timeout" | "ec2_metadata_service_timeout" => {
                 self.metadata_timeout = Some(seconds(name, value)?);
             }
@@ -407,6 +407,52 @@ impl Identity {
             session = session.with_sso(sso);
         }
         Ok(session)
+    }
+}
+
+/// What a property naming an endpoint says where it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EndpointName {
+    /// An object store, whichever store answers: the S3 options' reader.
+    Store,
+    /// Amazon S3, over a [`Self::Store`] name: the S3 options' reader.
+    S3,
+    /// STS: this reader.
+    Sts,
+    /// The instance metadata service: this reader.
+    Metadata,
+}
+
+impl EndpointName {
+    /// Every name an endpoint is stated under, once folded, and what it
+    /// places: the one list the two property readers match an endpoint by,
+    /// and the S3 options' environment sweep turns no name of into a knob -
+    /// a stated endpoint outranks `AWS_ENDPOINT_URL_<SERVICE>` and the
+    /// profile and survives `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, which a
+    /// variable the environment merely holds must not.
+    const ALL: [(&'static str, Self); 14] = [
+        ("endpoint", Self::Store),
+        ("endpoint_url", Self::Store),
+        ("endpoint_override", Self::Store),
+        ("blob_endpoint", Self::Store),
+        ("storage_blob_endpoint", Self::Store),
+        ("storage_endpoint", Self::Store),
+        ("service_host", Self::Store),
+        ("host", Self::Store),
+        ("endpoint_url_s3", Self::S3),
+        ("sts_endpoint", Self::Sts),
+        ("role_sts_endpoint", Self::Sts),
+        ("ec2_metadata_service_endpoint", Self::Metadata),
+        ("metadata_service_endpoint", Self::Metadata),
+        ("ec2_metadata_endpoint", Self::Metadata),
+    ];
+
+    /// What the folded name `key` places, when it names an endpoint.
+    pub(crate) fn of(key: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, placed)| *placed)
     }
 }
 

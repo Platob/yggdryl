@@ -120,10 +120,14 @@ impl Files {
                 .get(session)
                 .map(|table| (session.to_owned(), table.clone()))
         });
-        let services = text(&values, "services").and_then(|services| {
-            self.services
-                .get(services)
-                .map(|table| (services.to_owned(), table.clone()))
+        // A profile stating `services` names a section whatever it holds;
+        // one no section defines is kept, empty, for the lookup to refuse.
+        let services = values.contains_key("services").then(|| {
+            let name = text(&values, "services").unwrap_or_default();
+            (
+                name.to_owned(),
+                self.services.get(name).cloned().unwrap_or_default(),
+            )
         });
         Some(Profile {
             name: name.to_owned(),
@@ -171,6 +175,8 @@ pub struct Profile {
     config_values: Table,
     credential_values: Table,
     sso_session: Option<(String, Table)>,
+    /// The `[services]` section the profile names, and what it defines -
+    /// nothing where no section of that name does.
     services: Option<(String, Table)>,
 }
 
@@ -227,10 +233,28 @@ impl Profile {
     }
 
     /// The `endpoint_url` of `service` in the `[services]` section the
-    /// profile names, when it names one that states it.
-    pub fn service_endpoint_url(&self, service: &str) -> Option<&str> {
-        let (_, table) = self.services.as_ref()?;
-        nested(table, &service_key(service), "endpoint_url")
+    /// profile names, when it names one that states it. `service` is the
+    /// service id, read as [`Session::endpoint_url`](super::Session::endpoint_url)
+    /// reads it.
+    ///
+    /// # Errors
+    ///
+    /// A profile whose `services` names a section that defines nothing - a
+    /// misspelt name, an empty section, no name at all - as botocore
+    /// refuses it, rather than leaving the published host a typo would.
+    pub fn service_endpoint_url(&self, service: &str) -> Result<Option<&str>> {
+        let Some((name, table)) = &self.services else {
+            return Ok(None);
+        };
+        if table.is_empty() {
+            return Err(self.refusal(match name.as_str() {
+                "" => "states services without naming a [services] section".to_owned(),
+                name => {
+                    format!("names services {name}, which no [services {name}] section defines")
+                }
+            }));
+        }
+        Ok(nested(table, &service_key(service), "endpoint_url"))
     }
 
     /// The `[sso-session]` section the profile names, when it names one that
@@ -487,7 +511,9 @@ fn redacted_all(tables: &BTreeMap<String, Table>) -> BTreeMap<&str, BTreeMap<&st
 }
 
 /// The key a service's `[services]` entry or `AWS_ENDPOINT_URL_` variable
-/// is spelled under: the service id with a hyphen or a space as `_`.
+/// is spelled under: the service id - botocore's `serviceId`, never the
+/// endpoint prefix or the signing name - lower case, a hyphen or a space as
+/// `_`, which is botocore's own transformation: `SSO OIDC` is `sso_oidc`.
 pub(crate) fn service_key(service: &str) -> String {
     service.trim().to_ascii_lowercase().replace(['-', ' '], "_")
 }

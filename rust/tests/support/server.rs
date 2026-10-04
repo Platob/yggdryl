@@ -223,6 +223,14 @@ impl FakeS3 {
         self.inner.store().cut = (times > 0).then_some((after, times));
     }
 
+    /// Answer as a gateway mounting the store below `prefix`, such as
+    /// `/gateway/s3`, answers: a request under it is read with the prefix
+    /// taken off, and one outside it is answered `404 NoSuchKey` naming the
+    /// prefix, so a client that dropped the prefix is seen rather than served.
+    pub fn mount_at(&self, prefix: &str) {
+        self.inner.store().mount = Some(prefix.trim_end_matches('/').to_owned());
+    }
+
     /// Answer every assumed-role session as already lapsed, or as long-lived.
     ///
     /// Lapsed is what makes the refresh path visible: a client that holds a
@@ -403,6 +411,15 @@ impl Inner {
         if let Some(failure) = self.injected_failure() {
             return failure;
         }
+        if self.unmounted(&request.path).is_none() {
+            let mount = self.store().mount.clone().unwrap_or_default();
+            return Response::error(
+                404,
+                "NoSuchKey",
+                &format!("the gateway mounts the store below {mount}"),
+                &[],
+            );
+        }
         match Dialect::of(request) {
             Dialect::Aws => {
                 if let Some(refusal) = self.refusal(request, bucket) {
@@ -421,7 +438,7 @@ impl Inner {
     /// The bucket and key the request addresses: virtual-hosted when the
     /// `Host` header is `{bucket}.{endpoint host}`, path-style otherwise.
     fn resolve(&self, request: &Request) -> (Option<String>, Option<String>) {
-        let path = percent_decode(&request.path);
+        let path = percent_decode(&self.unmounted(&request.path).unwrap_or_default());
         let path = path.strip_prefix('/').unwrap_or(&path);
         let host = request.header("host").unwrap_or("");
         let hosted = host
@@ -432,6 +449,19 @@ impl Inner {
             None => path.split_once('/').unwrap_or((path, "")),
         };
         (non_empty(bucket), non_empty(key))
+    }
+
+    /// The request's path with the gateway's mount taken off, or `None` for
+    /// a path outside it.
+    fn unmounted(&self, path: &str) -> Option<String> {
+        let Some(mount) = self.store().mount.clone() else {
+            return Some(path.to_owned());
+        };
+        match path.strip_prefix(mount.as_str())? {
+            "" => Some("/".to_owned()),
+            rest if rest.starts_with('/') => Some(rest.to_owned()),
+            _ => None,
+        }
     }
 
     fn injected_failure(&self) -> Option<Response> {
@@ -602,6 +632,8 @@ struct Store {
     staged: HashMap<String, Staged>,
     /// Whether a write to an absent bucket creates it.
     creates_buckets: bool,
+    /// The path a gateway mounts the store below, when one does.
+    mount: Option<String>,
 }
 
 /// Bytes staged under one name, waiting to be assembled.
@@ -629,6 +661,7 @@ impl Default for Store {
             address: String::new(),
             staged: HashMap::new(),
             creates_buckets: false,
+            mount: None,
         }
     }
 }

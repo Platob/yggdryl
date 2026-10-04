@@ -513,6 +513,8 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::options::internals as s3_options;
     #[cfg(feature = "s3")]
+    pub use crate::s3::properties::internals as s3_properties;
+    #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
     pub use crate::serie::arrow::internals as serie_arrow;

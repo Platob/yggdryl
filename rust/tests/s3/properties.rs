@@ -327,7 +327,10 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
     assert!(session.use_dualstack_endpoint());
     // Sealed, so no endpoint the machine configures can answer instead.
     assert_eq!(
-        session.with_environment(false).sts_endpoint("eu-west-1"),
+        session
+            .with_environment(false)
+            .sts_endpoint("eu-west-1")
+            .expect("an STS endpoint"),
         "https://sts-fips.eu-west-1.api.aws"
     );
 
@@ -339,11 +342,11 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
         .with_environment(false);
     assert!(!legacy.sts_regional_endpoints());
     assert_eq!(
-        legacy.sts_endpoint("eu-west-1"),
+        legacy.sts_endpoint("eu-west-1").expect("an STS endpoint"),
         "https://sts.amazonaws.com"
     );
     assert_eq!(
-        legacy.sts_endpoint("ap-east-1"),
+        legacy.sts_endpoint("ap-east-1").expect("an STS endpoint"),
         "https://sts.ap-east-1.amazonaws.com"
     );
     for regional in ["regional", "true"] {
@@ -353,7 +356,7 @@ fn the_aws_files_and_endpoint_switches_reach_the_session() {
             .with_environment(false);
         assert!(session.sts_regional_endpoints(), "{regional}");
         assert_eq!(
-            session.sts_endpoint("eu-west-1"),
+            session.sts_endpoint("eu-west-1").expect("an STS endpoint"),
             "https://sts.eu-west-1.amazonaws.com",
             "{regional}"
         );
@@ -694,6 +697,191 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
         "no service's own endpoint either: {:?}",
         swept.iter().map(|(name, _)| name).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn the_sweep_reads_no_endpoint_under_any_prefix_and_no_name_the_session_reads_in_any_case() {
+    use yggdryl::internals::s3_properties::swept;
+
+    // Where a store is, the environment says through that store's own reader
+    // alone: a swept endpoint would address every store, over the URL, over
+    // `AWS_ENDPOINT_URL_S3` and past `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`.
+    let variables: Vec<(String, String)> = [
+        ("AWS_ENDPOINT", "http://aws-endpoint.local"),
+        ("AWS_S3_ENDPOINT", "http://aws-s3-endpoint.local"),
+        ("AWS_S3_ENDPOINT_URL", "http://aws-s3-endpoint-url.local"),
+        ("AWS_HOST", "aws-host.local"),
+        ("AWS_ENDPOINT_OVERRIDE", "http://override.local"),
+        ("AZURE_STORAGE_BLOB_ENDPOINT", "http://azure-blob.local"),
+        ("AZURE_STORAGE_ENDPOINT", "http://azure.local"),
+        ("GOOGLE_SERVICE_HOST", "google.local"),
+        ("YGGDRYL_ENDPOINT", "http://yggdryl.local"),
+        ("YGGDRYL_S3_ENDPOINT", "http://yggdryl-s3.local"),
+        // The S3 service's own name and the short blob spelling, under a
+        // prefix the session does not read for itself.
+        ("YGGDRYL_ENDPOINT_URL_S3", "http://yggdryl-url-s3.local"),
+        ("AZURE_BLOB_ENDPOINT", "http://azure-blob-short.local"),
+        // Nor where STS or the instance metadata service is: a swept one
+        // would be stated, over `AWS_ENDPOINT_URL_STS` and past the flag.
+        ("AWS_STS_ENDPOINT", "http://aws-sts.local"),
+        ("YGGDRYL_STS_ENDPOINT", "http://yggdryl-sts.local"),
+        ("AWS_ROLE_STS_ENDPOINT", "http://aws-role-sts.local"),
+        ("YGGDRYL_ROLE_STS_ENDPOINT", "http://yggdryl-role-sts.local"),
+        ("AWS_S3_STS_ENDPOINT", "http://aws-s3-sts.local"),
+        ("AWS_METADATA_SERVICE_ENDPOINT", "http://aws-metadata.local"),
+        ("AWS_EC2_METADATA_ENDPOINT", "http://aws-ec2-metadata.local"),
+        (
+            "YGGDRYL_EC2_METADATA_SERVICE_ENDPOINT",
+            "http://yggdryl-ec2-metadata.local",
+        ),
+        (
+            "YGGDRYL_METADATA_SERVICE_ENDPOINT",
+            "http://yggdryl-metadata.local",
+        ),
+        // The session's own names, in any case.
+        ("aws_endpoint_url_s3", "http://lower.local"),
+        ("Aws_Endpoint_Url", "http://mixed.local"),
+        ("aws_ignore_configured_endpoint_urls", "true"),
+        ("aws_region", "ap-south-1"),
+        // Knobs the sweep does read.
+        ("AWS_S3_FORCE_PATH_STYLE", "true"),
+        ("YGGDRYL_SSE_TYPE", "AES256"),
+    ]
+    .iter()
+    .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+    .collect();
+    let found = swept(&S3Options::default(), variables);
+    assert_eq!(
+        found,
+        [
+            ("S3_FORCE_PATH_STYLE".to_owned(), "true".to_owned()),
+            ("SSE_TYPE".to_owned(), "AES256".to_owned()),
+        ]
+    );
+    let options = S3Options::default()
+        .with_properties(found)
+        .expect("readable properties");
+    assert_eq!(options.endpoint(), None);
+    assert_eq!(options.region(), None);
+    assert_eq!(options.path_style(), Some(true));
+    let session = options.session().with_environment(false);
+    assert_eq!(
+        session.endpoint_url("sts").expect("no refusal"),
+        None,
+        "no STS endpoint is stated by a variable"
+    );
+    assert!(session.assumed_role().is_none());
+
+    // A property names an endpoint as it always did: the caller stated it.
+    let stated = S3Options::from_properties([
+        ("AWS_ENDPOINT", "http://stated.local"),
+        ("sts_endpoint", "http://stated-sts.local"),
+        (
+            "ec2_metadata_service_endpoint",
+            "http://stated-metadata.local",
+        ),
+    ])
+    .expect("readable properties");
+    assert_eq!(stated.endpoint(), Some("http://stated.local"));
+    let session = stated.session().with_environment(false);
+    assert_eq!(
+        session.endpoint_url("sts").expect("no refusal").as_deref(),
+        Some("http://stated-sts.local")
+    );
+}
+
+#[test]
+fn aws_endpoint_url_sts_is_where_a_role_is_traded_whatever_a_swept_sts_endpoint_says() {
+    use yggdryl::IOBase;
+    use yggdryl::aws::Session;
+    use yggdryl::internals::s3_properties::swept;
+
+    // The process holds the service's own variable beside names the sweep
+    // once read as a stated `sts_endpoint` - which outranks every configured
+    // endpoint and survives the ignore flag - each pointing at a loopback
+    // port nothing listens on. The options are what a client builds off that
+    // process: the sweep's knobs, then the session reading the variables.
+    //
+    // The session is in a region no AWS partition publishes a host for, so a
+    // session that read no STS endpoint at all would ask
+    // `sts.zz-nowhere-1.amazonaws.com`, a name that resolves to nothing, and
+    // fail here rather than send the fixture's keys to STS.
+    let store = crate::mod_::store();
+    store.put(crate::mod_::BUCKET, "lake/part.parquet", b"PAR1");
+    let (sts, decoy) = (store.endpoint(), {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+        let address = listener.local_addr().expect("a bound address");
+        drop(listener);
+        format!("http://{address}")
+    });
+    let variables = [
+        ("AWS_ENDPOINT_URL_STS", sts.as_str()),
+        ("AWS_STS_ENDPOINT", decoy.as_str()),
+        ("YGGDRYL_STS_ENDPOINT", decoy.as_str()),
+        ("YGGDRYL_ROLE_STS_ENDPOINT", decoy.as_str()),
+        ("AWS_REGION", "zz-nowhere-1"),
+        ("AWS_PROFILE", "trader"),
+    ];
+    let ambient = S3Options::default()
+        .with_environment_prefixes(std::iter::empty::<String>())
+        .with_properties(swept(
+            &S3Options::default(),
+            variables
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+        ))
+        .expect("readable properties");
+    let directory =
+        std::env::temp_dir().join(format!("yggdryl-s3-swept-sts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).expect("a scratch directory");
+    let session: Session = ambient
+        .session()
+        .with_variables(variables)
+        .with_directory(&directory)
+        .with_config_text(
+            "[profile trader]\nrole_arn = arn:aws:iam::123456789012:role/lake-reader\n\
+             source_profile = base\n",
+        )
+        .with_credentials_text(
+            "[base]\naws_access_key_id = AKIABASE\naws_secret_access_key = base-secret\n",
+        )
+        .with_metadata_disabled(true);
+    let options = ambient
+        .with_session(session)
+        .with_endpoint(store.endpoint())
+        .with_path_style(true);
+
+    store.clear_requests();
+    let part = yggdryl::s3::file_with("s3://trades/lake/part.parquet", options).expect("a handle");
+    assert_eq!(part.read_all_bytes().expect("the object"), b"PAR1");
+    let sent = store.requests();
+    let shape: Vec<(String, bool)> = sent
+        .iter()
+        .map(|request| {
+            let exchange = request
+                .query
+                .iter()
+                .any(|(name, value)| name == "Action" && value == "AssumeRole");
+            (request.path.clone(), exchange)
+        })
+        .collect();
+    assert_eq!(
+        shape,
+        [
+            ("/".to_owned(), true),
+            ("/trades/lake/part.parquet".to_owned(), false)
+        ],
+        "the role traded at AWS_ENDPOINT_URL_STS, then the read signed as it"
+    );
+    let signer = sent[1]
+        .headers
+        .iter()
+        .find(|(name, _)| name == "authorization")
+        .map(|(_, value)| value.clone())
+        .unwrap_or_default();
+    assert!(signer.contains("Credential=ASIAlake-reader/"), "{signer}");
 }
 
 #[test]

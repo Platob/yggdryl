@@ -1,6 +1,5 @@
 //! One S3 object as a byte leaf.
 
-use std::io::Read as _;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use super::answer::S3Meta;
@@ -281,11 +280,15 @@ impl S3File {
     ///
     /// Returns the source's read failure, a short source, or the store's
     /// refusal.
+    // The Iceberg staging is its one caller, beside the pin of it.
+    #[cfg(any(feature = "iceberg", feature = "internals"))]
     pub(crate) fn upload_from(
         &mut self,
         source: &mut dyn std::io::Read,
         length: u64,
     ) -> Result<()> {
+        use std::io::Read as _;
+
         let mut state = self.state()?;
         state.stage = None;
         let content_type = self.media_type().to_string();

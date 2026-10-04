@@ -111,7 +111,10 @@ fn a_session_that_consults_no_environment_reads_no_variable_even_one_it_was_hand
     }
     assert_eq!(session.profile_name(), "default");
     assert_eq!(session.region(), None);
-    assert_eq!(session.endpoint_url("s3"), None);
+    assert_eq!(
+        session.endpoint_url("s3").expect("a readable endpoint"),
+        None
+    );
     assert!(!session.use_fips_endpoint());
 
     let consulting = session.with_environment(true);
@@ -224,6 +227,24 @@ mod internal {
             "AWS_ENDPOINT_URL_DYNAMODB",
         ] {
             assert!(is_native(name), "{name} names one service's endpoint");
+        }
+    }
+
+    #[test]
+    fn a_variable_the_session_reads_is_its_own_in_any_case() {
+        // A name is the session's whatever its case: on Windows the session
+        // reads `aws_endpoint_url_s3` as `AWS_ENDPOINT_URL_S3`, and on POSIX
+        // it is a name the AWS tools never read - neither is the sweep's to
+        // turn into a knob of its own.
+        for name in [
+            "aws_endpoint_url_s3",
+            "Aws_Endpoint_Url_Sts",
+            "aws_endpoint_url",
+            "aws_ignore_configured_endpoint_urls",
+            "aws_region",
+            "aws_access_key_id",
+        ] {
+            assert!(is_native(name), "{name} is the session's to read");
         }
     }
 

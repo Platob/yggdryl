@@ -5,11 +5,21 @@
 //! environment's own keys the way an explicit one does, and
 //! `AWS_ENDPOINT_URL_S3` beats `AWS_ENDPOINT_URL`. The S3 backend sweeps the
 //! environment for its own knobs under `AWS_` and leaves these to the
-//! session.
+//! session - and every name an endpoint is stated under, under any prefix
+//! (`EndpointName` in `properties.rs`), to the reader that places it.
 
-/// Whether `name` is a variable the session reads for itself.
+/// Whether `name` is a variable the session reads for itself, in any case:
+/// on Windows the session reads `aws_endpoint_url_s3` as
+/// `AWS_ENDPOINT_URL_S3`, and on POSIX it is a name the AWS tools never
+/// read - neither is the sweep's to turn into a knob of its own.
 pub(crate) fn is_native(name: &str) -> bool {
-    NATIVE.contains(&name) || name.starts_with("AWS_ENDPOINT_URL_")
+    const SERVICE_ENDPOINT: &str = "AWS_ENDPOINT_URL_";
+    NATIVE
+        .iter()
+        .any(|native| native.eq_ignore_ascii_case(name))
+        || name
+            .get(..SERVICE_ENDPOINT.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(SERVICE_ENDPOINT))
 }
 
 const NATIVE: [&str; 37] = [

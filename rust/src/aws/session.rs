@@ -234,8 +234,15 @@ struct Version {
 /// | --- | --- | --- | --- | --- |
 /// | profile | `with_profile` | `AWS_DEFAULT_PROFILE`, `AWS_PROFILE` | | `default` |
 /// | region | `with_region` | `AWS_REGION`, `AWS_DEFAULT_REGION` | `region` | none |
-/// | endpoint of a service | `with_endpoint_url` | `AWS_ENDPOINT_URL_<SERVICE>`, `AWS_ENDPOINT_URL` | `[services]`, `endpoint_url` | the published host |
+/// | endpoint of a service | `with_service_endpoint_url`, then `with_endpoint_url` | `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL` | its `[services]` entry, then `endpoint_url` | the published host |
 /// | credentials | `with_credentials`, `with_assumed_role`, `with_sso`, `with_credential_process` | the chain | the chain | none, unsigned |
+///
+/// A service's endpoint is botocore's configured endpoint
+/// ([`Self::endpoint_url`]): `<SERVICE>` is its service id - `S3`, `STS`,
+/// `SSO`, `SSO_OIDC`, `SIGNIN`, `S3TABLES` for the services this crate
+/// calls - and `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`, else the profile's
+/// `ignore_configured_endpoint_urls`, switches the environment and profile
+/// columns off and never what was stated.
 ///
 /// The credential chain is walked in the order botocore walks it, and every
 /// source that is configured and broken is recorded and passed over rather
@@ -254,15 +261,15 @@ struct Version {
 /// assert_eq!(keys.access_key_id(), "AKIAIOSFODNN7EXAMPLE");
 /// assert_eq!(session.credential_source(), Some("explicit credentials"));
 /// assert_eq!(session.region().as_deref(), Some("eu-west-3"));
-/// assert_eq!(session.sts_endpoint("eu-west-3"), "https://sts.eu-west-3.amazonaws.com");
+/// assert_eq!(session.sts_endpoint("eu-west-3")?, "https://sts.eu-west-3.amazonaws.com");
 ///
 /// // A session told the environment answers from it, and nothing else.
 /// let session = Session::new()
 ///     .with_variables([("AWS_REGION", "ap-southeast-1"), ("AWS_ENDPOINT_URL_S3", "http://localhost:9000")])
 ///     .with_directory("/nonexistent/.aws");
 /// assert_eq!(session.region().as_deref(), Some("ap-southeast-1"));
-/// assert_eq!(session.endpoint_url("s3").as_deref(), Some("http://localhost:9000"));
-/// assert_eq!(session.endpoint_url("sts"), None);
+/// assert_eq!(session.endpoint_url("s3")?.as_deref(), Some("http://localhost:9000"));
+/// assert_eq!(session.endpoint_url("sts")?, None);
 /// # Ok(())
 /// # }
 /// ```
@@ -386,15 +393,20 @@ impl Session {
         })
     }
 
-    /// Reach every service at `url`, as `AWS_ENDPOINT_URL` does.
+    /// Reach every service at `url`, the identity services a walk calls
+    /// included, as `AWS_ENDPOINT_URL` does - but stated, so it beats every
+    /// configured endpoint and is never ignored;
+    /// [`Self::with_service_endpoint_url`] beats it for one service.
     #[must_use]
     pub fn with_endpoint_url(&self, url: impl Into<String>) -> Self {
         let url: String = url.into();
         self.modified(|knobs| knobs.endpoint_url = endpoint(&url))
     }
 
-    /// Reach `service` - `s3`, `sts`, `sso-oidc` - at `url`, as
-    /// `AWS_ENDPOINT_URL_<SERVICE>` and a `[services]` entry do.
+    /// Reach `service` - its service id, `s3`, `sts`, `sso-oidc`, read as
+    /// [`Self::endpoint_url`] reads it - at `url`, as
+    /// `AWS_ENDPOINT_URL_<SERVICE>` and a `[services]` entry do, over
+    /// [`Self::with_endpoint_url`] and every configured endpoint.
     #[must_use]
     pub fn with_service_endpoint_url(&self, service: &str, url: impl Into<String>) -> Self {
         let url: String = url.into();
@@ -869,22 +881,68 @@ impl Session {
         self.imds()?.region(self.http().ok()?)
     }
 
-    /// The endpoint `service` is reached at, when one was configured: what
-    /// was stated, else `AWS_ENDPOINT_URL_<SERVICE>`, else `AWS_ENDPOINT_URL`,
-    /// else the profile's `[services]` entry, else the profile's
-    /// `endpoint_url` - the last four skipped under
-    /// `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS` or the profile's
-    /// `ignore_configured_endpoint_urls`.
+    /// The endpoint `service` is reached at, when one was stated or
+    /// configured, in botocore's order:
     ///
-    /// `service` is the service id - `s3`, `sts`, `sso-oidc` - spelled any
-    /// way; `None` means the service's published host.
-    pub fn endpoint_url(&self, service: &str) -> Option<String> {
+    /// 1. what was stated for it ([`Self::with_service_endpoint_url`]), then
+    ///    for every service ([`Self::with_endpoint_url`]);
+    /// 2. `AWS_ENDPOINT_URL_<SERVICE>`, then `AWS_ENDPOINT_URL`;
+    /// 3. the `endpoint_url` of the service's entry in the `[services]`
+    ///    section the profile names, then the profile's own `endpoint_url`.
+    ///
+    /// Steps 2 and 3 are skipped under `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`,
+    /// else the profile's `ignore_configured_endpoint_urls`, each read
+    /// through the crate's one boolean table - wider than botocore's, which
+    /// takes only `true` - and a blank variable read as unset, so the profile
+    /// is read next; step 1 is never skipped. A blank variable or value is
+    /// no source. The endpoint is kept as given, path included, its trailing
+    /// `/` dropped.
+    ///
+    /// `service` is the service id botocore names the variable and the
+    /// entry after - `S3`, `STS`, `SSO`, `SSO OIDC`, `Signin`, `S3Tables`,
+    /// `Secrets Manager` - in any case, a hyphen or a space read as `_`:
+    /// `sso-oidc` reads `AWS_ENDPOINT_URL_SSO_OIDC` and the `[services]` key
+    /// `sso_oidc`. It is never the endpoint prefix (`oidc`, `portal.sso`) or
+    /// the signing name. `Ok(None)` means the service's published host.
+    ///
+    /// ```
+    /// use yggdryl::aws::Session;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let session = Session::new()
+    ///     .with_variables([
+    ///         ("AWS_ENDPOINT_URL_SSO_OIDC", "http://localhost:4566/oidc/"),
+    ///         ("AWS_ENDPOINT_URL", "http://localhost:4566"),
+    ///     ])
+    ///     .with_directory("/nonexistent/.aws");
+    /// assert_eq!(
+    ///     session.endpoint_url("SSO OIDC")?.as_deref(),
+    ///     Some("http://localhost:4566/oidc")
+    /// );
+    /// assert_eq!(session.endpoint_url("sts")?.as_deref(), Some("http://localhost:4566"));
+    ///
+    /// // A profile naming a [services] section nobody wrote is refused.
+    /// let misspelt = session
+    ///     .with_variables::<&str, &str>([])
+    ///     .with_config_text("[default]\nservices = locl\n\n[services local]\ns3 =\n  endpoint_url = http://localhost:9000\n");
+    /// assert!(misspelt.endpoint_url("s3").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// When the lookup reaches it: a configured value that names no endpoint
+    /// (`/`), and a profile whose `services` names a section that defines
+    /// nothing - each named, as botocore refuses them, rather than leaving
+    /// the published host a typo would.
+    pub fn endpoint_url(&self, service: &str) -> Result<Option<String>> {
         let key = profile::service_key(service);
         if let Some(url) = self.inner.knobs.service_endpoints.get(&key) {
-            return Some(url.clone());
+            return Ok(Some(url.clone()));
         }
         if let Some(url) = &self.inner.knobs.endpoint_url {
-            return Some(url.clone());
+            return Ok(Some(url.clone()));
         }
         let profile = self.profile();
         let ignored = self
@@ -896,18 +954,34 @@ impl Session {
             .or_else(|| profile.as_ref()?.flag("ignore_configured_endpoint_urls"))
             .unwrap_or(false);
         if ignored {
-            return None;
+            return Ok(None);
         }
-        self.variable(&format!("AWS_ENDPOINT_URL_{}", key.to_ascii_uppercase()))
-            .or_else(|| self.variable("AWS_ENDPOINT_URL"))
-            .or_else(|| {
-                profile
-                    .as_ref()?
-                    .service_endpoint_url(&key)
-                    .map(str::to_owned)
+        let variable = format!("AWS_ENDPOINT_URL_{}", key.to_ascii_uppercase());
+        for name in [variable.as_str(), "AWS_ENDPOINT_URL"] {
+            if let Some(url) = self.variable(name) {
+                return configured(&url, || name.to_owned()).map(Some);
+            }
+        }
+        let Some(profile) = profile else {
+            return Ok(None);
+        };
+        if let Some(url) = profile.service_endpoint_url(&key)? {
+            return configured(url, || {
+                format!(
+                    "the endpoint_url of {key} in the [services] section the profile {} names",
+                    profile.name()
+                )
             })
-            .or_else(|| profile.as_ref()?.endpoint_url().map(str::to_owned))
-            .and_then(|url| endpoint(&url))
+            .map(Some);
+        }
+        profile
+            .endpoint_url()
+            .map(|url| {
+                configured(url, || {
+                    format!("the endpoint_url of the profile {}", profile.name())
+                })
+            })
+            .transpose()
     }
 
     /// Whether the FIPS endpoints are used.
@@ -943,29 +1017,33 @@ impl Session {
     }
 
     /// The STS endpoint an exchange for `region` goes to.
-    pub fn sts_endpoint(&self, region: &str) -> String {
-        self.sts_target(region).0
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::endpoint_url`].
+    pub fn sts_endpoint(&self, region: &str) -> Result<String> {
+        Ok(self.sts_target(region)?.0)
     }
 
     /// The STS endpoint an exchange for `region` goes to, and the region it
     /// is signed for: [`Self::service_endpoint`], under the one rule that is
     /// STS's own - the global endpoint the legacy mode keeps for the older
     /// regions, signed for `us-east-1` whatever region the caller is in.
-    pub(crate) fn sts_target(&self, region: &str) -> (String, String) {
-        let configured = self.endpoint_url("sts");
+    pub(crate) fn sts_target(&self, region: &str) -> Result<(String, String)> {
+        let configured = self.endpoint_url("sts")?;
         if configured.is_none()
             && !self.sts_regional_endpoints()
             && !self.use_fips_endpoint()
             && !self.use_dualstack_endpoint()
             && LEGACY_STS_REGIONS.contains(&region)
         {
-            return (
+            return Ok((
                 "https://sts.amazonaws.com".to_owned(),
                 DEFAULT_REGION.to_owned(),
-            );
+            ));
         }
         let endpoint = configured.unwrap_or_else(|| self.published_endpoint("sts", region));
-        (endpoint, region.to_owned())
+        Ok((endpoint, region.to_owned()))
     }
 
     /// The endpoint `service` is reached at in `region`: the one configured
@@ -975,32 +1053,57 @@ impl Session {
     /// [`Self::use_dualstack_endpoint`], `-fips` under
     /// [`Self::use_fips_endpoint`].
     ///
-    /// `service` is the service's endpoint id - `s3tables`, `glue`, `sts` -
-    /// which is not always its SigV4 signing name. A service whose hosts
-    /// follow another shape - S3, the Sign-In service - builds its own.
+    /// `service` names the service twice: as the service id the configured
+    /// endpoint is looked up by (`AWS_ENDPOINT_URL_S3TABLES`, the
+    /// `[services]` key `s3tables`), and as the endpoint prefix its published
+    /// host is built from. The door fits a service whose two names agree
+    /// once folded: `s3tables`, `sts`, `glue`. One whose names differ, such
+    /// as SSO OIDC (`oidc`), SSO (`portal.sso`) or Secrets Manager
+    /// (`secretsmanager`), asks [`Self::endpoint_url`] by its service id and
+    /// builds its own host, as does a service whose hosts follow another
+    /// shape: S3, the Sign-In service. Neither name is always the SigV4
+    /// signing name.
     ///
     /// ```
     /// use yggdryl::aws::Session;
     ///
+    /// # fn main() -> yggdryl::Result<()> {
     /// let session = Session::new().with_environment(false);
     /// assert_eq!(
-    ///     session.service_endpoint("s3tables", "eu-west-3"),
+    ///     session.service_endpoint("s3tables", "eu-west-3")?,
     ///     "https://s3tables.eu-west-3.amazonaws.com"
     /// );
     /// assert_eq!(
-    ///     session.with_use_fips_endpoint(true).service_endpoint("s3tables", "us-gov-west-1"),
+    ///     session.with_use_fips_endpoint(true).service_endpoint("s3tables", "us-gov-west-1")?,
     ///     "https://s3tables-fips.us-gov-west-1.amazonaws.com"
     /// );
     /// assert_eq!(
     ///     session
     ///         .with_service_endpoint_url("s3tables", "http://localhost:4566/")
-    ///         .service_endpoint("s3tables", "eu-west-3"),
+    ///         .service_endpoint("s3tables", "eu-west-3")?,
     ///     "http://localhost:4566"
     /// );
+    ///
+    /// // `AWS_ENDPOINT_URL_S3TABLES`, named after the service id `S3Tables`.
+    /// let configured = Session::new()
+    ///     .with_variables([("AWS_ENDPOINT_URL_S3TABLES", "http://localhost:4566/tables/")])
+    ///     .with_directory("/nonexistent/.aws");
+    /// assert_eq!(
+    ///     configured.service_endpoint("s3tables", "eu-west-3")?,
+    ///     "http://localhost:4566/tables"
+    /// );
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn service_endpoint(&self, service: &str, region: &str) -> String {
-        self.endpoint_url(service)
-            .unwrap_or_else(|| self.published_endpoint(service, region))
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::endpoint_url`].
+    pub fn service_endpoint(&self, service: &str, region: &str) -> Result<String> {
+        Ok(match self.endpoint_url(service)? {
+            Some(url) => url,
+            None => self.published_endpoint(service, region),
+        })
     }
 
     /// The host the region's partition publishes for `service`, as a URL.
@@ -1402,9 +1505,10 @@ impl Session {
                 "no home directory to file the sign-in under: set Session::with_directory",
             ));
         };
-        let oidc = self
-            .endpoint_url("sso-oidc")
-            .unwrap_or_else(|| sso.oidc_endpoint());
+        let oidc = match self.endpoint_url("sso-oidc")? {
+            Some(url) => url,
+            None => sso.oidc_endpoint(),
+        };
         let token = sso::login(
             self.http()?,
             &oidc,
@@ -1998,7 +2102,7 @@ impl Session {
                 .map_or(DEFAULT_REGION, ArnPartition::global_region)
                 .to_owned()
         });
-        let endpoint = match self.endpoint_url("signin") {
+        let endpoint = match self.endpoint_url("signin")? {
             Some(endpoint) => endpoint,
             None => login::endpoint(
                 &region,
@@ -2052,7 +2156,7 @@ impl Session {
             .unwrap_or_else(|| default_region_of(role.role_arn()).to_owned());
         let (endpoint, signing_region) = match role.endpoint() {
             Some(endpoint) => (endpoint.to_owned(), region),
-            None => self.sts_target(&region),
+            None => self.sts_target(&region)?,
         };
         let traded = sts::assume(
             self.http()?,
@@ -2099,10 +2203,10 @@ impl Session {
             .map(str::to_owned)
             .or_else(|| self.region())
             .unwrap_or_else(|| default_region_of(role.role_arn()).to_owned());
-        let endpoint = role
-            .endpoint()
-            .map(str::to_owned)
-            .unwrap_or_else(|| self.sts_endpoint(&region));
+        let endpoint = match role.endpoint() {
+            Some(endpoint) => endpoint.to_owned(),
+            None => self.sts_endpoint(&region)?,
+        };
         sts::assume_with_web_identity(
             self.http()?,
             role,
@@ -2146,12 +2250,14 @@ impl Session {
         {
             return Ok(cached);
         }
-        let oidc = self
-            .endpoint_url("sso-oidc")
-            .unwrap_or_else(|| sso.oidc_endpoint());
-        let portal = self
-            .endpoint_url("sso")
-            .unwrap_or_else(|| sso.portal_endpoint());
+        let oidc = match self.endpoint_url("sso-oidc")? {
+            Some(url) => url,
+            None => sso.oidc_endpoint(),
+        };
+        let portal = match self.endpoint_url("sso")? {
+            Some(url) => url,
+            None => sso.portal_endpoint(),
+        };
         let token_path = token_cache_path(&directory, sso);
         let mut token = sso::Token::read(&token_path);
         if let Some(held) = token.clone() {
@@ -2319,6 +2425,18 @@ pub mod internals {
 fn endpoint(url: &str) -> Option<String> {
     let url = url.trim().trim_end_matches('/');
     (!url.is_empty()).then(|| url.to_owned())
+}
+
+/// A configured endpoint as a session keeps it, refused naming `source`
+/// when it names none - `/` - as botocore refuses it, rather than the
+/// lookup ending at the published host.
+fn configured(url: &str, source: impl FnOnce() -> String) -> Result<String> {
+    endpoint(url).ok_or_else(|| {
+        Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("{} is {url:?}, which names no endpoint", source()),
+        ))
+    })
 }
 
 /// A path for a refusal, or the word for none.

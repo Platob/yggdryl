@@ -22,7 +22,7 @@ use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
 use super::options::S3Options;
 use crate::aws::Credentials;
-use crate::aws::properties::{Identity, count, flag, refusal, seconds};
+use crate::aws::properties::{EndpointName, Identity, count, flag, refusal, seconds};
 use crate::integer::{BYTE_COUNT_SPELLINGS, byte_count_from_text};
 use crate::{Error, Result};
 
@@ -193,13 +193,38 @@ impl S3Options {
     /// does not displace the environment's own keys the way one a property
     /// names does.
     ///
+    /// Nor is any endpoint swept, under any prefix: where a store is, the
+    /// environment says through that store's own reader alone, in its place
+    /// below the URL - the session's `AWS_ENDPOINT_URL_S3`,
+    /// `AWS_ENDPOINT_URL` and profile for Amazon S3, `STORAGE_EMULATOR_HOST`
+    /// for Google, `AZURE_STORAGE_BLOB_ENDPOINT` for Azure - and where STS
+    /// and the instance metadata service are, through the session's
+    /// `AWS_ENDPOINT_URL_STS` and `AWS_EC2_METADATA_SERVICE_ENDPOINT`. A
+    /// swept one would be a stated endpoint, over the URL, over
+    /// `AWS_ENDPOINT_URL_<SERVICE>` and the profile, and past
+    /// `AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`: `AWS_ENDPOINT`,
+    /// `AWS_S3_ENDPOINT`, `YGGDRYL_ENDPOINT`, `AWS_STS_ENDPOINT`,
+    /// `YGGDRYL_ROLE_STS_ENDPOINT` and `YGGDRYL_METADATA_SERVICE_ENDPOINT`
+    /// are no knob, and `AZURE_STORAGE_BLOB_ENDPOINT` never addresses an
+    /// `s3://` location. Stated as a property, each is the endpoint it names.
+    ///
     /// Answers nothing when [`Self::with_environment`] is off.
     #[must_use]
     pub fn environment_properties(&self) -> Vec<(String, String)> {
         if !self.reads_environment() {
             return Vec::new();
         }
-        let mut found: Vec<(String, String)> = std::env::vars()
+        self.swept(std::env::vars())
+    }
+
+    /// The knobs `variables` name under this one's prefixes: the sweep
+    /// [`Self::environment_properties`] runs, over any environment.
+    fn swept(
+        &self,
+        variables: impl IntoIterator<Item = (String, String)>,
+    ) -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = variables
+            .into_iter()
             .filter_map(|(name, value)| {
                 if crate::aws::environment::is_native(&name) {
                     return None;
@@ -209,6 +234,9 @@ impl S3Options {
                     .iter()
                     .filter_map(|prefix| strip_prefix_ignoring_case(&name, prefix))
                     .max_by_key(|rest| name.len() - rest.len())?;
+                if EndpointName::of(&canonical(named)).is_some() {
+                    return None;
+                }
                 (!value.trim().is_empty()).then(|| (named.to_owned(), value))
             })
             .collect();
@@ -328,19 +356,12 @@ impl S3Options {
         let mut options = self;
         match key {
             // --- where the store is -----------------------------------------
-            "endpoint"
-            | "endpoint_url"
-            | "endpoint_override"
-            | "blob_endpoint"
-            | "storage_blob_endpoint"
-            | "storage_endpoint"
-            | "service_host"
-            | "host" => {
+            key if EndpointName::of(key) == Some(EndpointName::Store) => {
                 parts.endpoint = Some(value.to_owned());
             }
             // The service-specific spelling wins over the generic one, which
             // is what `AWS_ENDPOINT_URL_S3` beside `AWS_ENDPOINT_URL` means.
-            "endpoint_url_s3" | "s3_endpoint_url" => {
+            key if EndpointName::of(key) == Some(EndpointName::S3) => {
                 parts.service_endpoint = Some(value.to_owned());
             }
             "scheme" => parts.scheme = Some(value.to_owned()),
@@ -704,4 +725,20 @@ fn unsupported(name: &str) -> Error {
         "{name} asks for something this object-store client does not do; \
          remove it rather than have it silently not happen"
     ))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/s3/properties.rs` pins and a caller cannot reach.
+
+    /// The knobs `variables` name under the prefixes of `options`: the sweep
+    /// `S3Options::environment_properties` runs over the process, over any
+    /// environment a test hands over.
+    pub fn swept(
+        options: &super::S3Options,
+        variables: Vec<(String, String)>,
+    ) -> Vec<(String, String)> {
+        options.swept(variables)
+    }
 }

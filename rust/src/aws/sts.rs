@@ -355,7 +355,7 @@ pub(crate) fn assume(
         query.push(("SerialNumber".to_owned(), serial.clone()));
         query.push(("TokenCode".to_owned(), code.to_owned()));
     }
-    let (scheme, host) = split_endpoint(endpoint)?;
+    let (scheme, host, path) = split_endpoint(endpoint)?;
     let signer = Signer::for_service(
         "sts",
         base.access_key_id(),
@@ -367,7 +367,7 @@ pub(crate) fn assume(
     let signed = signer.sign(
         "GET",
         &host,
-        "/",
+        &path,
         &query,
         &[],
         sigv4::EMPTY_PAYLOAD_SHA256,
@@ -375,7 +375,7 @@ pub(crate) fn assume(
     );
     exchange(
         http,
-        &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
+        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
         &signed,
         "AssumeRole",
         endpoint,
@@ -409,10 +409,10 @@ pub(crate) fn assume_with_web_identity(
             role.duration().as_secs().to_string(),
         ),
     ];
-    let (scheme, host) = split_endpoint(endpoint)?;
+    let (scheme, host, path) = split_endpoint(endpoint)?;
     exchange(
         http,
-        &format!("{scheme}://{host}/?{}", sigv4::canonical_query(&query)),
+        &format!("{scheme}://{host}{path}?{}", sigv4::canonical_query(&query)),
         &[],
         "AssumeRoleWithWebIdentity",
         endpoint,
@@ -518,14 +518,16 @@ pub(crate) fn parse_error(body: &[u8]) -> Option<(String, String)> {
     ))
 }
 
-/// The scheme and the host, with its port, of an endpoint URL.
+/// The scheme, the host with its port, and the path of an endpoint URL.
 ///
 /// The endpoint is read once, as the URL it is, so what is signed and what
 /// is dialed are one reading: a bare host or `host:port` is reached over
-/// `https`, `http` and `https` are the only schemes an STS endpoint has,
-/// user information is no part of the host, and a path or query is dropped
-/// because every exchange is a `GET /`.
-fn split_endpoint(endpoint: &str) -> Result<(String, String)> {
+/// `https`, `http` and `https` are the only schemes an STS endpoint has, and
+/// user information and a query are no part of where it is. Its path - a
+/// gateway mounting STS below one - is where every exchange is sent and what
+/// it signs, as botocore sends it: `/` where the endpoint has none, a
+/// trailing `/` dropped as the session drops it.
+fn split_endpoint(endpoint: &str) -> Result<(String, String, String)> {
     let refuse = |reason: &str| {
         Error::Io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -545,7 +547,15 @@ fn split_endpoint(endpoint: &str) -> Result<(String, String)> {
     if host.is_empty() {
         return Err(refuse("no host"));
     }
-    Ok((url.scheme().as_str().to_owned(), host.to_owned()))
+    let path = match url.path().as_str().trim_end_matches('/') {
+        "" => "/",
+        path => path,
+    };
+    Ok((
+        url.scheme().as_str().to_owned(),
+        host.to_owned(),
+        path.to_owned(),
+    ))
 }
 
 /// Report a failure to reach STS at all.
@@ -644,14 +654,14 @@ pub mod internals {
         role.session_name_at(now)
     }
 
-    /// The scheme and the host, with its port, an endpoint is signed and
-    /// dialed as.
+    /// The scheme, the host with its port, and the path an endpoint is
+    /// signed and dialed as.
     ///
     /// # Errors
     ///
     /// A refusal naming the endpoint when it is no URL naming a host over
     /// `http` or `https`.
-    pub fn split_endpoint(endpoint: &str) -> crate::Result<(String, String)> {
+    pub fn split_endpoint(endpoint: &str) -> crate::Result<(String, String, String)> {
         super::split_endpoint(endpoint)
     }
 }

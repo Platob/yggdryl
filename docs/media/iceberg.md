@@ -924,14 +924,14 @@ YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> cargo tes
 
 #### The table bucket's catalog
 
-`yggdryl::s3tables::S3Tables` is the client of that catalog: the control plane of a table bucket, which holds namespaces, each holding Iceberg tables. It creates, describes, lists and removes the three levels, and it moves a table's metadata location - which is what a commit to one of these tables is, since the service names the current metadata file rather than a version hint beside it. A table's files stay the [S3 backend's](../holder/index.md#object-stores) to read and write, at the warehouse `s3:` location the catalog answers. The client is behind the `s3tables` feature, which implies `s3` and `iceberg`. Every request it sends is an `http::Request` signed by [`Request::with_sigv4`](../holder/index.md#aws-identity) for the `s3tables` service as an `aws::Session` answers, to `Session::service_endpoint("s3tables", region)` unless the client states its own; the service takes no anonymous request, so a session that answers no credential set is refused before anything is sent. Rust only.
+`yggdryl::s3tables::S3Tables` is the client of that catalog: the control plane of a table bucket, which holds namespaces, each holding Iceberg tables. It creates, describes, lists and removes the three levels, and it moves a table's metadata location - which is what a commit to one of these tables is, since the service names the current metadata file rather than a version hint beside it. A table's files stay the [S3 backend's](../holder/index.md#object-stores) to read and write, at the warehouse `s3:` location the catalog answers. The client is behind the `s3tables` feature, which implies `s3` and `iceberg`. Every request it sends is an `http::Request` signed by [`Request::with_sigv4`](../holder/index.md#aws-identity) for the `s3tables` service as an `aws::Session` answers, to `Session::service_endpoint("s3tables", region)` unless the client states its own. The control plane is reached at the configured endpoint when one is configured - `AWS_ENDPOINT_URL_S3TABLES`, `AWS_ENDPOINT_URL`, the profile's `[services]` entry `s3tables`, its `endpoint_url` ([Where each service is reached](../holder/index.md#where-each-service-is-reached)) - else at the region's published host; a stated or configured endpoint is used whatever the session's FIPS and dual-stack switches say, which choose among the published hosts, as botocore uses one. The service takes no anonymous request, so a session that answers no credential set is refused before anything is sent. Rust only.
 
 ```text
 S3Tables::new(session)                                    // reads nothing, reaches nothing
 tables.with_region(region)                                // over the ARN's and the session's
 tables.try_with_endpoint_url(url) -> Result<S3Tables>     // over the session's, read once
 tables.region_of(Some(&bucket)) -> Result<String>         // stated, else the ARN's, else the session's
-tables.endpoint_url(region) -> Result<String>             // https://s3tables[-fips].{region}.{suffix}
+tables.endpoint_url(region) -> Result<String>             // stated, configured, else https://s3tables[-fips].{region}.{suffix}
 
 tables.create_table_bucket(name) -> Result<Arn>
 tables.get_table_bucket(&bucket) -> Result<TableBucket>
@@ -976,7 +976,7 @@ Every verb is one request and a listing is one per page of 250, asked for when t
 | `get_table_metadata_location` | `GET /tables/{arn}/{namespace}/{name}/metadata-location` |
 | `update_table_metadata_location` | `PUT /tables/{arn}/{namespace}/{name}/metadata-location` |
 
-A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket, an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and an endpoint stated or configured beside the session's FIPS or dual-stack switch, which the service's endpoint rules refuse as `Invalid Configuration`. An endpoint carrying user information is refused where it is read, and no refusal and no `Debug` repeats it. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
+A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket, an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and what the session refuses of a configured endpoint - a value naming none, a `[services]` section nobody wrote. An endpoint carrying user information, a query or a fragment is refused where it is read, and no refusal and no `Debug` repeats the user information. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
 
 === "Rust"
 
@@ -1008,10 +1008,19 @@ A table bucket is addressed by its ARN, which also names the region a request is
     assert!(matches!(namespaces.next(), Some(Err(_))));
     assert!(namespaces.next().is_none());
 
-    // A custom endpoint beside the FIPS switch is the service's own refusal.
+    // An endpoint the caller states is where every request goes, FIPS or not:
+    // the switches choose among the published hosts.
     let gateway = S3Tables::new(session.with_use_fips_endpoint(true))
         .try_with_endpoint_url("http://localhost:4566")?;
-    assert!(gateway.endpoint_url(&region).is_err());
+    assert_eq!(gateway.endpoint_url(&region)?, "http://localhost:4566");
+
+    // One the session configures for the service is where it is reached.
+    let configured = S3Tables::new(
+        Session::new()
+            .with_variables([("AWS_ENDPOINT_URL_S3TABLES", "http://localhost:4566/tables/")])
+            .with_directory("/nonexistent/.aws"),
+    );
+    assert_eq!(configured.endpoint_url(&region)?, "http://localhost:4566/tables");
     ```
 
 === "Python"

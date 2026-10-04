@@ -129,9 +129,9 @@ impl S3Tables {
     /// a blank URL states none.
     ///
     /// The URL is read here, once: an `http` or `https` origin, and the path
-    /// a gateway mounts the service under. The service's endpoint rules
-    /// refuse a custom endpoint beside the FIPS or the dual-stack switch, and
-    /// so does every request of a client whose session turns one on.
+    /// a gateway mounts the service under. Every request goes there whatever
+    /// the session's FIPS and dual-stack switches say, as botocore sends one
+    /// given an endpoint.
     ///
     /// # Errors
     ///
@@ -187,58 +187,32 @@ impl S3Tables {
 
     /// The endpoint requests for `region` go to: what was stated on the
     /// client, else [`Session::service_endpoint`] for `s3tables` - the
-    /// endpoint the session configures for the service, else the published
+    /// endpoint the session states or configures for the service
+    /// (`AWS_ENDPOINT_URL_S3TABLES`, `AWS_ENDPOINT_URL`, the profile's
+    /// `[services]` entry `s3tables`, its `endpoint_url`), else the published
     /// host of the region's partition, `https://s3tables[-fips].{region}.{suffix}`
     /// with the dual-stack suffix as the session's switches say.
     ///
+    /// A stated or configured endpoint is used whatever the FIPS and
+    /// dual-stack switches say: they choose among the published hosts, and
+    /// botocore turns both off when an endpoint is given.
+    ///
     /// # Errors
     ///
-    /// Returns the service's own refusal - `Invalid Configuration: FIPS and
-    /// custom endpoint are not supported`, and the same for dual-stack -
-    /// when an endpoint is stated or configured while the session turns
-    /// either switch on: the switches name hosts of the published service,
-    /// and a request that ignored one would reach a host the caller said it
-    /// must not. A configured endpoint the client cannot send to is
-    /// refused as [`Self::try_with_endpoint_url`] refuses one.
+    /// What the session refuses of the configured endpoint
+    /// ([`Session::endpoint_url`]), and a configured endpoint the client
+    /// cannot send to, refused as [`Self::try_with_endpoint_url`] refuses
+    /// one.
     pub fn endpoint_url(&self, region: &str) -> Result<String> {
         self.endpoint(region).map(|endpoint| endpoint.0)
     }
 
     /// [`Self::endpoint_url`], read.
     fn endpoint(&self, region: &str) -> Result<Endpoint> {
-        let stated = match &self.endpoint {
-            Some(endpoint) => Some((endpoint.clone(), "S3Tables::try_with_endpoint_url")),
-            None => match self.session.endpoint_url(SERVICE) {
-                Some(url) => Some((Endpoint::from_url(&url)?, "the session")),
-                None => None,
-            },
-        };
-        let Some((endpoint, source)) = stated else {
-            return Endpoint::from_url(&self.session.service_endpoint(SERVICE, region));
-        };
-        for (on, switch, settings) in [
-            (
-                self.session.use_fips_endpoint(),
-                "FIPS",
-                "Session::with_use_fips_endpoint, AWS_USE_FIPS_ENDPOINT or use_fips_endpoint",
-            ),
-            (
-                self.session.use_dualstack_endpoint(),
-                "Dualstack",
-                "Session::with_use_dualstack_endpoint, AWS_USE_DUALSTACK_ENDPOINT or \
-                 use_dualstack_endpoint",
-            ),
-        ] {
-            if on {
-                return Err(invalid_input(format!(
-                    "Invalid Configuration: {switch} and custom endpoint are not supported: \
-                     {source} states the endpoint {}, and the session turns {switch} on \
-                     ({settings})",
-                    endpoint.0
-                )));
-            }
+        match &self.endpoint {
+            Some(endpoint) => Ok(endpoint.clone()),
+            None => Endpoint::from_url(&self.session.service_endpoint(SERVICE, region)?),
         }
-        Ok(endpoint)
     }
 
     /// Send `call` and read its answer: one request, signed with Signature

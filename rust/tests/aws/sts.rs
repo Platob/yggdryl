@@ -1347,37 +1347,53 @@ mod internal {
 
     #[test]
     fn an_endpoint_is_read_once_as_the_url_it_is_for_signing_and_dialing() {
-        for (endpoint, scheme, host) in [
+        for (endpoint, scheme, host, path) in [
             (
                 "https://sts.eu-west-1.amazonaws.com",
                 "https",
                 "sts.eu-west-1.amazonaws.com",
+                "/",
             ),
             (
                 "sts.eu-west-1.amazonaws.com",
                 "https",
                 "sts.eu-west-1.amazonaws.com",
+                "/",
             ),
-            ("sts.example.test:4566", "https", "sts.example.test:4566"),
-            ("http://127.0.0.1:4566", "http", "127.0.0.1:4566"),
-            ("HTTP://127.0.0.1:4566/", "http", "127.0.0.1:4566"),
-            ("http://[::1]:4566", "http", "[::1]:4566"),
-            // What the URL carries beyond where STS answers is no part of the
-            // host that is signed: user information, a path, a query.
+            (
+                "sts.example.test:4566",
+                "https",
+                "sts.example.test:4566",
+                "/",
+            ),
+            ("http://127.0.0.1:4566", "http", "127.0.0.1:4566", "/"),
+            ("HTTP://127.0.0.1:4566/", "http", "127.0.0.1:4566", "/"),
+            ("http://[::1]:4566", "http", "[::1]:4566", "/"),
+            // User information and a query are no part of where STS answers.
             (
                 "https://user:secret@sts.example.test",
                 "https",
                 "sts.example.test",
+                "/",
             ),
+            // A path is: a gateway mounting STS below one is reached there,
+            // as botocore reaches it, its trailing `/` dropped.
             (
                 "https://sts.example.test:4566/prefix?x=1",
                 "https",
                 "sts.example.test:4566",
+                "/prefix",
+            ),
+            (
+                "http://127.0.0.1:4566/gateway/sts/",
+                "http",
+                "127.0.0.1:4566",
+                "/gateway/sts",
             ),
         ] {
             assert_eq!(
                 split_endpoint(endpoint).expect(endpoint),
-                (scheme.to_owned(), host.to_owned()),
+                (scheme.to_owned(), host.to_owned(), path.to_owned()),
                 "{endpoint:?}"
             );
         }

@@ -128,7 +128,10 @@ fn a_catalogs_bearer_token_and_the_stores_own_names_are_not_read_here() {
         ])
         .expect("unknown names are ignored, and an empty value states nothing");
     assert_eq!(session.region(), None);
-    assert_eq!(session.endpoint_url("s3"), None);
+    assert_eq!(
+        session.endpoint_url("s3").expect("a readable endpoint"),
+        None
+    );
     assert_eq!(
         session.credentials(SystemTime::now()).expect("a walk"),
         None
@@ -234,7 +237,10 @@ fn a_role_and_the_switches_are_assembled_as_the_object_store_reader_assembles_th
     let session = sealed()
         .with_properties([("sts_endpoint", "http://localhost:4566/")])
         .expect("properties");
-    assert_eq!(session.sts_endpoint("eu-west-3"), "http://localhost:4566");
+    assert_eq!(
+        session.sts_endpoint("eu-west-3").expect("an STS endpoint"),
+        "http://localhost:4566"
+    );
 }
 
 #[test]

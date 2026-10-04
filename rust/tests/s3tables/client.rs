@@ -248,64 +248,127 @@ fn the_endpoint_is_what_was_stated_then_the_sessions_then_the_partitions_host() 
     assert_eq!(endpoint(&literal, "us-east-1"), "http://[::1]:4566/gateway");
 }
 
-#[test]
-fn a_custom_endpoint_beside_the_fips_or_dualstack_switch_is_the_services_refusal() {
+// --- where a request arrives -------------------------------------------------
+//
+// Each test below reaches the fake through one source of the endpoint, and
+// the source a wrong reading would take instead points at a loopback port
+// nothing listens on. The fake answers as the service of a region no AWS
+// partition publishes a host for, and every table bucket's ARN names it, so a
+// client that dropped the endpoint altogether would ask for
+// `s3tables[-fips].zz-nowhere-1.amazonaws.com` - a name that resolves to
+// nothing - and fail on this machine rather than send a fixture-signed
+// request to the real service.
+
+/// A region no AWS partition publishes a host for.
+const NOWHERE_REGION: &str = "zz-nowhere-1";
+
+/// A loopback URL nothing listens on.
+fn nowhere() -> String {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    drop(listener);
+    format!("http://{address}")
+}
+
+/// A fake answering as the service of [`NOWHERE_REGION`], its table bucket
+/// `lake`, and the label a request below that bucket names it by.
+fn nowhere_lake() -> (S3TablesFake, yggdryl::Arn, String) {
     let fake = S3TablesFake::start();
+    fake.set_region(NOWHERE_REGION);
     let lake = lake(&fake);
-    let refused = |tables: &S3Tables, switch: &str| {
-        let message = tables
-            .endpoint_url("us-east-1")
-            .expect_err("a custom endpoint and a switch")
-            .to_string();
-        assert!(
-            message.contains(&format!(
-                "Invalid Configuration: {switch} and custom endpoint are not supported"
-            )),
-            "{message}"
-        );
-        let error = tables
-            .get_table_bucket(&lake)
-            .expect_err("a custom endpoint and a switch");
-        assert!(
-            matches!(&error, Error::Io(io) if io.kind() == std::io::ErrorKind::InvalidInput),
-            "{error:?}"
-        );
-        assert!(
-            error.to_string().contains("s3tables GetTableBucket"),
-            "{error}"
-        );
-    };
+    let label = LAKE_LABEL.replace("us-east-1", NOWHERE_REGION);
+    (fake, lake, label)
+}
+
+/// `tables` reaches `fake` for `lake`: its endpoint is the fake's, and a
+/// reading of the bucket is one request there.
+fn reaches(tables: &S3Tables, fake: &S3TablesFake, lake: &yggdryl::Arn, label: &str) {
+    assert_eq!(
+        tables.endpoint_url(NOWHERE_REGION).expect("an endpoint"),
+        fake.endpoint()
+    );
+    fake.clear_requests();
+    tables.get_table_bucket(lake).expect("the bucket");
+    assert_eq!(fake.lines(), [format!("GET /buckets/{label}")]);
+}
+
+#[test]
+fn a_stated_or_configured_endpoint_is_used_whatever_the_fips_and_dualstack_switches_say() {
+    // botocore turns both switches off when an endpoint is given: they choose
+    // among the published hosts, and a caller who names a gateway reaches it.
+    let (fake, lake, label) = nowhere_lake();
 
     // An endpoint the client states, and the switch the session turns on.
-    refused(
+    reaches(
         &at_fake(session().with_use_fips_endpoint(true), &fake),
-        "FIPS",
+        &fake,
+        &lake,
+        &label,
     );
-    refused(
+    reaches(
         &at_fake(session().with_use_dualstack_endpoint(true), &fake),
-        "Dualstack",
+        &fake,
+        &lake,
+        &label,
     );
-    // An endpoint the session configures - a global AWS_ENDPOINT_URL - is
-    // custom too: a caller who requires FIPS never reaches another host.
-    refused(
+    // An endpoint the session configures - a global AWS_ENDPOINT_URL - beside
+    // the switch the environment turns on, and one it states for the service.
+    reaches(
         &S3Tables::new(
             offline(&[
                 ("AWS_ENDPOINT_URL", fake.endpoint().as_str()),
                 ("AWS_USE_FIPS_ENDPOINT", "true"),
+                ("AWS_USE_DUALSTACK_ENDPOINT", "true"),
             ])
             .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
         ),
-        "FIPS",
+        &fake,
+        &lake,
+        &label,
     );
-    refused(
+    reaches(
         &S3Tables::new(
             session()
                 .with_use_dualstack_endpoint(true)
                 .with_service_endpoint_url("s3tables", fake.endpoint()),
         ),
-        "Dualstack",
+        &fake,
+        &lake,
+        &label,
     );
-    assert_eq!(fake.request_count(), 0);
+}
+
+#[test]
+fn aws_endpoint_url_s3tables_alone_is_where_a_request_arrives() {
+    let (fake, lake, label) = nowhere_lake();
+    let (endpoint, decoy) = (fake.endpoint(), nowhere());
+    // A sealed session: these variables are its whole environment, its
+    // `~/.aws` an empty directory of its own.
+    let tables = S3Tables::new(
+        offline(&[
+            ("AWS_ENDPOINT_URL_S3TABLES", endpoint.as_str()),
+            ("AWS_ENDPOINT_URL", decoy.as_str()),
+        ])
+        .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
+    );
+    reaches(&tables, &fake, &lake, &label);
+}
+
+#[test]
+fn the_services_section_s_s3tables_entry_is_where_a_request_arrives() {
+    let (fake, lake, label) = nowhere_lake();
+    let (endpoint, decoy) = (fake.endpoint(), nowhere());
+    // The profile's own endpoint and another service's entry point nowhere.
+    let tables = S3Tables::new(
+        offline(&[])
+            .with_config_text(format!(
+                "[default]\nservices = local\nendpoint_url = {decoy}\n\n\
+                 [services local]\ns3 =\n  endpoint_url = {decoy}\n\
+                 s3tables =\n  endpoint_url = {endpoint}\n"
+            ))
+            .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY)),
+    );
+    reaches(&tables, &fake, &lake, &label);
 }
 
 #[test]
