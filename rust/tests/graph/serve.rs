@@ -765,7 +765,7 @@ fn no_answer_carries_a_credential_a_location_holds() {
     let location =
         format!("http://alice:s3cr3t@127.0.0.1:{port}/books.arrows?sv=2020-01-01&sig=SECRETSIG");
     let remote = Holder::from_url(
-        &Url::from_str(&location).unwrap(),
+        Url::from_str(&location).unwrap(),
         std::iter::empty::<(&str, &str)>(),
     )
     .unwrap();
@@ -1844,7 +1844,7 @@ fn served_over_http() -> (Server, Arc<BookService>) {
     let data = Server::bind("127.0.0.1:0").unwrap();
     data.mount("/books.arrows", holder_of(books)).unwrap();
     let table = Holder::from_url(
-        &data.url_of("/books.arrows").unwrap(),
+        data.url_of("/books.arrows").unwrap(),
         std::iter::empty::<(&str, &str)>(),
     )
     .unwrap();

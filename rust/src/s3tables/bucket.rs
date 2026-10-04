@@ -151,12 +151,10 @@ pub(crate) fn bucket_label(bucket: &Arn) -> Result<String> {
     if bucket.service() != SERVICE {
         return Err(refuse("arn:".len() + bucket.partition().len() + 1));
     }
-    let resource = bucket.resource();
-    let named = resource
-        .strip_prefix("bucket/")
-        .is_some_and(|name| !name.is_empty() && !name.contains('/'));
-    if !named {
-        return Err(refuse(text.len() - resource.len()));
+    // The ARN's own strict reading of its resource: one grammar, read in
+    // one place.
+    if bucket.table_bucket().is_none() {
+        return Err(refuse(text.len() - bucket.resource().len()));
     }
     Ok(label(&text))
 }

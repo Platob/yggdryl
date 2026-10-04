@@ -257,18 +257,24 @@ test('a name opens a handle as well as a location does', (t) => {
     /names a location/,
   )
 
-  // A table bucket is reached through the S3 Tables catalog rather than a byte
-  // backend, so the scheme is what refuses it - by its own name, not by the
-  // path conversion a location of no backend would fall through to.
+  // A table bucket is held as what its location names: the bucket its
+  // catalog, a segment below it a namespace - a description each, so
+  // nothing is touched - whether it is named by its location or by its ARN.
   for (const named of [
-    's3tables://lake/t-a1',
-    new Url('s3tables://lake/t-a1'),
-    new Arn('arn:aws:s3tables:us-east-1:123456789012:bucket/lake/table/t-a1'),
+    's3tables://lake',
+    new Url('s3tables://lake'),
+    new Arn('arn:aws:s3tables:us-east-1:123456789012:bucket/lake'),
+    'arn:aws:s3tables:us-east-1:123456789012:bucket/lake',
   ]) {
-    assert.throws(
-      () => new IOBase(named),
-      /filesystem "s3tables" does not support holding a location of this scheme/,
-    )
+    assert.equal(new IOBase(named).kind(), 'catalog')
+  }
+  assert.equal(new IOBase('s3tables://lake/desk').kind(), 'namespace')
+
+  // A table's identifier is spelled by its ARN alone: the location that ARN
+  // locates spells it where a namespace goes, and is refused where it is
+  // read, before any request.
+  for (const named of ['s3tables://lake/t-a1', new Url('s3tables://lake/t-a1')]) {
+    assert.throws(() => new IOBase(named), /\$\.url/)
   }
   // An `http` or `https` URL is the request that reads and writes the resource
   // it names, and holding one sends nothing: the name and the media type come

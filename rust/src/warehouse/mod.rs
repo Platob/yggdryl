@@ -81,9 +81,9 @@ pub(crate) use folder::{entry_name, table_layout};
 #[cfg(feature = "iceberg")]
 pub(crate) use handle::Site;
 pub(crate) use namespace::no_table;
-#[cfg(feature = "iceberg")]
-pub(crate) use object::extended;
 pub(crate) use object::path_text;
+#[cfg(feature = "iceberg")]
+pub(crate) use object::{extended, implementation_name};
 
 use smol_str::{SmolStr, format_smolstr};
 

@@ -11,7 +11,9 @@
 //! request signed through `Request::with_sigv4` pays: the cached signer, the
 //! SHA-256 of the body and the canonical request, measured on a 1 KiB JSON
 //! `POST` to a catalog path (built with `internals`, which reaches one
-//! attempt's signing at a stated instant).
+//! attempt's signing at a stated instant). Under `s3tables`, what holding a
+//! table bucket's location costs sits beside them: its catalog and a
+//! namespace are descriptions, built from the properties with no request.
 
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -210,6 +212,34 @@ pub(crate) fn identity_benchmarks(criterion: &mut Criterion) {
             black_box(partition.service_host("sts", partition.global_region(), false, true))
         });
     });
+    // What holding a table bucket's location costs: its catalog and a
+    // namespace below it are descriptions, built from the properties - who
+    // signs among them - with no request and no file read.
+    #[cfg(feature = "s3tables")]
+    {
+        let properties = yggdryl::Properties::new()
+            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+            .with_property("secret_access_key", "wJalrXUtnFEMI");
+        let namespace = yggdryl::Url::from_str("s3tables://lake/desk").expect("a location");
+        let bucket = Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")
+            .expect("a table bucket's ARN");
+        group.bench_function("s3tables_namespace_by_location", |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    yggdryl::holder::Holder::from_url(black_box(&namespace), &properties)
+                        .expect("a namespace"),
+                )
+            });
+        });
+        group.bench_function("s3tables_catalog_by_arn", |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    yggdryl::holder::Holder::from_url(black_box(&bucket), &properties)
+                        .expect("a catalog"),
+                )
+            });
+        });
+    }
     // What signing one attempt costs: a 1 KiB JSON `POST` whose path carries
     // an encoded bucket ARN, so the canonical URI is made by the rule every
     // service outside the S3 family signs by.

@@ -4,8 +4,9 @@
 //!
 //! One loopback listener keeps table buckets, namespaces and tables, answers
 //! the fifteen operations the client speaks in the shapes and with the error
-//! types botocore's model states, and moves a table's version token on every
-//! change to it. A stale token is a `409 ConflictException`, and so is
+//! types botocore's model states - `GetTable` by a table's bucket, namespace
+//! and name, or by the `tableArn` alone - and moves a table's version token
+//! on every change to it. A stale token is a `409 ConflictException`, and so is
 //! deleting a bucket that still holds a namespace or a namespace that still
 //! holds a table.
 //!
@@ -1305,7 +1306,87 @@ fn table_of<'a>(
         .ok_or_else(|| Response::not_found("table"))
 }
 
+/// What `GetTable` describes the table `name` of `bucket.namespace` as.
+fn table_document(
+    state: &State,
+    bucket: &str,
+    namespace: &str,
+    name: &str,
+    table: &Table,
+) -> Value {
+    let mut document = json!({
+        "name": name,
+        "type": "customer",
+        "tableARN": state.table_arn(bucket, table),
+        "namespace": [namespace],
+        "versionToken": table.token(),
+        "warehouseLocation": table.warehouse(),
+        "createdAt": stamp(table.created),
+        "createdBy": ACCOUNT,
+        "modifiedAt": stamp(table.modified),
+        "modifiedBy": ACCOUNT,
+        "ownerAccountId": ACCOUNT,
+        "format": "ICEBERG",
+    });
+    if let Some(location) = &table.metadata_location {
+        document["metadataLocation"] = json!(location);
+    }
+    document
+}
+
+/// Whether `arn` is a well-formed table ARN: a table bucket's, then
+/// `/table/` and the identifier the service gave the table.
+fn is_table_arn(arn: &str) -> bool {
+    arn.split_once("/table/").is_some_and(|(bucket, id)| {
+        is_table_bucket_arn(bucket)
+            && !id.is_empty()
+            && id
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "-_".contains(character))
+    })
+}
+
+/// `GetTable` addressed by the table's own ARN, the one query parameter the
+/// model lets stand alone: the table that identifier is, wherever a rename
+/// has moved it.
+fn get_table_by_arn(state: &mut State, request: &Request, arn: &str) -> Response {
+    if !is_table_arn(arn) {
+        state.violations.push(format!(
+            "{} {}: the query's tableArn {arn:?} is not a table ARN",
+            request.method, request.target
+        ));
+        return Response::bad_request("The table ARN is malformed.");
+    }
+    if ["tableBucketARN", "namespace", "name"]
+        .iter()
+        .any(|other| request.query(other).is_some())
+    {
+        state.violations.push(format!(
+            "{} {}: a table addressed by its ARN is addressed by nothing else",
+            request.method, request.target
+        ));
+        return Response::bad_request("The request addresses a table two ways.");
+    }
+    let state = &*state;
+    for (bucket, held) in &state.buckets {
+        for (namespace, found) in &held.namespaces {
+            for (name, table) in &found.tables {
+                if state.table_arn(bucket, table) == arn {
+                    return Response::json(
+                        200,
+                        &table_document(state, bucket, namespace, name, table),
+                    );
+                }
+            }
+        }
+    }
+    Response::not_found("table")
+}
+
 fn get_table(state: &mut State, request: &Request) -> Response {
+    if let Some(arn) = request.query("tableArn") {
+        return get_table_by_arn(state, request, arn);
+    }
     if let Some(arn) = request.query("tableBucketARN")
         && !is_table_bucket_arn(arn)
     {
@@ -1331,26 +1412,7 @@ fn get_table(state: &mut State, request: &Request) -> Response {
         return Response::not_found("table bucket");
     };
     match table_of(state, &bucket, namespace, name) {
-        Ok(table) => {
-            let mut document = json!({
-                "name": name,
-                "type": "customer",
-                "tableARN": state.table_arn(&bucket, table),
-                "namespace": [namespace],
-                "versionToken": table.token(),
-                "warehouseLocation": table.warehouse(),
-                "createdAt": stamp(table.created),
-                "createdBy": ACCOUNT,
-                "modifiedAt": stamp(table.modified),
-                "modifiedBy": ACCOUNT,
-                "ownerAccountId": ACCOUNT,
-                "format": "ICEBERG",
-            });
-            if let Some(location) = &table.metadata_location {
-                document["metadataLocation"] = json!(location);
-            }
-            Response::json(200, &document)
-        }
+        Ok(table) => Response::json(200, &table_document(state, &bucket, namespace, name, table)),
         Err(refusal) => refusal,
     }
 }

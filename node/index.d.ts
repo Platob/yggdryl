@@ -4526,6 +4526,21 @@ export declare class IcebergTable {
   /**
    * Create a table, writing its first metadata document.
    *
+   * `root` is the container handle the table lives in, or its location -
+   * text, a `Url`, a `Uri`, a `Urn` or an `Arn` - which the core opens by
+   * itself under `properties`: a folder any backend holds, or
+   * `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
+   * Tables table bucket keeps, registered there and committed through
+   * its control plane, its namespace made on the way where the bucket
+   * does not hold it. Properties beside a handle are refused: a handle
+   * root is reopened as the folder at its location, under the
+   * environment.
+   *
+   * `version` omitted is 2 over a handle; over a location it is the
+   * `format-version` property, else the lowest version that states the
+   * schema - 3 for a nanosecond timestamp, a variant or an unknown
+   * column, else 2.
+   *
    * `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
    * `PARTITION:by` entries to partition on: a bare column - `venue` - is an
    * identity partition, and an epoch function over a column - `days(ts)`,
@@ -4539,19 +4554,28 @@ export declare class IcebergTable {
    * so a plain schema works as it is; a schema that already carries field
    * identifiers keeps every one of them.
    */
-  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): IcebergTable
-  /** Open the table a container handle addresses. */
-  static open(root: LocationInput): IcebergTable
+  static create(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null): IcebergTable
+  /**
+   * Open the table `root` names.
+   *
+   * A container handle is the folder the table lives in. A location -
+   * text, a `Url`, a `Uri`, a `Urn` or an `Arn` - is opened by the core
+   * under `properties`: a folder any backend holds, or a table an Amazon
+   * S3 Tables table bucket keeps, named
+   * `s3tables://<bucket>/<namespace>/<table>` or by its own ARN.
+   */
+  static open(root: LocationInput, properties?: Record<string, string | number | boolean> | null): IcebergTable
   /**
    * Open the table if it exists, creating it otherwise.
    *
-   * Like [`create`](Self::create), `partitionBy` is a spec, the
-   * `PARTITION:by` entries one is read from, `null` for none, or - omitted -
-   * the schema's own declaration, and unnumbered schema columns are
-   * numbered automatically; an existing table is opened as it is and
+   * `root`, `version` and `properties` are read as
+   * [`create`](Self::create) reads them. Like it, `partitionBy` is a spec,
+   * the `PARTITION:by` entries one is read from, `null` for none, or -
+   * omitted - the schema's own declaration, and unnumbered schema columns
+   * are numbered automatically; an existing table is opened as it is and
    * `schema` describes only the table this call would create.
    */
-  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null): IcebergTable
+  static openOrCreate(root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null): IcebergTable
   /**
    * The Iceberg table a warehouse `Table` holds, refused by name when its
    * implementation is another.
@@ -5008,7 +5032,8 @@ export declare class IOBase {
    * `Arn` - naming a location, or another handle. A name is resolved the
    * way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
    * opens the path that name spells. Per the laziness contract, nothing is
-   * opened, created, or read here.
+   * opened, created, or read here - but a table an Amazon S3 Tables table
+   * bucket keeps, which its service describes at construction.
    *
    * An Arrow file system handler as the first argument names the *backend*
    * rather than the location, so the second says where on it:

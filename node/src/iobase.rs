@@ -108,15 +108,22 @@ pub(crate) type LocationOrFileSystemInput<'a> = Either<HandleInput<'a>, FileSyst
 /// A mapping of partition columns to values, or the same pairs as entries.
 type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<String, String>>;
 
-/// Hold the resource `url` names, on the store its scheme selects.
+/// Hold the resource `location` names, on the store its scheme selects.
 ///
 /// The core's one dispatcher decides: an `http` or `https` URL is the request
 /// that reads and writes the resource, an object-store URL the native store,
-/// a `file:` URL whose fragment names an archive member that member, anything
-/// else local - and a scheme no backend speaks is refused by that scheme.
-/// Construction touches nothing on any of them.
-fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
-    Holder::from_url(url, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
+/// a `file:` URL whose fragment names an archive member that member, an
+/// `s3tables:` URL the catalog, the namespace or the table it names in its
+/// table bucket, anything else local - and a scheme no backend speaks is
+/// refused by that scheme. An identifier crosses as it was named and the
+/// core locates it, so an ARN that states more than its location - a
+/// table's, in a table bucket - is read whole. Construction touches nothing
+/// but a table bucket's table, sent here under no properties: a table's ARN
+/// one `GetTable`, a location one `GetTableMetadataLocation` after the one
+/// `ListTableBuckets` per page that finds the bucket, since nothing states
+/// its ARN or account.
+fn local_holder(location: impl AsRef<yggdryl::Uri>) -> Result<Holder> {
+    Holder::from_url(location, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
 }
 
 /// Hold `url` as a container, on the store its scheme selects.
@@ -183,27 +190,41 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     Some(Holder::FsFolder(folder))
 }
 
+/// Reduce one location argument to the handle it is, or the identifier it
+/// names - as it was named, never lowered to the location it locates: a door
+/// that reads more off an identifier than where it is - a table's ARN, in a
+/// table bucket - locates it itself.
+///
+/// Text is read as the core reads any identifier: a Windows drive, a UNC
+/// share and a scheme-less path are a `file:` identifier, and text naming a
+/// resource rather than a place is that name, so there is nothing to sniff
+/// here.
+fn identifier_target(
+    value: LocationInput<'_>,
+) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Uri>> {
+    Ok(match value {
+        Either6::A(handle) => Either::A(handle),
+        Either6::B(url) => Either::B(url.inner.clone().into_uri()),
+        Either6::C(uri) => Either::B(uri.inner.clone()),
+        Either6::D(urn) => Either::B(urn.inner.clone().into_uri()),
+        Either6::E(arn) => Either::B(arn.inner.clone().into_uri()),
+        Either6::F(value) => Either::B(yggdryl::Uri::from_str(&value).map_err(napi_error)?),
+    })
+}
+
 /// Reduce one location argument to the handle it is, or the URL it names.
 ///
 /// Every identifier answers through the core's `locator`, which is the one
-/// door a name and a location share, and text answers through
-/// `Url::from_location`, which is that same resolution for what a caller
-/// typed. This is where both happen, so each role below - leaf, container,
-/// constructor - decides only what to do with the location, never how to read
-/// one.
+/// door a name and a location share - and what `Url::from_location` is for
+/// text a caller typed. This is where it happens, so each role below - a
+/// container, an object's site - decides only what to do with the location,
+/// never how to read one.
 fn location_target(
     value: LocationInput<'_>,
 ) -> Result<Either<ClassInstance<'_, JsIOBase>, yggdryl::Url>> {
-    Ok(match value {
-        Either6::A(handle) => Either::A(handle),
-        Either6::B(url) => Either::B(url.inner.clone()),
-        Either6::C(uri) => Either::B(uri.inner.locator().map_err(napi_error)?),
-        Either6::D(urn) => Either::B(urn.inner.locator().map_err(napi_error)?),
-        Either6::E(arn) => Either::B(arn.inner.locator().map_err(napi_error)?),
-        // The core already reads a Windows drive, a UNC share, and a
-        // scheme-less path as a `file:` URL, and resolves text that names a
-        // resource rather than a place, so there is nothing to sniff here.
-        Either6::F(value) => Either::B(yggdryl::Url::from_location(&value).map_err(napi_error)?),
+    Ok(match identifier_target(value)? {
+        Either::A(handle) => Either::A(handle),
+        Either::B(identifier) => Either::B(identifier.locator().map_err(napi_error)?),
     })
 }
 
@@ -211,11 +232,12 @@ fn location_target(
 ///
 /// What [`folder_from_input`] is for a container, this is for a leaf: a
 /// `.cfb` is a file, and a location held as a container reads as its leaves
-/// end to end, which is no one document.
+/// end to end, which is no one document. The identifier crosses as named,
+/// and the core's one dispatcher locates it.
 pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    match location_target(value)? {
+    match identifier_target(value)? {
         Either::A(handle) => handle.rebuilt().map(|held| held.inner),
-        Either::B(url) => local_holder(&url),
+        Either::B(identifier) => local_holder(&identifier),
     }
 }
 
@@ -249,20 +271,35 @@ pub(crate) fn site_from_input(value: LocationInput<'_>) -> Result<Either<Holder,
 /// a foreign Arrow file system becomes a container on that same file system,
 /// so a table reached this way never learns which backend it stands on.
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
-    let url = match location_target(value)? {
-        Either::A(handle) => {
-            if let Some(holder) = fs_folder_holder(&handle.inner) {
-                return Ok(holder);
-            }
-            handle
-                .inner
-                .url()
-                .cloned()
-                .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?
-        }
-        Either::B(url) => url,
-    };
-    folder_holder_for(&url)
+    match location_target(value)? {
+        Either::A(handle) => folder_of_handle(&handle),
+        Either::B(url) => folder_holder_for(&url),
+    }
+}
+
+/// The container a handle in hand addresses: the same file system for a
+/// foreign one, the store its location's scheme selects otherwise.
+fn folder_of_handle(handle: &JsIOBase) -> Result<Holder> {
+    if let Some(holder) = fs_folder_holder(&handle.inner) {
+        return Ok(holder);
+    }
+    let url = handle
+        .inner
+        .url()
+        .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?;
+    folder_holder_for(url)
+}
+
+/// What a table door's `root` names: a handle in hand, taken as the
+/// container it addresses, or the identifier of the table's location as it
+/// was named, which the core opens by itself.
+pub(crate) fn table_root_from_input(
+    value: LocationInput<'_>,
+) -> Result<Either<Holder, yggdryl::Uri>> {
+    Ok(match identifier_target(value)? {
+        Either::A(handle) => Either::A(folder_of_handle(&handle)?),
+        Either::B(identifier) => Either::B(identifier),
+    })
 }
 
 /// A stateful sequential filesystem input stream.
@@ -608,7 +645,8 @@ impl JsIOBase {
     /// `Arn` - naming a location, or another handle. A name is resolved the
     /// way `locator` resolves it, so `new IOBase(new Urn('urn:lake:x.txt'))`
     /// opens the path that name spells. Per the laziness contract, nothing is
-    /// opened, created, or read here.
+    /// opened, created, or read here - but a table an Amazon S3 Tables table
+    /// bucket keeps, which its service describes at construction.
     ///
     /// An Arrow file system handler as the first argument names the *backend*
     /// rather than the location, so the second says where on it:

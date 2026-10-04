@@ -2131,6 +2131,7 @@ pub struct ZipPath
   pub fn remove_namespace(&self, bucket: &Arn, namespace: &str) -> Result<()>
   pub fn create_table(&self, bucket: &Arn, namespace: &str, name: &str, schema: Option<&Field>) -> Result<TableVersion>  (1 `PUT`; a schema sent as `metadata.iceberg.schemaV2` - as Iceberg expresses it, a column with no field id numbered above the highest present - with its `PARTITION:by` as `partitionSpec` and its `SORT:by` as `writeOrder` where it declares one)
   pub fn get_table(&self, bucket: &Arn, namespace: &str, name: &str) -> Result<TableDescription>  (1 `GET /get-table`)
+  pub fn get_table_by_arn(&self, table: &Arn) -> Result<TableDescription>  (1 `GET /get-table` addressed by `tableArn` alone - `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` - whose answer names the namespace, the name and the warehouse location; an ARN that names no table of a table bucket refused before any request; `NotFoundException` is Error::Absent)
   pub fn tables(&self, bucket: &Arn, namespace: Option<&str>) -> TableSummaries
   pub fn rename_table(&self, bucket: &Arn, namespace: &str, name: &str, new_namespace: Option<&str>, new_name: Option<&str>, version_token: Option<&str>) -> Result<()>  (a rename naming no target, or the table's own, refused before any request)
   pub fn remove_table(&self, bucket: &Arn, namespace: &str, name: &str, version_token: Option<&str>) -> Result<()>
@@ -2161,13 +2162,13 @@ pub struct ZipPath
   pub fn metadata_location(&self) -> Option<&Url>
   pub fn warehouse_location(&self) -> &Url
 
-  pub struct S3TablesCatalog  [rust/src/s3tables/catalog.rs]  (a table bucket as a warehouse catalog; Clone, Debug, Eq, Hash over the path, the bucket's location, its stated ARN and account, the description and the stated properties - never the session; ObjectValue - `url` `s3tables://<bucket>`, `properties` what was stated; NamespaceValue - `children` 1 `ListNamespaces` per page, `get` 1 `GetNamespace`, `create_namespace` 1 `CreateNamespace`; CatalogValue - `namespace_levels` Some(1))
+  pub struct S3TablesCatalog  [rust/src/s3tables/catalog.rs]  (a table bucket as a warehouse catalog; Clone, Debug, Eq, Hash over the path, the bucket's location, its stated ARN and account, the description and the stated properties - never the session; ObjectValue - `url` `s3tables://<bucket>`, `properties` what was stated; NamespaceValue - `children` 1 `ListNamespaces` per page, `get` 1 `GetNamespace`, `create_namespace` 1 `CreateNamespace`; CatalogValue - `namespace_levels` Some(1); crate-private `locate(location, properties)`, the one reading every door that takes a location answers through - `s3tables://<bucket>[/<namespace>[/<table>]]`, a bucket's ARN or a table's ARN as the `Object` it names - and `create(location, properties, version, schema, spec)`, what `IcebergTable::create_from_url` answers for one)
   pub fn new(name: impl Into<SmolStr>, client: S3Tables, bucket: Arn) -> Result<Self>  (Error::Parse for an ARN that names no table bucket; touches nothing)
   pub fn with_description(mut self, description: impl Into<String>) -> Self
   pub fn with_properties(mut self, properties: Properties) -> Self  (what every table's storage below it opens with: the store's own `s3.` names among them)
   pub fn client(&self) -> &S3Tables
   pub fn bucket_arn(&self) -> Result<&Arn>  (as stated, else built from `account_id` and the region, else one `ListTableBuckets` on first use, kept)
-  pub struct S3TablesNamespace  [rust/src/s3tables/catalog.rs]  (one namespace of a table bucket; Clone, Debug, Eq, Hash over the description; ObjectValue - `properties` the catalog's then the stated; NamespaceValue - `children` 1 `ListTables` per page and 1 `GetTableMetadataLocation` per table, `get` 1 `GetTableMetadataLocation`, `create_table` `CreateTable` with no schema, `GetTableMetadataLocation`, `IcebergTable::create_pointed` under `PartitionSpec::from_schema` at the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2, the registration removed under its token when the first document is not published; each table `Table::Iceberg` over a `Handle` on its warehouse location, pointed at `GetTableMetadataLocation`/`UpdateTableMetadataLocation`, a `ConflictException` the commit conflict)
+  pub struct S3TablesNamespace  [rust/src/s3tables/catalog.rs]  (one namespace of a table bucket; Clone, Debug, Eq, Hash over the description; ObjectValue - `properties` the catalog's then the stated; NamespaceValue - `children` 1 `ListTables` per page and 1 `GetTableMetadataLocation` per table, `get` 1 `GetTableMetadataLocation`, `create_table` `CreateTable` with no schema, `GetTableMetadataLocation`, `IcebergTable::create_pointed` under `PartitionSpec::from_schema` at the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2, the registration removed under its token when the first document is not published; each table `Table::Iceberg` over a `Handle` on its warehouse location, pointed at `GetTableMetadataLocation`/`UpdateTableMetadataLocation`, a `ConflictException` the commit conflict, its `remove` 1 `DeleteTable` under no version token)
   pub fn with_properties(mut self, properties: Properties) -> Self
 
   pub struct TableBuckets / NamespaceSummaries / TableSummaries  [rust/src/s3tables/listing.rs]  (lazy Iterator<Item = Result<TableBucket>> / Result<NamespaceSummary> / Result<TableSummary>, FusedIterator: nothing sent when built, one request per page as it is drained; an entry that does not read, or a continuation token answered twice, is the one refusal in its place after the entries before it, and the walk over; an address the model refuses is the one item)
@@ -2658,7 +2659,7 @@ pub enum Holder
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
-  pub fn from_url<K, V>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where
+  pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or any identifier read through `Uri::locator` once - a relative path, a URN, an ARN; the scheme picks the backend: `file:` a LocalPath or a ZIP member, an object store under `s3`, `http:`/`https:` under `http`, and under `s3tables` what `s3tables://<bucket>[/<namespace>[/<table>]]` names - the bucket's catalog or a namespace at no request, the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays, more than two segments refused at `$.url` - an ARN of that service read as the ARN: a bucket's the catalog, a table's the table at 1 `GetTable`; `media_type` and `codec` read for a byte backend)
   pub fn zip(handle: Self) -> Self
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
@@ -3335,10 +3336,11 @@ pub const FIRST_PARTITION_ID: i32 = 1000;
   pub fn into_json(self) -> Result<Scalar>
   pub fn into_v1_json(self) -> Result<Scalar>
 
-### yggdryl::iceberg::pointer  [rust/src/iceberg/pointer.rs]  (what names a table's current metadata document when its folder does not; a pointed table reads the one document named, writes each next as `metadata/{version:05}-{uuid}.metadata.json` from 00000 and publishes it under the token held - no read or commit listing, writing a hint or removing, the table's own `ls` and `remove` refused; a refused publication rebases an append or a metadata-only commit and is a CommitConflict for an overwrite, a merge or a compaction)
+### yggdryl::iceberg::pointer  [rust/src/iceberg/pointer.rs]  (what names a table's current metadata document when its folder does not; a pointed table reads the one document named, writes each next as `metadata/{version:05}-{uuid}.metadata.json` from 00000 and publishes it under the token held - no read or commit listing, writing a hint or removing, the table's own `ls` refused and its `remove` the pointer's; a refused publication rebases an append or a metadata-only commit and is a CommitConflict for an overwrite, a merge or a compaction)
 pub trait MetadataPointer: std::fmt::Debug + Send + Sync
   fn current(&self) -> Result<PointerState>  (the document named now - none before the first - and the token a publication is conditioned on)
   fn publish(&self, token: &str, location: &Url) -> Result<PointerState>  (a pointer no longer at `token` is a failure is_conflict answers; any other failure leaves the publication in doubt)
+  fn remove(&self) -> Result<()>  (provided: drop the table from the catalog that keeps it, what a pointed table's IOBase `remove` asks; the provided method refuses as Error::Unsupported naming the pointer, a catalog that drops a table answers it - a table already gone is dropped)
 pub struct PointerState  (Clone, Debug, PartialEq, Eq, Hash)
   pub fn new(location: Option<Url>, token: impl Into<SmolStr>) -> Self
   pub fn location(&self) -> Option<&Url>
@@ -3380,7 +3382,7 @@ pub fn tag(snapshot_id: i64) -> Self
   pub fn with_max_ref_age_ms(mut self, age_ms: i64) -> Result<Self>
 
 ### yggdryl::iceberg::table  [rust/src/iceberg/table.rs]
-pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`; a pointed table's IOBase `ls` and `remove` refused as Error::Unsupported, touching nothing - its catalog keeps it)
+pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata document read on the first verb that needs it; Clone where H: Clone, opening afresh; Eq, Hash over the path; ObjectValue, TableValue, IOBase, IOMedia, so a warehouse `Table::Iceberg` holds one over a `Handle`; a pointed table's IOBase `ls` refused as Error::Unsupported, touching nothing, and its `remove(recursive)` the pointer's `remove` whatever `recursive` says - its catalog keeps it, and drops it)
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
   pub fn open(root: H) -> Result<Self>
@@ -3389,6 +3391,9 @@ pub struct IcebergTable<H: IOBase>  (the root eager, the current metadata docume
   pub fn open_pointed(root: H, pointer: Arc<dyn MetadataPointer>) -> Result<Self>  (one answer of the pointer and one read of the document it names, relative to the root; no hint, no listing; every commit publishes through the pointer)
   pub fn create_pointed(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, pointer: Arc<dyn MetadataPointer>) -> Result<Self>  (the pointer read once and naming no document, else Error::Conflict; the first document `metadata/00000-{uuid}.metadata.json`, version 0, published under the token read; the default order as `create` makes it)
   pub fn at(path: impl IntoObjectPath, root: H) -> Self  (described at its warehouse path, nothing read; an empty path is the root's last segment)
+  pub fn from_url(location: impl AsRef<crate::Uri>, properties: &Properties) -> Result<Self>  (`IcebergTable<Handle>` only: the table a location names - a Url or any identifier that locates one - rooted on the handle `Holder::from_url` opens for it under the properties, resolved on first use and by every clone, opened as `open` opens one and stating the properties less the ones the store's reader took (`Holder::is_backend_property`, crate-private: the object store options' under `s3`, the HTTP options' under `http`, none for a local path); under `s3tables` an `s3tables://<bucket>/<namespace>/<table>` location at 1 `GetTableMetadataLocation` or a table's ARN at 1 `GetTable`, described and pointed at the control plane, a bucket or a namespace refused by its kind at `$.url`)
+  pub fn create_from_url(location: impl AsRef<crate::Uri>, properties: &Properties, version: Option<FormatVersion>, schema: Field, spec: Option<PartitionSpec>) -> Result<Self>  (`IcebergTable<Handle>` only: the schema as Iceberg expresses it and numbered; a spec left out `PartitionSpec::from_schema`, a version left out the `format-version` property else 3 for a nanosecond timestamp, a variant or an unknown column else 2; under `s3tables` `CreateTable`, `GetTableMetadataLocation`, 1 `PutObject` and `UpdateTableMetadataLocation`, a namespace the bucket does not hold made on the way - the refused `CreateTable`, 1 `CreateNamespace`, the creation again - and a table's ARN refused at `$.url`)
+  pub fn open_or_create_from_url(location: impl AsRef<crate::Uri>, properties: &Properties, version: Option<FormatVersion>, schema: Field, spec: Option<PartitionSpec>) -> Result<Self>  (`IcebergTable<Handle>` only: `from_url`, and on absence `create_from_url`; an existing table opened as it is)
   pub fn with_description(mut self, description: impl Into<String>) -> Self
   pub fn with_properties(mut self, properties: Properties) -> Self  (`IcebergTable<Handle>` only: the stated properties the handle opens with and `ObjectValue::properties` answers over the stored ones)
   pub const fn root(&self) -> &H
@@ -7682,7 +7687,7 @@ pub enum ArnPartition  (Copy, Eq/Ord/Hash, Display, FromStr; Aws, AwsCn, AwsUsGo
   pub const fn global_region(self) -> &'static str
   pub fn service_host(self, service: &str, region: &str, fips: bool, dualstack: bool) -> String  ({service}[-fips].{region}.{suffix})
 
-### yggdryl::uri::handle  [rust/src/uri/handle.rs]  (an identifier as a handle: the storage it names, resolved through Holder::from_url on the first operation that needs it and kept for the value's life; a name lends no url)
+### yggdryl::uri::handle  [rust/src/uri/handle.rs]  (an identifier as a handle: the storage it names, resolved through Holder::from_url - which reads the identifier as it is, so an Amazon S3 Tables ARN is the catalog or the table it names - on the first operation that needs it and kept for the value's life; a name lends no url)
 impl IOBase for Uri
 impl IOMedia for Uri
 

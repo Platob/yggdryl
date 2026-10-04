@@ -11,6 +11,9 @@
 #[cfg(feature = "iceberg")]
 #[path = "support/counting_filesystem.rs"]
 mod counting_filesystem;
+#[cfg(all(feature = "iceberg", feature = "s3"))]
+#[path = "support/server.rs"]
+mod server;
 
 #[cfg(feature = "iceberg")]
 #[path = "iceberg/catalog/mod_.rs"]

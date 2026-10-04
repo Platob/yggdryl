@@ -6,7 +6,8 @@
 //! NaN must not enter, the metadata names a listing accepts, and the relative
 //! location two writers spell differently. All of it comes through
 //! `yggdryl::internals`; what a caller observes of a committed table is pinned
-//! in `rust/tests/iceberg/mod_.rs`.
+//! in `rust/tests/iceberg/mod_.rs`, and of a table reached by its location
+//! alone in [`located`] below.
 
 #[cfg(feature = "internals")]
 mod internal {
@@ -1533,5 +1534,513 @@ mod derived_columns {
         assert_eq!(plan.skipped.len(), 2);
         assert_eq!(plan.tasks.len(), 1);
         let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+mod located {
+    //! A table reached by its location: opened, created, and opened or
+    //! created by the URL of its folder, and dropped as the folder it is.
+
+    use std::sync::Arc;
+
+    use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{
+        DataType, Field, IOBase, ObjectValue, Properties, StructType, TimeUnit, Timezone, Uri, Url,
+    };
+
+    /// A location nothing occupies, unique to this test and this process.
+    fn root(label: &str) -> std::path::PathBuf {
+        let mut path = LocalFolder::temporary().unwrap().path().unwrap();
+        path.push(format!(
+            "yggdryl-iceberg-located-{label}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        path
+    }
+
+    /// `(id, venue)` rows, partitioned by the venue the schema marks.
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8()
+                .nullable_field("venue")
+                .with_partition(true),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    fn rows(ids: &[i64], venues: &[&str]) -> BatchReader {
+        let schema = Arc::new(arrow_schema::Schema::new(vec![
+            arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+            arrow_schema::Field::new("venue", arrow_schema::DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())),
+                Arc::new(StringArray::from(venues.to_vec())),
+            ],
+        )
+        .unwrap();
+        yggdryl::arrow::batch_reader(schema, [batch])
+    }
+
+    /// Every id the current snapshot holds, ascending.
+    fn ids<H: IOBase>(table: &IcebergTable<H>) -> Vec<i64> {
+        let mut ids: Vec<i64> = table
+            .scan(None)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let column = batch.column_by_name("id").unwrap();
+                let column = column.as_any().downcast_ref::<Int64Array>().unwrap();
+                (0..column.len())
+                    .map(|row| column.value(row))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
+    #[test]
+    fn a_location_creates_reopens_and_drops_the_table_its_folder_is() {
+        let path = root("life");
+        let location = Url::from_path(&path).unwrap();
+        let properties = Properties::new();
+
+        // Nothing is there: opening says so naming the folder, and makes
+        // nothing on the way.
+        let error = IcebergTable::from_url(&location, &properties).unwrap_err();
+        assert!(error.to_string().contains("metadata"), "{error}");
+        assert!(!path.exists());
+
+        // Created with neither a version nor a spec stated: the lowest
+        // version that states the schema, partitioned as it declares, the
+        // columns numbered, and named after its folder.
+        let mut table =
+            IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
+        let metadata = table.metadata().unwrap();
+        assert_eq!(metadata.format_version(), FormatVersion::V2);
+        assert_eq!(metadata.default_spec().unwrap().fields.len(), 1);
+        assert_eq!(
+            table.schema().unwrap().fields()[0]
+                .parquet_field_id()
+                .unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            ObjectValue::name(&table),
+            path.file_name().unwrap().to_str().unwrap()
+        );
+        assert!(path.join("metadata").is_dir());
+
+        // A second create at the location is the typed conflict.
+        let error = IcebergTable::create_from_url(&location, &properties, None, schema(), None)
+            .unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+
+        // Written through one handle, read through another opened by the
+        // same location - as a `Url`, or as any identifier that locates it.
+        table
+            .commit_append(rows(&[2, 1], &["XNAS", "XLON"]))
+            .unwrap();
+        let opened = IcebergTable::from_url(&location, &properties).unwrap();
+        assert_eq!(ids(&opened), [1, 2]);
+        let by_path = IcebergTable::from_url(Uri::from_path(&path).unwrap(), &properties).unwrap();
+        assert_eq!(
+            by_path.metadata_file_name().unwrap(),
+            opened.metadata_file_name().unwrap()
+        );
+
+        // Opening or creating opens what is there, as it is.
+        let again = IcebergTable::open_or_create_from_url(
+            &location,
+            &properties,
+            Some(FormatVersion::V3),
+            schema(),
+            Some(PartitionSpec::unpartitioned()),
+        )
+        .unwrap();
+        assert_eq!(
+            again.metadata().unwrap().format_version(),
+            FormatVersion::V2
+        );
+        assert_eq!(ids(&again), [1, 2]);
+
+        // A clone opens the location afresh, and reads the same table.
+        assert_eq!(ids(&opened.clone()), [1, 2]);
+
+        // Dropped as the folder it is: a populated one is refused without
+        // `recursive`, and gone with it.
+        let mut dropped = opened;
+        dropped.remove(false).unwrap_err();
+        assert!(path.join("metadata").is_dir());
+        dropped.remove(true).unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_create_states_its_version_and_its_spec_or_takes_the_schemas_own() {
+        let path = root("layout");
+
+        // Stated, both are taken as stated - a spec names its columns by
+        // identifier, so its schema is numbered first.
+        let mut numbered = schema();
+        assign_field_ids(&mut numbered, 1).unwrap();
+        let spec = PartitionSpec::identity(0, &numbered, &["venue"]).unwrap();
+        let stated = IcebergTable::open_or_create_from_url(
+            Url::from_path(path.join("stated")).unwrap(),
+            &Properties::new(),
+            Some(FormatVersion::V1),
+            numbered,
+            Some(spec.clone()),
+        )
+        .unwrap();
+        let metadata = stated.metadata().unwrap();
+        assert_eq!(metadata.format_version(), FormatVersion::V1);
+        assert_eq!(metadata.default_spec().unwrap().fields, spec.fields);
+
+        // The `format-version` property is the version of a create that
+        // states none, and the table states the properties it was given.
+        let properties = Properties::new().with_property("format-version", "3");
+        let by_property = IcebergTable::create_from_url(
+            Url::from_path(path.join("property")).unwrap(),
+            &properties,
+            None,
+            schema(),
+            Some(PartitionSpec::unpartitioned()),
+        )
+        .unwrap();
+        let metadata = by_property.metadata().unwrap();
+        assert_eq!(metadata.format_version(), FormatVersion::V3);
+        assert!(metadata.default_spec().unwrap().is_unpartitioned());
+        assert_eq!(
+            ObjectValue::properties(&by_property)
+                .unwrap()
+                .get("format-version"),
+            Some("3")
+        );
+
+        // A nanosecond instant is one no version before the third states.
+        let nanos = StructType::from_fields([DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
+        }
+        .required_field("ts")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let third = IcebergTable::create_from_url(
+            Url::from_path(path.join("nanos")).unwrap(),
+            &Properties::new(),
+            None,
+            nanos,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            third.metadata().unwrap().format_version(),
+            FormatVersion::V3
+        );
+
+        // A version no format has is refused before anything is written.
+        let refused = path.join("refused");
+        let error = IcebergTable::create_from_url(
+            Url::from_path(&refused).unwrap(),
+            &Properties::new().with_property("format-version", "7"),
+            None,
+            schema(),
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("$.with.format-version"),
+            "{error}"
+        );
+        assert!(!refused.exists());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_table_rooted_at_its_location_takes_every_commit() {
+        let path = root("commits");
+        let location = Url::from_path(&path).unwrap();
+        let mut table =
+            IcebergTable::create_from_url(&location, &Properties::new(), None, schema(), None)
+                .unwrap();
+
+        // Two appends, a merge on the id within each venue, and an overwrite
+        // of the one venue its rows fall in.
+        table
+            .commit_append(rows(&[1, 2], &["XNAS", "XLON"]))
+            .unwrap();
+        table.commit_append(rows(&[3], &["XNAS"])).unwrap();
+        table
+            .commit_merge(
+                rows(&[2, 4], &["XLON", "XLON"]),
+                &yggdryl::Selector::from_columns(["id"]),
+                true,
+            )
+            .unwrap();
+        assert_eq!(ids(&table), [1, 2, 3, 4]);
+        table.commit_overwrite(rows(&[9], &["XNAS"])).unwrap();
+        assert_eq!(ids(&table), [2, 4, 9]);
+
+        // Maintenance rewrites through the same root.
+        table.commit_append(rows(&[10], &["XNAS"])).unwrap();
+        let compaction = table.compact().unwrap();
+        assert!(compaction.files_after <= compaction.files_before);
+        assert_eq!(ids(&table), [2, 4, 9, 10]);
+
+        // Reopened by the location, the table is where the commits left it.
+        let reopened = IcebergTable::from_url(&location, &Properties::new()).unwrap();
+        assert_eq!(
+            reopened.metadata_version().unwrap(),
+            table.metadata_version().unwrap()
+        );
+        assert_eq!(ids(&reopened), [2, 4, 9, 10]);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_schema_keeps_the_partition_and_the_order_it_declares() {
+        let path = root("declared");
+        let mut declared = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().required_field("venue"),
+            "timestamp(us)"
+                .parse::<DataType>()
+                .unwrap()
+                .required_field("ts"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        declared
+            .as_partition_mut()
+            .set_by_texts(["venue", "minutes(ts, 15)"])
+            .unwrap();
+        declared
+            .as_sort_mut()
+            .set_by_texts(["ts desc", "id"])
+            .unwrap();
+
+        // Neither stated: the table partitions and sorts as its schema
+        // declares, and says so again when its schema is read back.
+        let table = IcebergTable::create_from_url(
+            Url::from_path(path.join("declared")).unwrap(),
+            &Properties::new(),
+            None,
+            declared.clone(),
+            None,
+        )
+        .unwrap();
+        let spec = table.metadata().unwrap().default_spec().unwrap();
+        assert_eq!(
+            spec.fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["venue", "ts_minutes"]
+        );
+        let stored = table.schema().unwrap();
+        assert_eq!(
+            stored.get_metadata("PARTITION:by"),
+            declared.get_metadata("PARTITION:by")
+        );
+        assert_eq!(
+            stored.get_metadata("SORT:by"),
+            declared.get_metadata("SORT:by")
+        );
+
+        // A spec stated replaces the declaration, the order staying the
+        // schema's own.
+        let mut numbered = declared.clone();
+        assign_field_ids(&mut numbered, 1).unwrap();
+        let stated = IcebergTable::create_from_url(
+            Url::from_path(path.join("stated")).unwrap(),
+            &Properties::new(),
+            None,
+            numbered,
+            Some(PartitionSpec::unpartitioned()),
+        )
+        .unwrap();
+        assert!(
+            stated
+                .metadata()
+                .unwrap()
+                .default_spec()
+                .unwrap()
+                .is_unpartitioned()
+        );
+        assert_eq!(
+            stated.schema().unwrap().get_metadata("SORT:by"),
+            declared.get_metadata("SORT:by")
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A located table states what it was given less what its store read.
+    /// A local path reads nothing, so a table on one states every property,
+    /// and one opened under nothing states none: stated on the table, never
+    /// stored in it.
+    #[test]
+    fn a_table_on_a_local_path_states_every_property_it_was_given() {
+        let path = root("stated");
+        let location = Url::from_path(&path).unwrap();
+        let properties = Properties::new()
+            .with_property("owner", "ops")
+            .with_property("write.parallelism", "2");
+
+        let created =
+            IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
+        let opened = IcebergTable::from_url(&location, &properties).unwrap();
+        let again =
+            IcebergTable::open_or_create_from_url(&location, &properties, None, schema(), None)
+                .unwrap();
+        for table in [&created, &opened, &again] {
+            let stated = ObjectValue::properties(table).unwrap();
+            assert_eq!(stated.get("owner"), Some("ops"));
+            assert_eq!(stated.get("write.parallelism"), Some("2"));
+        }
+
+        let unstated = IcebergTable::from_url(&location, &Properties::new()).unwrap();
+        let listed = ObjectValue::properties(&unstated).unwrap();
+        assert_eq!(listed.get("owner"), None);
+        assert_eq!(listed.get("write.parallelism"), None);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A table in an object-store folder is rooted on a handle that opens
+    /// under everything it was given - the store takes only the key stated,
+    /// and a clone, which opens again, writes through it - while the table
+    /// states the properties less the ones the store read: who signs, where
+    /// it is and how it is addressed are listed by nothing and printed by
+    /// nothing, before the handle resolves and after. A table bucket's table
+    /// states none, which `rust/tests/s3tables/catalog.rs` pins. The shared
+    /// files are this test's own, so nothing of the operator's is read, and
+    /// opening by location costs the store what an open costs: the version
+    /// hint and the current document, one `GetObject` each.
+    #[cfg(feature = "s3")]
+    #[test]
+    fn a_table_on_an_object_store_states_what_the_store_did_not_read() {
+        let store = crate::server::FakeS3::start();
+        store.create_buckets_on_write(true);
+        store.require_access_key(Some("AKIAIOSFODNN7EXAMPLE"));
+        let aws = root("object-store-identity");
+        let properties = Properties::new()
+            .with_property("owner", "ops")
+            .with_property("endpoint", store.endpoint())
+            .with_property("path_style", "true")
+            .with_property("region", "us-east-1")
+            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+            .with_property("secret_access_key", "a-secret")
+            .with_property("config_file", aws.join("config").display().to_string())
+            .with_property(
+                "shared_credentials_file",
+                aws.join("credentials").display().to_string(),
+            );
+        let location = Url::from_str("s3://located-lake/quotes").unwrap();
+
+        let created =
+            IcebergTable::create_from_url(&location, &properties, None, schema(), None).unwrap();
+        store.clear_requests();
+        let opened = IcebergTable::from_url(&location, &properties).unwrap();
+        let asked: Vec<(String, Option<String>)> = store
+            .requests()
+            .into_iter()
+            .map(|request| (request.method, request.key))
+            .collect();
+        assert_eq!(
+            asked,
+            [
+                (
+                    "GET".to_owned(),
+                    Some("quotes/metadata/version-hint.text".to_owned())
+                ),
+                (
+                    "GET".to_owned(),
+                    Some("quotes/metadata/v1.metadata.json".to_owned())
+                ),
+            ]
+        );
+        let again =
+            IcebergTable::open_or_create_from_url(&location, &properties, None, schema(), None)
+                .unwrap();
+        let mut cloned = opened.clone();
+        cloned
+            .commit_append(rows(&[2, 1], &["XNAS", "XLON"]))
+            .unwrap();
+        assert_eq!(
+            ids(&IcebergTable::from_url(&location, &properties).unwrap()),
+            [1, 2]
+        );
+        for table in [&created, &opened, &again, &cloned] {
+            let stated = ObjectValue::properties(table).unwrap();
+            assert_eq!(stated.get("owner"), Some("ops"));
+            for name in [
+                "endpoint",
+                "path_style",
+                "region",
+                "access_key_id",
+                "secret_access_key",
+                "config_file",
+                "shared_credentials_file",
+            ] {
+                assert_eq!(stated.get(name), None, "{name}");
+            }
+            let printed = format!("{table:?}");
+            assert!(!printed.contains("a-secret"), "{printed}");
+            assert!(!printed.contains("AKIAIOSFODNN7EXAMPLE"), "{printed}");
+        }
+        let _ = std::fs::remove_dir_all(&aws);
+    }
+
+    /// A table bucket's location names a table only by a namespace and a
+    /// name, and at most that: refused at `$.url` where it is read - or, in
+    /// a build without the `s3tables` feature, by the scheme no backend of
+    /// it holds.
+    ///
+    /// Nothing counts requests here - the fake control plane's suite does,
+    /// in `rust/tests/s3tables/catalog.rs` - so the identity is stated in
+    /// full and the endpoint is a closed loopback port: a request this door
+    /// should not send would fail on this machine rather than leave it, and
+    /// nothing of the operator's - a variable's key, a shared file - is read
+    /// to sign one.
+    #[test]
+    fn a_table_bucket_location_that_names_no_table_is_refused_where_it_is_read() {
+        let aws = root("no-identity");
+        let properties = Properties::new()
+            .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+            .with_property("secret_access_key", "a-secret")
+            .with_property("config_file", aws.join("config").display().to_string())
+            .with_property(
+                "shared_credentials_file",
+                aws.join("credentials").display().to_string(),
+            )
+            .with_property("s3tables.region", "us-east-1")
+            .with_property("s3tables.endpoint", "http://127.0.0.1:1");
+        for location in [
+            "s3tables://lake/a/b/c",
+            "s3tables://lake",
+            "s3tables://lake/desk",
+        ] {
+            let location = Url::from_str(location).unwrap();
+            let error = IcebergTable::from_url(&location, &properties).unwrap_err();
+            #[cfg(feature = "s3tables")]
+            assert!(error.to_string().contains("$.url"), "{location}: {error}");
+            #[cfg(not(feature = "s3tables"))]
+            assert!(
+                matches!(error, yggdryl::Error::Unsupported { .. }),
+                "{location}: {error}"
+            );
+        }
     }
 }

@@ -14,7 +14,7 @@ use crate::{Error, IOBase, IOMedia, Result, Uri, Url};
 
 /// Where an object's storage is, as it was given: a location every backend
 /// is reached by, or a binding to a foreign filesystem a caller supplied.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) enum Site {
     /// A location, opened through [`Holder::from_url`] with the object's
     /// effective properties.
@@ -23,14 +23,43 @@ pub(crate) enum Site {
     Bound(BoundLocation),
     /// An object-store location opened under the session its owner signs
     /// with - a catalog service's warehouse, reached as the catalog is - in
-    /// the region the owner knows it is in, the object's effective
-    /// properties read over both.
+    /// the region the owner knows it is in, and under the store's own knobs
+    /// the owner was given (`store`: where the store is, how it is
+    /// addressed, a key pair stated for it - what the store's reader takes
+    /// and the session does not), the object's effective properties read
+    /// over all of it. The knobs are the site's and never the object's:
+    /// nothing lists or prints them, and a bag stated on the object later
+    /// leaves them in place.
     #[cfg(feature = "s3tables")]
     Store {
         url: Url,
         session: crate::aws::Session,
         region: String,
+        store: Properties,
     },
+}
+
+impl fmt::Debug for Site {
+    /// The location - and for a store site its session and its region: the
+    /// store's knobs are printed by nothing.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Url(url) => formatter.debug_tuple("Url").field(url).finish(),
+            Self::Bound(bound) => formatter.debug_tuple("Bound").field(bound).finish(),
+            #[cfg(feature = "s3tables")]
+            Self::Store {
+                url,
+                session,
+                region,
+                store: _,
+            } => formatter
+                .debug_struct("Store")
+                .field("url", url)
+                .field("session", session)
+                .field("region", region)
+                .finish_non_exhaustive(),
+        }
+    }
 }
 
 impl Site {
@@ -68,14 +97,16 @@ impl Site {
                 url,
                 session,
                 region,
+                store,
             } => {
                 // A session that consults nothing outside itself seals the
-                // store's own options too.
+                // store's own options too; the object's properties are read
+                // over the store's knobs, so one stated on the object wins.
                 let options = crate::s3::S3Options::default()
                     .with_environment(session.reads_environment())
                     .with_session(session.clone())
                     .with_region(region.clone())
-                    .with_properties(properties.iter())?;
+                    .with_properties(store.iter().chain(properties.iter()))?;
                 crate::s3::located_with(&url.to_string(), options)
             }
         }

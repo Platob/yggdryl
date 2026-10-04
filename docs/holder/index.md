@@ -26,11 +26,22 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 Holder::local(path) -> Result<Holder>          // LocalPath: the role is decided later
 Holder::folder(path) / Holder::file(path)      // commit to a role up front
 Holder::buffer(Buffer) -> Holder               // in memory
-Holder::from_url(&Url, properties)             // the scheme picks the backend
+Holder::from_url(location, properties)         // a Url, or any identifier that locates one: the scheme picks the backend
 holder.into_declared_media() -> Holder         // compose what the name declares, reading nothing
 holder.open() -> Result<()>                    // into_media, then open; keeps schema and footer caches
 holder.as_io() -> &dyn IOBase                  // the variant as the trait object
 ```
+
+`Holder::from_url` is the one door every backend is behind. It takes a `Url` or any identifier that locates one (`impl AsRef<Uri>`: a relative path, a URN, an ARN), reads it once and opens it under the properties:
+
+| Location | Held as |
+| --- | --- |
+| `file:` | a `LocalPath`, its role decided when an operation needs it; with a fragment, a member of a [ZIP archive](#zip) |
+| `s3:`, `gs:`, `az:` and their aliases, an Amazon S3 bucket's ARN | the [object store](#object-stores)'s location, under the `s3` feature and the store's own properties |
+| `http:`, `https:` | the [HTTP](#http) request that reads and writes the resource, under the `http` feature and the `HttpOptions` properties |
+| `s3tables://<bucket>[/<namespace>[/<table>]]`, a table bucket's ARN, a table's ARN | what it names in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket, under the `s3tables` feature: the catalog or a namespace - a description, no request - or the Iceberg table, at one `GetTableMetadataLocation` after the one `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (one `GetTable` for a table's ARN, read as the ARN rather than as the location it locates); more than a namespace and a table below the bucket is refused at `$.url` |
+
+`media_type` and `codec` are read here whatever the byte backend; a catalog, a namespace and a table declare neither. An identifier that names no location, and a scheme no backend of the build holds, are refused by name.
 
 === "Rust"
 
@@ -86,7 +97,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
-| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
+| `Catalog`, `Namespace`, `Table` | a [warehouse](../warehouse/index.md) object held as the handle it is - a catalog or a namespace a container whose `ls` yields its children as handles and whose byte verbs are refused, a table the rows its own handle holds; what `Holder::from_url` answers for a location in an [Amazon S3 Tables](../media/iceberg.md#a-table-by-its-location) table bucket | `warehouse.Catalog`, `warehouse.Namespace`, `warehouse.Table`; JavaScript `IOBase.from(object)` |
 | `Buffered` | any of the others behind the [page cache](#buffered) | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |

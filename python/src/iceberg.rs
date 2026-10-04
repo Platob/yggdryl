@@ -2,7 +2,10 @@
 //!
 //! A table is a folder and nothing else, so this binding takes the handle a
 //! caller already built with [`crate::iobase::PyIOBase`] and hands it to the core
-//! [`Table`]. Rows cross the boundary the way they do everywhere else here -
+//! [`Table`] - or takes the table's location as it was named and hands that
+//! to the core's own location doors, which is how a table an Amazon S3 Tables
+//! table bucket keeps is reached with nothing built first. Rows cross the
+//! boundary the way they do everywhere else here -
 //! as a `pyarrow.RecordBatchReader` over the Arrow C Stream interface - so a
 //! scan is lazy on both sides and a commit copies nothing.
 //!
@@ -36,7 +39,7 @@ use crate::iomedia::{
     batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
     core_root_field_from_value, string_pairs_from_value,
 };
-use crate::uri::core_url_from_value;
+use crate::uri::{core_uri_from_value, core_url_from_value};
 use crate::value_error;
 
 /// Read one required key from a private pickle state mapping.
@@ -132,6 +135,33 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
     ))
 }
 
+/// The spec a `partition_by` argument states, none when it was omitted
+/// (`...`): `None` unpartitioned, anything else [`spec_from_value`]'s
+/// reading.
+///
+/// An omitted argument is skipped rather than defaulted here: a location
+/// root hands the absence to the core, whose create derives the spec from
+/// the schema as it stores it, and a handle root - whose core door takes a
+/// spec - reads the schema's own declaration through [`declared_spec`].
+fn stated_spec(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<Option<PartitionSpec>> {
+    if value.is(value.py().Ellipsis()) {
+        return Ok(None);
+    }
+    if value.is_none() {
+        return Ok(Some(PartitionSpec::unpartitioned()));
+    }
+    spec_from_value(value, schema).map(Some)
+}
+
+/// The spec a handle root is created under: the one stated, else the
+/// schema's own `PARTITION:by` declaration.
+fn declared_spec(stated: Option<PartitionSpec>, schema: &CoreField) -> PyResult<PartitionSpec> {
+    match stated {
+        Some(spec) => Ok(spec),
+        None => PartitionSpec::from_schema(0, schema).map_err(value_error),
+    }
+}
+
 /// Read a core partition spec out of what Python names one with.
 ///
 /// A sequence is a `PARTITION:by` declaration, each entry a projection: a
@@ -141,19 +171,6 @@ fn format_version_from_value(value: &Bound<'_, PyAny>) -> PyResult<FormatVersion
 /// are declared on a copy of the schema root and read by the core's one rule,
 /// [`PartitionSpec::from_schema`], so a refusal names the entry it could not
 /// honour.
-/// The spec a `partition_by` argument states: omitted (`...`) the schema's
-/// own `PARTITION:by` declaration, `None` unpartitioned, anything else
-/// [`spec_from_value`]'s reading.
-fn spec_from_argument(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
-    if value.is(value.py().Ellipsis()) {
-        return PartitionSpec::from_schema(0, schema).map_err(value_error);
-    }
-    if value.is_none() {
-        return Ok(PartitionSpec::unpartitioned());
-    }
-    spec_from_value(value, schema)
-}
-
 fn spec_from_value(value: &Bound<'_, PyAny>, schema: &CoreField) -> PyResult<PartitionSpec> {
     if let Ok(spec) = value.extract::<PyRef<'_, PyPartitionSpec>>() {
         return Ok(spec.inner.clone());
@@ -258,6 +275,41 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
     }
     let url = core_url_from_value(value)?;
     crate::iobase::folder_holder_for(&url)
+}
+
+/// What a table door's `root` names: a handle in hand, taken as the container
+/// it addresses, or the location of the table as the caller named it - text,
+/// a path-like, a `Url`, or any identifier that locates one - which the core
+/// opens by itself under the properties stated beside it.
+enum TableRoot {
+    /// Boxed: a holder is several times the size of a location.
+    Handle(Box<Holder>),
+    Location(yggdryl::Uri, yggdryl::Properties),
+}
+
+/// Read a table door's `root` and the `properties` stated beside it.
+///
+/// A handle root is reopened as the folder at its location, under the
+/// environment - nothing its builder stated is carried - so properties
+/// beside one have nothing to open and are refused by name rather than
+/// dropped. A location
+/// crosses as the identifier it is - never lowered here: a table bucket's
+/// ARN and a table's ARN state what the location they lower to does not.
+fn table_root_from_value(
+    root: &Bound<'_, PyAny>,
+    properties: Option<&Bound<'_, PyDict>>,
+) -> PyResult<TableRoot> {
+    let properties = crate::warehouse::properties_from_args(None, properties)?;
+    if let Ok(handle) = root.extract::<PyRef<'_, PyIOBase>>() {
+        if let Some((name, _)) = properties.iter().next() {
+            return Err(PyValueError::new_err(format!(
+                "expected no properties beside a handle, which is reopened as the folder at its \
+                 location, got {name:?}; name the table by its location to open it under properties"
+            )));
+        }
+        return handle.folder_holder().map(Box::new).map(TableRoot::Handle);
+    }
+    Ok(TableRoot::Location(core_uri_from_value(root)?, properties))
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
@@ -967,6 +1019,14 @@ fn described_table(py: Python<'_>, table: IcebergTable<Handle>) -> PyResult<Py<P
 impl PyIcebergTable {
     /// Create a table, writing its first metadata document.
     ///
+    /// `root` is the container handle the table lives in, or its location -
+    /// a string, a path-like, a `Url`, a `Uri` or an `Arn` - which the core
+    /// opens by itself under `properties`: a folder any backend holds, or
+    /// `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
+    /// Tables table bucket keeps, registered there and committed through
+    /// its control plane, its namespace made on the way where the bucket
+    /// does not hold it.
+    ///
     /// `partition_by` accepts a [`PartitionSpec`] or the `PARTITION:by`
     /// entries to partition on - `symbol`, `days(ts)`, `minutes(ts, 15)`,
     /// `truncate(name, 4) as prefix` - read by the core's one rule; omitted,
@@ -974,68 +1034,112 @@ impl PyIcebergTable {
     /// schema declaring nothing - is unpartitioned. Unnumbered schema columns
     /// are numbered automatically, so a plain `PyArrow` schema works as it is;
     /// a schema that already carries field identifiers keeps every one of them.
+    ///
+    /// `format_version` omitted is 2 over a handle; over a location it is
+    /// the `format-version` property, else the lowest version that states
+    /// the schema - 3 for a nanosecond timestamp, a variant or an unknown
+    /// column, else 2.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None, **properties))]
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn create(
         cls: &Bound<'_, PyType>,
-        root: &PyIOBase,
+        root: &Bound<'_, PyAny>,
         schema: &Bound<'_, PyAny>,
         partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<Self>> {
         let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = spec_from_argument(partition_by, &schema)?;
-        let version = match format_version {
-            Some(value) => format_version_from_value(value)?,
-            None => FormatVersion::V2,
-        };
-        let table =
-            IcebergTable::create(Handle::from(root.folder_holder()?), version, schema, spec)
-                .map_err(value_error)?;
-        described_table(cls.py(), table)
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version.map(format_version_from_value).transpose()?;
+        // Detached: the core writes to storage and, by a location, asks a
+        // service, and a core thread that logs takes the GIL.
+        let py = cls.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                let version = version.unwrap_or(FormatVersion::V2);
+                py.detach(move || {
+                    IcebergTable::create(Handle::from(*holder), version, schema, spec)
+                })
+            }
+            TableRoot::Location(location, properties) => py.detach(move || {
+                IcebergTable::create_from_url(&location, &properties, version, schema, spec)
+            }),
+        }
+        .map_err(value_error)?;
+        described_table(py, table)
     }
 
-    /// Open the table a container handle addresses, reading its current
-    /// metadata document: `IcebergTable(root)`, since `open()` is the scope
-    /// every handle has.
+    /// Open the table `root` names: `IcebergTable(root)`, since `open()` is
+    /// the scope every handle has.
+    ///
+    /// A container handle is the folder the table lives in, and its current
+    /// metadata document is read. A location - a string, a path-like, a
+    /// `Url`, a `Uri` or an `Arn` - is opened by the core under
+    /// `properties`: a folder any backend holds, or a table an Amazon S3
+    /// Tables table bucket keeps, named `s3tables://<bucket>/<namespace>/<table>`
+    /// or by its own ARN.
     #[new]
-    fn new(root: &PyIOBase) -> PyResult<PyClassInitializer<Self>> {
-        let table = IcebergTable::open(Handle::from(root.folder_holder()?)).map_err(value_error)?;
+    #[pyo3(signature = (root, **properties))]
+    fn new(
+        root: &Bound<'_, PyAny>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        // Detached: the core reads storage and, by a location, asks a
+        // service, and a core thread that logs takes the GIL.
+        let py = root.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                py.detach(move || IcebergTable::open(Handle::from(*holder)))
+            }
+            TableRoot::Location(location, properties) => {
+                py.detach(move || IcebergTable::from_url(&location, &properties))
+            }
+        }
+        .map_err(value_error)?;
         Ok(crate::warehouse::table_base(Table::from(table)).add_subclass(Self))
     }
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// Like [`Self::create`], unnumbered schema columns are numbered
-    /// automatically; an existing table is opened as it is and `schema`
-    /// describes only the table this call would create.
+    /// `root`, `format_version` and `properties` are read as
+    /// [`Self::create`] reads them. Like it, unnumbered schema columns are
+    /// numbered automatically; an existing table is opened as it is and
+    /// `schema` describes only the table this call would create.
     #[classmethod]
-    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None))]
+    #[pyo3(signature = (root, schema, partition_by = ellipsis(), *, format_version = None, **properties))]
     #[expect(clippy::needless_pass_by_value)] // PyO3 hands the `...` default over as `Py`.
     fn open_or_create(
         cls: &Bound<'_, PyType>,
-        root: &PyIOBase,
+        root: &Bound<'_, PyAny>,
         schema: &Bound<'_, PyAny>,
         partition_by: Py<PyAny>,
         format_version: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<Self>> {
         let partition_by = partition_by.bind(schema.py());
         let schema = numbered_schema_from_value(schema)?;
-        let spec = spec_from_argument(partition_by, &schema)?;
-        let version = match format_version {
-            Some(value) => format_version_from_value(value)?,
-            None => FormatVersion::V2,
-        };
-        let table = IcebergTable::open_or_create(
-            Handle::from(root.folder_holder()?),
-            version,
-            schema,
-            spec,
-        )
+        let spec = stated_spec(partition_by, &schema)?;
+        let version = format_version.map(format_version_from_value).transpose()?;
+        // Detached, as `create` is.
+        let py = cls.py();
+        let table = match table_root_from_value(root, properties)? {
+            TableRoot::Handle(holder) => {
+                let spec = declared_spec(spec, &schema)?;
+                let version = version.unwrap_or(FormatVersion::V2);
+                py.detach(move || {
+                    IcebergTable::open_or_create(Handle::from(*holder), version, schema, spec)
+                })
+            }
+            TableRoot::Location(location, properties) => py.detach(move || {
+                IcebergTable::open_or_create_from_url(&location, &properties, version, schema, spec)
+            }),
+        }
         .map_err(value_error)?;
-        described_table(cls.py(), table)
+        described_table(py, table)
     }
 
     /// The folder the table lives in.

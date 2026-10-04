@@ -8,7 +8,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { DataType, Field, IOBase, MimeType, Scalar, fields, iceberg } = require('yggdryl')
+const { DataType, Field, IOBase, MimeType, Scalar, Uri, Url, fields, iceberg } = require('yggdryl')
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-iceberg-'))
@@ -338,6 +338,112 @@ test('a table is found again with no catalog in between', (t) => {
   const either = iceberg.IcebergTable.openOrCreate(location, schema())
   assert.equal(either.tableUuid, uuid)
   assert.throws(() => iceberg.IcebergTable.open(path.join(root, 'absent')), /metadata/)
+})
+
+test('a location is opened, created and dropped by the core, under what is stated', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const folder = path.join(root, 'located')
+
+  // Text names the folder; the version and the spec a create states neither
+  // of are the schema's own.
+  const created = iceberg.IcebergTable.create(folder, schema(), ['venue'])
+  assert.equal(created.name, 'located')
+  assert.equal(created.formatVersion, 2)
+  assert.deepEqual(
+    created.spec.fields.map((field) => field.name),
+    ['venue'],
+  )
+  created.append(rows([1n, 2n], ['XNAS', 'XNYS']))
+
+  // Text, a `Url` and the identifier it is are one location.
+  const url = Url.fromPath(folder)
+  for (const named of [folder, url, new Uri(url.toString())]) {
+    const reopened = iceberg.IcebergTable.open(named)
+    assert.equal(reopened.tableUuid, created.tableUuid)
+    assert.equal(reopened.scan().intoTable().numRows, 2)
+  }
+
+  // Opening or creating opens what is there as it is, and creates what is
+  // not - under the version and the partitioning stated.
+  const same = iceberg.IcebergTable.openOrCreate(folder, schema(), null, 1)
+  assert.equal(same.tableUuid, created.tableUuid)
+  assert.equal(same.formatVersion, 2)
+  const other = iceberg.IcebergTable.openOrCreate(path.join(root, 'other'), schema(), null, 1)
+  assert.equal(other.formatVersion, 1)
+  assert.ok(other.spec.isUnpartitioned())
+
+  // Properties beside a location are what the table states: the version of
+  // a create that names none is one of them, and a version named wins.
+  const stated = iceberg.IcebergTable.create(path.join(root, 'stated'), schema(), null, undefined, {
+    'format-version': 3,
+  })
+  assert.equal(stated.formatVersion, 3)
+  assert.equal(stated.properties['format-version'], '3')
+  const explicit = iceberg.IcebergTable.create(path.join(root, 'explicit'), schema(), null, 1, {
+    'format-version': 3,
+  })
+  assert.equal(explicit.formatVersion, 1)
+
+  // A handle was opened by whoever built it: properties beside one have
+  // nothing to open, and are refused by name rather than dropped.
+  const handle = new IOBase(folder)
+  for (const refused of [
+    () => iceberg.IcebergTable.open(handle, { region: 'eu-west-3' }),
+    () => iceberg.IcebergTable.create(handle, schema(), null, undefined, { region: 'eu-west-3' }),
+    () => iceberg.IcebergTable.openOrCreate(handle, schema(), null, undefined, { region: 'eu-west-3' }),
+  ]) {
+    assert.throws(refused, /beside a handle/)
+  }
+  assert.equal(iceberg.IcebergTable.open(handle).tableUuid, created.tableUuid)
+
+  // Dropped as the folder it is, and then nothing is there to open.
+  IOBase.from(created.intoTable()).remove(true)
+  assert.equal(fs.existsSync(folder), false)
+  assert.throws(() => iceberg.IcebergTable.open(folder), /metadata/)
+})
+
+test('a table bucket location names at most a namespace and a table', (t) => {
+  // Refused where the location is read. Nothing here counts requests - the
+  // core's suite does, against its fake control plane - so the identity is
+  // stated in full and the endpoint is a closed loopback port: a request
+  // these doors should not send would fail on this machine rather than leave
+  // it, and nothing of the operator's is read to sign one.
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const sealed = {
+    access_key_id: 'AKIAIOSFODNN7EXAMPLE',
+    secret_access_key: 'a-secret',
+    config_file: path.join(root, 'config'),
+    shared_credentials_file: path.join(root, 'credentials'),
+    's3tables.region': 'us-east-1',
+    's3tables.endpoint': 'http://127.0.0.1:1',
+  }
+  const deep = 's3tables://bucket/a/b/c'
+  for (const refused of [
+    () => iceberg.IcebergTable.open(deep, sealed),
+    () => iceberg.IcebergTable.create(deep, schema(), undefined, undefined, sealed),
+    () => iceberg.IcebergTable.openOrCreate(deep, schema(), undefined, undefined, sealed),
+    // A handle takes no properties: this one is refused before an identity
+    // is so much as built.
+    () => new IOBase(deep),
+  ]) {
+    assert.throws(refused, /\$\.url/)
+  }
+
+  // A bucket or a namespace is no table, whichever door is asked, and a
+  // create names one by its namespace and its name.
+  for (const location of ['s3tables://bucket', 's3tables://bucket/desk']) {
+    assert.throws(() => iceberg.IcebergTable.open(location, sealed), /\$\.url/)
+    assert.throws(
+      () => iceberg.IcebergTable.create(location, schema(), undefined, undefined, sealed),
+      /\$\.url/,
+    )
+    assert.throws(
+      () => iceberg.IcebergTable.openOrCreate(location, schema(), undefined, undefined, sealed),
+      /\$\.url/,
+    )
+  }
 })
 
 test('a transform that cannot place a row is refused by name', (t) => {

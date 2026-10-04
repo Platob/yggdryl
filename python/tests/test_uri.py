@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 import pytest
 
-from yggdryl import Arn, IOBase, MediaType, MimeType, Uri, Url, Urn
+from yggdryl import Arn, Catalog, IOBase, MediaType, MimeType, Uri, Url, Urn
 
 
 def test_uri_components_path_collection_and_value_protocols() -> None:
@@ -916,7 +916,13 @@ def test_an_s3_tables_arn_names_a_table_bucket_and_a_table() -> None:
     assert located.hostname is None
     assert isinstance(located, Url)
 
-    # No byte backend speaks S3 Tables, so opening one is refused by its
-    # scheme rather than by the path conversion it is not.
-    with pytest.raises(ValueError, match='"s3tables" does not support'):
-        IOBase(table)
+    # A table bucket is held as what it names: its ARN is the bucket's
+    # catalog, a description that touches nothing.
+    assert isinstance(IOBase(bucket), Catalog)
+    assert isinstance(IOBase("s3tables://lake"), Catalog)
+
+    # A table's identifier is spelled by its ARN alone: the location that ARN
+    # locates spells it where a namespace goes, and is refused where it is
+    # read, before any request.
+    with pytest.raises(ValueError, match=r"\$\.url"):
+        IOBase(located)

@@ -19,9 +19,10 @@
 //! commit lists the folder, writes a hint or removes a file: a document or a
 //! file a failed commit wrote stays where it is, unreferenced, for the
 //! store's own maintenance to collect. The table's own
-//! [`ls`](crate::IOBase::ls) and [`remove`](crate::IOBase::remove) are
-//! refused, touching nothing: the catalog that keeps the pointer keeps the
-//! table, and drops it.
+//! [`ls`](crate::IOBase::ls) is refused, touching nothing, and its
+//! [`remove`](crate::IOBase::remove) is the pointer's
+//! [`remove`](MetadataPointer::remove): the catalog that keeps the pointer
+//! keeps the table, and drops it - a pointer that drops nothing refuses.
 //!
 //! ```
 //! use std::sync::{Arc, Mutex};
@@ -110,7 +111,36 @@ pub trait MetadataPointer: std::fmt::Debug + Send + Sync {
     /// own failure otherwise - which leaves the publication in doubt until
     /// [`Self::current`] is read again.
     fn publish(&self, token: &str, location: &Url) -> Result<PointerState>;
+
+    /// Drop the table from the catalog that keeps it: what
+    /// [`IOBase::remove`](crate::IOBase::remove) of a pointed table asks,
+    /// since the catalog that keeps the pointer keeps the table and its
+    /// files, and removing the folder beside it would leave the catalog
+    /// naming a document that is gone.
+    ///
+    /// A table that is no longer there is already dropped, which is success.
+    /// The provided method refuses, touching nothing: a pointer over a
+    /// catalog that drops a table answers it - an Amazon S3 Tables table
+    /// with one `DeleteTable`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Unsupported`](crate::Error::Unsupported) naming the
+    /// pointer where it drops nothing - which the table's own
+    /// [`remove`](crate::IOBase::remove) restates naming its location - and
+    /// the catalog's own refusal otherwise.
+    fn remove(&self) -> Result<()> {
+        Err(crate::Error::unsupported(
+            DROPS_NOTHING,
+            crate::warehouse::implementation_name(self),
+        ))
+    }
 }
+
+/// What the provided [`MetadataPointer::remove`] refuses, by name: the one
+/// refusal a table restates naming its location, every other failure of a
+/// pointer's drop reaching the caller as it came.
+pub(crate) const DROPS_NOTHING: &str = "dropping a table through its pointer";
 
 /// Where a [`MetadataPointer`] stands: the document it names, when it names
 /// one, and the token the next publication is conditioned on.

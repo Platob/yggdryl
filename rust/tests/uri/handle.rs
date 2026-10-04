@@ -151,3 +151,28 @@ fn every_identifier_becomes_a_holder_of_what_it_names() -> Result<()> {
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
+
+/// A table bucket's ARN used as a handle is the bucket's catalog: resolving
+/// it builds a description and asks no verb of the service. Nothing counts
+/// requests here; what a table's location or ARN costs as a handle is
+/// counted against the fake control plane in `rust/tests/s3tables_handle.rs`,
+/// and a catalog's and a namespace's in `rust/tests/s3tables/catalog.rs`.
+#[cfg(feature = "s3tables")]
+#[test]
+fn a_table_bucket_arn_is_the_catalog_it_names() -> Result<()> {
+    let arn = yggdryl::Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")?;
+    let uri = arn.into_uri();
+    assert_eq!(IOBase::kind(&uri), IOKind::Catalog);
+    assert!(uri.is_container());
+
+    // Held as a `Holder` it is the same identifier, resolved the same way.
+    let Holder::Uri(held) = Holder::from(uri.clone()) else {
+        panic!("expected an identifier held as it is");
+    };
+    assert_eq!(IOBase::kind(&held), IOKind::Catalog);
+
+    // A name lends no URL of its own: the ARN is the address.
+    assert_eq!(IOBase::url(&uri), None);
+    assert_eq!(IOBase::uri(&uri), Some(&uri));
+    Ok(())
+}

@@ -54,6 +54,7 @@ medium does the work before a byte is decoded.
 | leaves of one partition | `children_where(&[("year", "2024")], false)?` | `children_where({"year": "2024"})` | `childrenWhere({ year: '2024' })` |
 | derived partition column | `root.with_partition_by(["year(event) as year".parse()?])?`, `root.as_transform().apply_arrow_batch(&b)?` | `root.with_partition_by(["year(event) as year"])`, `root.transform.apply_arrow_batch(b)` | `root.withPartitionBy(['year(event) as year'])`, `Selector.fromField(root).applyArrowBatch(b)` |
 | Iceberg table | `IcebergTable::create(LocalFolder::new(p)?, FormatVersion::V2, schema, PartitionSpec::from_schema(1, &schema)?)?` | `IcebergTable.create(IOBase(p), schema, ["venue", "minutes(ts, 15)"])` | `iceberg.IcebergTable.create(p, schema, ['venue', 'minutes(ts, 15)'])` |
+| Iceberg table by its location alone - a folder any backend holds, or `s3tables://<bucket>/<namespace>/<table>` (a table's ARN to open one) | `IcebergTable::from_url(location, &props)?`, `::create_from_url(location, &props, None, schema, None)?`, `::open_or_create_from_url(..)?` - version and spec left out are the schema's own | `IcebergTable(location, **props)`, `IcebergTable.create(location, schema, ["venue"], **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.open(location, props)`, `.create(location, schema, ['venue'], undefined, props)`, `.openOrCreate(..)` |
 | Iceberg catalog (a warehouse folder) | `IcebergCatalog::bound("lake", holder)`, `catalog.namespaces().create("nyc", &props)?`, `catalog.tables().create("nyc.taxis", &schema, &props)?` | `IcebergCatalog("lake", root)`, `catalog.namespaces.create("nyc")`, `catalog.tables.create("nyc.taxis", schema)` | `new iceberg.IcebergCatalog('lake', root)`, `catalog.namespaces().create('nyc')`, `catalog.tables().create('nyc.taxis', schema)` |
 | Iceberg write | `commit_append(r)?`, `commit_overwrite`, `commit_merge(r, &sel, safe)?`; through the record doors one commit when the source ends, `with_num_threads(n)` for the partition groups at once | `append(t)`, `overwrite`, `merge(t, ["id"])` | `append(t)`, `overwrite`, `merge(t, ['id'])` |
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
@@ -241,6 +242,14 @@ medium does the work before a byte is decoded.
   caches metadata; open the table again.
 - Collecting a Parquet read to count rows or learn the schema: `row_size`
   and `read_arrow_field` answer from the footer.
+- Properties beside a handle root (`IcebergTable(IOBase(p), region=..)`):
+  refused by name - a handle root is reopened as the folder at its location,
+  under the environment. Name the table by its location to open it under
+  properties.
+- Expecting format version 2 from a create by location: a version left out
+  is the `format-version` property, else the lowest that states the schema
+  (3 for a nanosecond timestamp, a variant or an unknown column). Over a
+  handle root the bindings keep 2.
 - `commit_batch_num` on an Iceberg write: every commit is a snapshot, so a
   small `N` leaves many snapshots; expire them (`expire_snapshots`) or leave
   it unset to commit once, the rows held under the spill bound until the

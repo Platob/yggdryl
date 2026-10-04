@@ -1,7 +1,7 @@
 //! `rust/src/s3tables/table.rs`: the table verbs and the values they
-//! answer - a creation with and without a schema, a description, the
-//! metadata location and the commit that moves it under a version token, a
-//! rename, a deletion.
+//! answer - a creation with and without a schema, a description by name and
+//! by the table's own ARN, the metadata location and the commit that moves
+//! it under a version token, a rename, a deletion.
 
 use serde_json::json;
 use yggdryl::{DataType, DateTime64, Error, StructType, Timezone, Url};
@@ -326,6 +326,85 @@ fn a_table_is_described_as_the_service_states_it() {
         recorded[0].query("tableBucketARN"),
         Some(lake.to_string().as_str())
     );
+}
+
+#[test]
+fn a_table_is_described_by_its_arn_alone_wherever_a_rename_moved_it() {
+    let fake = S3TablesFake::start();
+    let (tables, lake) = trial(&fake);
+    let held = fake.seed_table("lake", "trial", "events");
+    let identified = arn(&held.arn);
+
+    // The ARN is the one query parameter, encoded once like any query value,
+    // and the answer names the namespace and the name the caller did not.
+    let table = tables.get_table_by_arn(&identified).expect("a table");
+    assert_eq!(table.arn(), &identified);
+    assert_eq!(table.namespace(), "trial");
+    assert_eq!(table.name(), "events");
+    assert_eq!(
+        table.warehouse_location().to_string(),
+        held.warehouse_location
+    );
+    let recorded = fake.requests();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(
+        recorded[0].target,
+        format!(
+            "/get-table?tableArn={}",
+            crate::fake::encode(&held.arn, false)
+        )
+    );
+    assert_eq!(recorded[0].query("tableArn"), Some(held.arn.as_str()));
+    assert_eq!(
+        table,
+        tables.get_table(&lake, "trial", "events").expect("a table")
+    );
+
+    // The identifier follows the table through a rename.
+    tables
+        .rename_table(&lake, "trial", "events", None, Some("moved"), None)
+        .expect("a rename");
+    let moved = tables.get_table_by_arn(&identified).expect("a table");
+    assert_eq!((moved.namespace(), moved.name()), ("trial", "moved"));
+
+    // An identifier no table has is absent, at the one request that says so.
+    fake.clear_requests();
+    let unknown = arn(&format!(
+        "{lake}/table/00000000-0000-4000-8000-00000000beef"
+    ));
+    let error = tables
+        .get_table_by_arn(&unknown)
+        .expect_err("no such table");
+    assert!(
+        matches!(&error, Error::Absent { expected, path }
+            if *expected == "table" && path.as_str() == unknown.to_string()),
+        "{error:?}"
+    );
+    assert_eq!(fake.request_count(), 1);
+
+    // An ARN that names no table of a table bucket costs no request.
+    fake.clear_requests();
+    for refused in [
+        lake.clone(),
+        arn("arn:aws:s3:::lake/table/events"),
+        arn(&format!("{lake}/index/events")),
+        arn(&format!("{lake}/table/events/extra")),
+    ] {
+        let error = tables
+            .get_table_by_arn(&refused)
+            .expect_err("no table's ARN");
+        assert!(
+            matches!(
+                error,
+                Error::Parse {
+                    target: "table arn",
+                    ..
+                }
+            ),
+            "{refused}: {error:?}"
+        );
+    }
+    assert_eq!(fake.request_count(), 0);
 }
 
 #[test]

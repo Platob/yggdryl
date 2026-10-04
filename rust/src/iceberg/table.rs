@@ -185,12 +185,264 @@ struct Opened {
 }
 
 impl IcebergTable<Handle> {
+    /// Open the table a location names, under `properties`.
+    ///
+    /// `location` is a [`Url`](crate::Url), or any identifier that locates
+    /// one ([`Uri::locator`](crate::Uri::locator)): a URN, an ARN. The table
+    /// is rooted on the handle [`Holder::from_url`] opens for the location
+    /// under `properties` - the names an object store's or an HTTP client's
+    /// own options read - resolved on the first verb that needs it and again
+    /// by every clone, and its current document is read as [`Self::open`]
+    /// reads it. The table states `properties` less the ones that store's
+    /// own reader took (who signs, where the store is, how it is addressed),
+    /// which are the handle's: it was rooted under all of them and every
+    /// clone opens under all of them, while what the table states is its
+    /// own description, listed by [`ObjectValue::properties`] and printed by
+    /// its `Debug`. A credential stated to open the folder therefore reaches
+    /// the storage and nothing else, as one stated to a table bucket's
+    /// catalog does; a local path reads none, so a table on one states
+    /// every property it was given.
+    ///
+    /// Under the `s3tables` feature a location in an Amazon S3 Tables table
+    /// bucket - `s3tables://<bucket>/<namespace>/<table>`, or a table's ARN,
+    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
+    /// is the table that bucket keeps: described, with its current document
+    /// named by the service and read on the first verb that needs it, its
+    /// files under the warehouse location the service chose, and every
+    /// commit published through the control plane. Who signs, the region and
+    /// the endpoint are read off `properties` as the bucket's catalog reads
+    /// them (`Catalog::from_url`) and kept by its session alone: such a
+    /// table states nothing, and inherits the properties less the ones the
+    /// session read. It costs one `GetTableMetadataLocation` -
+    /// one `GetTable` for an ARN, which names the table by an identifier and
+    /// is answered with its namespace and its name - and, where neither the
+    /// location nor a property states the bucket's ARN or its account, the
+    /// one `ListTableBuckets` that finds it.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::IcebergTable;
+    /// use yggdryl::{DataType, Properties, StructType, Url};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let folder = std::env::temp_dir().join(format!("yggdryl-from-url-doc-{}", std::process::id()));
+    /// let location = Url::from_path(&folder)?;
+    /// let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+    ///     .required_field("row");
+    /// IcebergTable::create_from_url(&location, &Properties::new(), None, schema, None)?;
+    ///
+    /// let table = IcebergTable::from_url(&location, &Properties::new())?;
+    /// assert_eq!(table.schema()?.field_len(), 1);
+    /// assert!(table.current_snapshot()?.is_none());
+    /// # std::fs::remove_dir_all(&folder)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the identifier's own refusal when it names no location, the
+    /// [`Self::open`] failures, and for a table bucket's location
+    /// [`Error::Absent`] when the bucket keeps no such table,
+    /// [`Error::InvalidRecord`] at `$.url` when the location spells more than
+    /// a namespace and a table below its bucket or names the bucket or a
+    /// namespace rather than a table, and the service's own refusal.
+    pub fn from_url(location: impl AsRef<crate::Uri>, properties: &Properties) -> Result<Self> {
+        let location = location.as_ref();
+        #[cfg(feature = "s3tables")]
+        if location.names_s3_tables() {
+            return match crate::s3tables::locate(location, properties)? {
+                crate::Object::Table(crate::Table::Iceberg(table)) => Ok(*table),
+                other => Err(crate::s3tables::not_a_table(
+                    location,
+                    ObjectValue::kind(&other),
+                )),
+            };
+        }
+        let root = rooted_at(location, properties)?;
+        Ok(Self::open(root)?.stating(properties))
+    }
+
+    /// Create the table a location names, under `properties`, writing its
+    /// first metadata document.
+    ///
+    /// The location and the properties are read as [`Self::from_url`] reads
+    /// them. The schema is stored as Iceberg expresses it - a layout the
+    /// format does not state rewritten to the one it does, the columns
+    /// numbered above the highest identifier present. A `spec` left out is
+    /// the one the schema declares ([`PartitionSpec::from_schema`]), and a
+    /// `version` left out is the `format-version` property, else the lowest
+    /// version that states the schema: 3 for a nanosecond timestamp, a
+    /// variant or an unknown column, else 2. A `spec` built by hand names
+    /// its source columns by identifier, so its schema is numbered first
+    /// ([`super::assign_field_ids`]).
+    ///
+    /// Under the `s3tables` feature an `s3tables://<bucket>/<namespace>/<table>`
+    /// location registers the table in its table bucket and publishes its
+    /// first document through the control plane: `CreateTable` with no
+    /// schema, `GetTableMetadataLocation`, the document's one `PutObject`
+    /// and `UpdateTableMetadataLocation`. A namespace the bucket does not
+    /// hold yet is created on the way - the refused `CreateTable`, one
+    /// `CreateNamespace`, and the creation once more - which is this door's
+    /// alone: a catalog's own `create_table` descends through existing
+    /// namespaces only. A table's ARN names a table that exists, and is
+    /// refused.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::{FormatVersion, IcebergTable};
+    /// use yggdryl::{DataType, Properties, StructType, Url};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let folder = std::env::temp_dir().join(format!("yggdryl-create-from-url-doc-{}", std::process::id()));
+    /// let schema = DataType::from(StructType::from_fields([
+    ///     DataType::Int64.required_field("id"),
+    ///     DataType::utf8().nullable_field("venue").with_partition(true),
+    /// ])?)
+    /// .required_field("row");
+    ///
+    /// // Neither a version nor a spec stated: the schema's own.
+    /// let table = IcebergTable::create_from_url(
+    ///     Url::from_path(&folder)?,
+    ///     &Properties::new(),
+    ///     None,
+    ///     schema,
+    ///     None,
+    /// )?;
+    /// assert_eq!(table.metadata()?.format_version(), FormatVersion::V2);
+    /// assert_eq!(table.metadata()?.default_spec()?.fields.len(), 1);
+    /// # std::fs::remove_dir_all(&folder)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::create`] failures - a conflict where a table is
+    /// already there - the schema's refusal of a column no Iceberg type
+    /// holds, [`Error::InvalidRecord`] at `$.with.format-version` for a
+    /// version no format has and at `$.url` for a table bucket's location
+    /// that does not name a table by its namespace and its name, and the
+    /// service's own refusal.
+    pub fn create_from_url(
+        location: impl AsRef<crate::Uri>,
+        properties: &Properties,
+        version: Option<FormatVersion>,
+        schema: Field,
+        spec: Option<PartitionSpec>,
+    ) -> Result<Self> {
+        let location = location.as_ref();
+        #[cfg(feature = "s3tables")]
+        if location.names_s3_tables() {
+            return crate::s3tables::create(location, properties, version, &schema, spec);
+        }
+        Self::create_rooted(
+            rooted_at(location, properties)?,
+            properties,
+            version,
+            &schema,
+            spec,
+        )
+    }
+
+    /// Open the table a location names if it is there, creating it
+    /// otherwise: [`Self::from_url`], and on absence
+    /// [`Self::create_from_url`].
+    ///
+    /// An existing table is opened as it is; `version`, `schema` and `spec`
+    /// describe only the table this call would create.
+    ///
+    /// The location is resolved once for both halves: a folder's handle
+    /// comes back from the miss, and under the `s3tables` feature a table
+    /// bucket's location is read and its catalog built once, so a miss costs
+    /// the open's one refused request and nothing a second time - the
+    /// bucket's ARN, where only a listing finds it, is found once. A table's
+    /// ARN names a table by the identifier the service gave it, which no
+    /// create can make: one the bucket has no table of is
+    /// [`Error::Absent`], exactly as [`Self::from_url`] answers it.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::IcebergTable;
+    /// use yggdryl::{DataType, Properties, StructType, Url};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let folder = std::env::temp_dir().join(format!("yggdryl-open-or-create-doc-{}", std::process::id()));
+    /// let location = Url::from_path(&folder)?;
+    /// let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+    ///     .required_field("row");
+    ///
+    /// let created =
+    ///     IcebergTable::open_or_create_from_url(&location, &Properties::new(), None, schema.clone(), None)?;
+    /// let opened =
+    ///     IcebergTable::open_or_create_from_url(&location, &Properties::new(), None, schema, None)?;
+    /// assert_eq!(opened.metadata_file_name()?, created.metadata_file_name()?);
+    /// # std::fs::remove_dir_all(&folder)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the failure of whichever operation ran.
+    pub fn open_or_create_from_url(
+        location: impl AsRef<crate::Uri>,
+        properties: &Properties,
+        version: Option<FormatVersion>,
+        schema: Field,
+        spec: Option<PartitionSpec>,
+    ) -> Result<Self> {
+        let location = location.as_ref();
+        #[cfg(feature = "s3tables")]
+        if location.names_s3_tables() {
+            return crate::s3tables::open_or_create(location, properties, version, &schema, spec);
+        }
+        // One locate is the whole existence question: the handle comes back
+        // from the miss, so the create resolves nothing a second time.
+        match Self::locate_keeping(rooted_at(location, properties)?)? {
+            Ok(table) => Ok(table.stating(properties)),
+            Err(root) => Self::create_rooted(root, properties, version, &schema, spec),
+        }
+    }
+
+    /// Create the table on `root`, laid out as a create that states neither
+    /// a version nor a spec lays one out, stating `properties`.
+    fn create_rooted(
+        root: Handle,
+        properties: &Properties,
+        version: Option<FormatVersion>,
+        schema: &Field,
+        spec: Option<PartitionSpec>,
+    ) -> Result<Self> {
+        let (schema, spec, version) = super::create_layout(schema, properties, version, spec)?;
+        Ok(Self::create(root, version, schema, spec)?.stating(properties))
+    }
+
+    /// The table with `properties` stated, less the ones the store its root
+    /// opens on reads for itself ([`Holder::is_backend_property`]). The root
+    /// was built under all of them and every clone opens under all of them,
+    /// so who signs, where the store is and how it is addressed reach the
+    /// storage and nothing else - never [`ObjectValue::properties`], never
+    /// `Debug` - and what remains is the table's own description, as a
+    /// table bucket's catalog keeps the properties less the ones its session
+    /// read. The root's own bag is left as rooted, which is why this is not
+    /// [`with_properties`](Self::with_properties).
+    fn stating(mut self, properties: &Properties) -> Self {
+        self.stated = match self.root.url() {
+            Some(url) => properties
+                .iter()
+                .filter(|(name, _)| !Holder::is_backend_property(url, name))
+                .collect(),
+            None => properties.clone(),
+        };
+        self
+    }
+
     /// Return this table with stated properties, which its storage opens
     /// with and [`ObjectValue::properties`] answers over the stored ones.
     ///
-    /// Only a table a warehouse holds states properties: one opened over a
-    /// handle in hand was opened by whoever handed the handle over, and its
-    /// settings are its [`options`](Self::options).
+    /// A table a warehouse holds states properties, and one opened by its
+    /// location states them less what its store read ([`Self::from_url`]);
+    /// one opened over a handle in
+    /// hand was opened by whoever handed the handle over, and its settings
+    /// are its [`options`](Self::options).
     #[must_use]
     pub fn with_properties(mut self, properties: Properties) -> Self {
         self.stated = properties;
@@ -265,12 +517,31 @@ impl<H: IOBase> Hash for IcebergTable<H> {
 /// The path a table opened by its location alone stands under: its folder's
 /// name, `table` for an unlocated folder.
 fn path_of<H: IOBase>(root: &H) -> Vec<SmolStr> {
+    named_after(root.url())
+}
+
+/// The path a table at `url` stands under when nothing else names it: the
+/// location's last segment, `table` where it has none.
+fn named_after(url: Option<&crate::Url>) -> Vec<SmolStr> {
     vec![SmolStr::new(
-        root.url()
-            .and_then(crate::Url::file_name)
+        url.and_then(crate::Url::file_name)
             .filter(|name| !name.is_empty())
             .unwrap_or("table"),
     )]
+}
+
+/// The handle a table opened by its location is rooted on: the one
+/// [`Holder::from_url`] opens for the location under `properties`, resolved
+/// on the first verb that needs it and again by every clone.
+fn rooted_at(location: &crate::Uri, properties: &Properties) -> Result<Handle> {
+    let url = location.locator()?;
+    let path = named_after(Some(&url));
+    Ok(Handle::at(
+        crate::warehouse::Site::Url(url),
+        false,
+        &path,
+        properties.clone(),
+    ))
 }
 
 /// The default sort order a created table keeps: the one the schema's
@@ -3370,22 +3641,45 @@ impl<H: IOBase> IOBase for IcebergTable<H> {
     /// A table a [`MetadataPointer`] names is not its folder's to remove:
     /// the catalog that keeps the pointer keeps the table, and removing the
     /// files below it would leave the catalog naming a document that is
-    /// gone. Such a table is refused, touching nothing, and dropped through
-    /// its catalog - `S3Tables::remove_table` for an Amazon S3 Tables table.
+    /// gone. Such a table is dropped by that catalog instead -
+    /// [`MetadataPointer::remove`], one `DeleteTable` for an Amazon S3
+    /// Tables table - and its folder is asked for nothing; the catalog drops
+    /// a table whole, so `recursive` chooses nothing there, and a table that
+    /// is already gone is dropped. The document this value read is forgotten
+    /// with the table: what it asks next is asked of the pointer again, so
+    /// the handle says the table is not there and a later verb fails as
+    /// absent rather than commit to a table that is gone.
     ///
     /// # Errors
     ///
     /// Returns the backing store's delete failure, a refusal naming the
     /// location when it still has children and `recursive` is not set, and
-    /// [`Error::Unsupported`] for a table a pointer names.
+    /// for a table a pointer names the pointer's own failure -
+    /// [`Error::Unsupported`] naming the table's location for a pointer that
+    /// drops nothing.
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        if self.pointer.is_some() {
-            return Err(kept_by_catalog(
-                &self.root,
-                "removing a table its catalog keeps; drop it through that catalog",
-            ));
+        let Some(pointer) = &self.pointer else {
+            return self.root.remove(recursive);
+        };
+        match pointer.remove() {
+            Ok(()) => {
+                self.opened = OnceLock::new();
+                Ok(())
+            }
+            // A pointer that drops nothing says so by its own name; the
+            // refusal a caller reads names the table, as the listing's does.
+            // Any other failure of the drop - the catalog's own refusal, the
+            // transport's - is the caller's as it came.
+            Err(Error::Unsupported { operation, .. })
+                if operation == super::pointer::DROPS_NOTHING =>
+            {
+                Err(kept_by_catalog(
+                    &self.root,
+                    "dropping a table through its pointer, which drops none",
+                ))
+            }
+            Err(error) => Err(error),
         }
-        self.root.remove(recursive)
     }
 }
 

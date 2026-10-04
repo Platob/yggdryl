@@ -6011,16 +6011,27 @@ class IcebergTable(Table):
     ``Table`` subclass the Iceberg implementation answers, so every member of
     a warehouse table is here beside the table's own."""
 
+    # `root` is the container handle the table lives in, or the table's
+    # location - a string, a path-like, a `Url`, a `Uri` or an `Arn` - which
+    # the core opens under `properties`: a folder any backend holds, or a
+    # table an Amazon S3 Tables table bucket keeps, named
+    # `s3tables://<bucket>/<namespace>/<table>` or, to open one, by its ARN.
+    # Properties beside a handle are refused: a handle root is reopened as the
+    # folder at its location, under the environment.
+    #
     # `partition_by` is a `PartitionSpec`, or the `PARTITION:by` entries the
     # core reads into one: a bare column an identity field, `days(ts)`,
     # `minutes(ts, 15)`, `weeks(ts)`, `quarters(ts)`, `truncate(name, 4)` a
     # derived one, `as alias` naming it. Omitted, the schema's own
     # declaration is read the same way; `None`, like a schema declaring
     # nothing, is unpartitioned.
+    #
+    # `format_version` omitted is 2 over a handle; over a location it is the
+    # `format-version` property, else the lowest version stating the schema.
     @classmethod
     def create(
         cls,
-        root: IOBase,
+        root: IOBase | Uri | str | PathLike[str],
         schema: FieldLike,
         partition_by: PartitionSpec
         | Iterable[str | Term | tuple[str | Term, str]]
@@ -6028,12 +6039,15 @@ class IcebergTable(Table):
         | EllipsisType = ...,
         *,
         format_version: int | None = None,
+        **properties: object,
     ) -> IcebergTable: ...
-    def __init__(self, root: IOBase) -> None: ...
+    def __init__(
+        self, root: IOBase | Uri | str | PathLike[str], **properties: object
+    ) -> None: ...
     @classmethod
     def open_or_create(
         cls,
-        root: IOBase,
+        root: IOBase | Uri | str | PathLike[str],
         schema: FieldLike,
         partition_by: PartitionSpec
         | Iterable[str | Term | tuple[str | Term, str]]
@@ -6041,6 +6055,7 @@ class IcebergTable(Table):
         | EllipsisType = ...,
         *,
         format_version: int | None = None,
+        **properties: object,
     ) -> IcebergTable: ...
     @property
     def root(self) -> IOBase: ...
