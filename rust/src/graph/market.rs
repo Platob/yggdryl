@@ -989,7 +989,10 @@ fn fold_execution<E: Event + Market + ?Sized>(this: &mut E, other: &E) -> bool {
     })
 }
 
-fn merge_operation_event<E: Event + Operation>(
+/// The facts an operation on the market takes from another statement of
+/// itself, finalizing nothing; whether any moved. What a holder folding
+/// several statements reads, settling its own identity once after the last.
+pub(crate) fn merge_operation_event<E: Event + Operation>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,

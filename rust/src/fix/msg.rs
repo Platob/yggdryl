@@ -1782,6 +1782,19 @@ impl FixMsg {
     /// `sync_session_event_identifier` states their joined values as the
     /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
+        self.settle_facts();
+        self.stamp_identity();
+    }
+
+    /// [`Self::settle`] less the identity: every fact a write reached stated
+    /// again, the cross codes in step, and the code and the identity left as
+    /// they were. No fact here reads the code or the identity - the cross
+    /// element of a message in no chain is the identity, and the stamp
+    /// states it again - which is what lets a fold of several statements
+    /// settle its facts at every step and [stamp](Self::stamp_identity) once
+    /// after the last: the identity is a function of the facts, so stamping
+    /// once states what stamping at every step would have left.
+    pub(super) fn settle_facts(&mut self) {
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
@@ -1802,6 +1815,12 @@ impl FixMsg {
         self.event.fill_market();
         self.fill_parents();
         self.event.sync_cross();
+    }
+
+    /// The code the message digests to and the identity the instant, the
+    /// place, the cross hash and that code derive, stamped over what the
+    /// message states: the second half of [`Self::settle`].
+    pub(super) fn stamp_identity(&mut self) {
         let currhashcode = self.currhashcode();
         self.event.finalized(currhashcode);
     }
@@ -1907,23 +1926,38 @@ impl FixMsg {
     /// a caller that already chose it, as a run of observations sorted
     /// latest recording first does, where re-deciding at every pair would
     /// let a later one lead against the earliest recording a fold keeps.
-    pub(super) fn fold_session_event(mut self, other: &Self) -> Result<Self> {
+    pub(super) fn fold_session_event(self, other: &Self) -> Result<Self> {
+        let mut folded = self.fold_session_event_unstamped(other)?;
+        folded.stamp_identity();
+        Ok(folded)
+    }
+
+    /// [`Self::fold_session_event`] with its facts settled and its identity
+    /// left unstamped: for a fold of several observations, which
+    /// [stamps](Self::stamp_identity) once after the last.
+    pub(super) fn fold_session_event_unstamped(mut self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
-        self.fold_session_event_facts(other);
+        self.fold_session_event_facts_unstamped(other);
         Ok(self)
     }
 
-    /// [`Self::fold_session_event`] for an observation whose content an
-    /// earlier fold already merged: the content merge fills only what the
-    /// reference leaves missing, so a second merge of the same content moves
-    /// nothing, and what is left to fold is the event, the anomalies and the
-    /// provenance - in place, and infallibly.
-    pub(super) fn fold_session_event_facts(&mut self, other: &Self) {
+    /// [`Self::fold_session_event_unstamped`] for an observation whose
+    /// content an earlier fold already merged: the content merge fills only
+    /// what the reference leaves missing, so a second merge of the same
+    /// content moves nothing, and what is left to fold is the event, the
+    /// anomalies and the provenance - in place, and infallibly. Answers
+    /// whether the facts moved, which is whether the identity is due a
+    /// [stamp](Self::stamp_identity).
+    pub(super) fn fold_session_event_facts_unstamped(&mut self, other: &Self) -> bool {
         debug_assert!(self.is_same_session_event(other));
-        crate::graph::market::merge_operation_event_into_reference(self, other);
+        let moved = crate::graph::market::merge_operation_event(self, other, false);
+        if moved {
+            self.settle_facts();
+        }
         self.fold_anomalies(other);
         self.fold_provenance(other);
+        moved
     }
 
     /// Keeps the provenance the earlier observation of this session event

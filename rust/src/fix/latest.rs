@@ -1273,6 +1273,10 @@ fn carries_rules(registry: &FixRegistry, known: &Field) -> bool {
 /// filled, while repeating groups merge the occurrences at equal indexes and
 /// their members recursively. The rebuilt levels have one logical key each
 /// and deterministic FIX tag/name order.
+///
+/// The facts are settled again off the merged content and the identity is
+/// left as it was: the fold that merges stamps it once, after everything it
+/// folds ([`FixMsg::stamp_identity`]).
 pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()> {
     let root = reference.as_field().clone();
     let Some(reference_values) = reference.as_value().as_sequence() else {
@@ -1312,7 +1316,7 @@ pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()
             reference.set_unsettled(tag, value)?;
         }
     }
-    reference.settle();
+    reference.settle_facts();
     Ok(())
 }
 

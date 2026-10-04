@@ -364,6 +364,11 @@ fn merge_session_events(messages: Vec<FixMsg>) -> Vec<FixMsg> {
 /// latest recorded - with the others folded in. An observation whose
 /// content the rebuild refuses to merge folds its clocks, its anomalies and
 /// its provenance alone, beside a warning.
+///
+/// Each fold settles the facts it moved and none stamps the identity: no
+/// fold reads the reference's code or identity, which are a function of
+/// its facts, so the reference is stamped once, after the last fold that
+/// moved anything - the identity stamping at every fold would have left.
 fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     if held.others.is_empty() {
         return held.message;
@@ -389,18 +394,20 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
     // at every hop, mostly as the same row, and merging a content
     // again fills nothing - so a repeat folds its facts alone.
     let mut merged: Vec<FixMsg> = Vec::new();
+    let mut unstamped = false;
     for other in observations {
         if merged
             .iter()
             .any(|held| super::latest::same_content(held, &other))
         {
-            reference.fold_session_event_facts(&other);
+            unstamped |= reference.fold_session_event_facts_unstamped(&other);
             continue;
         }
-        match reference.clone().fold_session_event(&other) {
+        match reference.clone().fold_session_event_unstamped(&other) {
             Ok(folded) => {
                 reference = folded;
                 merged.push(other);
+                unstamped = true;
             }
             Err(error) => {
                 warned!(
@@ -408,9 +415,12 @@ fn fold_observations(mut held: SessionEventObservations) -> FixMsg {
                     other.header().msgtype(),
                     "{error}"
                 );
-                reference.fold_session_event_facts(&other);
+                unstamped |= reference.fold_session_event_facts_unstamped(&other);
             }
         }
+    }
+    if unstamped {
+        reference.stamp_identity();
     }
     reference
 }

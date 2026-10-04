@@ -1441,6 +1441,7 @@ pub(crate) fn restating_market<E: Event + Market>(this: E, live: &E) -> E  (the 
 pub(crate) fn restating_operation<E: Event + Operation>(this: E, live: &E) -> E  (`restating_market` continued with the time in force, whether it trades, the followed alternate identifiers and the accounts; what every operation event's `Event::restating` delegates to, `FixMsg` included)
 pub(crate) fn merge_market_event_into_reference<E: Event + Market>(this: &mut E, supplement: &E)  (the supplement folded into the reference statement, finalizing where anything moved)
 pub(crate) fn merge_operation_event_into_reference<E: Event + Operation>(this: &mut E, supplement: &E)  (the same, the operation's facts included)
+pub(crate) fn merge_operation_event<E: Event + Operation>(this: &mut E, other: &E, other_is_reference: bool) -> bool  (the operation's facts another statement of it adds, finalizing nothing; whether any moved - what a FIX session event's fold of several observations reads, its identity stamped once after the last)
 
 ### yggdryl::graph::element_column  [rust/src/graph/element_column.rs]
 pub enum ElementColumn { CurrUuid, CrossUuid, CrossCode, CurrHashCode, CrossHashCode, SrcUuids }  (the six columns every generated schema of an element opens with, one per fact `Element` answers, before the `EventColumn`s an event adds - so a text line's batch, a FIX row and a `marketdata` row join on them without a mapping)
