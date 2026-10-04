@@ -431,6 +431,8 @@ pub mod internals {
     pub use crate::graph::element::internals as graph_element;
     pub use crate::graph::facts::internals as graph_facts;
     pub use crate::graph::iterator::internals as graph_iterator;
+    #[cfg(feature = "http")]
+    pub use crate::graph::serve::internals as graph_serve;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
     pub use crate::hostname::internals as hostname;

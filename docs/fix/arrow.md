@@ -222,8 +222,9 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
         kinds,
         [MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::QuoteEvent, MarketKind::ExecutionEvent]
     );
-    // The snapshot is a complete book; the bid's change and the trade entry
-    // are the deltas of the book over it.
+    // The book walk records the trade entry as the execution it is: the
+    // snapshot is a complete book, the bid's change and the execution a
+    // delta book over it.
     let books = BookIterator::new(operations.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
     assert!(books[0].is_complete() && !books[1].is_complete());
@@ -239,7 +240,8 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
     let rows = |reader: yggdryl::arrow::BatchReader| -> usize {
         reader.map(|batch| batch.expect("a batch").num_rows()).sum()
     };
-    // A filter narrows what the books fold: the execution's instant alone.
+    // A filter narrows what the books fold: one keeping the executions alone
+    // folds the book of their instant, stating them as its deltas.
     let executions: Filter = "marketdatakind = 'EXEC'".parse()?;
     assert_eq!(rows(codec.book_arrow_reader(capture.clone(), 0, Some(&executions))?), 1);
 
@@ -277,15 +279,18 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
         "quote_event",
         "execution_event",
     ]
-    # The snapshot is a complete book; the bid's change and the trade entry
-    # are the deltas of the book over it.
+    # The book walk records the trade entry as the execution it is: the
+    # snapshot is a complete book, the bid's change and the execution a
+    # delta book over it.
     books = list(graph.BookIterator(operations))
     assert len(books) == 2
     assert books[0].is_complete and not books[1].is_complete
+    assert len(books[1].deltas) == 2
     best = books[1].best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal(101)
 
-    # A filter narrows what the books fold: the execution's instant alone.
+    # A filter narrows what the books fold: one keeping the executions alone
+    # folds the book of their instant, stating them as its deltas.
     assert codec.book_arrow_reader(capture, 0, "marketdatakind = 'EXEC'").read_all().num_rows == 1
 
     # The same operations as rows, from the messages or from their FIX rows.
@@ -318,14 +323,17 @@ FixCodec::book_arrow_reader(&self, messages, snapshot_millis: u64, filter: Optio
       operations.map((value) => value.kind),
       ['quote_event', 'quote_event', 'quote_event', 'execution_event'],
     )
-    // The snapshot is a complete book; the bid's change and the trade entry
-    // are the deltas of the book over it.
+    // The book walk records the trade entry as the execution it is: the
+    // snapshot is a complete book, the bid's change and the execution a
+    // delta book over it.
     const books = [...new graph.BookIterator(operations)]
     assert.equal(books.length, 2)
     assert.ok(books[0].isComplete && !books[1].isComplete)
+    assert.equal(books[1].deltas().length, 2)
     assert.equal(books[1].bestPrice('BUYS'), '101')
 
-    // A filter narrows what the books fold: the execution's instant alone.
+    // A filter narrows what the books fold: one keeping the executions alone
+    // folds the book of their instant, stating them as its deltas.
     assert.equal(codec.bookArrowReader(capture, 0, "marketdatakind = 'EXEC'").intoTable().numRows, 1)
 
     // The same operations as rows, from the messages or from their FIX rows.

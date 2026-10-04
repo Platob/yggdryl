@@ -122,7 +122,7 @@ def main() -> int:
     # The staged binary reads Iceberg tables: `yggdryl xmla serve` over a table
     # folder is the reason a wheel ships a `yggdryl` at all, and the extension
     # beside it is built with the same feature.
-    command = ["cargo", "build", "-p", "yggdryl-cli", "--features", "iceberg"]
+    command = ["cargo", "build", "-p", "yggdryl-cli", "--features", "iceberg,s3tables"]
     if not arguments.debug:
         command.append("--release")
     if arguments.target:

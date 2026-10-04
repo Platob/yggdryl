@@ -107,7 +107,7 @@ const AFTER_HELP: &str = concat!(
     "  yggdryl market serve /data/books --bind 0.0.0.0:8080 --path /book\n",
     "  yggdryl market serve books=/data/books --public-url https://data.example.com/book --trusted-proxy 10.0.0.0/8 --path-prefix /book\n",
     "\n",
-    "A table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request. Two tables of one name are refused.\n",
+    "A table is `name=location`, or a location alone, named after its last segment: an Iceberg table folder, an Amazon S3 Tables table (`s3tables://<bucket>/<namespace>/<table>`, the `s3tables` feature), a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a partitioned folder, each read by one filtered read per request - the book at an instant one window of the --snapshot-millis grid back, so a table partitioned by that grid opens one partition. Two tables of one name are refused.\n",
     "--capture folds a FIX bridge log into the first table before serving: its lines are read under --rowheader and --timezone, walked as the chains they belong to, folded into books on the --snapshot-millis grid and appended as BOOK rows, every capture read before any lands. An empty or absent folder becomes an Iceberg table first (the `iceberg` feature); a leaf takes the rows under its own encoding.\n",
     "The first line printed is the endpoint on the socket, the folder `<path>/` the display stands in, so a script that started the process knows where to connect: the page is its `index.html` - `<path>` itself sends a browser there, and the root path answers it too - and the routes stand under its `api/`."
 );
