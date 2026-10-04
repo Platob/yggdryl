@@ -335,9 +335,10 @@ export declare class BookEvent {
   /**
    * This book with every operation of one atomic group applied: each an
    * order or quote event, a snapshot control, or a `MarketData` holding
-   * one, folded; an execution or a trade event is pruned and changes
-   * nothing, since a fill moves a book through its order's or quote's
-   * report. A book stating its deltas alone is refused at `$.alive`.
+   * one, folded, and an execution event recorded among the deltas,
+   * moving no side, since a fill moves a book through its order's or
+   * quote's report; a trade event is pruned and changes nothing. A book
+   * stating its deltas alone is refused at `$.alive`.
    */
   withOperations(operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
   /** The element's own identity, as its hyphenated text. */
@@ -5895,6 +5896,15 @@ export declare class MarketData {
    * after an error, the error thrown at the failing item.
    */
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
+  /**
+   * The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
+   * or a `SerieReader`, consumed - laid out as `marketdata` rows in book
+   * order, as a `SerieReader`: every event each book states among its
+   * deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
+   * any spelling the kind reads), every kind otherwise; a row that is no
+   * book is refused by its kind where it is read.
+   */
+  static deltasSerie(source: JsSerie | ChunkedSerie | JsSerieReader, kind?: string | undefined | null): JsSerieReader
   /**
    * The plan one named view is over a `marketdata` stream - `orders`,
    * `quotes`, `executions`, `trades`, `books`, or the

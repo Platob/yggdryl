@@ -108,8 +108,26 @@ integer_leaf!(UInt128, u128);
 
 const _: () = assert!(std::mem::size_of::<Int32>() == 4);
 
+/// The signed integer a value entering an integer column reads as: its
+/// own magnitude, or an enum member's stored code - a member is held and
+/// stored as that code, so a column that stores it as a plain integer, as
+/// an Iceberg table does, takes the member back as it is.
+fn signed_of(value: &Scalar) -> Option<i128> {
+    value
+        .as_i128()
+        .or_else(|| value.enum_code().map(i128::from))
+}
+
+/// The unsigned integer a value entering an integer column reads as; the
+/// enum rule of [`signed_of`].
+fn unsigned_of(value: &Scalar) -> Option<u128> {
+    value
+        .as_u128()
+        .or_else(|| value.enum_code().map(u128::from))
+}
+
 pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
-    let Some(integer) = value.as_i128() else {
+    let Some(integer) = signed_of(value) else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: format_smolstr!(
@@ -132,7 +150,7 @@ pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scal
 }
 
 pub(crate) fn canonical_unsigned(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
-    let Some(integer) = value.as_u128() else {
+    let Some(integer) = unsigned_of(value) else {
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated unsigned value could not be canonicalized"),
@@ -175,7 +193,7 @@ pub(crate) fn validate_signed(
     maximum: i128,
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
-    match value.as_i128() {
+    match signed_of(value) {
         Some(value) if (minimum..=maximum).contains(&value) => Ok(()),
         _ => Err(expected(expected_name, value)),
     }
@@ -186,7 +204,7 @@ pub(crate) fn validate_unsigned(
     maximum: u128,
     expected_name: &str,
 ) -> std::result::Result<(), ValidationFailure> {
-    match value.as_u128() {
+    match unsigned_of(value) {
         Some(value) if value <= maximum => Ok(()),
         _ => Err(expected(expected_name, value)),
     }

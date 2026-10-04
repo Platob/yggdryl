@@ -167,13 +167,15 @@ impl MarketDataKind {
         if self.is_sided() { side } else { Side::Unknown }
     }
 
-    /// Whether an element of this kind folds into a book: an order or a
-    /// quote, which rests on a side, and a book, whose snapshot replaces the
-    /// depth of its instant. The one owner of that rule: every other kind is
-    /// pruned before a book walk routes it - an execution, whose fill moves
-    /// the book through its order's or quote's own report, a trade, whose
-    /// fills are executions, a batch, whose items arrive as their own kinds,
-    /// and every category the standard files no resting interest under.
+    /// Whether an element of this kind folds into a book's sides: an order
+    /// or a quote, which rests on a side, and a book, whose snapshot
+    /// replaces the depth of its instant. The one owner of that rule. An
+    /// execution folds into no side - its fill moved the book through its
+    /// order's or quote's own report - and is recorded among the book's
+    /// deltas instead ([`Self::is_recorded`]); every other kind - a trade,
+    /// whose fills are executions, a batch, whose items arrive as their own
+    /// kinds, and every category the standard files no resting interest
+    /// under - is pruned before a book walk routes it.
     ///
     /// ```
     /// use yggdryl::MarketDataKind;
@@ -190,6 +192,30 @@ impl MarketDataKind {
     #[must_use]
     pub const fn is_booked(self) -> bool {
         matches!(self, Self::Order | Self::Quotation | Self::Book)
+    }
+
+    /// Whether a book states an element of this kind among its deltas:
+    /// what [`Self::is_booked`] admits, and an execution - recorded at its
+    /// instant in the book its instrument keys, moving no side, since its
+    /// fill moved the book through its order's or quote's own report. The
+    /// one owner of that rule, which every pruning site of a book walk
+    /// reads: a trade, whose fills are executions, a batch, whose items
+    /// arrive as their own kinds, and every other category are pruned
+    /// before the walk routes them.
+    ///
+    /// ```
+    /// use yggdryl::MarketDataKind;
+    ///
+    /// assert!(MarketDataKind::Order.is_recorded());
+    /// assert!(MarketDataKind::Execution.is_recorded());
+    /// assert!(!MarketDataKind::Execution.is_booked());
+    /// assert!(!MarketDataKind::Trade.is_recorded());
+    /// assert!(!MarketDataKind::ExecutionBatch.is_recorded());
+    /// assert!(!MarketDataKind::Unknown.is_recorded());
+    /// ```
+    #[must_use]
+    pub const fn is_recorded(self) -> bool {
+        self.is_booked() || matches!(self, Self::Execution)
     }
 
     /// Whether this kind files a batch: a message stating many orders,

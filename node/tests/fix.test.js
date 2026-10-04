@@ -3631,9 +3631,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.equal(second.bestPrice('BUYS'), '101')
     // The best tradable levels are the book's own bid and ask (A20, A22).
     assert.deepEqual([first.bidpx, first.askpx, second.bidpx], ['100', '102', '101'])
-    // The update's trade entry (`269=2`) is an execution, which no book
-    // folds: the bid's change is the book's one delta.
-    assert.deepEqual(second.deltas().map((delta) => delta.price), ['101'])
+    // The update's trade entry (`269=2`) is an execution, recorded among
+    // the deltas beside the bid's change and moving no side.
+    assert.deepEqual(second.deltas().map((delta) => delta.marketdatakind).sort(), ['EXEC', 'QUOT'])
+    assert.equal(second.deltas().find((delta) => delta.marketdatakind === 'QUOT').price, '101')
     assert.deepEqual(second.alive(), [])
     // Over the book before it, the update is whole again.
     const whole = second.withPrevious(first)
@@ -3655,18 +3656,20 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     const books = (filter) =>
       [...graph.MarketData.fromArrowReader(codec.bookArrowReader(capture(), 0, filter))].map((data) => data.asBookEvent())
 
-    // The order and its fill's report: no filter admits the execution the
-    // report splits off.
+    // The order, then its fill's report beside the execution the report
+    // splits off, which the filter keeps as it keeps an order.
     for (const filter of ["side = 'BUYS'", new Filter("side = 'BUYS'"), Term.parse("side = 'BUYS'")]) {
       const bids = books(filter)
       assert.equal(bids.length, 2, String(filter))
-      assert.ok(bids.every((book) => book.deltas().every((delta) => delta.marketdatakind === 'ORDR')))
+      assert.ok(bids.every((book) => book.deltas().every((delta) => ['ORDR', 'EXEC'].includes(delta.marketdatakind))))
+      assert.ok(bids[1].deltas().some((delta) => delta.marketdatakind === 'EXEC'))
       assert.ok(bids.every((book) => book.deltas().every((delta) => delta.side === 'BUYS')))
     }
     const asks = books("side = 'SELL'")
     assert.equal(asks.length, 1)
     assert.equal(asks[0].askpx, '101')
-    assert.equal(books("marketdatakind = 'EXEC'").length, 0)
+    // An execution is recorded: a filter keeping it alone folds its book.
+    assert.equal(books("marketdatakind = 'EXEC'").length, 1)
     // A filter keeping every row folds what no filter does; not given is none.
     const all = books(undefined)
     assert.deepEqual(books('true').map((book) => book.curruuid), all.map((book) => book.curruuid))
@@ -3675,7 +3678,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     assert.throws(() => codec.bookArrowReader(capture(), 0, 'nope = 1'), /nope/)
   })
 
-  test('a lifecycled two-sided trade is market data of its executions and reaches no book', () => {
+  test('a lifecycled two-sided trade is market data of its executions, recorded in one book', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     // A12: the trade parses as itself and one sided execution per
     // `NoSides(552)` occurrence, each FILLED (A14) and read from the trade.
@@ -3691,9 +3694,10 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       ['EXEC', 'SELL', 'FILLED'],
     ])
     assert.ok(messages.slice(1).every((execution) => execution.srcuuids.includes(messages[0].curruuid)))
-    // A book folds no execution - a fill moves it through its order's
-    // report - so a trade and the executions it splits into reach none.
-    assert.equal(codec.bookArrowReader(codec.lifecycle(messages)).intoTable().numRows, 0)
+    // A book places no execution - a fill moves it through its order's
+    // report - and records each: the trade's instant emits one book stating
+    // its two executions alone.
+    assert.equal(codec.bookArrowReader(codec.lifecycle(messages)).intoTable().numRows, 1)
     // They are market data of their own: one row per execution, the trade
     // stating none.
     const rows = codec.marketArrowReader(codec.lifecycle(messages)).intoTable()
@@ -3737,15 +3741,15 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     )
     // A12: a trade states its fills as the executions its parse splits off,
     // and a side naming no Side(54) is still a fill: of side UNKN, said as
-    // a warning. The trade itself answers no leaf, and neither it nor the
-    // fill reaches a book, whatever its sides state.
+    // a warning. The trade itself answers no leaf; the fill is recorded in
+    // its instrument's book, resting on no side.
     const messages = [...codec.parseLine(line)]
     assert.deepEqual(
       messages.map((message) => [message.msgcat, message.side]),
       [['TRAD', 'UNKN'], ['EXEC', 'UNKN']],
     )
     assert.deepEqual(messages[0].marketData(), [])
-    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 0)
+    assert.equal(codec.bookArrowReader(messages).intoTable().numRows, 1)
     assert.equal(codec.marketArrowReader(messages).intoTable().numRows, 1)
   })
 
@@ -4838,13 +4842,13 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
 
     // Every order folds into a book and every execution is pruned - a fill
     // moved its book through its order's report already - so a book stands
-    // at every instant an order states and none where only an execution
-    // does: ten books, the NOVN order's three steps each its book's instant,
-    // each stating its deltas alone - with no grid and no snapshot input no
-    // book is whole. The last holds nothing, its unpriced order having
-    // rested and left at one instant.
+    // at every instant an order states, and one where only an execution
+    // does, recording it: eleven books, the NOVN order's three steps each
+    // its book's instant, each stating its deltas alone - with no grid and
+    // no snapshot input no book is whole. The last holds nothing, its
+    // unpriced order having rested and left at one instant.
     const books = [...new graph.BookIterator(operations, 0)]
-    assert.equal(books.length, 10)
+    assert.equal(books.length, 11)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[books.length - 1]
     assert.equal(last.ticker, '2454')
@@ -4857,6 +4861,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
       '3:0:CH0012005267',
       '3:0:CH0012214059',
       '3:0:CH0012221716',
+      '3:0:EZN11TD1F7K3',
       '3:0:TW0001605004',
       '3:0:TW0002454006',
       '3:0:XX0000000001',

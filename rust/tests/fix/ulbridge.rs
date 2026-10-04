@@ -1492,15 +1492,17 @@ mod dataset {
                 .all(|pair| at(&pair[0]) <= at(&pair[1]))
         );
 
-        // Every order folds into a book and every execution is pruned, read
-        // off the `Buffer` source so no modification time dates a line: a
-        // fill moved its book through its order's report already. Every order
-        // is a delta of its book, so a book stands at every instant an order
-        // states and none where only an execution does. The Sell order of
+        // Every order folds into a book and every execution is recorded
+        // among its book's deltas, read off the `Buffer` source so no
+        // modification time dates a line: a fill moved its book through its
+        // order's report already and stands beside that report. Every order
+        // and every execution is a delta of its book, so a book stands at
+        // every instant one states - the one instant only an execution
+        // touched among them. The Sell order of
         // `2454` states no price: it rests at its side's one unpriced level
         // rather than being refused, and it leaves the side at the same
         // instant, so the one book of that instant applies both as deltas and
-        // holds nothing. Ten books come out - the NOVN order's three steps
+        // holds nothing. Eleven books come out - the NOVN order's three steps
         // each its book's instant - each stating its deltas alone - with no
         // grid and no snapshot input no book is whole, a code's first
         // following no book - and the last is that one.
@@ -1509,7 +1511,7 @@ mod dataset {
                 .expect("a book iterator")
                 .collect::<yggdryl::Result<Vec<_>>>()
                 .expect("every operation folds");
-        assert_eq!(books.len(), 10);
+        assert_eq!(books.len(), 11);
         assert!(books.iter().all(|book| !book.is_complete()));
         let key = |operation: &MarketData| (operation.book_crosscode().to_owned(), at(operation));
         let stood: BTreeSet<(String, i64)> = books
@@ -1519,7 +1521,7 @@ mod dataset {
         assert_eq!(stood.len(), books.len(), "one book per book and instant");
         let booked: BTreeSet<(String, i64)> = operations
             .iter()
-            .filter(|operation| operation.marketdatakind().is_booked())
+            .filter(|operation| operation.marketdatakind().is_recorded())
             .map(key)
             .collect();
         assert_eq!(stood, booked);
@@ -1528,7 +1530,8 @@ mod dataset {
         // and no live entry to continue, and one restating the fill that
         // ended an order its book stopped holding at an earlier instant. Each
         // places nothing - what was alive before it is alive after it - yet
-        // each is the one delta of the book of its instant.
+        // each is the one order delta of the book of its instant, the fill
+        // it reports recorded beside it.
         let ended: Vec<&MarketData> = operations
             .iter()
             .filter(|operation| {
@@ -1542,7 +1545,14 @@ mod dataset {
                             (book.book_crosscode().to_owned(), book.get_currunix())
                                 == key(operation)
                         })
-                        .is_some_and(|book| book.deltas().len() == 1)
+                        .is_some_and(|book| {
+                            book.deltas()
+                                .filter(|delta| {
+                                    delta.marketdatakind() == yggdryl::MarketDataKind::Order
+                                })
+                                .count()
+                                == 1
+                        })
             })
             .collect();
         assert_eq!(
@@ -1562,9 +1572,10 @@ mod dataset {
                 .iter()
                 .find(|book| (book.book_crosscode().to_owned(), book.get_currunix()) == key(order))
                 .expect("the book of its instant");
-            let [delta] = book.deltas().collect::<Vec<_>>()[..] else {
-                panic!("one delta")
-            };
+            let delta = book
+                .deltas()
+                .find(|delta| delta.marketdatakind() == yggdryl::MarketDataKind::Order)
+                .expect("the order's delta");
             assert_eq!(delta.get_crossuuid(), order.get_crossuuid());
             let MarketData::OrderEvent(delta) = delta else {
                 panic!("an order, got {}", delta.kind().as_str())
@@ -1572,16 +1583,21 @@ mod dataset {
             assert!(!delta.get_state().is_live());
         }
         // The one instant no order states is the trade capture's, which its
-        // execution of side `UNKN` alone touched.
-        let unbooked: Vec<&MarketData> = operations
+        // execution of side `UNKN` alone touched: the book of that instant
+        // states that execution alone.
+        let alone: Vec<&yggdryl::graph::BookEvent> = books
             .iter()
-            .filter(|operation| !booked.contains(&key(operation)))
+            .filter(|book| {
+                book.deltas()
+                    .all(|delta| delta.marketdatakind() == yggdryl::MarketDataKind::Execution)
+            })
             .collect();
-        let [MarketData::ExecutionEvent(trade_fill)] = unbooked[..] else {
-            panic!(
-                "the trade capture's execution alone, got {}",
-                unbooked.len()
-            )
+        let [trade_book] = alone[..] else {
+            panic!("the trade capture's book alone, got {}", alone.len())
+        };
+        let [MarketData::ExecutionEvent(trade_fill)] = trade_book.deltas().collect::<Vec<_>>()[..]
+        else {
+            panic!("the trade capture's execution alone")
         };
         assert_eq!(trade_fill.get_side(), yggdryl::Side::Unknown);
         let last = books.last().expect("a last book");
@@ -1592,9 +1608,10 @@ mod dataset {
         assert_eq!(last.book_crosscode(), "TW0002454006");
         assert_eq!(last.get_crosscode(), "3:0:TW0002454006");
         // Every book is keyed by the ISIN its inputs state, else their
-        // ticker: the masked line's number keys its own book, and the
+        // ticker: the masked line's number keys its own book, the
         // ticker-only HOLN line stands in Holcim's book through the
-        // registry's ticker index.
+        // registry's ticker index, and the trade capture's execution, of an
+        // instrument no order names, opens that instrument's book of its own.
         let keys: BTreeSet<&str> = books.iter().map(|book| book.book_crosscode()).collect();
         assert_eq!(
             keys,
@@ -1602,6 +1619,7 @@ mod dataset {
                 "CH0012005267",
                 "CH0012214059",
                 "CH0012221716",
+                "EZN11TD1F7K3",
                 "TW0001605004",
                 "TW0002454006",
                 "XX0000000001",

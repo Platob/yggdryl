@@ -84,7 +84,8 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 
 | Key | Rule |
 | --- | --- |
-| Pruned | every input [`MarketDataKind::is_booked`](../types/enum/marketdatakind.md) does not admit - an execution, a trade, a batch, a session message, `UNKN` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only an execution or a trade reached emits no book |
+| Pruned | every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UNKN` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only a trade reached emits no book |
+| Recorded | an execution reaches the book its instrument keys and stands among the deltas of its instant, resting on no side and moving none - its fill moved the book through its order's or quote's own report - and dates the book's `execunix`; a book of its instant alone states it as its one delta, and `with_previous` replays it as nothing |
 | Input | what is kept and is no order, quote or snapshot control - an undated leaf, a `BookEvent` - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
 | `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 booked inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits an execution or a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
 | Books | one per [book key](market.md#the-book-key): the input's ISIN where it holds one, else its ticker, else `XX0000000000`; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}`, and takes its ticker and ISIN from the first input stating each |
@@ -680,12 +681,12 @@ A bid, an offer and a fill: the fill never reaches a book, and a filter over the
         walk.map(|book| book.map(|book| book.get_currunix() - T)).collect()
     };
 
-    // The fill's instant yields no book: an execution is pruned.
-    assert_eq!(walk(None)?, [0, 1]);
-    // The ask never folds, so its instant yields none either.
-    assert_eq!(walk(Some("side = 'BUYS'"))?, [0]);
-    // A filter narrows, and never admits what the kind rule prunes.
-    assert_eq!(walk(Some("marketdatakind = 'EXEC'"))?, Vec::<i64>::new());
+    // The fill's instant yields a book stating the execution among its deltas.
+    assert_eq!(walk(None)?, [0, 1, 2]);
+    // The ask never folds, so its instant yields none; the buy-side fill does.
+    assert_eq!(walk(Some("side = 'BUYS'"))?, [0, 2]);
+    // A filter narrows: the execution's instant alone.
+    assert_eq!(walk(Some("marketdatakind = 'EXEC'"))?, [2]);
     // A column the row does not carry is refused where the filter is bound.
     assert!(walk(Some("nope = 1")).is_err());
     ```
@@ -708,12 +709,12 @@ A bid, an offer and a fill: the fill never reaches a book, and a filter over the
     def walk(filter: str | None = None) -> list[int]:
         return [book.currunix - T for book in graph.BookIterator(inputs, filter=filter)]
 
-    # The fill's instant yields no book: an execution is pruned.
-    assert walk() == [0, 1]
-    # The ask never folds, so its instant yields none either.
-    assert walk("side = 'BUYS'") == [0]
-    # A filter narrows, and never admits what the kind rule prunes.
-    assert walk("marketdatakind = 'EXEC'") == []
+    # The fill's instant yields a book stating the execution among its deltas.
+    assert walk() == [0, 1, 2]
+    # The ask never folds, so its instant yields none; the buy-side fill does.
+    assert walk("side = 'BUYS'") == [0, 2]
+    # A filter narrows: the execution's instant alone.
+    assert walk("marketdatakind = 'EXEC'") == [2]
     # A column the row does not carry is refused where the filter is bound.
     try:
         walk("nope = 1")
@@ -737,12 +738,12 @@ A bid, an offer and a fill: the fill never reaches a book, and a filter over the
     const inputs = [order(T, 'B-1', 'BUYS'), order(T + 1n, 'A-1', 'SELL'), fill]
     const walk = (filter) => [...new graph.BookIterator(inputs, 0, filter)].map((book) => book.currunix - T)
 
-    // The fill's instant yields no book: an execution is pruned.
-    assert.deepEqual(walk(), [0n, 1n])
-    // The ask never folds, so its instant yields none either.
-    assert.deepEqual(walk("side = 'BUYS'"), [0n])
-    // A filter narrows, and never admits what the kind rule prunes.
-    assert.deepEqual(walk("marketdatakind = 'EXEC'"), [])
+    // The fill's instant yields a book stating the execution among its deltas.
+    assert.deepEqual(walk(), [0n, 1n, 2n])
+    // The ask never folds, so its instant yields none; the buy-side fill does.
+    assert.deepEqual(walk("side = 'BUYS'"), [0n, 2n])
+    // A filter narrows: the execution's instant alone.
+    assert.deepEqual(walk("marketdatakind = 'EXEC'"), [2n])
     // A column the row does not carry is refused where the filter is bound.
     assert.throws(() => walk('nope = 1'))
     ```

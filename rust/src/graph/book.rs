@@ -1614,6 +1614,11 @@ impl Sides {
     /// Refuses what [`Self::resolve`], [`Self::place`] and
     /// [`Self::delete_range`] refuse.
     fn replay(&mut self, delta: &Arc<MarketData>) -> Result<()> {
+        // An execution was recorded, never placed: replaying it places
+        // nothing either.
+        if matches!(delta.as_ref(), MarketData::ExecutionEvent(_)) {
+            return Ok(());
+        }
         match delta.operation_event().control_action() {
             Some(action) if action.is_range_delete() => {
                 self.delete_range(delta, action == MdUpdateAction::DeleteThru, None)
@@ -1703,14 +1708,17 @@ impl SidesJournal {
 }
 
 /// One coherent view of a market at one exact nanosecond instant: the
-/// orders and quotes alive on its two sides, and the deltas - the orders
-/// and quotes it applied since the book before it, in the order applied.
-/// An entry rests on every side it states a leg for: an order on
-/// the side it takes, a quote on its bid and its ask, a two-sided quote one
-/// entry shared by both sides. A book holds no execution: a fill moves it
-/// through its order's or quote's own report, and every input
-/// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does not
-/// admit is pruned before the fold.
+/// orders and quotes alive on its two sides, and the deltas - every event
+/// of its instant since the book before it, in the order applied: the
+/// orders and quotes it applied, and the executions it recorded. An entry
+/// rests on every side it states a leg for: an order on the side it takes,
+/// a quote on its bid and its ask, a two-sided quote one entry shared by
+/// both sides. An execution rests on no side and moves none - its fill
+/// moved the book through its order's or quote's own report - and stands
+/// among the deltas at its instant, the book's last execution instant
+/// following it; every input
+/// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded) does
+/// not admit is pruned before the fold.
 ///
 /// A book is **complete** - [`Self::is_complete`] - where it holds its
 /// sides: one a caller builds and changes with [`Self::add_operations`],
@@ -1740,9 +1748,10 @@ pub struct BookEvent {
     /// Both sides, on a complete book; none on a book stating its deltas
     /// alone.
     sides: Option<Sides>,
-    /// The orders and quotes applied since the book before this one, in
-    /// the order applied across both sides, each the very entry a side
-    /// holds where it rests.
+    /// Every event of the book's instant since the book before this one,
+    /// in the order applied across both sides: the orders and quotes
+    /// applied, each the very entry a side holds where it rests, and the
+    /// executions recorded, resting nowhere.
     deltas: Vec<Arc<MarketData>>,
 }
 
@@ -2020,7 +2029,7 @@ impl BookEvent {
     ) -> Result<Self> {
         let deltas: Vec<Arc<MarketData>> = deltas.into_iter().map(Arc::new).collect();
         for (index, delta) in deltas.iter().enumerate() {
-            validate_kind(delta, &format_smolstr!("$.{DELTAS}[{index}]"))?;
+            validate_delta_kind(delta, &format_smolstr!("$.{DELTAS}[{index}]"))?;
         }
         // A book is not sided: its cross code stays as given.
         event.set_marketdatakind(crate::MarketDataKind::Book);
@@ -2165,10 +2174,12 @@ impl BookEvent {
             .map(Arc::as_ref)
     }
 
-    /// The orders and quotes applied since the book before this one, in
-    /// the order applied across both sides: what a book stating its deltas
-    /// alone states, and what [`Element::with_previous`] replays over the
-    /// book before it.
+    /// Every event of the book's instant since the book before this one,
+    /// in the order applied across both sides - the orders and quotes
+    /// applied, and the executions recorded, which rest on no side: what a
+    /// book stating its deltas alone states, and what
+    /// [`Element::with_previous`] replays over the book before it, an
+    /// execution placing nothing on the way.
     pub fn deltas(&self) -> impl ExactSizeIterator<Item = &MarketData> {
         self.deltas.iter().map(Arc::as_ref)
     }
@@ -2552,7 +2563,7 @@ impl BookEvent {
                 "a book holding only its deltas takes no operations: rebuild it with with_previous first",
             ));
         }
-        operations.retain(booked);
+        operations.retain(recorded);
         if operations.is_empty() {
             return Ok(Applied::default());
         }
@@ -2735,6 +2746,15 @@ impl BookEvent {
             sides,
             deltas,
         } = self;
+        // An execution moves no side - its fill moved the book through its
+        // order's or quote's own report - and is recorded among the deltas
+        // at its instant, the bounds it states following: the book's last
+        // execution instant is its own.
+        if matches!(input, MarketData::ExecutionEvent(_)) {
+            fold_bounds(event, EventBounds::of_data(&input));
+            deltas.push(Arc::new(input));
+            return Ok(true);
+        }
         let sides = sides.as_mut().expect("a complete book folds");
         if matches!(input, MarketData::SnapshotEvent(_)) {
             // When the input last executed is a market fact of the input itself.
@@ -3509,12 +3529,13 @@ where
         self.source_exhausted = self.source_head.is_none();
     }
 
-    /// Pulls the source into [`Self::split`] until it holds a booked leaf -
+    /// Pulls the source into [`Self::split`] until it holds a recorded leaf -
     /// or, under a filter, [`FILTERED_ROWS`] of them, which the filter then
     /// narrows as one batch - stopping at the source's end or its failure,
     /// kept for after the leaves before it. Every input
-    /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does
-    /// not admit is dropped here, a FIX message's leaves once it is split.
+    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+    /// does not admit is dropped here, a FIX message's leaves once it is
+    /// split.
     fn pull(&mut self) {
         let wanted = if self.filter.is_some() {
             FILTERED_ROWS
@@ -3528,14 +3549,14 @@ where
             };
             match item.into() {
                 Ok(MarketData::Fix(message)) => match message.into_market_data() {
-                    Ok(leaves) => self.split.extend(leaves.into_iter().filter(booked)),
+                    Ok(leaves) => self.split.extend(leaves.into_iter().filter(recorded)),
                     Err(error) => {
                         self.failed = Some(error);
                         break;
                     }
                 },
                 Ok(leaf) => {
-                    if booked(&leaf) {
+                    if recorded(&leaf) {
                         self.split.push_back(leaf);
                     }
                 }
@@ -3856,9 +3877,13 @@ where
                         touched.insert(held.clone());
                         raw.entry(held).or_default().push(withdrawn);
                     }
-                    if input
-                        .as_event()
-                        .is_none_or(|event| event.get_snapunix().is_none())
+                    // An execution is recorded and never a snapshot's member,
+                    // whatever snapshot instant it states: it joins the
+                    // group of its instant as any delta does.
+                    if matches!(input, MarketData::ExecutionEvent(_))
+                        || input
+                            .as_event()
+                            .is_none_or(|event| event.get_snapunix().is_none())
                     {
                         raw.entry(symbol).or_default().push(input);
                         continue;
@@ -4049,33 +4074,38 @@ fn effective_unix(input: &MarketData) -> i64 {
 /// batch for its filter.
 const FILTERED_ROWS: usize = 1024;
 
-/// Whether a book folds an input of `input`'s kind:
-/// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked), the
+/// Whether a book states an input of `input`'s kind - folded into a side,
+/// or recorded among its deltas:
+/// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded), the
 /// one rule every pruning site reads.
-fn booked(input: &MarketData) -> bool {
-    input.marketdatakind().is_booked()
+fn recorded(input: &MarketData) -> bool {
+    input.marketdatakind().is_recorded()
 }
 
-/// Refuses, at `path`, every variant a book does not fold: a book takes an
-/// order, a quote or a snapshot control, each dated.
+/// Refuses, at `path`, every variant a book does not state: a book takes an
+/// order or a quote, an execution it records, or a snapshot control, each
+/// dated.
 fn foldable(input: &MarketData, path: impl FnOnce() -> SmolStr) -> Result<()> {
     if matches!(
         input,
-        MarketData::OrderEvent(_) | MarketData::QuoteEvent(_) | MarketData::SnapshotEvent(_)
+        MarketData::OrderEvent(_)
+            | MarketData::QuoteEvent(_)
+            | MarketData::ExecutionEvent(_)
+            | MarketData::SnapshotEvent(_)
     ) {
         return Ok(());
     }
     Err(invalid(
         path(),
         format_smolstr!(
-            "expected order_event, quote_event or snapshot_event, got {}",
+            "expected order_event, quote_event, execution_event or snapshot_event, got {}",
             input.kind().as_str()
         ),
     ))
 }
 
 /// Refuses, at `path`, anything but an order or a quote: what a book side
-/// holds and what a book's delta is.
+/// holds.
 fn validate_kind(operation: &MarketData, path: &str) -> Result<()> {
     if matches!(
         operation,
@@ -4084,6 +4114,21 @@ fn validate_kind(operation: &MarketData, path: &str) -> Result<()> {
         return Ok(());
     }
     Err(invalid(path, "expected an order or quote on a book side"))
+}
+
+/// Refuses, at `path`, anything but an order, a quote or an execution: what
+/// a book's delta is - an entry it placed, or an execution it recorded.
+fn validate_delta_kind(operation: &MarketData, path: &str) -> Result<()> {
+    if matches!(
+        operation,
+        MarketData::OrderEvent(_) | MarketData::QuoteEvent(_) | MarketData::ExecutionEvent(_)
+    ) {
+        return Ok(());
+    }
+    Err(invalid(
+        path,
+        "expected an order, a quote or an execution among a book's deltas",
+    ))
 }
 
 /// Says that `operation` rests on no side of its book: live, it takes
@@ -4210,7 +4255,10 @@ fn continue_entry(
 }
 
 fn is_full_snapshot(input: &MarketData) -> bool {
-    input.book().and_then(|book| book.action) == Some(MdUpdateAction::Snapshot)
+    // An execution is recorded and replaces no membership, whatever control
+    // the parse left on it - a snapshot's trade entry states one.
+    !matches!(input, MarketData::ExecutionEvent(_))
+        && input.book().and_then(|book| book.action) == Some(MdUpdateAction::Snapshot)
 }
 
 /// The two sides of a merged book, each the reference's live entries, then

@@ -159,25 +159,27 @@ test('BookEvent: withOperations of an order and a quote', () => {
   assert.equal(empty.withOperations([order(CLOCK, '103'), quote()]).isCrossed, true)
 })
 
-test('BookEvent: MarketData folds, read from any iterable, and an execution is pruned', () => {
+test('BookEvent: MarketData folds, read from any iterable, and an execution is recorded', () => {
   const book = new graph.BookEvent(CLOCK, 'IBM').withOperations(new Set([new graph.MarketData(order())]))
   // The stored cross code is the kind, the side, then the base.
   assert.deepEqual(book.deltas().map((held) => held.crosscode), ['10:1:O-1'])
-  // A fill moves a book through its order's report, so an execution alone
-  // changes nothing - not even the book's instant.
+  // A fill moves a book through its order's report: an execution alone
+  // rests on no side and moves none, and stands among the deltas of its
+  // instant.
   const execution = new graph.ExecutionEvent(CLOCK + 10n, {
     crosscode: 'E-1', side: 'BUYS', price: '101', quantity: 10, lastpx: '101', lastqty: 1, ticker: 'IBM',
   })
-  const pruned = book.withOperations([execution])
-  assert.ok(pruned.equals(book))
-  assert.equal(pruned.currunix, CLOCK)
-  // Beside an order, the execution is pruned and the order alone folds.
+  const recorded = book.withOperations([execution])
+  assert.equal(recorded.currunix, CLOCK + 10n)
+  assert.deepEqual(recorded.deltas().map((held) => held.crosscode), ['8:1:E-1'])
+  assert.deepEqual(recorded.alive().map((held) => held.crosscode), ['10:1:O-1'])
+  // Beside an order, both are the deltas, in the order applied.
   const later = book.withOperations([
     execution,
     new graph.OrderEvent(CLOCK + 10n, { crosscode: 'O-2', side: 'SELL', price: '102', quantity: 3, ticker: 'IBM' }),
   ])
   assert.equal(later.currunix, CLOCK + 10n)
-  assert.deepEqual(later.deltas().map((held) => held.crosscode), ['10:2:O-2'])
+  assert.deepEqual(later.deltas().map((held) => held.crosscode), ['8:1:E-1', '10:2:O-2'])
   assert.equal(later.alive().length, 2)
   assert.equal(later.execunix, null)
 })
@@ -292,16 +294,20 @@ test('BookIterator: books over three items in order', () => {
   assert.equal('global' in walk, false)
   const books = [...walk]
   assert.ok(books.every((book) => book instanceof graph.BookEvent))
-  // The walk prunes the execution where it pulls it, so the instant only it
-  // reached emits no book; with no grid the one book states its deltas.
-  assert.deepEqual(books.map((book) => book.currunix), [CLOCK])
-  assert.equal(books[0].isComplete, false)
+  // The walk records the execution where it pulls it, so the instant only
+  // it reached emits a book stating it alone; with no grid every book
+  // states its deltas.
+  assert.deepEqual(books.map((book) => book.currunix), [CLOCK, CLOCK + 1n])
+  assert.ok(books.every((book) => !book.isComplete))
   assert.deepEqual(books[0].deltas().map((held) => held.crosscode), ['10:1:O-1', '14:0:Q-1'])
   assert.equal(books[0].bestPrice('BUYS'), '101')
   assert.equal(books[0].bestPrice('SELL'), '102')
-  // A positive grid emits the book whole at each tick it holds an entry.
+  assert.deepEqual(books[1].deltas().map((held) => held.crosscode), ['8:1:O-1'])
+  assert.equal(books[1].bestPrice('BUYS'), '101')
+  // A positive grid emits the book whole at each tick it holds an entry,
+  // and the execution's instant between ticks as its delta alone.
   const ticked = [...new graph.BookIterator([order(), new graph.MarketData(quote()), execution], 1)]
-  assert.deepEqual(ticked.map((book) => book.isComplete), [true])
+  assert.deepEqual(ticked.map((book) => book.isComplete), [true, false])
   assert.equal(ticked[0].alive().length, 2)
   assert.equal(walk[Symbol.iterator](), walk)
   assert.equal('GLOBAL_SYMBOL' in graph, false)
@@ -321,9 +327,9 @@ test('BookIterator: a filter over the marketdata row narrows what the books fold
   // Not given, every booked input is kept.
   assert.equal([...new graph.BookIterator(inputs(), 0, undefined)].length, 2)
   assert.equal([...new graph.BookIterator(inputs(), 0)].length, 2)
-  // A filter never admits what the kind rule prunes: an execution stays out.
+  // An execution is recorded: a filter keeping it alone folds its book.
   const execution = new graph.ExecutionEvent(3, { crosscode: 'E-1', side: 'BUYS', lastpx: '100', lastqty: 1, ticker: 'ACME' })
-  assert.equal([...new graph.BookIterator([...inputs(), execution], 0, "marketdatakind = 'EXEC'")].length, 0)
+  assert.equal([...new graph.BookIterator([...inputs(), execution], 0, "marketdatakind = 'EXEC'")].length, 1)
   // A column the row does not carry is refused where the filter is bound.
   assert.throws(() => new graph.BookIterator([], 0, 'nope = 1'), /nope/)
 })
