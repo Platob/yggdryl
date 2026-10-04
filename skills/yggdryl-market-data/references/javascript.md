@@ -317,11 +317,11 @@ const fill = new graph.ExecutionEvent(T + SECOND, {
 const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
 const books = [...new graph.BookIterator(stream)]
-assert.equal(books.length, 2, 'one book per instant that moved it; the execution folds into none')
+assert.equal(books.length, 2, 'one book per instant that moved it; the execution is a delta of its own')
 // No grid and no snapshot input: each book states its deltas alone and its top of book.
 const last = books[1]
 assert.equal(last.isComplete, false)
-assert.deepEqual([last.currunix, last.deltas().length, last.alive().length], [T + SECOND, 1, 0])
+assert.deepEqual([last.currunix, last.deltas().length, last.alive().length], [T + SECOND, 2, 0])
 assert.equal(last.bestPrice('BUYS'), '189.49')
 // Rebuilt whole: the first over the empty book its key starts from, the next over it.
 assert.equal(books[0].prevuuid, null)
@@ -481,8 +481,8 @@ assert.deepEqual(values.map((value) => value.marketdatakind), ['BOOK', 'BOOK'])
 assert.equal(values[0].asBookEvent().isComplete, true)
 const last = values[1].asBookEvent()
 assert.equal(last.bestPrice('BUYS'), '101')
-// The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
-assert.deepEqual([last.isComplete, last.deltas().length], [false, 1])
+// The bid's change and the trade entry (`269=2`) are its two deltas.
+assert.deepEqual([last.isComplete, last.deltas().length], [false, 2])
 ```
 
 ## Fold books into candles

@@ -87,7 +87,7 @@ All in `graph::book`, with the `IdType` keys `ENTRY_ID` (`mdentryid`) and `ENTRY
 | Pruned | every input [`MarketDataKind::is_recorded`](../types/enum/marketdatakind.md) does not admit - a trade, a batch, a session message, `UNKN` - is dropped where it is pulled, a FIX message's leaves once it is split: a pruned input touches no book, no instant and no grid, so an instant only a trade reached emits no book |
 | Recorded | an execution reaches the book its instrument keys and stands among the deltas of its instant, resting on no side and moving none - its fill moved the book through its order's or quote's own report - and dates the book's `execunix`; a book of its instant alone states it as its one delta, and `with_previous` replays it as nothing |
 | Input | what is kept and is no order, quote or snapshot control - an undated leaf, a `BookEvent` - is refused by kind at `$.operation.kind`: a value that is no operation of a book is the caller's mistake, not data; that refusal and a source failure each follow the completed prefix once and fuse the iterator |
-| `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 booked inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and never admits an execution or a trade. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
+| `with_filter(filter)` | an expression [`Filter`](../expression/filters.md) - a filter, a term or its text - over the [`marketdata` row](market-data.md#arrow), bound once, answered by the expression engine over one batch per 1,024 booked inputs the walk pulls ahead; the kind rule prunes first, so a filter narrows what a book folds and records and never admits what the kind rule prunes. A filter that keeps every row installs nothing. Refused where it is bound: its own parse error, a column the row does not carry, an answer that is no boolean; a filter that cannot answer a batch ends the walk as a source failure does |
 | Books | one per [book key](market.md#the-book-key): the input's ISIN where it holds one, else its ticker, else `XX0000000000`; each book opens keyed - `BookEvent::keyed` - stores its key as `3:0:{key}`, and takes its ticker and ISIN from the first input stating each |
 | Moving between books | an order or quote identity restated under another key - a chain stated by its ticker alone and then, its instrument learned, under its ISIN - is withdrawn from the book it stood in by a delta there: the entry as it stood, deleted in state `REMOVED`, reporting no fill, no execution, no recording and no snapshot instant - a snapshot's member as any other statement - and opens in its own book at the same instant, so an entry rests in one book at a time |
 | Groups | by effective instant (`snapunix`, else `currunix`) - one book per touched key, key order, atomic per instant and key; ordinary groups apply via `add_operations`, each chain where its first step arrived, its steps by place only where a step follows one of its chain at that instant, else in arrival order; supplied-membership stages replacement with deltas and expirations; a group the book refuses is left out whole, with a warning: none of its updates lands, the book and its pending expirations stand as they were, and the walk goes on |
@@ -511,13 +511,14 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         Ok(vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill.clone())])
     };
 
-    // One book per instant an order touched; the fill is pruned. Each states
+    // One book per instant an order touched; the fill is a delta of its own
+    // instant's. Each states
     // its deltas alone, beside the top of book they settled on.
     let books = BookIterator::new(stream()?.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
     assert!(books.iter().all(|book| !book.is_complete()));
     let last = &books[1];
-    assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 1, 0));
+    assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 2, 0));
     assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
     assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_curruuid())));
 
@@ -534,7 +535,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         .iter()
         .map(|book| (book.get_currunix() - T, book.deltas().len(), book.is_complete()))
         .collect();
-    assert_eq!(ticks, [(0, 1, true), (500_000_000, 0, true), (SECOND, 1, true)]);
+    assert_eq!(ticks, [(0, 1, true), (500_000_000, 0, true), (SECOND, 2, true)]);
 
     // A value a book does not fold is refused by its kind.
     let mut undated = Order::new();
@@ -562,13 +563,14 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     )
     stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
-    # One book per instant an order touched; the fill is pruned. Each states
+    # One book per instant an order touched; the fill is a delta of its own
+    # instant's. Each states
     # its deltas alone, beside the top of book they settled on.
     books = list(graph.BookIterator(stream))
     assert len(books) == 2
     assert not any(book.is_complete for book in books)
     last = books[1]
-    assert (last.currunix, len(last.deltas), len(last.alive)) == (T + SECOND, 1, 0)
+    assert (last.currunix, len(last.deltas), len(last.alive)) == (T + SECOND, 2, 0)
     best = last.best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal("189.49")
     assert (books[0].prevuuid, last.prevuuid) == (None, books[0].curruuid)
@@ -586,7 +588,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert [(book.currunix - T, len(book.deltas), book.is_complete) for book in gridded] == [
         (0, 1, True),
         (500_000_000, 0, True),
-        (SECOND, 1, True),
+        (SECOND, 2, True),
     ]
 
     # A value a book does not fold is refused by its kind.
@@ -614,14 +616,15 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     })
     const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
-    // One book per instant an order touched; the fill is pruned. Each states
+    // One book per instant an order touched; the fill is a delta of its own
+    // instant's. Each states
     // its deltas alone, beside the top of book they settled on.
     const books = [...new graph.BookIterator(stream)]
     assert.equal(books.length, 2)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[1]
     assert.equal(last.currunix, T + SECOND)
-    assert.deepEqual([last.deltas().length, last.alive().length], [1, 0])
+    assert.deepEqual([last.deltas().length, last.alive().length], [2, 0])
     assert.equal(last.bestPrice('BUYS'), '189.49')
     assert.equal(books[0].prevuuid, null)
     assert.equal(last.prevuuid, books[0].curruuid)
@@ -636,7 +639,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     // A 500 ms grid yields every book whole, the crossed tick between included.
     const gridded = [...new graph.BookIterator(stream, 500)]
     assert.deepEqual(gridded.map((book) => [book.currunix - T, book.deltas().length, book.isComplete]), [
-      [0n, 1, true], [500_000_000n, 0, true], [SECOND, 1, true],
+      [0n, 1, true], [500_000_000n, 0, true], [SECOND, 2, true],
     ])
 
     // A value a book does not fold is refused by its kind.
@@ -645,7 +648,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
 
 ### A filtered walk
 
-A bid, an offer and a fill: the fill never reaches a book, and a filter over the `marketdata` row narrows what folds further.
+A bid, an offer and a fill: the fill stands among the deltas of its own instant's book, and a filter over the `marketdata` row narrows what folds further.
 
 === "Rust"
 
