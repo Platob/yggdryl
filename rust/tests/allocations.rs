@@ -7093,9 +7093,28 @@ fn text_lines_cost(source: &Buffer, rows: usize) -> usize {
 
 #[test]
 fn located_lines_render_and_project_one_shared_crosscode() {
+    // A located file rather than a buffer: a file's URL is long enough to
+    // live on the heap, so the count below tells one rendering shared by
+    // every row from one per row, where a buffer's `mem:` identity fits
+    // inline and would render for free either way.
+    let mut root = yggdryl::local::LocalFolder::temporary()
+        .expect("a temporary folder")
+        .path()
+        .expect("a path");
+    root.push(format!(
+        "yggdryl-allocations-located-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("the folder");
     for rows in [1_usize, 64, 1_024] {
-        let source = Buffer::from_bytes(bridge_lines(rows).into_bytes())
-            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let mut source = yggdryl::local::LocalFile::new(root.join(format!("bridge-{rows}.log")))
+            .expect("a file");
+        yggdryl::IOBase::set_media_type(
+            &mut source,
+            MediaType::from_str("text/plain").expect("a media type"),
+        );
+        yggdryl::IOBase::write_all_bytes(&mut source, bridge_lines(rows).as_bytes())
+            .expect("the lines");
         let expected = yggdryl::IOBase::url(&source)
             .expect("a buffer identity")
             .to_string();
@@ -7155,6 +7174,7 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         changed.set_sourceuri(None);
         assert_eq!(changed.get_crosscode(), "");
     }
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// What `owned_handle`'s copy of a buffer costs, by how many rows it holds.

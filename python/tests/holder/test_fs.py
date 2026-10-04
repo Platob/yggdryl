@@ -1022,7 +1022,13 @@ def test_a_native_path_is_the_raw_key_the_store_names() -> None:
 def test_a_filesystem_stating_what_the_native_client_cannot_read_stays_bridged(
     build: Callable[[], pafs.FileSystem], stated: str
 ) -> None:
-    filesystem = build()
+    try:
+        filesystem = build()
+    except TypeError as refusal:
+        # An argument this PyArrow does not have (`tls_ca_file_path` arrived
+        # after 18) states nothing to bridge, so the case has no filesystem
+        # to build; the newer leg builds it.
+        pytest.skip(f"pyarrow {pa.__version__} has no such argument: {refusal}")
     handle = FsPath(filesystem, "bucket/key.bin")
     # Bridged whole, as a handler is: the filesystem object answers, under
     # the exact path, and no native role misreads the argument it states.
