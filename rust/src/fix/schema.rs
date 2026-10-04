@@ -377,21 +377,13 @@ fn shared_prefix_len(row: &Field) -> usize {
 
 /// The columns every row states: `BeginString`, which the builder fills
 /// where a line stated none, and the crate's own columns every message
-/// settles - its instant, its creation, its codes and its identity. The
-/// state it reached is stated on every row a message writes and admits a
-/// null all the same: a state has no neutral member, so no default fills
-/// the column a row leaves empty.
+/// settles - its instant, its creation, its codes, its identity and its
+/// place at its instant, the one list the crate's fields declare required
+/// by. The state it reached is stated on every row a message writes and
+/// admits a null all the same: a state has no neutral member, so no default
+/// fills the column a row leaves empty.
 fn is_required(tag: i32) -> bool {
-    tag == 8
-        || [
-            super::CURRUNIX_TAG_NAME.0,
-            super::CREAUNIX_TAG_NAME.0,
-            super::CURRHASHCODE_TAG_NAME.0,
-            super::CROSSHASHCODE_TAG_NAME.0,
-            super::CURRUUID_TAG_NAME.0,
-            super::CROSSUUID_TAG_NAME.0,
-        ]
-        .contains(&tag)
+    tag == 8 || super::crated::is_always_stated(tag)
 }
 
 /// The fixed root every message answers as.

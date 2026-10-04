@@ -2364,7 +2364,10 @@ mod parallel {
                 );
             }
             // A writer that learns to encode the interval wrote every row.
-            Ok(()) => assert_eq!(media.row_size().unwrap(), count as u64),
+            Ok(result) => {
+                assert_eq!(result.written_rows, count as u64);
+                assert_eq!(media.row_size().unwrap(), count as u64);
+            }
         }
     }
 

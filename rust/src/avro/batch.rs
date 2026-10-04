@@ -2434,12 +2434,12 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
-            Ok(_published) => {
+            Ok((_published, result)) => {
                 self.refresh_dimensions()?;
-                Ok(())
+                Ok(result)
             }
             Err(error) => {
                 // A complete earlier cadence remains published by contract;
@@ -2474,7 +2474,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
@@ -2483,7 +2483,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }

@@ -215,61 +215,61 @@ mod dispatch {
             &mut self,
             _batches: BatchReader,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.reader_calls[0] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn append_arrow_reader(
             &mut self,
             _batches: BatchReader,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.reader_calls[1] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn merge_arrow_reader(
             &mut self,
             _batches: BatchReader,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.reader_calls[2] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn overwrite_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.batch_calls[0] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn append_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.batch_calls[1] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn merge_arrow_batch(
             &mut self,
             _batch: RecordBatch,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()> {
+        ) -> yggdryl::Result<yggdryl::IOResult> {
             self.batch_calls[2] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn overwrite_records<I, R>(
             &mut self,
             _records: I,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()>
+        ) -> yggdryl::Result<yggdryl::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -278,14 +278,14 @@ mod dispatch {
             R::Error: Into<Error>,
         {
             self.record_calls[0] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn append_records<I, R>(
             &mut self,
             _records: I,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()>
+        ) -> yggdryl::Result<yggdryl::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -294,14 +294,14 @@ mod dispatch {
             R::Error: Into<Error>,
         {
             self.record_calls[1] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
 
         fn merge_records<I, R>(
             &mut self,
             _records: I,
             _options: &RecordOptions,
-        ) -> yggdryl::Result<()>
+        ) -> yggdryl::Result<yggdryl::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -310,7 +310,7 @@ mod dispatch {
             R::Error: Into<Error>,
         {
             self.record_calls[2] += 1;
-            Ok(())
+            Ok(yggdryl::IOResult::default())
         }
     }
 
@@ -1583,15 +1583,17 @@ mod write {
                 schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[1, 3]), rows_batch(&[4, 5])],
             );
-            match intent {
+            let result = match intent {
                 "overwrite" => handle.overwrite_arrow_reader(incoming, &options).unwrap(),
                 "append" => handle.append_arrow_reader(incoming, &options).unwrap(),
                 "merge" => handle
                     .merge_arrow_reader(incoming, &options.with_merge_by(["id"]).unwrap())
                     .unwrap(),
                 _ => unreachable!(),
-            }
+            };
 
+            // Every cadence's rows are in the one answer.
+            assert_eq!(result, yggdryl::IOResult::new(4, 4), "{intent}");
             assert_eq!(handle.publications.load(Ordering::SeqCst), 2, "{intent}");
             let expected_rows = match intent {
                 "overwrite" => 4,
@@ -2339,6 +2341,192 @@ mod write {
         // Both stored copies of each key update in place; merge does not turn
         // either incoming row into a third copy.
         assert_eq!(rows(&handle, &options), 4);
+    }
+}
+
+mod results {
+    //! What every write door answers: the rows it read off its source, the
+    //! rows that reached the destination, and the difference.
+
+    use super::*;
+    use yggdryl::{IOResult, Serie, SerieSource};
+
+    fn options(handle: &Buffer) -> RecordOptions {
+        handle.record_options().unwrap().with_field(schema())
+    }
+
+    fn batches(ids: &[&[i64]]) -> BatchReader {
+        yggdryl::arrow::batch_reader(
+            schema().into_arrow_schema().unwrap(),
+            ids.iter().map(|ids| rows_batch(ids)).collect::<Vec<_>>(),
+        )
+    }
+
+    #[test]
+    fn an_empty_source_answers_the_empty_result() {
+        let mut handle = handle("empty-result.arrows");
+        let options = options(&handle);
+
+        for intent in ["overwrite", "append", "merge"] {
+            let result = match intent {
+                "overwrite" => handle.overwrite_arrow_reader(batches(&[]), &options),
+                "append" => handle.append_arrow_reader(batches(&[]), &options),
+                _ => handle.merge_arrow_reader(
+                    batches(&[]),
+                    &options.clone().with_merge_by(["id"]).unwrap(),
+                ),
+            }
+            .unwrap();
+            assert_eq!(result, IOResult::default(), "{intent}");
+            assert!(result.is_empty(), "{intent}");
+        }
+    }
+
+    #[test]
+    fn every_intent_answers_the_rows_it_read_and_wrote() {
+        let mut handle = handle("intents.arrows");
+        let options = options(&handle);
+
+        let overwritten = handle
+            .overwrite_arrow_reader(batches(&[&[1, 2], &[3]]), &options)
+            .unwrap();
+        assert_eq!(overwritten, IOResult::new(3, 3));
+        assert_eq!(rows(&handle, &options), 3);
+
+        let appended = handle
+            .append_arrow_reader(batches(&[&[4, 5]]), &options)
+            .unwrap();
+        assert_eq!(appended, IOResult::new(2, 2));
+        assert_eq!(rows(&handle, &options), 5);
+
+        // A merge writes every incoming row - the ones that update a stored
+        // row and the ones that add one - so the stored count says which.
+        let merged = handle
+            .merge_arrow_reader(
+                batches(&[&[5, 6]]),
+                &options.clone().with_merge_by(["id"]).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(merged, IOResult::new(2, 2));
+        assert_eq!(rows(&handle, &options), 6);
+    }
+
+    #[test]
+    fn every_shape_answers_the_same_result() {
+        let field = schema();
+        let incoming = || rows_batch(&[1, 2, 3]);
+        for shape in ["reader", "batch", "records", "serie", "mode"] {
+            let mut handle = handle(&format!("shape-{shape}.arrows"));
+            let options = options(&handle);
+            let result = match shape {
+                "reader" => handle.overwrite_arrow_reader(batches(&[&[1, 2, 3]]), &options),
+                "batch" => handle.overwrite_arrow_batch(incoming(), &options),
+                "records" => handle.overwrite_records(
+                    [1_i64, 2, 3]
+                        .map(|id| Scalar::from_sequence([Scalar::from(id), Scalar::from("S")])),
+                    &options,
+                ),
+                "serie" => handle.overwrite_serie(
+                    SerieSource::from(
+                        Serie::from_arrow_batch(Some(&field), &incoming(), Default::default())
+                            .unwrap(),
+                    ),
+                    Some(&options),
+                ),
+                _ => handle.write_arrow_reader(batches(&[&[1, 2, 3]]), IOMode::Overwrite, &options),
+            }
+            .unwrap_or_else(|error| panic!("{shape}: {error}"));
+            assert_eq!(result, IOResult::new(3, 3), "{shape}");
+            assert_eq!(rows(&handle, &options), 3, "{shape}");
+        }
+    }
+
+    #[test]
+    fn a_where_keeps_rows_out_and_they_are_skipped() {
+        let mut handle = handle("filtered.arrows");
+        let plain = options(&handle);
+        let filtered = plain.clone().with_filter("id > 2").unwrap();
+
+        let result = handle
+            .overwrite_arrow_reader(batches(&[&[1, 2], &[3, 4, 5]]), &filtered)
+            .unwrap();
+
+        assert_eq!(
+            (result.read_rows, result.written_rows, result.skipped_rows),
+            (5, 3, 2)
+        );
+        assert_eq!(rows(&handle, &plain), 3);
+
+        // Every row kept out is a source that was read and a write of none.
+        let none = handle
+            .append_arrow_reader(
+                batches(&[&[1, 2]]),
+                &plain.clone().with_filter("id > 9").unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            (none.read_rows, none.written_rows, none.skipped_rows),
+            (2, 0, 2)
+        );
+        assert!(!none.is_empty());
+        assert_eq!(rows(&handle, &plain), 3);
+    }
+
+    #[test]
+    fn a_row_bound_cuts_the_batch_it_falls_in_and_pulls_no_further() {
+        let mut handle = handle("bounded.arrows");
+        let plain = options(&handle);
+        let bounded = plain.clone().with_max_row_size(3);
+
+        // The bound falls inside the second batch: its last row was read and
+        // not written, and the third batch was never pulled.
+        let result = handle
+            .append_arrow_reader(batches(&[&[1, 2], &[3, 4], &[5, 6]]), &bounded)
+            .unwrap();
+
+        assert_eq!(
+            (result.read_rows, result.written_rows, result.skipped_rows),
+            (4, 3, 1)
+        );
+        assert_eq!(rows(&handle, &plain), 3);
+    }
+
+    #[test]
+    fn a_session_answers_the_rows_of_every_chunk_it_was_pushed() {
+        let mut handle = handle("session-result.arrows");
+        let options = options(&handle)
+            .with_filter("id > 1")
+            .unwrap()
+            .with_commit_batch_num(1);
+        let plain = handle.record_options().unwrap();
+
+        let mut session = ArrowWriteSession::append(&options).unwrap();
+        assert!(session.push(&mut handle, batches(&[&[1, 2]])).unwrap());
+        assert!(session.push(&mut handle, batches(&[&[3], &[4]])).unwrap());
+        let result = session.finish(&mut handle).unwrap();
+
+        assert_eq!(
+            (result.read_rows, result.written_rows, result.skipped_rows),
+            (4, 3, 1)
+        );
+        assert_eq!(rows(&handle, &plain), 3);
+    }
+
+    #[test]
+    fn a_document_answers_the_rows_it_rendered() {
+        let field = schema();
+        for name in ["rows.json", "rows.jsonl", "rows.yaml"] {
+            let mut handle = handle(name);
+            let rows =
+                Serie::from_arrow_batch(Some(&field), &rows_batch(&[1, 2, 3]), Default::default())
+                    .unwrap();
+
+            let result = handle
+                .overwrite_serie(SerieSource::from(rows), None)
+                .unwrap_or_else(|error| panic!("{name}: {error}"));
+
+            assert_eq!(result, IOResult::new(3, 3), "{name}");
+        }
     }
 }
 

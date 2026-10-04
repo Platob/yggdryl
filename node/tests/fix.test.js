@@ -3128,9 +3128,9 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   // (`fixed_codec` in `rust/tests/fix.rs`), stated here as a message's own
   // SendingTime so two builds settle the same identity.
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
-  // The columns a row must carry a value at: the settled identity, and the
-  // version every message opens with.
-  const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'beginstring']
+  // The columns a row must carry a value at: the settled identity, the
+  // place at its instant, and the version every message opens with.
+  const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'seqnum', 'beginstring']
 
   // Two frames on one row: a line is none, one or many messages, and this
   // one is two.

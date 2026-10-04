@@ -2842,7 +2842,11 @@ mod arrow {
         /// [`ChunkedSerie`] - one chunk per batch, settled under the process
         /// spill bound as each lands - so a table larger than the bound is
         /// deleted from under it rather than collected whole.
-        fn delete_from(&self, holder: &mut Holder, options: &RecordOptions) -> Result<()> {
+        fn delete_from(
+            &self,
+            holder: &mut Holder,
+            options: &RecordOptions,
+        ) -> Result<crate::IOResult> {
             let mut reading = options.clone();
             let mut kept = Self::new();
             kept.filter = self.filter.clone().not();

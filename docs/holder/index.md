@@ -1608,20 +1608,22 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     row_size(&self) -> Result<u64>          // whole media; projection and limits never change it
     column_size(&self) -> Result<usize>
 
-    overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>   // the one required hook
-    append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>
-    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<()>       // needs merge_by
+    overwrite_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>   // the one required hook
+    append_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>
+    merge_arrow_reader(&mut self, reader: BatchReader, options: &RecordOptions) -> Result<IOResult>       // needs merge_by
 
-    overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<()>
-    overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<()>
+    overwrite|append|merge_arrow_batch(&mut self, batch: RecordBatch, options: &RecordOptions) -> Result<IOResult>
+    overwrite|append|merge_records(&mut self, records, options: &RecordOptions) -> Result<IOResult>
 
-    write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
-    write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<()>
-    write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<()>
+    write_arrow_reader(&mut self, reader: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
+    write_arrow_batch(&mut self, batch: RecordBatch, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
+    write_records(&mut self, records, mode: IOMode, options: &RecordOptions) -> Result<IOResult>
 
     read_serie(&self, options: Option<&RecordOptions>) -> Result<SerieReader>   // None: the handle's own
-    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<()>
-    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<()>
+    write_serie(&mut self, value: SerieSource, mode: IOMode, options: Option<&RecordOptions>) -> Result<IOResult>
+    overwrite|append|merge_serie(&mut self, value: SerieSource, options: Option<&RecordOptions>) -> Result<IOResult>
+
+    IOResult { read_rows, written_rows, skipped_rows }   // what the write did, in rows
     ```
 
 === "Python"
@@ -1629,15 +1631,17 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     ```text
     read_arrow_reader(*, options=None) -> pyarrow.RecordBatchReader
     read_records(cls=None, *, options=None) -> Iterator[dict | dataclass]
-    overwrite|append|merge_arrow_reader(reader, *, options=None) -> None
-    overwrite|append|merge_arrow_table(table, *, options=None) -> None
-    overwrite|append|merge_arrow_batch(batch, *, options=None) -> None
-    overwrite|append|merge_records(records, *, options=None) -> None
-    write_arrow_reader|table|batch(value, mode, *, options=None) -> None
-    write_records(records, mode, *, options=None) -> None
+    overwrite|append|merge_arrow_reader(reader, *, options=None) -> IOResult
+    overwrite|append|merge_arrow_table(table, *, options=None) -> IOResult
+    overwrite|append|merge_arrow_batch(batch, *, options=None) -> IOResult
+    overwrite|append|merge_records(records, *, options=None) -> IOResult
+    write_arrow_reader|table|batch(value, mode, *, options=None) -> IOResult
+    write_records(records, mode, *, options=None) -> IOResult
     read_serie(*, options=None) -> SerieReader
-    write_serie(value, mode="overwrite", *, options=None) -> None
-    overwrite|append|merge_serie(value, *, options=None) -> None
+    write_serie(value, mode="overwrite", *, options=None) -> IOResult
+    overwrite|append|merge_serie(value, *, options=None) -> IOResult
+
+    IOResult.read_rows, .written_rows, .skipped_rows   # what the write did, in rows
     ```
 
 === "JavaScript"
@@ -1645,18 +1649,20 @@ One Arrow batch read and three explicit write intents on every handle. The handl
     ```text
     readArrowReader(options?) -> BatchReader
     readRecords(cls?, options?) -> Iterable<object>
-    overwrite|append|mergeArrowReader(reader, options?) -> void
-    overwrite|append|mergeArrowTable(table, options?) -> void
-    overwrite|append|mergeArrowBatch(batch, options?) -> void
-    overwrite|append|mergeRecords(records, options?) -> void | Promise<void>
-    writeArrowReader|Table|Batch(value, mode, options?) -> void
-    writeRecords(records, mode, options?) -> void | Promise<void>
+    overwrite|append|mergeArrowReader(reader, options?) -> IOResult
+    overwrite|append|mergeArrowTable(table, options?) -> IOResult
+    overwrite|append|mergeArrowBatch(batch, options?) -> IOResult
+    overwrite|append|mergeRecords(records, options?) -> IOResult | Promise<IOResult>
+    writeArrowReader|Table|Batch(value, mode, options?) -> IOResult
+    writeRecords(records, mode, options?) -> IOResult | Promise<IOResult>
     readSerie(options?) -> SerieReader
-    writeSerie(value, mode?, options?) -> void
-    overwrite|append|mergeSerie(value, options?) -> void
+    writeSerie(value, mode?, options?) -> IOResult
+    overwrite|append|mergeSerie(value, options?) -> IOResult
+
+    IOResult.readRows, .writtenRows, .skippedRows   // what the write did, in rows
     ```
 
-Default append and merge shape once and delegate to `overwrite_arrow_reader`. `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
+Default append and merge shape once and delegate to `overwrite_arrow_reader`, and every write answers what it did in rows ([Write results](#write-results)). `read_serie` answers a [`SerieReader`](../types/serie.md#writing-a-serie-to-a-handle) whatever the handle holds, and `write_serie` with its three intents takes a `Serie`, a `ChunkedSerie` or a `SerieReader` as one `SerieSource`, written as the batches it already is; absent options are the handle's own for both.
 
 === "Rust"
 
@@ -2291,6 +2297,121 @@ Overwrite replaces - a leaf whole, a partitioned folder or table only the partit
 Whatever the cadence, an overwrite's first commit replaces and every later one appends - per partition where the destination is partitioned: the first commit reaching a partition replaces it, and a partition no row reaches is not touched, an append appends on every commit, and every commit of a merge merges by its key. A merge into an Iceberg table that names no key beyond the partition columns replaces a partition on the first commit of the write that reaches it and appends to it on every later one, so a paced stream keeps every row. A commit is published when it completes: the commits before a later failure stay visible, so a write of more than one commit is never an atomic replacement. Whatever holds a cadence between publications - a leaf's, a write session's, an Iceberg table's partition holds - is held under the process [spill bound](../types/serie.md#spilling-to-disk), the heaviest batches spilled first, so a cadence of any size costs that bound in memory; `commit_batch_num` paces a stream whose rows would outgrow the spill folder.
 
 A leaf append is a rewrite, so a leaf publishes once unless a cadence is asked for. A plain folder publishes each leaf on its own; an Iceberg folder uses its [snapshot commit](../media/iceberg.md). A resumable write session - what a runtime pushing batches between awaits holds - publishes by `yggdryl::media::DEFAULT_COMMIT_BYTE_SIZE` (64 MiB of held batches) when no count is set.
+
+### Write results
+
+Every write answers an `IOResult`: what it did, in rows, with no read of the destination. It is counted once, where the write is shaped, so every door, shape and medium answers it the same way.
+
+| Count | Is |
+| --- | --- |
+| `read_rows` | the rows the write pulled from its source |
+| `written_rows` | the rows the destination took - for a merge, every incoming row, whether it updated a stored row or added one |
+| `skipped_rows` | the rows read and not written: the ones the options' `filter` kept out, and the part of the batch a [limit](#limits) fell in |
+
+A limit stops pulling, so the rows past it were never read and count nowhere. A write cut into several [commits](#commit-cadence) answers their sum, a source with no row answers the empty result, and the result says nothing of what an overwrite or a merge replaced - `row_size` answers what the destination holds. A resumable write session answers it from `finish`. Results add, compare, hash and print (`read 5 rows, wrote 4, skipped 1`).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, IOResult, MimeType, Scalar, StructType};
+
+    let field = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().required_field("venue"),
+    ])?)
+    .required_field("row");
+    let row = |id: i64, venue: &str| Scalar::from_sequence([Scalar::from(id), Scalar::from(venue)]);
+    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+    let options = handle.record_options()?.with_field(field);
+
+    let written = handle.overwrite_records(
+        [row(1, "XNAS"), row(2, "XNYS"), row(3, "XLON")],
+        &options,
+    )?;
+    assert_eq!(written, IOResult::new(3, 3));
+
+    // A filter keeps rows out of the write: read, not written, skipped.
+    let kept = handle.append_records(
+        [row(4, "XNAS"), row(5, "XPAR")],
+        &options.clone().with_filter("venue = 'XNAS'")?,
+    )?;
+    assert_eq!((kept.read_rows, kept.written_rows, kept.skipped_rows), (2, 1, 1));
+    assert_eq!(handle.row_size()?, 4);
+
+    // A source with no row is the empty result.
+    assert!(handle.append_records(Vec::<Scalar>::new(), &options)?.is_empty());
+    assert_eq!((written + kept).to_string(), "read 5 rows, wrote 4, skipped 1");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, IOResult
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
+
+    written = handle.overwrite_records(
+        [
+            {"id": 1, "venue": "XNAS"},
+            {"id": 2, "venue": "XNYS"},
+            {"id": 3, "venue": "XLON"},
+        ]
+    )
+    assert written == IOResult(3, 3)
+
+    # A filter keeps rows out of the write: read, not written, skipped.
+    kept = handle.append_records(
+        [{"id": 4, "venue": "XNAS"}, {"id": 5, "venue": "XPAR"}],
+        filter="venue = 'XNAS'",
+    )
+    assert (kept.read_rows, kept.written_rows, kept.skipped_rows) == (2, 1, 1)
+    assert handle.row_size() == 4
+
+    # A source with no row is the empty result; no row states no field, so
+    # the stored one is declared.
+    assert handle.append_records([], field=handle.read_arrow_field()).is_empty()
+    assert str(written + kept) == "read 5 rows, wrote 4, skipped 1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase, IOResult } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.arrows'))
+
+    const written = handle.overwriteRecords([
+      { id: 1n, venue: 'XNAS' },
+      { id: 2n, venue: 'XNYS' },
+      { id: 3n, venue: 'XLON' },
+    ])
+    assert.ok(written.equals(new IOResult(3, 3)))
+
+    // A filter keeps rows out of the write: read, not written, skipped.
+    const kept = handle.appendRecords(
+      [{ id: 4n, venue: 'XNAS' }, { id: 5n, venue: 'XPAR' }],
+      { filter: "venue = 'XNAS'" },
+    )
+    assert.deepEqual([kept.readRows, kept.writtenRows, kept.skippedRows], [2, 1, 1])
+    assert.equal(handle.rowSize(), 4)
+
+    // A source with no row is the empty result; no row states no field, so
+    // the stored one is declared.
+    assert.ok(handle.appendRecords([], { field: handle.readArrowField() }).isEmpty())
+    assert.equal(String(written.add(kept)), 'read 5 rows, wrote 4, skipped 1')
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
 
 ### Absent and unknown
 

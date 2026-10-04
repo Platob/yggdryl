@@ -82,6 +82,12 @@ pub(crate) fn container_field(
 /// The trait deliberately has no storage primitives of its own. Implementors
 /// return their [`IOBase`] view through hidden methods so the shared defaults
 /// keep one storage abstraction and remain callable through trait objects.
+///
+/// Every write door - the overwrite, the append and the merge of each shape,
+/// and the generic `write_*` beside them - answers an
+/// [`IOResult`](crate::IOResult): the rows it read off its source, the rows
+/// that reached the destination, and the rows between the two that the
+/// options' `where` or a bound kept out.
 pub trait IOMedia: Send {
     /// Borrow this media value as the one positional storage abstraction.
     #[doc(hidden)]
@@ -401,7 +407,8 @@ pub trait IOMedia: Send {
     ///     [Scalar::from(100_i64), Scalar::from(250_i64)],
     /// )?;
     /// handle.write_serie(sizes.clone().into(), IOMode::Overwrite, None)?;
-    /// handle.append_serie(sizes.into(), None)?;
+    /// let appended = handle.append_serie(sizes.into(), None)?;
+    /// assert_eq!((appended.read_rows, appended.written_rows, appended.skipped_rows), (2, 2, 0));
     /// let rows: usize = handle.read_serie(None)?.map(|batch| Ok::<_, yggdryl::Error>(batch?.len())).sum::<Result<_, _>>()?;
     /// assert_eq!(rows, 4);
     /// # Ok(())
@@ -420,7 +427,7 @@ pub trait IOMedia: Send {
         value: crate::SerieSource,
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         use crate::media::IORecordOptions;
 
         if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
@@ -440,11 +447,12 @@ pub trait IOMedia: Send {
                 let safe = options.is_none_or(IORecordOptions::safe);
                 reader = reader.cast(&field, crate::ArrowCastOptions::new().with_safe(safe))?;
             }
-            return crate::media::structured::write_arrow(
+            let rows = crate::media::structured::write_arrow(
                 self.as_io_base_mut(),
                 reader,
                 crate::text::Formatting::default(),
-            );
+            )?;
+            return Ok(crate::IOResult::new(rows, rows));
         }
         let own;
         let options = match options {
@@ -468,7 +476,7 @@ pub trait IOMedia: Send {
         &mut self,
         value: crate::SerieSource,
         options: Option<&RecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_serie(value, crate::IOMode::Overwrite, options)
     }
 
@@ -483,7 +491,7 @@ pub trait IOMedia: Send {
         &mut self,
         value: crate::SerieSource,
         options: Option<&RecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_serie(value, crate::IOMode::Append, options)
     }
 
@@ -500,7 +508,7 @@ pub trait IOMedia: Send {
         &mut self,
         value: crate::SerieSource,
         options: Option<&RecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_serie(value, crate::IOMode::Merge, options)
     }
 
@@ -521,7 +529,7 @@ pub trait IOMedia: Send {
         batches: crate::arrow::BatchReader,
         mode: crate::IOMode,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         // The generic entry point owns mode validation so an implementor's
         // specialized primitive cannot consume a one-shot reader before the
         // authoritative intent and its key settings are known to agree.
@@ -574,6 +582,11 @@ pub trait IOMedia: Send {
     /// replacement, and `commit_batch_num` paces a stream whose rows would
     /// outgrow the spill folder.
     ///
+    /// The answer counts the whole write, every cadence included: the rows
+    /// pulled from `batches`, the rows the destination took, and the rows a
+    /// `where` kept out or a bound cut off the batch it fell in. It says
+    /// nothing of what was replaced.
+    ///
     /// # Errors
     ///
     /// Returns a listing, read, schema, cast, encoding, or write failure.
@@ -581,7 +594,7 @@ pub trait IOMedia: Send {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()>;
+    ) -> Result<crate::IOResult>;
 
     /// Publish one complete leaf value that generic write shaping already
     /// prepared.
@@ -618,7 +631,7 @@ pub trait IOMedia: Send {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         let schema = batch.schema();
         self.overwrite_arrow_reader(crate::arrow::batch_reader(schema, [batch]), options)
     }
@@ -638,7 +651,7 @@ pub trait IOMedia: Send {
         batch: arrow_array::RecordBatch,
         mode: crate::IOMode,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         options.require_write_mode(mode)?;
         match mode {
             crate::IOMode::Overwrite => self.overwrite_arrow_batch(batch, options),
@@ -695,7 +708,7 @@ pub trait IOMedia: Send {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::iobase::append_arrow_reader_default(self.as_io_base_mut(), batches, options)
     }
 
@@ -712,7 +725,7 @@ pub trait IOMedia: Send {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         let schema = batch.schema();
         self.append_arrow_reader(crate::arrow::batch_reader(schema, [batch]), options)
     }
@@ -748,7 +761,7 @@ pub trait IOMedia: Send {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::iobase::merge_arrow_reader_default(self.as_io_base_mut(), batches, options)
     }
 
@@ -765,7 +778,7 @@ pub trait IOMedia: Send {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         let schema = batch.schema();
         self.merge_arrow_reader(crate::arrow::batch_reader(schema, [batch]), options)
     }
@@ -826,7 +839,11 @@ pub trait IOMedia: Send {
     /// absent or not a non-null Struct root. A pulled row can fail its
     /// `TryInto<Scalar>` conversion, field validation, Arrow materialization,
     /// or the delegated overwrite.
-    fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
+    fn overwrite_records<I, R>(
+        &mut self,
+        records: I,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -862,7 +879,11 @@ pub trait IOMedia: Send {
     /// Returns the same field, row-conversion, intent, cast, encoding, and
     /// write failures as [`overwrite_records`](Self::overwrite_records) and
     /// [`append_arrow_reader`](Self::append_arrow_reader).
-    fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
+    fn append_records<I, R>(
+        &mut self,
+        records: I,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -898,7 +919,11 @@ pub trait IOMedia: Send {
     /// Returns the same field, row-conversion, key, cast, encoding, and write
     /// failures as [`overwrite_records`](Self::overwrite_records) and
     /// [`merge_arrow_reader`](Self::merge_arrow_reader).
-    fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
+    fn merge_records<I, R>(
+        &mut self,
+        records: I,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -938,7 +963,7 @@ pub trait IOMedia: Send {
         records: I,
         mode: crate::IOMode,
         options: &RecordOptions,
-    ) -> Result<()>
+    ) -> Result<crate::IOResult>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -1047,7 +1072,7 @@ macro_rules! impl_default_iomedia {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::overwrite_arrow_reader_default(self, batches, options)
         }
     };
@@ -1097,7 +1122,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::overwrite_arrow_reader(&mut self.$handle, batches, options)
         }
 
@@ -1113,7 +1138,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::overwrite_arrow_batch(&mut self.$handle, batch, options)
         }
 
@@ -1121,7 +1146,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::append_arrow_reader(&mut self.$handle, batches, options)
         }
 
@@ -1129,7 +1154,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::append_arrow_batch(&mut self.$handle, batch, options)
         }
 
@@ -1137,7 +1162,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::merge_arrow_reader(&mut self.$handle, batches, options)
         }
 
@@ -1145,7 +1170,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::merge_arrow_batch(&mut self.$handle, batch, options)
         }
 
@@ -1153,7 +1178,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             records: I,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()>
+        ) -> $crate::Result<$crate::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -1168,7 +1193,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             records: I,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()>
+        ) -> $crate::Result<$crate::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -1183,7 +1208,7 @@ macro_rules! __delegate_iomedia_arrow {
             &mut self,
             records: I,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()>
+        ) -> $crate::Result<$crate::IOResult>
         where
             Self: Sized,
             I: IntoIterator<Item = R>,
@@ -1288,7 +1313,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::overwrite_arrow_reader(self.$get_mut()?, batches, options)
         }
 
@@ -1304,7 +1329,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::overwrite_arrow_batch(self.$get_mut()?, batch, options)
         }
 
@@ -1312,7 +1337,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::append_arrow_reader(self.$get_mut()?, batches, options)
         }
 
@@ -1320,7 +1345,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::append_arrow_batch(self.$get_mut()?, batch, options)
         }
 
@@ -1328,7 +1353,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::merge_arrow_reader(self.$get_mut()?, batches, options)
         }
 
@@ -1336,7 +1361,7 @@ macro_rules! __delegate_resolved_iomedia {
             &mut self,
             batch: arrow_array::RecordBatch,
             options: &$crate::media::RecordOptions,
-        ) -> $crate::Result<()> {
+        ) -> $crate::Result<$crate::IOResult> {
             $crate::IOMedia::merge_arrow_batch(self.$get_mut()?, batch, options)
         }
     };

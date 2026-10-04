@@ -20,6 +20,7 @@ export {
   IsinRegistry,
   IOBase,
   IOCursor,
+  IOResult,
   Listing,
   MediaType,
   MimeType,
@@ -101,6 +102,7 @@ import type {
   Filter,
   IOBase,
   IOCursor,
+  IOResult,
   Listing,
   MediaType,
   MetadataEntry,
@@ -4401,83 +4403,86 @@ declare module './index' {
     readTextLines(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): TextLineIterator
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowReader(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): BatchReader
-    /** Replace this resource's rows with one native reader. */
+    /**
+     * Replace this resource's rows with one native reader. Every record
+     * write answers the rows it read, wrote and skipped.
+     */
     overwriteArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Append one native reader after this resource's rows. */
     appendArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Merge one native reader by the non-empty `options.mergeBy` keys. */
     mergeArrowReader(
       reader: BatchReader,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Write one native reader using the required explicit mode. */
     writeArrowReader(
       reader: BatchReader,
       mode: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
 
     /** Replace this resource's rows with one Apache Arrow JS table. */
     overwriteArrowTable(
       table: ArrowTable,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Append one Apache Arrow JS table after this resource's rows. */
     appendArrowTable(
       table: ArrowTable,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Merge one Apache Arrow JS table by the non-empty `options.mergeBy` keys. */
     mergeArrowTable(
       table: ArrowTable,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Write one Apache Arrow JS table using the required explicit mode. */
     writeArrowTable(
       table: ArrowTable,
       mode: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
 
     /** Replace this resource's rows with one Apache Arrow JS record batch. */
     overwriteArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Append one Apache Arrow JS record batch after this resource's rows. */
     appendArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Merge one Apache Arrow JS record batch by `options.mergeBy`. */
     mergeArrowBatch(
       batch: ArrowRecordBatch,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Write one Apache Arrow JS record batch using the explicit mode. */
     writeArrowBatch(
       batch: ArrowRecordBatch,
       mode: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
 
     /**
      * Read this resource's rows as a `SerieReader`, one record serie per
@@ -4497,25 +4502,25 @@ declare module './index' {
       mode?: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Replace this resource's rows with `value`'s: `writeSerie` under `overwrite`. */
     overwriteSerie(
       value: SerieSource,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Add `value`'s rows after this resource's: `writeSerie` under `append`. */
     appendSerie(
       value: SerieSource,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Merge `value`'s rows by the non-empty `options.mergeBy` keys: `writeSerie` under `merge`. */
     mergeSerie(
       value: SerieSource,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
 
     /**
      * Read this resource's rows as records: plain objects, or instances of
@@ -4535,39 +4540,39 @@ declare module './index' {
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): Promise<void>
+    ): Promise<IOResult>
     overwriteRecords(
       rows: RecordSource,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
     /** Append plain objects or field-class instances after the stored rows. */
     appendRecords(
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): Promise<void>
-    appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
+    ): Promise<IOResult>
+    appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): IOResult
     /** Merge records by the non-empty `options.mergeBy` keys. */
     mergeRecords(
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): Promise<void>
-    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
+    ): Promise<IOResult>
+    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): IOResult
     /** Write records using the required explicit mode. */
     writeRecords(
       rows: AsyncIterable<StructRecord>,
       mode: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): Promise<void>
+    ): Promise<IOResult>
     writeRecords(
       rows: RecordSource,
       mode: IOMode,
       options?: RecordOptionsInput | RecordProperties | null,
       properties?: RecordProperties | null,
-    ): void
+    ): IOResult
   }
 
   interface IOCursor {

@@ -2301,8 +2301,16 @@ mod pipeline {
                 .iter()
                 .map(Scalar::as_u64)
                 .collect::<Vec<_>>(),
-            [None, None, None, None, Some(1), None, Some(1)],
-            "a first place states none"
+            [
+                Some(0),
+                Some(0),
+                Some(0),
+                Some(0),
+                Some(1),
+                Some(0),
+                Some(1)
+            ],
+            "a first place is zero, never absent"
         );
         let lines = column(&stage, "curruuid");
         let sources = column(&read, "srcuuids");
@@ -2820,8 +2828,8 @@ mod pipeline {
 
         // Both rows came from line 1, because line 2 contributed none, and
         // both say which line by naming its identity rather than its number:
-        // `seqnum` on a fixed row is the message's own place, and neither of
-        // these two frames states one.
+        // `seqnum` on a fixed row is the message's own place, and each of
+        // these two frames is the first at its own instant.
         let first = column(&stage, "curruuid")[0].clone();
         let sources = column(&read, "srcuuids");
         assert_eq!(sources.len(), 2);
@@ -2831,9 +2839,13 @@ mod pipeline {
                 std::slice::from_ref(&first)
             );
         }
-        assert!(
-            column(&read, "seqnum").iter().all(Scalar::is_null),
-            "a frame the bridge relayed states no place of its own"
+        assert_eq!(
+            column(&read, "seqnum")
+                .iter()
+                .map(Scalar::as_u64)
+                .collect::<Vec<_>>(),
+            [Some(0), Some(0)],
+            "a frame the bridge relayed stands first at its own instant"
         );
 
         // Each message owns the entries of its own frame and none of its

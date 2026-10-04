@@ -748,7 +748,7 @@ A carried column returns to its place because the message carries it: a message 
     // names it and shares its identity; the execution split off it is the
     // third row, a chain of its own, standing after the report at the
     // report's instant - the report, a second after the order, is first at
-    // its own and states no place.
+    // its own: place zero.
     assert_eq!(held.num_rows(), 3);
     let cross = held.column_by_name("crossuuid").expect("the chain column");
     assert_eq!(cross.null_count(), 0);
@@ -756,7 +756,7 @@ A carried column returns to its place because the message carries it: a message 
     let column = |name: &str| rows.child(name).expect("a column");
     assert_eq!(column("crossuuid").scalar(0)?, column("crossuuid").scalar(1)?);
     assert!(!column("prevuuid").is_null(1)?);
-    assert_eq!(column("seqnum").scalar(1)?, Scalar::Null);
+    assert_eq!(column("seqnum").scalar(1)?, Scalar::from(0_u64));
     assert_eq!(column("seqnum").scalar(2)?, Scalar::from(1_u64));
     // The content is what each line stated, carried through untouched.
     assert_eq!(column("ordstatus").scalar(1)?.as_str(), Some("2"));
@@ -770,7 +770,7 @@ A carried column returns to its place because the message carries it: a message 
 - A `timestamp` column is carried context: it leads the row as a column of its own and never dates the message - the message's [own clocks](capture.md#the-official-clock-dates-the-message) do - and it is a fact about the capture, so it is outside the code the message's content digests to.
 - A fill never overrides what the frame stated: a `msgseqnum` capture beside a frame carrying `34=` leaves that field to the frame.
 - A fill is row-only: never an entry, never in `fixentries`, never re-emitted by `write_arrow_reader`, never in the arrival digest.
-- `messages` reads a row carrying the settled values - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - as a replayable message; a row leaving one of them null is left out with a [warning](capture.md#warnings), since the fixed row declares them required.
+- `messages` reads a row carrying the settled values - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `seqnum` - as a replayable message; a row leaving one of them null is left out with a [warning](capture.md#warnings), since the fixed row declares them required.
 - `messages` on a row whose `securityids`, `identifiers` or `partyids` cell holds a key that reads as none, a value its type refuses or two spellings of one key with two values, or whose `fixentries` holds a key naming another field than its tag (`55:securityid`) -> that row left out with a [warning](capture.md#warnings), because [`FixMsg::from_row`](message.md#a-row-is-a-message-again) refuses it: a row's identifier map is its word, never replaced by what its fields state.
 - A batch closes on the bytes each row lands as - the leaves of every column the row fills and a per-row width - so a source batch of any size splits by what its messages land as, and a line answering two messages is charged twice, once per row.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.

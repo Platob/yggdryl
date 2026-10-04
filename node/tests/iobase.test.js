@@ -16,6 +16,7 @@ const {
   Field,
   IOBase,
   IOCursor,
+  IOResult,
   RecordOptions,
   TextOptions,
   Uri,
@@ -1104,14 +1105,22 @@ test('generic record writes encode only the text body', (t) => {
   const target = new IOBase(path.join(root, 'out.txt'))
   const options = new TextOptions()
 
-  target.overwriteRecords(
+  const overwritten = target.overwriteRecords(
     (function* records() {
       yield { body: 'one' }
       yield { body: 'two' }
     })(),
     options,
   )
-  target.appendRecords([{ body: 'three' }], options)
+  const appended = target.appendRecords([{ body: 'three' }], options)
+  // A text write answers the lines it read and wrote, as every record write.
+  for (const [result, rows] of [
+    [overwritten, 2],
+    [appended, 1],
+  ]) {
+    assert.ok(result instanceof IOResult)
+    assert.deepEqual([result.readRows, result.writtenRows, result.skippedRows], [rows, rows, 0])
+  }
   assert.equal(target.readBytes().toString(), 'one\ntwo\nthree\n')
   assert.deepEqual(
     [...target.readRecords(options)].map((row) => row.body),

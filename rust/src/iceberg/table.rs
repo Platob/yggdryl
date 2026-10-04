@@ -3201,7 +3201,7 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
@@ -3213,7 +3213,11 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// Add the rows: `write_cadenced` under
     /// [`IOMode::Append`](crate::IOMode::Append), an `append` snapshot per
     /// commit, each keeping every manifest the last one had.
-    fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+    fn append_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
         self.write_cadenced(batches, crate::IOMode::Append, options, &[])
     }
 
@@ -3222,7 +3226,11 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
     /// the match key, so an empty [`merge_by`](IORecordOptions::merge_by)
     /// on a partitioned table replaces the partitions the rows fall in; see
     /// [`IcebergTable::commit_merge_where`].
-    fn merge_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+    fn merge_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<crate::IOResult> {
         let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
@@ -3268,14 +3276,14 @@ impl<H: IOBase> IcebergTable<H> {
         mode: crate::IOMode,
         options: &RecordOptions,
         pairs: &[(&str, &str)],
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         match mode {
             crate::IOMode::Overwrite => options.require_write_mode(mode)?,
             crate::IOMode::Append => {
                 options.require_write_mode(mode)?;
                 options.require_write_limits()?;
                 if options.write_limit_is_zero() {
-                    return Ok(());
+                    return Ok(crate::IOResult::default());
                 }
             }
             crate::IOMode::Merge => {
@@ -3308,16 +3316,17 @@ impl<H: IOBase> IcebergTable<H> {
             crate::iobase::non_empty_arrow_reader(batches)?
         };
         let Some(batches) = batches else {
-            return Ok(());
+            return Ok(crate::IOResult::default());
         };
-        let batches = crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
+        let (batches, count) =
+            crate::iobase::prepare_arrow_write_deriving(batches, options, &stored)?;
         let batches = if overwrite {
             Some(batches)
         } else {
             crate::iobase::non_empty_arrow_reader(batches)?
         };
         let Some(batches) = batches else {
-            return Ok(());
+            return Ok(count.result());
         };
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches, cadence)?;
@@ -3325,12 +3334,13 @@ impl<H: IOBase> IcebergTable<H> {
             crate::IOMode::Overwrite => {
                 let mut replaced = ReplacedPartitions::default();
                 let Some(first) = commits.next() else {
-                    return self.commit_overwrite_cadence(
+                    self.commit_overwrite_cadence(
                         pairs,
                         crate::arrow::batch_reader(schema, []),
                         &mut replaced,
                         threads,
-                    );
+                    )?;
+                    return Ok(count.result());
                 };
                 self.commit_overwrite_cadence(pairs, first?, &mut replaced, threads)?;
                 for commit in commits {
@@ -3357,7 +3367,7 @@ impl<H: IOBase> IcebergTable<H> {
             }
             crate::IOMode::ReadOnly | crate::IOMode::Random => unreachable!("refused above"),
         }
-        Ok(())
+        Ok(count.result())
     }
 }
 

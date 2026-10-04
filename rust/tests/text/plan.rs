@@ -171,18 +171,18 @@ mod columns {
     }
 
     #[test]
-    fn seqnum_is_null_where_the_lines_place_is_zero() {
+    fn seqnum_is_the_lines_place_and_never_null() {
         // Every read answers `seqnum`, numbered or not. Asked for no first row
-        // number, the place is the physical line number, and the first line's
-        // zero is no place at all: the column counts what came before a line,
-        // and before the first line nothing did.
+        // number, the place is the physical line number: the column counts
+        // what came before a line, and before the first line nothing did, so
+        // the first line states zero.
         let source = named("rows.log", b"first\nsecond\nthird\n");
         let batch = collect(&source, TextOptions::new()).pop().unwrap();
         assert_eq!(
             batch.schema().field(13).data_type(),
             &arrow_schema::DataType::UInt64
         );
-        assert!(batch.schema().field(13).is_nullable());
+        assert!(!batch.schema().field(13).is_nullable());
         assert_eq!(
             batch
                 .column(13)
@@ -191,7 +191,7 @@ mod columns {
                 .unwrap()
                 .iter()
                 .collect::<Vec<_>>(),
-            [None, Some(1), Some(2)]
+            [Some(0), Some(1), Some(2)]
         );
 
         // Asked for one, the first row number is the first line's place and

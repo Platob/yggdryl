@@ -79197,11 +79197,11 @@
         "metadata": {
           "FIX:tag": "65014",
           "FIX:transient": "false",
-          "description": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
+          "description": "The message's place among the messages of its instant, never null: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later.",
           "display": "Sequence Number"
         },
         "name": "seqnum",
-        "nullable": true
+        "nullable": false
       },
       {
         "dtype": {
@@ -278582,7 +278582,7 @@
         "t": 65014,
         "n": "Sequence Number",
         "y": "uint64",
-        "x": "The message's place among the messages of its instant, null at 0: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later."
+        "x": "The message's place among the messages of its instant, never null: 0 for the first of each run the parse hands over at that instant with no other instant between, one more for each next, a message split off another at a later place than it; once walked, the place its content took at that instant, past a predecessor dated there or later."
       },
       {
         "c": "state",

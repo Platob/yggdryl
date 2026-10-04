@@ -691,7 +691,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -707,7 +707,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
     }
 
@@ -715,7 +715,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -723,7 +723,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_batch(self.as_mut(), batch, options)
     }
 
@@ -731,7 +731,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
     }
 
@@ -739,7 +739,7 @@ impl IOMedia for Box<dyn IOBase> {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_batch(self.as_mut(), batch, options)
     }
 }

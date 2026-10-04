@@ -321,7 +321,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | Path | Owns |
 | --- | --- |
 | `<name>.rs` | one shared trait, enum, value or type each, re-exported from the crate root; a type file holds its datatype, its field and its scalar in that order ([One type, one file](#one-type-one-file)) |
-| `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary |
+| `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary, `ioresult.rs` `IOResult`, what a record write did in rows |
 | `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, a family being the range of identifier bytes it owns (`DataTypeKind::range`, `contains`), the identifier the one owner of the Arrow extension name its datatype rides (`DataTypeId::arrow_extension_name`, the thirty `arrow_extension_names`), `parser.rs` the canonical display and the Arrow, SQL, Hive, Spark and Iceberg parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
 | `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<SCHEME>:<property>` map and its validation, `protocol.rs` the borrowed protocol views |
 | `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
@@ -1299,6 +1299,18 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   over them for the three shapes a `SerieSource` holds. Table, record-batch,
   row-record entry points infer or wrap input into that pipeline; nothing
   streamable takes or returns `Vec` batches.
+- Every write door - the overwrite, the append and the merge of each shape,
+  the generic `write_*`, and `ArrowWriteSession::finish` - answers one
+  `IOResult`: `read_rows` pulled from the source, `written_rows` taken by
+  the destination, `skipped_rows` read and not written - the rows the
+  options' `where` kept out and the part of the batch a bound fell in; what
+  lies past a bound is never pulled and counts nowhere. It is counted once,
+  in the shared shaping of `iobase/transfer.rs` (`WriteCount`: one wrapper
+  on the source, one on the shaped stream, one atomic add per batch), never
+  by a medium, a wrapper or a binding; a write cut into cadences answers
+  their sum, and the answer says nothing of what was replaced. A medium's
+  free encoder and `overwrite_prepared_arrow_reader` publish rows already
+  counted and answer `()`.
 - Record options are the split sections of one `Plan`, stored apart for
   isolation: `name` (default `media::DEFAULT_ROOT_NAME`) and the declared
   `field` (undeclared = inferred; the plan's `create` section), `filter` (its
@@ -1358,8 +1370,9 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   states every fact a column used to repeat and no column repeats one: the
   object a line came from is `crosscode`, so `crosshashcode` is the XXH3-64 of
   that URL string and `crossuuid` derives from it; the row number under
-  `TextOptions.start_rownum` is `seqnum`, null at zero and refused where a
-  count cannot hold it; when the record was written is `currunix`, the row
+  `TextOptions.start_rownum` is `seqnum`, never null - zero is the first
+  place - and refused where a count cannot hold it; when the record was
+  written is `currunix`, the row
   header's `mtime` capture where `parse_mtime` declares one and `IOBase::mtime`
   where it does not or the header does not match the line; the instant the read
   dated the line cut before it by is `prevunix` - none for an object's first

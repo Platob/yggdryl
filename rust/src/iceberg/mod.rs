@@ -285,7 +285,7 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_cadenced(batches, crate::IOMode::Overwrite, options)
     }
 
@@ -299,7 +299,7 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_cadenced(batches, crate::IOMode::Append, options)
     }
 
@@ -313,7 +313,7 @@ impl Located {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.write_cadenced(batches, crate::IOMode::Merge, options)
     }
 
@@ -324,7 +324,7 @@ impl Located {
         batches: crate::arrow::BatchReader,
         mode: crate::IOMode,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         use crate::media::IORecordOptions as _;
 
         // The directories this location was reached through and the

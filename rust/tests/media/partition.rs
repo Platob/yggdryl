@@ -591,12 +591,14 @@ mod lake {
         // February this write already replaced, and April is new.
         let first = dated(&[40, 50], &["02", "04"]);
         let second = dated(&[60], &["02"]);
-        handle
+        let result = handle
             .overwrite_arrow_reader(
                 yggdryl::arrow::batch_reader(first.schema(), [first, second]),
                 &options(Some(field.clone())),
             )
             .unwrap();
+        // What the write did is the rows it routed, whatever it replaced.
+        assert_eq!(result, yggdryl::IOResult::new(3, 3));
 
         // January and March were never reached: the same bytes, never
         // rewritten.

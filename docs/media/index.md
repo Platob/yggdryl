@@ -118,7 +118,7 @@ A folder, a location ending in `/` and a glob read as the one table their leaves
 
 ## Write
 
-Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose `merge_by` key matches and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own.
+Every write states its intent: `overwrite_*` replaces the stored rows, `append_*` keeps them and adds its own after them, and `merge_*` updates the rows whose `merge_by` key matches and appends the rest. `overwrite_records`, `append_records` and `merge_records` write native rows; the `*_arrow_reader` and `*_arrow_batch` twins - and `*_arrow_table` in the bindings - write Arrow batches, streamed and never collected; and `overwrite_serie`, `append_serie` and `merge_serie` - `write_serie` with the mode named - write a held `Serie`, a `ChunkedSerie` or a `SerieReader` as the batches it already is ([Writing a serie to a handle](../types/serie.md#writing-a-serie-to-a-handle)), absent options being the handle's own. Every one of them answers an `IOResult` - the rows it read, wrote and skipped ([Write results](../holder/index.md#write-results)).
 
 === "Rust"
 

@@ -387,7 +387,7 @@ impl IOMedia for Table {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -403,7 +403,7 @@ impl IOMedia for Table {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -411,7 +411,7 @@ impl IOMedia for Table {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -419,7 +419,7 @@ impl IOMedia for Table {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -427,7 +427,7 @@ impl IOMedia for Table {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -435,7 +435,7 @@ impl IOMedia for Table {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }

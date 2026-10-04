@@ -661,20 +661,29 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
 ];
 
 /// The crate's own columns every message states: the instants the identity
-/// is settled against, the codes and the identity it settles to.
+/// is settled against, the codes and the identity it settles to, and the
+/// place it holds among the messages of its instant - zero for the first,
+/// so never absent.
 ///
 /// The state a message reached is stated on every row a message writes -
 /// `UNKNOWN` where nothing states one - but the column admits a null,
 /// because a state has no neutral member for an empty cell to read as, and
 /// a column no default can fill is not one a row can be required to state.
-const ALWAYS_STATED: [i32; 6] = [
+const ALWAYS_STATED: [i32; 7] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
+    SEQNUM_TAG_NAME.0,
 ];
+
+/// Whether `tag` is one of the crate's own columns every message states,
+/// which the field and the fixed row both declare required.
+pub(super) fn is_always_stated(tag: i32) -> bool {
+    ALWAYS_STATED.contains(&tag)
+}
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
@@ -847,7 +856,7 @@ impl Crated {
         // is no group of any message: the event answers it whole.
         let counts_itself =
             !self.derived && matches!(dtype, DataType::Map(_) | DataType::SortedMap(_));
-        let mut field = Field::new(name, dtype, !ALWAYS_STATED.contains(&tag));
+        let mut field = Field::new(name, dtype, !is_always_stated(tag));
         field.as_fix_mut().set_tag(tag)?;
         field.set_display(display)?;
         field.set_description(self.fix_wording.unwrap_or(description))?;
@@ -925,7 +934,7 @@ const CRATED: [Crated; 49] = [
     Crated::event(SNAPUNIX_TAG_NAME, EventColumn::SnapUnix),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
     Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum).saying(
-        "The message's place among the messages of its instant, null at 0: \
+        "The message's place among the messages of its instant, never null: \
          0 for the first of each run the parse hands over at that instant \
          with no other instant between, one more for each next, a message \
          split off another at a later place than it; once walked, the \

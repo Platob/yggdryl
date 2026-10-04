@@ -699,9 +699,7 @@ impl<'a> Row<'a> {
         match column {
             Column::Element(ElementColumn::CurrHashCode) => Some(self.element.get_currhashcode()),
             Column::Element(ElementColumn::CrossHashCode) => Some(self.element.get_crosshashcode()),
-            Column::Event(EventColumn::SeqNum) => {
-                Some(self.event?.get_seqnum()).filter(|seqnum| *seqnum != 0)
-            }
+            Column::Event(EventColumn::SeqNum) => Some(self.event?.get_seqnum()),
             _ => None,
         }
     }

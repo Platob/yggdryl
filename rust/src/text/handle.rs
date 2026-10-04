@@ -176,7 +176,7 @@ impl<H: IOBase> IOMedia for Text<H> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.require_text_options(options)?;
         IOMedia::overwrite_arrow_reader(&mut self.handle, batches, options)
     }
@@ -194,7 +194,7 @@ impl<H: IOBase> IOMedia for Text<H> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.require_text_options(options)?;
         IOMedia::append_arrow_reader(&mut self.handle, batches, options)
     }
@@ -203,7 +203,7 @@ impl<H: IOBase> IOMedia for Text<H> {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         self.require_text_options(options)?;
         IOMedia::merge_arrow_reader(&mut self.handle, batches, options)
     }

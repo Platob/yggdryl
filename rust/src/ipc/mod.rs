@@ -980,11 +980,11 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         let opened = self.opened;
         match crate::iobase::overwrite_arrow_reader_default_with_field(self, batches, options) {
-            Ok(published) => {
+            Ok((published, result)) => {
                 // Closed media never begin caching as a side effect of a
                 // write. An already-open one keeps its cache coherent with the
                 // final field after all shaping and stored completion.
@@ -992,7 +992,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
                 if opened && let Some(published) = published {
                     let _ = self.cached_schema.set(published);
                 }
-                Ok(())
+                Ok(result)
             }
             Err(error) => {
                 // A later cadence may already be visible. The old cached field
@@ -1040,7 +1040,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
@@ -1049,7 +1049,7 @@ impl<H: IOBase> crate::IOMedia for Ipc<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }

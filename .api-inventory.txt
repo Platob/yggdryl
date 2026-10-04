@@ -2809,7 +2809,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   pub fn merge(options: &RecordOptions) -> Result<Self>
   pub fn new(mode: IOMode, options: &RecordOptions) -> Result<Self>
   pub fn push(&mut self, handle: &mut (impl IOBase + ?Sized), batches: BatchReader) -> Result<bool>
-  pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()>
+  pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<IOResult>  (the rows every pushed chunk carried and the rows its shaping kept)
   pub fn abort(&mut self)
   pub struct Reader<'source>
   pub struct Writer<'target>
@@ -2858,23 +2858,23 @@ pub trait IOMedia: Send
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
   fn read_serie(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader>  (one record Serie per batch; None the handle's own record_options() - a container the table its leaves hold; a structured text document is the one column its rows parse into, reading only the declared field off the options; forwarded by Holder, Uri, Box<dyn IOBase> and delegate_iomedia!, the HTTP request walking its pages)
-  fn write_serie( &mut self, value: crate::SerieSource, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<()>  (the source as the stream of the batches it already is - SerieSource::into_reader, nothing copied or re-landed - to write_arrow_reader as its transport face; None the handle's own record_options(); a structured text document overwritten whole, its rows cast onto the declared field and no other option read, any other mode refused at $.mode; a run or a record holding an absent row refused before the destination is touched; what a cadence holds between publications held under the process spill bound)
-  fn overwrite_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Overwrite)
-  fn append_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Append)
-  fn merge_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<()>  (write_serie under IOMode::Merge, keyed by the options' merge_by)
-  fn write_arrow_reader( &mut self, batches: crate::arrow::BatchReader, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()>
-  fn overwrite_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
+  fn write_serie( &mut self, value: crate::SerieSource, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (the source as the stream of the batches it already is - SerieSource::into_reader, nothing copied or re-landed - to write_arrow_reader as its transport face; None the handle's own record_options(); a structured text document overwritten whole, its rows cast onto the declared field and no other option read, any other mode refused at $.mode; a run or a record holding an absent row refused before the destination is touched; what a cadence holds between publications held under the process spill bound)
+  fn overwrite_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Overwrite)
+  fn append_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Append)
+  fn merge_serie( &mut self, value: crate::SerieSource, options: Option<&RecordOptions>, ) -> Result<crate::IOResult>  (write_serie under IOMode::Merge, keyed by the options' merge_by)
+  fn write_arrow_reader( &mut self, batches: crate::arrow::BatchReader, mode: crate::IOMode, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn overwrite_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<crate::IOResult>
   fn overwrite_prepared_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
-  fn overwrite_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
-  fn write_arrow_batch( &mut self, batch: arrow_array::RecordBatch, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()>
-  fn append_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
-  fn append_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
-  fn merge_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
-  fn merge_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
-  fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
-  fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
-  fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
-  fn write_records<I, R>( &mut self, records: I, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()> where
+  fn overwrite_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn write_arrow_batch( &mut self, batch: arrow_array::RecordBatch, mode: crate::IOMode, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn append_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn append_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn merge_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn merge_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<crate::IOResult>
+  fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<crate::IOResult> where
+  fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<crate::IOResult> where
+  fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<crate::IOResult> where
+  fn write_records<I, R>( &mut self, records: I, mode: crate::IOMode, options: &RecordOptions, ) -> Result<crate::IOResult> where
 
 ### yggdryl::root::iomode  [rust/src/iomode.rs]
 pub enum IOMode
@@ -2882,6 +2882,15 @@ pub enum IOMode
   pub const WRITE: [Self; 3] = [Self::Overwrite, Self::Append, Self::Merge];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
+
+### yggdryl::root::ioresult  [rust/src/ioresult.rs]
+pub struct IOResult  (Clone, Copy, Debug, Default, Eq, Ord, Hash, serde, Display `read N rows, wrote N, skipped N`, Add, AddAssign, Sum - saturating; what every IOMedia write door and ArrowWriteSession::finish answer: read_rows pulled from the source, written_rows taken by the destination, skipped_rows read and not written - the rows a `where` kept out and the part of the batch a bound fell in; what lies past a bound is never pulled and counts nowhere; a write cut into several commits answers their sum; it says nothing of what was replaced)
+  pub read_rows: u64
+  pub written_rows: u64
+  pub skipped_rows: u64
+  pub const fn new(read_rows: u64, written_rows: u64) -> Self  (skipped_rows the read rows less the written, never below zero)
+  pub const fn is_empty(&self) -> bool  (no row read and none written)
+  pub fn stable_hash(&self) -> u64
 
 ### yggdryl::root::media_type  [rust/src/media_type.rs]
 // `DataType::MediaType` and its field/scalar live in types\media_type\; the value stays here.

@@ -2200,17 +2200,19 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
-        let result = crate::iobase::overwrite_arrow_reader_default(self, batches, options);
         // Publication may have changed the visible file before a later source
         // or storage failure. Never retain a footer from before the attempt.
-        if let Err(error) = result {
-            self.refresh_metadata_after_error();
-            return Err(error);
-        }
+        let result = match crate::iobase::overwrite_arrow_reader_default(self, batches, options) {
+            Ok(result) => result,
+            Err(error) => {
+                self.refresh_metadata_after_error();
+                return Err(error);
+            }
+        };
         self.refresh_metadata()?;
-        Ok(())
+        Ok(result)
     }
 
     fn overwrite_prepared_arrow_reader(
@@ -2232,7 +2234,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::append_arrow_reader_default(self, batches, options)
     }
@@ -2241,7 +2243,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
         &mut self,
         batches: BatchReader,
         options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<crate::IOResult> {
         self.require_record_options(options)?;
         crate::iobase::merge_arrow_reader_default(self, batches, options)
     }

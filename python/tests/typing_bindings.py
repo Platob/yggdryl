@@ -33,6 +33,7 @@ from yggdryl import (
     GeographyField,
     GeometryField,
     IOBase,
+    IOResult,
     Int32Field,
     IsinField,
     MarketDataKind,
@@ -839,7 +840,18 @@ stored_root: Field = record_handle.read_arrow_field()
 logical_rows: int = record_handle.row_size()
 logical_columns: int = record_handle.column_size()
 io_capable: bool = record_handle.is_io()
-record_handle.overwrite_arrow_reader(record_batches, options=record_options)
+record_overwritten: IOResult = record_handle.overwrite_arrow_reader(
+    record_batches, options=record_options
+)
+record_read_rows: int = record_overwritten.read_rows
+record_written_rows: int = record_overwritten.written_rows
+record_skipped_rows: int = record_overwritten.skipped_rows
+record_nothing_read: bool = record_overwritten.is_empty()
+record_results_summed: IOResult = record_overwritten + IOResult(2, 1)
+record_result_text: str = str(IOResult(read_rows=2, written_rows=1))
+record_result_hash: int = record_overwritten.stable_hash()
+record_result_ordered: bool = record_overwritten < IOResult()
+record_overwritten + 1  # type: ignore[operator]
 record_handle.append_arrow_reader(record_batches, options=record_options)
 record_handle.write_arrow_reader(record_batches, "overwrite", options=record_options)
 record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
@@ -850,7 +862,7 @@ record_series = record_handle.read_serie(options=record_options, num_threads=2)
 record_handle.write_serie(record_series)
 record_handle.write_serie(record_batches, "append", options=record_options, num_threads=...)
 record_handle.overwrite_serie(lit_serie, commit_batch_num=1)
-record_handle.append_serie(pa.table({"id": [1]}))
+record_appended: IOResult = record_handle.append_serie(pa.table({"id": [1]}))
 record_handle.merge_serie(record_series, merge_by=["id"])
 record_handle.write_serie(record_series, mode=1)  # type: ignore[arg-type]
 record_options.merge_by = ["id"]
@@ -906,13 +918,15 @@ record_handle.write_arrow_table(arrow_table, "append")
 record_handle.overwrite_arrow_batch(arrow_batch)
 record_handle.append_arrow_batch(arrow_batch)
 record_handle.merge_arrow_batch(arrow_batch, options=record_options)
-record_handle.write_arrow_batch(arrow_batch, "overwrite")
+record_batch_written: IOResult = record_handle.write_arrow_batch(arrow_batch, "overwrite")
 record_options.merge_by = []
 record_handle.overwrite_records([{"id": 1}], options=record_options)
 record_handle.append_records([{"id": 2}], options=record_options)
 record_options.merge_by = ["id"]
 record_handle.merge_records([{"id": 2}], options=record_options)
-record_handle.write_records([{"id": 3}], "merge", options=record_options)
+record_rows_merged: IOResult = record_handle.write_records(
+    [{"id": 3}], "merge", options=record_options
+)
 plain_records: Iterator[dict[str, Any]] = record_handle.read_records(
     options=record_options
 )
@@ -937,7 +951,7 @@ record_handle.overwrite_pandas_frame(pandas_frame, options=record_options)
 record_handle.append_pandas_frame(pandas_frame)
 record_options.merge_by = ["id"]
 record_handle.merge_pandas_frame(pandas_frame, options=record_options)
-record_handle.write_pandas_frame(pandas_frame, "append")
+pandas_appended: IOResult = record_handle.write_pandas_frame(pandas_frame, "append")
 polars_frames: Iterator[Any] = record_handle.read_polars()
 polars_frame: Any = record_handle.read_polars_frame(options=record_options)
 record_handle.overwrite_polars(polars_frames)

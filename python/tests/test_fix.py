@@ -29,6 +29,7 @@ from yggdryl import (
     Field,
     Identifiers,
     IOBase,
+    IOResult,
     MimeType,
     Scalar,
     TextLine,
@@ -1235,14 +1236,14 @@ def test_the_lifecycle_twin_walks_the_rows_a_batch_holds(seed_batch: FixRegistry
     # A parse chains nothing, but places each message within its instant:
     # all four are undated, so they share the codec's default and count up.
     # The fill splits into its report and an execution of its own (A12).
-    assert _column(table, "seqnum") == [None, 1, 2, 3]
+    assert _column(table, "seqnum") == [0, 1, 2, 3]
     assert _column(table, "prevuuid") == [None, None, None, None]
 
     walked = codec.lifecycle_arrow_reader(table).read_all()
     assert walked.schema == table.schema, "the same schema in and out"
     # The order's later steps each keep their own place; the execution
     # shares the fill's instant with its report and stands after it.
-    assert _column(walked, "seqnum") == [None, None, None, 1], "a later instant keeps its own place"
+    assert _column(walked, "seqnum") == [0, 0, 0, 1], "a later instant keeps its own place"
     assert _column(walked, "prevuuid")[0] is None and _column(walked, "prevuuid")[3] is None
     assert all(held is not None for held in _column(walked, "prevuuid")[1:3])
     assert _column(walked, "fixentries") == _column(table, "fixentries"), "the record is untouched"
@@ -2337,8 +2338,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
-    # The columns every message settles are non-null; every other one is
-    # nullable, because a message that carried nothing there answers null.
+    # The columns every message settles are non-null - its place among the
+    # messages of its instant with them, zero for the first; every other one
+    # is nullable, because a message that carried nothing there answers null.
     assert [name for name, field in fields.items() if not field.nullable] == [
         "curruuid",
         "crossuuid",
@@ -2346,6 +2348,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "crosshashcode",
         "currunix",
         "creaunix",
+        "seqnum",
     ]
 
     # The clocks are instants in UTC, to the nanosecond; the identities are
@@ -4505,6 +4508,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "crosshashcode",
         "curruuid",
         "crossuuid",
+        "seqnum",
         "beginstring",
     }
     # The facts a row derives are typed as the thing they hold.
@@ -4991,3 +4995,121 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
     assert sum(len(record) for record in market) > 0
     books = codec.book_serie(codec.lifecycle(messages), 900_000)
     assert isinstance(books, yggdryl.SerieReader)
+
+
+# The key every table of the capture pipeline declares: when a row happened
+# and the hash of what it states.
+CAPTURE_PRIMARY_KEY = ("currunix", "currhashcode")
+# What every table of the pipeline requires of each row: its key and its
+# place among the rows of its instant.
+CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "seqnum")
+
+
+def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTable:
+    """A format-v3 table for rows of ``row``, as Iceberg states them.
+
+    Partitioned by ``partunix`` - ``currunix`` floored to the quarter hour, a
+    column the table computes for every row written to it - sorted by it, the
+    instant, the place within the instant and the content hash, with the
+    instant and the hash its primary key.
+    """
+    schema = row.into_scheme_compat("iceberg").with_partition_by(
+        ["time_bucket('15 minutes', currunix) as partunix"]
+    )
+    for name in CAPTURE_REQUIRED:
+        column = schema[name]
+        column.set_nullable(False)
+        schema[name] = column
+    schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
+    schema = yggdryl.iceberg.assign_field_ids(schema)
+    # Iceberg names a key by the identifiers of its columns, which exist once
+    # the schema is numbered.
+    key = sorted(schema[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
+    schema.iceberg.update({"identifier-field-ids": ",".join(map(str, key))})
+    return yggdryl.iceberg.IcebergTable.create(IOBase(root), schema, format_version=3)
+
+
+def test_the_capture_pipeline_lands_table_to_table_on_series(
+    seed_batch: FixRegistry, tmp_path: pathlib.Path
+) -> None:
+    # Bridge logs under a glob are one stream of text rows; a table takes
+    # them with `append_serie`, and the rows it yields back, in its own
+    # order, are parsed, walked and written with `overwrite_serie`, which
+    # replaces the quarters of an hour they fall in. No `pyarrow` stream
+    # between any two stages, and every write says what it did.
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    captured = ULBRIDGE_LOG.read_bytes().splitlines(keepends=True)
+    (logs / "bridge-0.log").write_bytes(b"".join(captured[:72]))
+    (logs / "bridge-1.log").write_bytes(b"".join(captured[72:]))
+    # The glob names the captures; a note beside them is not one.
+    (logs / "notes.txt").write_bytes(b"not a capture\n")
+
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    options.start_rownum = 1
+    lines = IOBase(logs / "*.log").read_serie(options=options)
+    assert isinstance(lines, yggdryl.SerieReader)
+    text_row = lines.field
+
+    text = _capture_table(tmp_path / "text", text_row)
+    appended = text.append_serie(lines)
+    assert appended == IOResult(144, 144)
+    assert appended.skipped_rows == 0
+    assert text.row_size() == 144
+    assert text.format_version == 3
+
+    # The table is what its schema says: partitioned by the quarter hour it
+    # computes, sorted, keyed, and its identity columns typed `uuid`.
+    stored = text.schema
+    assert stored.metadata["PARTITION:by"] == '["partunix"]'
+    assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]'
+    key = sorted(stored[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
+    assert stored.iceberg.get("identifier-field-ids") == ",".join(map(str, key))
+    assert [stored[name].nullable for name in CAPTURE_REQUIRED] == [False, False, False]
+    assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
+
+    def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
+        return [
+            (row["partunix"].value, row["currunix"].value)
+            for batch in table.read_arrow_reader(select=["partunix", "currunix"])
+            for row in batch.to_pylist(maps_as_pydicts="strict")
+        ]
+
+    quarter = 900 * 1_000_000_000
+    instants = ordered(text)
+    assert len(instants) == 144
+    assert instants == sorted(instants)
+    assert all(partunix == currunix - currunix % quarter for partunix, currunix in instants)
+
+    # The stored text, in the table's order, parsed and walked.
+    codec = _fixed_batch(seed_batch)
+
+    def walked() -> yggdryl.SerieReader:
+        return codec.lifecycle_serie(codec.parse_text_serie(text.read_serie(field=text_row)))
+
+    stream = walked()
+    fix = _capture_table(tmp_path / "fix", stream.field)
+    written = fix.overwrite_serie(stream)
+    assert written.read_rows == written.written_rows == fix.row_size() > 0
+    assert written.skipped_rows == 0
+    # The Arrow doors over the same stored text walk the same rows.
+    assert (
+        codec.lifecycle_arrow_reader(
+            codec.parse_text_arrow_reader(text.read_arrow_reader(field=text_row))
+        )
+        .read_all()
+        .num_rows
+        == written.written_rows
+    )
+    rows = ordered(fix)
+    assert rows == sorted(rows)
+
+    # Running the stage again replaces the quarters its rows fall in: the
+    # same rows under one more snapshot, never the two runs together.
+    again = fix.overwrite_serie(walked())
+    assert again == written
+    assert fix.row_size() == written.written_rows
+    assert len(fix.snapshots) == 2
+    assert ordered(fix) == rows

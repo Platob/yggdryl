@@ -901,7 +901,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -917,7 +917,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::overwrite_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -925,7 +925,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::append_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -933,7 +933,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::append_arrow_batch(self.as_media_mut(), batch, options)
     }
 
@@ -941,7 +941,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batches: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_reader(self.as_media_mut(), batches, options)
     }
 
@@ -949,7 +949,7 @@ impl crate::IOMedia for Holder {
         &mut self,
         batch: arrow_array::RecordBatch,
         options: &crate::media::RecordOptions,
-    ) -> Result<()> {
+    ) -> Result<crate::IOResult> {
         crate::IOMedia::merge_arrow_batch(self.as_media_mut(), batch, options)
     }
 }

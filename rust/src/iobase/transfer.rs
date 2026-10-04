@@ -1,8 +1,97 @@
 //! Arrow record transfer through [`IOBase`](super::IOBase).
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use super::IOBase;
 use crate::media::{Cadence, RecordOptions};
-use crate::{Error, Result};
+use crate::{Error, IOResult, Result};
+
+/// The rows one write read and the rows it wrote, counted as they are pulled.
+///
+/// A write's shaping sits between two readers: the source it was handed and
+/// the shaped stream its destination pulls. Each is wrapped once, here, so
+/// every door that shapes through this module answers its [`IOResult`]
+/// without counting anything itself: what the source yielded is read, what
+/// the destination pulled is written, and the difference - the rows the
+/// options' `where` kept out, the part of a last batch a bound cut off - is
+/// skipped. A write allocates its two counts once and each wrapper once,
+/// whatever its length, and a wrapper adds one atomic add per batch.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WriteCount(Arc<Rows>);
+
+/// The two counts of one write, shared by its two wrappers.
+#[derive(Debug, Default)]
+struct Rows {
+    read: AtomicU64,
+    written: AtomicU64,
+}
+
+impl WriteCount {
+    /// `reader` with every row it yields counted as read.
+    pub(crate) fn reading(&self, reader: crate::arrow::BatchReader) -> crate::arrow::BatchReader {
+        Box::new(Counted {
+            inner: reader,
+            rows: Arc::clone(&self.0),
+            written: false,
+        })
+    }
+
+    /// `reader` with every row it yields counted as written.
+    pub(crate) fn writing(&self, reader: crate::arrow::BatchReader) -> crate::arrow::BatchReader {
+        Box::new(Counted {
+            inner: reader,
+            rows: Arc::clone(&self.0),
+            written: true,
+        })
+    }
+
+    /// Count `read` rows read and `written` rows written: a batch shaped
+    /// outside a reader.
+    pub(crate) fn add(&self, read: usize, written: usize) {
+        self.0.read.fetch_add(read as u64, Ordering::Relaxed);
+        self.0.written.fetch_add(written as u64, Ordering::Relaxed);
+    }
+
+    /// What the write did so far.
+    pub(crate) fn result(&self) -> IOResult {
+        IOResult::new(
+            self.0.read.load(Ordering::Relaxed),
+            self.0.written.load(Ordering::Relaxed),
+        )
+    }
+}
+
+/// One reader's batches, their rows added to one of a write's two counts as
+/// they are yielded.
+struct Counted {
+    inner: crate::arrow::BatchReader,
+    rows: Arc<Rows>,
+    written: bool,
+}
+
+impl Iterator for Counted {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.inner.next();
+        if let Some(Ok(batch)) = &next {
+            let count = if self.written {
+                &self.rows.written
+            } else {
+                &self.rows.read
+            };
+            count.fetch_add(batch.num_rows() as u64, Ordering::Relaxed);
+        }
+        next
+    }
+}
+
+impl arrow_array::RecordBatchReader for Counted {
+    fn schema(&self) -> arrow_schema::SchemaRef {
+        self.inner.schema()
+    }
+}
 
 /// The default append implementation after an encoding-specific boundary has
 /// validated its option variant.
@@ -13,7 +102,7 @@ pub(crate) fn append_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<()> {
+) -> Result<IOResult> {
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Append)?;
@@ -21,12 +110,12 @@ pub(crate) fn append_arrow_reader_default(
     options.require_num_threads()?;
     options.require_write_limits()?;
     if options.write_limit_is_zero() {
-        return Ok(());
+        return Ok(IOResult::default());
     }
     // An empty append is a true no-op: discover it before asking the handle
     // whether it is a table or folder, so no location probe or listing runs.
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(IOResult::default());
     };
     let container = handle.is_container();
     if container {
@@ -36,9 +125,9 @@ pub(crate) fn append_arrow_reader_default(
         }
         return append_arrow_reader_folder(handle, batches, options);
     }
-    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let (batches, delegated, target, count) = prepare_leaf_arrow_write(handle, batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(count.result());
     };
     // A leaf append is a rewrite, so with no stated cadence it publishes
     // once, after the source ends.
@@ -48,7 +137,7 @@ pub(crate) fn append_arrow_reader_default(
             None => append_leaf(handle, commit?, &delegated)?,
         }
     }
-    Ok(())
+    Ok(count.result())
 }
 
 /// The default merge implementation after an encoding-specific boundary has
@@ -57,7 +146,7 @@ pub(crate) fn merge_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<()> {
+) -> Result<IOResult> {
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Merge)?;
@@ -67,7 +156,7 @@ pub(crate) fn merge_arrow_reader_default(
     // Key and limit intent is deterministic and has already been validated;
     // only then may an empty merge end without touching its destination.
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(IOResult::default());
     };
     let container = handle.is_container();
     if container {
@@ -77,9 +166,9 @@ pub(crate) fn merge_arrow_reader_default(
         }
         return merge_arrow_reader_folder(handle, batches, options);
     }
-    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let (batches, delegated, target, count) = prepare_leaf_arrow_write(handle, batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(count.result());
     };
     for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
         match &target {
@@ -89,7 +178,7 @@ pub(crate) fn merge_arrow_reader_default(
             None => merge_leaf(handle, commit?, &delegated, options.merge_by())?,
         }
     }
-    Ok(())
+    Ok(count.result())
 }
 
 /// The common overwrite implementation for byte and folder handles.
@@ -108,8 +197,8 @@ pub fn overwrite_arrow_reader_default(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<()> {
-    overwrite_arrow_reader_default_with_field(handle, batches, options).map(|_| ())
+) -> Result<IOResult> {
+    overwrite_arrow_reader_default_with_field(handle, batches, options).map(|(_, result)| result)
 }
 
 /// Run the default overwrite and return the logical field actually published.
@@ -119,11 +208,12 @@ pub fn overwrite_arrow_reader_default(
 /// that consumes `batches`: declared-field casting and selection happen once,
 /// then an existing stored field completes the result. `None` is reserved for
 /// a table-format redirection whose own commit owns its metadata cache.
+/// The rows read and written travel beside it.
 pub(crate) fn overwrite_arrow_reader_default_with_field(
     handle: &mut (impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<Option<crate::Field>> {
+) -> Result<(Option<crate::Field>, IOResult)> {
     use crate::media::IORecordOptions;
 
     options.require_write_mode(crate::IOMode::Overwrite)?;
@@ -133,12 +223,13 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
     if container {
         #[cfg(feature = "iceberg")]
         if let Some(mut table) = crate::iceberg::located(handle)? {
-            table.overwrite_arrow_reader(batches, options)?;
-            return Ok(None);
+            let result = table.overwrite_arrow_reader(batches, options)?;
+            return Ok((None, result));
         }
-        return overwrite_arrow_reader_folder(handle, batches, options).map(Some);
+        return overwrite_arrow_reader_folder(handle, batches, options)
+            .map(|(published, result)| (Some(published), result));
     }
-    let (batches, delegated, target) = prepare_leaf_arrow_write(handle, batches, options)?;
+    let (batches, delegated, target, count) = prepare_leaf_arrow_write(handle, batches, options)?;
     let schema = batches.schema();
     let published = target
         .clone()
@@ -152,7 +243,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
         // publishes its shaped schema and clears the prior rows.
         handle
             .overwrite_prepared_arrow_reader(crate::arrow::batch_reader(schema, []), &delegated)?;
-        return Ok(published);
+        return Ok((published, count.result()));
     };
     handle.overwrite_prepared_arrow_reader(first?, &delegated)?;
     // Replacing every cadence would retain only the last one. Once the
@@ -163,7 +254,7 @@ pub(crate) fn overwrite_arrow_reader_default_with_field(
             None => append_leaf(handle, commit?, &delegated)?,
         }
     }
-    Ok(published)
+    Ok((published, count.result()))
 }
 
 /// Append through one folder routing plan shared by every publication cadence.
@@ -171,17 +262,17 @@ fn append_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<()> {
+) -> Result<IOResult> {
     let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
-    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let (batches, delegated, declared, count) = prepare_arrow_write(batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(count.result());
     };
     writer.set_options(routing_options(delegated, declared))?;
     for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
         writer.append(folder, commit?)?;
     }
-    Ok(())
+    Ok(count.result())
 }
 
 /// Merge through one folder routing plan shared by every publication cadence.
@@ -189,20 +280,20 @@ fn merge_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<()> {
+) -> Result<IOResult> {
     // Layout resolves before shaping or mutation because it decides whether
     // at least one merge key remains inside each leaf. The top-level no-op
     // peek has retained the first row-bearing batch without advancing past it.
     let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
-    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let (batches, delegated, declared, count) = prepare_arrow_write(batches, options)?;
     let Some(batches) = non_empty_arrow_reader(batches)? else {
-        return Ok(());
+        return Ok(count.result());
     };
     writer.set_options(routing_options(delegated, declared))?;
     for commit in options.commit_arrow_readers(batches, Cadence::Once)? {
         writer.merge(folder, commit?)?;
     }
-    Ok(())
+    Ok(count.result())
 }
 
 /// Overwrite through one folder routing plan shared by every publication cadence.
@@ -210,18 +301,18 @@ fn overwrite_arrow_reader_folder(
     folder: &(impl IOBase + ?Sized),
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
-) -> Result<crate::Field> {
+) -> Result<(crate::Field, IOResult)> {
     use crate::media::IORecordOptions;
 
     let mut writer = crate::media::partition::FolderWriter::new(folder, options)?;
-    let (batches, delegated, declared) = prepare_arrow_write(batches, options)?;
+    let (batches, delegated, declared, count) = prepare_arrow_write(batches, options)?;
     let schema = batches.schema();
     let published = crate::arrow::field_from_arrow_schema(delegated.name(), schema.as_ref())?;
     writer.set_options(routing_options(delegated, declared))?;
     let mut commits = options.commit_arrow_readers(batches, Cadence::Once)?;
     let Some(first) = commits.next() else {
         writer.overwrite(folder, crate::arrow::batch_reader(schema, []))?;
-        return Ok(published);
+        return Ok((published, count.result()));
     };
     writer.overwrite(folder, first?)?;
     // Only the first cadence replaces the addressed tree. Every later prefix
@@ -229,7 +320,7 @@ fn overwrite_arrow_reader_folder(
     for commit in commits {
         writer.append(folder, commit?)?;
     }
-    Ok(published)
+    Ok((published, count.result()))
 }
 
 /// Shape one incoming write stream and return options safe for delegation.
@@ -247,6 +338,7 @@ pub(crate) fn prepare_arrow_write(
     crate::arrow::BatchReader,
     RecordOptions,
     Option<crate::Field>,
+    WriteCount,
 )> {
     prepare_arrow_write_onto(batches, options, None)
 }
@@ -256,7 +348,9 @@ pub(crate) fn prepare_arrow_write(
 /// Table formats use this seam before splitting publication cadences. Their
 /// native commit may defensively inspect the exact shape again, but every
 /// declared cast, selection, limit, and safe stored-field completion has
-/// already happened here over the one streaming reader.
+/// already happened here over the one streaming reader. The count beside
+/// the shaped reader is what the write read off its source and what its
+/// destination pulls.
 pub(crate) fn prepare_arrow_write_onto(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
@@ -265,13 +359,15 @@ pub(crate) fn prepare_arrow_write_onto(
     crate::arrow::BatchReader,
     RecordOptions,
     Option<crate::Field>,
+    WriteCount,
 )> {
     use crate::media::IORecordOptions;
 
-    let batches = options.apply_arrow_reader(batches, existing)?;
-    let batches = options.limit_arrow_reader(batches)?;
+    let count = WriteCount::default();
+    let batches = options.apply_arrow_reader(count.reading(batches), existing)?;
+    let batches = count.writing(options.limit_arrow_reader(batches)?);
     let (delegated, declared) = delegated_options(options);
-    Ok((batches, delegated, declared))
+    Ok((batches, delegated, declared, count))
 }
 
 /// Shape one incoming stream onto the stored field of a table that derives
@@ -289,9 +385,11 @@ pub(crate) fn prepare_arrow_write_deriving(
     batches: crate::arrow::BatchReader,
     options: &RecordOptions,
     stored: &crate::Field,
-) -> Result<crate::arrow::BatchReader> {
+) -> Result<(crate::arrow::BatchReader, WriteCount)> {
     use crate::media::IORecordOptions;
 
+    let count = WriteCount::default();
+    let batches = count.reading(batches);
     let cast = crate::ArrowCastOptions::new().with_safe(options.safe());
     let batches = match options.field() {
         Some(declared) => declared.apply_arrow_reader(batches, cast)?,
@@ -303,7 +401,8 @@ pub(crate) fn prepare_arrow_write_deriving(
     };
     let batches = options.apply_arrow_expressions(batches)?;
     let batches = stored.apply_arrow_reader(batches, cast)?;
-    options.limit_arrow_reader(batches)
+    let batches = count.writing(options.limit_arrow_reader(batches)?);
+    Ok((batches, count))
 }
 
 /// The options a shaped write publishes with, and the declared field taken
@@ -340,11 +439,13 @@ fn prepare_leaf_arrow_write(
     crate::arrow::BatchReader,
     RecordOptions,
     Option<crate::Field>,
+    WriteCount,
 )> {
     use crate::media::IORecordOptions;
 
     if let RecordOptions::Csv(csv) = options {
-        let shaped = options.apply_arrow_reader(batches, None)?;
+        let count = WriteCount::default();
+        let shaped = options.apply_arrow_reader(count.reading(batches), None)?;
         let incoming =
             crate::arrow::field_from_arrow_schema(options.name(), shaped.schema().as_ref())?;
         let target = crate::csv::write_target(handle, csv, &incoming)?.unwrap_or(incoming);
@@ -352,16 +453,17 @@ fn prepare_leaf_arrow_write(
             shaped,
             crate::ArrowCastOptions::new().with_safe(options.safe()),
         )?;
-        let batches = options.limit_arrow_reader(completed)?;
+        let batches = count.writing(options.limit_arrow_reader(completed)?);
         let (delegated, _) = delegated_options(options);
-        return Ok((batches, delegated, Some(target)));
+        return Ok((batches, delegated, Some(target), count));
     }
     let stored = if matches!(options, RecordOptions::Text(_)) {
         None
     } else {
         stored_field(handle, options)?
     };
-    let (batches, delegated, _) = prepare_arrow_write_onto(batches, options, stored.as_ref())?;
+    let (batches, delegated, _, count) =
+        prepare_arrow_write_onto(batches, options, stored.as_ref())?;
     let target = match stored {
         Some(stored) => Some(stored),
         None if matches!(options, RecordOptions::Text(_)) => None,
@@ -370,7 +472,7 @@ fn prepare_leaf_arrow_write(
             batches.schema().as_ref(),
         )?),
     };
-    Ok((batches, delegated, target))
+    Ok((batches, delegated, target, count))
 }
 
 /// One resumable, cadence-bounded Arrow write used by asynchronous bindings.
@@ -404,6 +506,8 @@ pub struct ArrowWriteSession {
     published: bool,
     /// How many cadences reached the destination, for the completion record.
     cadences: usize,
+    /// The rows every chunk carried and the rows its shaping kept.
+    count: WriteCount,
     input_complete: bool,
     terminal: bool,
 }
@@ -497,6 +601,7 @@ impl ArrowWriteSession {
             target: None,
             published: false,
             cadences: 0,
+            count: WriteCount::default(),
             input_complete: false,
             terminal: false,
         })
@@ -557,6 +662,7 @@ impl ArrowWriteSession {
             };
             let target = self.target.as_ref().and_then(ArrowWriteTarget::stored);
             let derives = self.target.as_ref().is_some_and(ArrowWriteTarget::derives);
+            let read = batch.num_rows();
             let shaped = self
                 .shapings
                 .get_or_compile(batch.schema_ref().fields(), || {
@@ -577,8 +683,10 @@ impl ArrowWriteSession {
                 }
             };
             let Some(batch) = self.limit.apply(batch) else {
+                self.count.add(read, 0);
                 break;
             };
+            self.count.add(read, batch.num_rows());
             let completed = match self
                 .buffer
                 .as_mut()
@@ -615,8 +723,9 @@ impl ArrowWriteSession {
         Ok(true)
     }
 
-    /// Publish the final incomplete cadence and complete the session.
-    pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<()> {
+    /// Publish the final incomplete cadence and complete the session,
+    /// answering the rows every chunk carried and the rows that were written.
+    pub fn finish(&mut self, handle: &mut (impl IOBase + ?Sized)) -> Result<IOResult> {
         use crate::media::IORecordOptions as _;
 
         self.require_live()?;
@@ -667,7 +776,7 @@ impl ArrowWriteSession {
             self.mode,
             self.cadences,
         );
-        Ok(())
+        Ok(self.count.result())
     }
 
     /// Drop the unpublished partial cadence while retaining prior commits.

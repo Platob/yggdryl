@@ -47,7 +47,11 @@ fn a_null_clears_and_nothing_stated_is_none() {
     assert_eq!(event.get_seqnum(), 0);
     assert_eq!(event.get_state(), &State::unknown());
     assert_eq!(event.get_recdunix(), None);
-    assert_eq!(EventColumn::SeqNum.fact(&event), None);
+    assert_eq!(
+        EventColumn::SeqNum.fact(&event),
+        Some(Scalar::from(0_u64)),
+        "the place is never absent: a null reads as the first"
+    );
     assert_eq!(
         EventColumn::State.fact(&event),
         Some(Scalar::State(State::unknown())),
@@ -76,7 +80,11 @@ fn the_columns_are_the_event_trait_s_in_one_order() {
         .filter(|column| !column.nullable())
         .map(EventColumn::name)
         .collect();
-    assert_eq!(nullable, ["currunix"], "only the instant is never absent");
+    assert_eq!(
+        nullable,
+        ["currunix", "seqnum"],
+        "only the instant and the place at it are never absent"
+    );
     assert_eq!(EventColumn::of_name("no such"), None);
     // An identity, a code and a source are the element's facts, a column of
     // its own.

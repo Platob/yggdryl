@@ -7897,6 +7897,14 @@ struct StageCosts {
 /// for each frame - and each batch by the two arrays it no longer gathers,
 /// to 210; no `into_row` moved.
 ///
+/// A place then came to be never absent: each of these messages is the
+/// first at its instant, and its `seqnum` cell states zero where it was a
+/// null. A column holding no null lands with no validity beside its values,
+/// so each landing fell by the two that validity cost -
+/// [`a_null_cell_costs_the_validity_a_stated_one_does_not`] pins the pair on
+/// its own - the bridge row's to 1500, a frame's to 1480, the packed
+/// frame's to 1518, and no other stage moved.
+///
 /// [`projecting_a_root_projects_every_level_below_it_into_its_own_cache`]: ../root/field.rs
 const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
     (
@@ -7905,7 +7913,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 556,
             into_row: 88,
-            landing: 1502,
+            landing: 1500,
             batch: 210,
             digest: 1,
             lifecycle: 10,
@@ -7917,7 +7925,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 223,
             into_row: 64,
-            landing: 1482,
+            landing: 1480,
             batch: 210,
             digest: 1,
             lifecycle: 10,
@@ -7929,7 +7937,7 @@ const FIX_PIPELINE_COSTS: [(&str, usize, StageCosts); 3] = [
         StageCosts {
             parse: 1022,
             into_row: 250,
-            landing: 1520,
+            landing: 1518,
             batch: 210,
             digest: 1,
             lifecycle: 10,
@@ -8016,6 +8024,34 @@ fn a_real_line_costs_the_same_at_every_stage_every_time() {
         ));
     }
     assert_eq!(measured, FIX_PIPELINE_COSTS, "the pipeline's stage costs");
+}
+
+#[test]
+fn a_null_cell_costs_the_validity_a_stated_one_does_not() {
+    // One record of one `uint64` cell under a nullable child, landed
+    // holding a null and holding zero: only the null builds a validity
+    // beside the values, and that is the two the fixed row's landing fell
+    // by when a first place came to state zero. Whether the column may hold
+    // a null changes nothing: a stated cell costs the same under a required
+    // child.
+    let land = |nullable: bool, cell: Scalar| {
+        let root = Arc::new(
+            DataType::from(
+                StructType::from_fields([Field::new("place", DataType::UInt64, nullable)])
+                    .expect("one child"),
+            )
+            .required_field("row"),
+        );
+        let (once, repeated) = counted_each(
+            || Scalar::from_sequence([cell.clone()]),
+            |row| Serie::from_scalars(Arc::clone(&root), [row]).expect("a column"),
+        );
+        assert_eq!(repeated, once * 64, "a landing costs the same every time");
+        once
+    };
+    let stated = land(true, Scalar::from(0_u64));
+    assert_eq!(land(true, Scalar::Null) - stated, 2);
+    assert_eq!(land(false, Scalar::from(0_u64)), stated);
 }
 
 /// The committed dictionary, read once for the tests that start from it.
@@ -9121,11 +9157,12 @@ fn excel_record_doors_cost_per_row_and_nothing_per_cell() {
             .record_options()
             .expect("Excel options")
             .with_field(field.clone());
-        let (written, ()) = counted(|| {
+        let (written, result) = counted(|| {
             handle
                 .overwrite_arrow_batch(batch.clone(), &options)
                 .expect("the rows write")
         });
+        assert_eq!(result.written_rows, count as u64);
         let (read, rows) = counted(|| {
             handle
                 .read_arrow_reader(&options)
@@ -10284,6 +10321,19 @@ fn iceberg_quotes(
     (table, path)
 }
 
+/// Count `work` twice and answer the lower.
+///
+/// The tests of this target share one process, and one of them makes the
+/// logging tree the `log` facade's backend: from then on the first record a
+/// module's target sends creates that target's logger, once. Whichever read
+/// happens to send it pays for a node of the process, never for the read,
+/// so a comparison of two reads takes each at its steady cost.
+#[cfg(feature = "iceberg")]
+fn steady(mut work: impl FnMut()) -> usize {
+    let first = counted(&mut work).0;
+    first.min(counted(&mut work).0)
+}
+
 /// Pull every batch `reader` yields.
 #[cfg(feature = "iceberg")]
 fn drained(reader: yggdryl::arrow::BatchReader) {
@@ -10309,8 +10359,10 @@ fn an_iceberg_record_read_needing_no_sort_is_its_scan_as_transport() {
         // Once each outside the count, so no first use is charged.
         drained(table.scan(None).expect("a scan"));
         drained(table.read_arrow_reader(&options).expect("a read"));
-        scans.push(counted(|| drained(table.scan(None).expect("a scan"))).0);
-        reads.push(counted(|| drained(table.read_arrow_reader(&options).expect("a read"))).0);
+        scans.push(steady(|| drained(table.scan(None).expect("a scan"))));
+        reads.push(steady(|| {
+            drained(table.read_arrow_reader(&options).expect("a read"));
+        }));
         let _ = std::fs::remove_dir_all(path);
     }
     assert_eq!(
@@ -10365,8 +10417,8 @@ fn an_iceberg_serie_read_behind_a_select_lands_its_rows_once_and_reads_no_order(
         };
         read();
         landed_once();
-        series.push(counted(read).0);
-        landings.push(counted(landed_once).0);
+        series.push(steady(read));
+        landings.push(steady(landed_once));
         let _ = std::fs::remove_dir_all(path);
     }
     assert_eq!(

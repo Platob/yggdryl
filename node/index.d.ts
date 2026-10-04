@@ -5448,24 +5448,27 @@ export declare class IOBase {
    *
    * This is the native-reader publication hook. The incoming stream is cast
    * to `options.field` once in the core, and a match key is refused because
-   * overwrite never infers merge intent.
+   * overwrite never infers merge intent. Answers the rows the write read,
+   * wrote and skipped.
    */
-  overwriteArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
+  overwriteArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
    * Add every batch `batches` yields after the rows this resource holds.
    *
    * Both sides stream: what is stored is chained ahead of what arrives, and
    * incoming batches are cast to the target shape as they are pulled.
+   * Answers the rows the write read, wrote and skipped.
    */
-  appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
+  appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /**
    * Merge every incoming row by `options.mergeBy`.
    *
    * A non-empty match key is required. The core keeps the incoming reader
    * streaming, applies `options.field` once, and publishes through the
    * implementor's overwrite hook without casting the shaped rows twice.
+   * Answers the rows the write read, wrote and skipped.
    */
-  mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
+  mergeArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): JsIOResult
   /** Decode this location as a host-independent forward-slash path. */
   intoPath(): string
   /** Return the location as text, so a handle prints where it points. */
@@ -5508,6 +5511,49 @@ export declare class IOCursor {
   flush(): void
 }
 export type JsIOCursor = IOCursor
+
+/**
+ * The rows one record write read, wrote and skipped.
+ *
+ * Every record write of an `IOBase` answers one: `readRows` is what the
+ * write pulled from its source, `writtenRows` what reached the destination,
+ * `skippedRows` what was read and not written - the rows a `where` kept
+ * out, the part of the last batch a bound cut off.
+ */
+export declare class IOResult {
+  /**
+   * The result of a write that read `readRows` and wrote `writtenRows`,
+   * each `0` when absent, the rest of what it read skipped - or, where
+   * `skippedRows` is stated, the three counts as they are: a sum of
+   * results states its own skipped rows, which `readRows - writtenRows`
+   * need not be.
+   */
+  constructor(readRows?: number | undefined | null, writtenRows?: number | undefined | null, skippedRows?: number | undefined | null)
+  /** The rows the write pulled from its source. */
+  get readRows(): number
+  /** The rows that reached the destination. */
+  get writtenRows(): number
+  /** The rows read and not written. */
+  get skippedRows(): number
+  /** Whether the write read no row at all: its source was empty. */
+  isEmpty(): boolean
+  /**
+   * The two results summed count by count, as one write cut into several
+   * commits answers.
+   */
+  add(other: IOResult): IOResult
+  /** Whether `other` states the same three counts. */
+  equals(other: IOResult): boolean
+  /** Compare the three counts in the core's order. */
+  compare(other: IOResult): number
+  /** Deterministic hash bits of the three counts. */
+  stableHash(): bigint
+  /** A detached copy of this immutable result. */
+  clone(): IOResult
+  /** The core's text: `read 10 rows, wrote 8, skipped 2`. */
+  toString(): string
+}
+export type JsIOResult = IOResult
 
 /**
  * A table of instruments keyed by ISIN - each row the instrument's CFI

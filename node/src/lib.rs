@@ -39,6 +39,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod ioresult;
 mod isin_registry;
 mod join;
 mod logging;
@@ -114,6 +115,7 @@ pub use iceberg::{
 };
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
+pub use ioresult::JsIOResult;
 pub use media::options::JsRecordOptions;
 pub use serie::{JsSerie, JsSerieIterator, JsSerieReader, JsSerieReaderWindows};
 pub use spill::JsSpillOptions;

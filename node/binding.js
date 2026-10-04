@@ -4904,6 +4904,7 @@ const { intoField } = installRecords({
   Field,
   IcebergOptions: binding.IcebergOptions,
   IOBase,
+  IOResult: binding.IOResult,
   RecordOptions,
   Serie,
   SerieReader,

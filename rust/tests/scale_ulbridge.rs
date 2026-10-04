@@ -16,7 +16,9 @@
 //! Every table is created from the schema of the stream written to it, as
 //! Iceberg states it, partitioned by `partunix` - `currunix` floored to the
 //! quarter hour, a column the table computes for every row it is written -
-//! and sorted by `partunix, currunix, seqnum, currhashcode`. A read yields
+//! and sorted by `partunix, currunix, seqnum, currhashcode`, with
+//! `currunix, currhashcode` - the instant and the content hash - declared
+//! its primary key, Iceberg's identifier fields. A read yields
 //! partition after partition in that order, so the lifecycle and the books
 //! take rows in the order they happened whatever order they were written
 //! in, and an overwrite replaces the partitions its rows fall in and no
@@ -26,7 +28,11 @@
 //! The capture is `rust/tests/fix/ulbridge.log` repeated: every copy is the
 //! same 144 lines at the same width, each clock moved by the copy and every
 //! identifier stepped by it ([`Template`]), so no copy is a repeat of another
-//! and every one of them reaches the tables. The copies are written through
+//! and every one of them reaches the tables. The scale run stacks
+//! [`DENSITY`] copies a second apart inside each four hours the capture
+//! spans, so twenty gibibytes are eight days of quarters holding tens of
+//! thousands of rows each, as a bridge's own days are, rather than decades
+//! of quarters holding a dozen. The copies are written through
 //! the crate's own Zstandard encoder into `.log.zst` files, a run of copies
 //! each, and read back as the one table their folder is through an
 //! [`FsFolder`] over [`LocalFileSystem`] - plain `std::fs` reads, never a
@@ -61,7 +67,9 @@
 //! whole path shows can be put on the stage that owns it.
 //! `YGGDRYL_SCALE_FOLDER` is where the input, the tables and nothing else
 //! are written, the platform temporary folder otherwise; the spill folder is
-//! the process default `YGGDRYL_SPILL_FOLDER` states.
+//! the process default `YGGDRYL_SPILL_FOLDER` states. `YGGDRYL_SCALE_DENSITY`
+//! is the copies stacked inside one span, [`DENSITY`] where it is absent:
+//! `1` is one copy a span, the sparsest table a run can ask for.
 //!
 //! This target owns its process, for two reasons: the resident set is the
 //! process's, and the spill bound every door settles under is the process
@@ -91,8 +99,8 @@ use yggdryl::local::LocalFolder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, Level, Scheme,
-    SerieReader, SerieSource, SpillOptions, Timezone,
+    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, IOResult, Level,
+    Scheme, SerieReader, SerieSource, SpillOptions, Timezone,
 };
 
 /// The capture every copy repeats, exactly as the bridge wrote it.
@@ -113,6 +121,20 @@ const DEFAULT_SCALE_BYTES: u64 = 20 << 30;
 /// The copies the ordinary loop runs: enough for a lifecycle hour to close
 /// behind the next and for the writers to commit more than once.
 const SMOKE_COPIES: u64 = 3;
+
+/// The primary key every table of the pipeline declares: when a row
+/// happened and the hash of what it states.
+const PRIMARY_KEY: [&str; 2] = ["currunix", "currhashcode"];
+
+/// The columns every table of the pipeline requires of each row: its key
+/// and its place among the rows of its instant. A text row and a FIX row
+/// already do; the `marketdata` row lets a leaf that is no event state
+/// none, and these tables hold events alone.
+const REQUIRED: [&str; 3] = ["currunix", "currhashcode", "seqnum"];
+
+/// The copies the scale run stacks inside one span, each a second after the
+/// one before: some twenty-four thousand text rows a quarter of an hour.
+const DENSITY: u64 = 2_048;
 
 /// The `RssAnon` the watchdog stops the process at: about half the 15 GB
 /// the machine holds, with no swap behind it.
@@ -261,9 +283,10 @@ struct Line {
 /// The bridge's capture is four bursts on one day - 01:03, 12:46, 14:52 and
 /// 21:59 UTC - logged out of order. A copy packs each burst into its own
 /// hour, in order, and its lines are emitted in clock order, so a copy spans
-/// [`Self::span`] - four hours - and copy `k` is copy zero moved by `k`
-/// spans: six copies a day, a twenty-gibibyte run some forty-five years,
-/// well inside the nanosecond clock's range. Every clock of a line moves with
+/// [`Self::span`] - four hours. Copy `k` is copy zero moved by `k / density`
+/// spans and `k % density` seconds: `density` copies share each span, a
+/// second apart, and at a density of one a twenty-gibibyte run would be some
+/// forty-five years of nearly empty quarters. Every clock of a line moves with
 /// it, an order's expiry included, so a chain expires in the copy that
 /// placed it; a date moves by the days its line's clock moved.
 ///
@@ -277,10 +300,13 @@ struct Line {
 struct Template {
     lines: Vec<Line>,
     span: i64,
+    /// The copies one span holds.
+    density: u64,
 }
 
 impl Template {
-    fn new() -> Self {
+    fn new(density: u64) -> Self {
+        assert!(density > 0, "a span holds at least one copy");
         let header = Regex::new(r"(?-u)^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})")
             .expect("the header clock pattern");
         let context = Regex::new(r"(?-u)^[^\[]*\[\d+-[0-9a-f]{8}:([0-9a-f]{10}):\d+\]")
@@ -334,12 +360,14 @@ impl Template {
         Self {
             lines,
             span: hours.len() as i64 * HOUR,
+            density,
         }
     }
 
     /// Copy `copy` appended to `out`.
     fn render(&self, copy: u64, out: &mut Vec<u8>) {
-        let moved = i64::try_from(copy).expect("a copy count") * self.span;
+        let moved = i64::try_from(copy / self.density).expect("a span count") * self.span
+            + i64::try_from(copy % self.density).expect("a second within the span");
         for line in &self.lines {
             let start = out.len();
             out.extend_from_slice(&line.bytes);
@@ -896,6 +924,8 @@ impl Stage {
 /// One run's shape.
 struct Run {
     copies: u64,
+    /// The copies one span of the capture holds.
+    density: u64,
     /// The copies one input file holds.
     copies_per_file: u64,
     stage: Stage,
@@ -976,7 +1006,7 @@ fn reading() -> TextOptions {
 /// as Iceberg states it: partitioned by the quarter of an hour each row's
 /// `currunix` falls in - `partunix`, a column the table computes for every
 /// row it is written - and sorted by it, the instant, the place within the
-/// instant and the content hash.
+/// instant and the content hash, the instant and the hash its primary key.
 fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
     let mut schema = row
         .clone()
@@ -986,11 +1016,30 @@ fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
             .parse()
             .expect("the partition entry")])
         .expect("the partition column");
+    // A table keyed by the instant refuses a row stating none, and no row
+    // of it lacks its place.
+    for name in REQUIRED {
+        let column = schema
+            .fields()
+            .iter()
+            .find(|field| field.name() == name)
+            .unwrap_or_else(|| panic!("the row states {name}"))
+            .clone()
+            .with_nullable(false);
+        schema.set_field(name, column).expect("the required column");
+    }
     schema
         .as_sort_mut()
-        .set_by_texts(["partunix", "currunix", "seqnum nulls first", "currhashcode"])
+        .set_by_texts(["partunix", "currunix", "seqnum", "currhashcode"])
         .expect("the sort order");
     assign_field_ids(&mut schema, 1).expect("the field identifiers");
+    // Iceberg names a key by the identifiers of its columns, which exist
+    // once the schema is numbered.
+    let key = primary_key(&schema);
+    schema
+        .as_iceberg_mut()
+        .set_identifier_field_ids(&key)
+        .expect("the primary key");
     let spec = PartitionSpec::from_schema(1, &schema).expect("the partition spec");
     IcebergTable::create(
         LocalFolder::new(root).expect("the table folder"),
@@ -999,6 +1048,28 @@ fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
         spec,
     )
     .expect("the table creates")
+}
+
+/// The identifiers of the [`PRIMARY_KEY`] columns under `schema`, in
+/// ascending order: Iceberg states a key as a set of identifiers.
+fn primary_key(schema: &Field) -> Vec<i32> {
+    let mut key: Vec<i32> = PRIMARY_KEY
+        .iter()
+        .map(|name| {
+            let column = schema
+                .fields()
+                .iter()
+                .find(|field| field.name() == *name)
+                .unwrap_or_else(|| panic!("the row states {name}"));
+            assert!(!column.is_nullable(), "{name}: a key column is required");
+            column
+                .parquet_field_id()
+                .expect("a field identifier")
+                .unwrap_or_else(|| panic!("{name} is numbered"))
+        })
+        .collect();
+    key.sort_unstable();
+    key
 }
 
 /// The options one stage writes its table under: the commit cadence.
@@ -1053,10 +1124,7 @@ fn held(table: &IcebergTable<LocalFolder>) -> Stored {
 /// Every row of `table` as its sort key, in the order a read yields them:
 /// `(partunix, currunix, seqnum, currhashcode)`, the two instants as their
 /// nanosecond counts.
-fn keys(
-    table: &IcebergTable<LocalFolder>,
-    window: Option<&str>,
-) -> Vec<(i64, i64, Option<i128>, i128)> {
+fn keys(table: &IcebergTable<LocalFolder>, window: Option<&str>) -> Vec<(i64, i64, i128, i128)> {
     let options = table.record_options().expect("the table's options");
     let options = match window {
         Some(window) => options.with_filter(window).expect("the window"),
@@ -1089,11 +1157,12 @@ fn keys(
         };
         let (partunix, currunix) = (instants("partunix"), instants("currunix"));
         let (seqnum, currhashcode) = (counts("seqnum"), counts("currhashcode"));
+        assert_eq!(seqnum.null_count(), 0, "every row states its place");
         for row in 0..batch.num_rows() {
             keys.push((
                 partunix.value(row),
                 currunix.value(row),
-                seqnum.is_valid(row).then(|| seqnum.value(row)),
+                seqnum.value(row),
                 currhashcode.value(row),
             ));
         }
@@ -1145,6 +1214,21 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
         Some(r#"["partunix"]"#),
         "{name}: the table partitions by its own partunix column"
     );
+    // The key is the table's own: a handle opened afresh reads it out of
+    // the metadata every commit rewrote.
+    let reopened = IcebergTable::open(
+        LocalFolder::new(table.root().path().expect("a local table")).expect("the table folder"),
+    )
+    .expect("the table reopens");
+    let stated = reopened.schema().expect("the stored schema");
+    assert_eq!(
+        stated
+            .as_iceberg()
+            .identifier_field_ids()
+            .expect("the identifier fields"),
+        primary_key(stated),
+        "{name}: currunix and currhashcode are the table's primary key"
+    );
 }
 
 fn run(shape: &Run) -> Outcome {
@@ -1175,7 +1259,7 @@ fn run(shape: &Run) -> Outcome {
     );
 
     let started = Instant::now();
-    let template = Template::new();
+    let template = Template::new(shape.density);
     let mut input_bytes = 0;
     let mut compressed_bytes = 0;
     let mut files = 0;
@@ -1250,9 +1334,17 @@ fn run(shape: &Run) -> Outcome {
     } else {
         // The text table: `append_serie` is the whole call.
         let mut text = create(&scratch.0.join("text"), &text_row);
-        text.append_serie(SerieSource::from(lines), Some(&writing(&text, shape)))
+        let appended = text
+            .append_serie(SerieSource::from(lines), Some(&writing(&text, shape)))
             .expect("the text rows append");
         let text_held = held(&text);
+        // The write says what it did: every line read is a row written.
+        assert_eq!(
+            appended,
+            IOResult::new(probe.lines.load(Ordering::Relaxed), text_held.rows),
+            "the text append's result"
+        );
+        assert_eq!(appended.skipped_rows, 0, "no line is skipped");
         println!(
             "scale_ulbridge: text table {text_held:?} from {} lines in {:.1?}",
             probe.lines.load(Ordering::Relaxed),
@@ -1289,9 +1381,15 @@ fn run(shape: &Run) -> Outcome {
                     // the walked rows fall in, so the stage runs again over
                     // any window of the text it was made from.
                     let mut fix = create(&scratch.0.join("fix"), &fix_row);
-                    fix.overwrite_serie(SerieSource::from(walked), Some(&writing(&fix, shape)))
+                    let written = fix
+                        .overwrite_serie(SerieSource::from(walked), Some(&writing(&fix, shape)))
                         .expect("the walked rows write");
                     let fix_held = held(&fix);
+                    assert_eq!(
+                        written,
+                        IOResult::new(probe.walked.load(Ordering::Relaxed), fix_held.rows),
+                        "the FIX overwrite's result"
+                    );
                     println!(
                         "scale_ulbridge: fix table {fix_held:?} from {} messages, {} walked in {:.1?}",
                         probe.messages.load(Ordering::Relaxed),
@@ -1367,7 +1465,7 @@ fn reprocess(
             .expect("the walked rows");
         let options = writing(fix, shape);
         fix.overwrite_serie(SerieSource::from(walked), Some(&options))
-            .expect("the walked rows write again");
+            .expect("the walked rows write again")
     };
     // The data files of every partition, by the quarter of an hour it holds.
     let files = |fix: &IcebergTable<LocalFolder>| -> BTreeMap<Option<i64>, Vec<String>> {
@@ -1388,8 +1486,13 @@ fn reprocess(
         files
     };
 
-    rewrite(fix, None);
+    let rewritten = rewrite(fix, None);
     let again = held(fix);
+    assert_eq!(
+        rewritten,
+        IOResult::new(expected.rows, expected.rows),
+        "a second run reads and writes the same rows"
+    );
     assert_eq!(
         again.rows, expected.rows,
         "a second run writes the same rows"
@@ -1488,10 +1591,21 @@ fn books(
     let complete = writing(&snapshots, shape)
         .with_filter("snapunix is not null")
         .expect("the complete books");
-    snapshots
+    let kept = snapshots
         .overwrite_serie(SerieSource::from(folded), Some(&complete))
         .expect("the snapshots write");
     let snapshots_held = held(&snapshots);
+    // The `where` keeps the incomplete books out, and the result counts them.
+    assert_eq!(
+        kept,
+        IOResult::new(probe.books.load(Ordering::Relaxed), snapshots_held.rows),
+        "the snapshot overwrite's result"
+    );
+    assert_eq!(
+        kept.skipped_rows,
+        kept.read_rows - snapshots_held.rows,
+        "the books no quarter closed are skipped"
+    );
 
     // Every order and quote a book applied, in the order applied.
     let deltas = BookIterator::new(
@@ -1512,10 +1626,15 @@ fn books(
         |probe| &probe.deltas,
     );
     let mut deltas = create(&scratch.join("deltas"), &row);
-    deltas
+    let flat = deltas
         .overwrite_serie(SerieSource::from(flattened), Some(&writing(&deltas, shape)))
         .expect("the deltas write");
     let deltas_held = held(&deltas);
+    assert_eq!(
+        flat,
+        IOResult::new(deltas_held.rows, deltas_held.rows),
+        "the delta overwrite's result"
+    );
 
     if shape.verified {
         verify("books", &snapshots, &snapshots_held);
@@ -1656,9 +1775,53 @@ fn scale_bytes() -> Option<u64> {
     }))
 }
 
+/// The copies one span holds at scale: `YGGDRYL_SCALE_DENSITY`, else
+/// [`DENSITY`].
+fn scale_density() -> u64 {
+    match std::env::var("YGGDRYL_SCALE_DENSITY") {
+        Ok(value) if !value.trim().is_empty() => match value.trim().parse::<u64>() {
+            Ok(density) if density > 0 => density,
+            _ => panic!(
+                "expected YGGDRYL_SCALE_DENSITY to be a copy count above zero, got {value:?}"
+            ),
+        },
+        _ => DENSITY,
+    }
+}
+
+#[test]
+fn stacked_copies_share_a_span_a_second_apart() {
+    let template = Template::new(2);
+    let first_clock = |copy: u64| {
+        let mut rendered = Vec::new();
+        template.render(copy, &mut rendered);
+        assert_eq!(rendered.len(), LOG.len());
+        String::from_utf8(rendered[..23].to_vec()).unwrap()
+    };
+
+    // Two copies a span: the second a second after the first, the third a
+    // span - four hours - after it, the fourth a second after that.
+    assert_eq!(first_clock(0), "2026-08-14 01:03:13.314");
+    assert_eq!(first_clock(1), "2026-08-14 01:03:14.314");
+    assert_eq!(first_clock(2), "2026-08-14 05:03:13.314");
+    assert_eq!(first_clock(3), "2026-08-14 05:03:14.314");
+
+    // No copy repeats another: the identifiers step by the copy, not the span.
+    let mut one = Vec::new();
+    template.render(0, &mut one);
+    let mut two = Vec::new();
+    template.render(1, &mut two);
+    let differing = one
+        .split_inclusive(|byte| *byte == b'\n')
+        .zip(two.split_inclusive(|byte| *byte == b'\n'))
+        .filter(|(left, right)| left[23..] != right[23..])
+        .count();
+    assert!(differing > 0, "a stacked copy steps its identifiers");
+}
+
 #[test]
 fn the_generator_writes_fresh_copies_of_one_width() {
-    let template = Template::new();
+    let template = Template::new(1);
     let mut first = Vec::new();
     template.render(0, &mut first);
     let mut second = Vec::new();
@@ -1744,6 +1907,8 @@ fn the_capture_pipeline_lands_every_stage_in_order() {
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let outcome = run(&Run {
         copies: SMOKE_COPIES,
+        // A copy a span: every stage sees quarters that close behind the next.
+        density: 1,
         // Two files, so the text stage reads a folder of more than one leaf.
         copies_per_file: 2,
         stage: Stage::Books,
@@ -1817,6 +1982,7 @@ fn a_capture_of_any_size_streams_in_constant_memory() {
         .expect("a batch count");
     let outcome = run(&Run {
         copies,
+        density: scale_density(),
         copies_per_file: COPIES_PER_FILE,
         stage: Stage::from_env(),
         batch_rows: BATCH_ROWS,

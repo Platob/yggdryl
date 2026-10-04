@@ -28,6 +28,7 @@ use crate::holder::fs::{
     JsRandomAccessReader as HandlerRandomAccessReader, exact_bigint_i64, exact_bigint_u64,
 };
 use crate::iomedia::JsBatchReader;
+use crate::ioresult::JsIOResult;
 use crate::media::options::JsRecordOptions;
 use crate::serie::{JsSerie, JsSerieReader, serie_source};
 use crate::text::codec::{
@@ -69,7 +70,7 @@ fn exact_length(value: f64) -> Result<usize> {
 }
 
 /// Saturate a native count at JavaScript's exact-integer boundary.
-fn safe_js_count(value: u64) -> i64 {
+pub(crate) fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
 }
 
@@ -1764,7 +1765,8 @@ impl JsIOBase {
     /// and names the intent; absent options are the handle's own, resolved
     /// by the core, and options declaring no field take the rows' own root,
     /// as every other record write does. A structured text document takes
-    /// overwrite alone, and of the options the declared field alone.
+    /// overwrite alone, and of the options the declared field alone. Answers
+    /// the rows the write read, wrote and skipped.
     #[napi(js_name = "_writeSerieNative", skip_typescript)]
     pub fn write_serie_native(
         &mut self,
@@ -1775,7 +1777,7 @@ impl JsIOBase {
         >,
         mode: String,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let value = serie_source(value)?;
         let options = match options {
@@ -1790,6 +1792,7 @@ impl JsIOBase {
         };
         self.inner
             .write_serie(value, mode, options.as_ref())
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1827,19 +1830,21 @@ impl JsIOBase {
     ///
     /// This is the native-reader publication hook. The incoming stream is cast
     /// to `options.field` once in the core, and a match key is refused because
-    /// overwrite never infers merge intent.
+    /// overwrite never infers merge intent. Answers the rows the write read,
+    /// wrote and skipped.
     #[napi]
     pub fn overwrite_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Overwrite)
             .map_err(napi_error)?;
         self.inner
             .overwrite_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1847,18 +1852,20 @@ impl JsIOBase {
     ///
     /// Both sides stream: what is stored is chained ahead of what arrives, and
     /// incoming batches are cast to the target shape as they are pulled.
+    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn append_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Append)
             .map_err(napi_error)?;
         self.inner
             .append_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1867,18 +1874,20 @@ impl JsIOBase {
     /// A non-empty match key is required. The core keeps the incoming reader
     /// streaming, applies `options.field` once, and publishes through the
     /// implementor's overwrite hook without casting the shaped rows twice.
+    /// Answers the rows the write read, wrote and skipped.
     #[napi]
     pub fn merge_arrow_reader(
         &mut self,
         batches: &mut JsBatchReader,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options
             .require_write_mode(IOMode::Merge)
             .map_err(napi_error)?;
         self.inner
             .merge_arrow_reader(batches.take()?, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1893,12 +1902,13 @@ impl JsIOBase {
         batches: &mut JsBatchReader,
         mode: String,
         options: Option<&JsRecordOptions>,
-    ) -> Result<()> {
+    ) -> Result<JsIOResult> {
         let mode = IOMode::from_str(&mode).map_err(napi_error)?;
         let options = JsRecordOptions::resolved(options, &self.inner)?;
         options.require_write_mode(mode).map_err(napi_error)?;
         self.inner
             .write_arrow_reader(batches.take()?, mode, &options)
+            .map(JsIOResult::from_core)
             .map_err(napi_error)
     }
 
@@ -1928,10 +1938,18 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
-    /// Publish the final partial cadence and close the private session.
+    /// Publish the final partial cadence and close the private session,
+    /// answering the rows every pushed chunk carried and the rows written.
     #[napi(js_name = "_finishArrowWriteSessionNative", skip_typescript)]
-    pub fn finish_arrow_write_session(&mut self, session: &mut JsArrowWriteSession) -> Result<()> {
-        session.inner.finish(&mut self.inner).map_err(napi_error)
+    pub fn finish_arrow_write_session(
+        &mut self,
+        session: &mut JsArrowWriteSession,
+    ) -> Result<JsIOResult> {
+        session
+            .inner
+            .finish(&mut self.inner)
+            .map(JsIOResult::from_core)
+            .map_err(napi_error)
     }
 
     /// Discard the private session's unpublished partial cadence.

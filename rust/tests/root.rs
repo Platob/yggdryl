@@ -111,6 +111,8 @@ mod iokind;
 mod iomedia;
 #[path = "root/iomode.rs"]
 mod iomode;
+#[path = "root/ioresult.rs"]
+mod ioresult;
 #[path = "root/isin.rs"]
 mod isin;
 #[path = "root/isin_registry.rs"]

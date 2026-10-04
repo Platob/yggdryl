@@ -3358,10 +3358,15 @@ mod committed {
     /// `noregulatorytradeids`, the dictionary regenerated and the crate's dump
     /// written again. No count of the census below moved: the counters are
     /// still the dictionary's own fields.
+    /// It last moved when a place came to be never absent: `seqnum` (65014)
+    /// is required - the field and the fixed row's member both - and its
+    /// description says zero is the first place rather than a null, the
+    /// crate's field shard and the fixed row component written again over
+    /// that one field. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 16_008_785_016_294_945_489);
+        assert_eq!(registry.stable_hash(), 9_503_387_175_628_511_469);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

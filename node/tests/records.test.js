@@ -20,6 +20,7 @@ const {
   DataType,
   Field,
   IOBase,
+  IOResult,
   MimeType,
   RecordOptions,
   Serie,
@@ -30,6 +31,13 @@ const {
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-records-'))
+}
+
+// What a write answered: the rows it read, wrote and skipped, as the core
+// counted them.
+function counts(result) {
+  assert.ok(result instanceof IOResult, `expected an IOResult, got ${result}`)
+  return [result.readRows, result.writtenRows, result.skippedRows]
 }
 
 // Apache Arrow JS marks every field it builds nullable, so a declared root that
@@ -255,7 +263,13 @@ test('a match key updates a stored row and appends a new one', () => {
 
   const merging = handle.recordOptions().withMergeBy(['id'])
   assert.deepEqual(merging.mergeBy.names, ['id'])
-  handle.mergeArrowTable(rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']), merging)
+  // The merge answers the incoming rows it read and wrote - one update and
+  // one new row - never the rows the resource holds after it.
+  const merged = handle.mergeArrowTable(
+    rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']),
+    merging,
+  )
+  assert.deepEqual(counts(merged), [2, 2, 0])
 
   const table = handle.readArrowReader().intoTable()
   assert.equal(table.numRows, 3)
@@ -969,12 +983,51 @@ test('a write skips its leading rows and converts no row past the limit', () => 
     }
   }
 
-  handle.overwriteRecords(records(), { rowOffset: 2, maxRowSize: 2 })
+  const result = handle.overwriteRecords(records(), { rowOffset: 2, maxRowSize: 2 })
   const table = handle.readArrowReader().intoTable()
   assert.deepEqual([...table.getChild('id')], [3n, 4n])
   // The rows kept are the ones after the skip, so conversion stops once both
   // are covered: the fifth record is never pulled.
   assert.equal(pulled, 4)
+  // The two leading rows were read and not written: skipped.
+  assert.deepEqual(counts(result), [4, 2, 2])
+})
+
+test('a write answers the rows its where kept out as skipped', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+
+  const filtered = handle.overwriteArrowTable(numbered(10), { filter: 'id >= 7' })
+  assert.deepEqual(counts(filtered), [10, 3, 7])
+  assert.deepEqual([...handle.readArrowReader().intoTable().getChild('id')], [7n, 8n, 9n])
+  assert.deepEqual(counts(handle.appendSerie(tradesSerie(), { filter: "symbol = 'AAPL'" })), [2, 1, 1])
+  // Every row kept out reads as skipped, and a write that read rows is not
+  // the empty one.
+  const none = handle.appendArrowTable(numbered(4), { filter: 'id > 100' })
+  assert.deepEqual(counts(none), [4, 0, 4])
+  assert.equal(none.isEmpty(), false)
+  assert.equal(handle.readArrowReader().intoTable().numRows, 4)
+})
+
+test('an empty source answers the empty result', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  handle.overwriteSerie(tradesSerie())
+
+  for (const result of [
+    handle.appendSerie(Serie.empty(schema())),
+    handle.appendArrowTable(rows([], [], [])),
+    handle.mergeSerie(Serie.empty(schema()), { mergeBy: ['id'] }),
+  ]) {
+    assert.deepEqual(counts(result), [0, 0, 0])
+    assert.equal(result.isEmpty(), true)
+    assert.ok(result.equals(new IOResult()))
+  }
+  assert.equal(serieRows(handle.readSerie()).length, 2)
+  // An empty overwrite still publishes its field and clears the rows.
+  const cleared = handle.overwriteSerie(Serie.empty(schema()))
+  assert.equal(cleared.isEmpty(), true)
+  assert.equal(serieRows(handle.readSerie()).length, 0)
 })
 
 test('a text handle answers its own options, and a bag lands on them', (t) => {
@@ -1278,22 +1331,28 @@ test('every write intent takes every shape the rows are held in', () => {
     const handle = IOBase.fromBytes()
     handle.mediaType = MimeType.ARROW_STREAM
 
-    assert.equal(handle.overwriteSerie(value()), undefined, shape)
+    // Every intent answers the two rows it read and wrote.
+    assert.deepEqual(counts(handle.overwriteSerie(value())), [2, 2, 0], shape)
     assert.deepEqual(serieRows(handle.readSerie()).map((row) => row.id), [1, 2], shape)
-    handle.appendSerie(value())
+    assert.deepEqual(counts(handle.appendSerie(value())), [2, 2, 0], shape)
     assert.deepEqual(serieRows(handle.readSerie()).map((row) => row.id), [1, 2, 1, 2], shape)
     handle.overwriteSerie(value())
-    handle.mergeSerie(value(), { mergeBy: ['id'] })
+    assert.deepEqual(counts(handle.mergeSerie(value(), { mergeBy: ['id'] })), [2, 2, 0], shape)
     assert.deepEqual(serieRows(handle.readSerie()).map((row) => row.id), [1, 2], shape)
 
     // The generic write: `overwrite` when the mode is absent, else the one named.
-    handle.writeSerie(value(), 'append')
+    assert.deepEqual(counts(handle.writeSerie(value(), 'append')), [2, 2, 0], shape)
     assert.equal(serieRows(handle.readSerie()).length, 4, shape)
-    handle.writeSerie(value())
+    assert.deepEqual(counts(handle.writeSerie(value())), [2, 2, 0], shape)
     assert.equal(serieRows(handle.readSerie()).length, 2, shape)
-    handle.writeSerie(value(), 'merge', handle.recordOptions().withMergeBy(['id']))
+    const merged = handle.writeSerie(value(), 'merge', handle.recordOptions().withMergeBy(['id']))
+    assert.deepEqual(counts(merged), [2, 2, 0], shape)
     assert.equal(serieRows(handle.readSerie()).length, 2, shape)
-    handle.writeSerie(value(), undefined, undefined, { maxRowSize: 1 })
+    // A bound stops the pull: the part of a batch it cut off was read and
+    // skipped, and a batch past it is never read. Two one-row chunks are two
+    // batches; every other shape is one batch of both rows.
+    const bounded = handle.writeSerie(value(), undefined, undefined, { maxRowSize: 1 })
+    assert.deepEqual(counts(bounded), shape === 'ChunkedSerie' ? [1, 1, 0] : [2, 1, 1], shape)
     assert.equal(serieRows(handle.readSerie()).length, 1, shape)
   }
 })
@@ -1366,19 +1425,25 @@ test('a zero row bound writes no row and reads no source', () => {
 
   // An append bounded to no row is a no-op that never reads the source.
   let stream = SerieReader.fromSerie(tradesSerie())
-  assert.equal(handle.appendSerie(stream, { maxRowSize: 0 }), undefined)
+  const appended = handle.appendSerie(stream, { maxRowSize: 0 })
+  assert.deepEqual(counts(appended), [0, 0, 0])
+  assert.equal(appended.isEmpty(), true)
   assert.equal(serieRows(stream).length, 2)
   assert.equal(serieRows(handle.readSerie()).length, 2)
 
   // An overwrite publishes the declared field's empty value, the source unread.
   stream = SerieReader.fromSerie(tradesSerie())
-  handle.overwriteSerie(stream, handle.recordOptions().withField(schema()).withMaxRowSize(0))
+  const declared = handle.overwriteSerie(
+    stream,
+    handle.recordOptions().withField(schema()).withMaxRowSize(0),
+  )
+  assert.deepEqual(counts(declared), [0, 0, 0])
   assert.equal(serieRows(stream).length, 2)
   assert.ok(handle.readArrowField().equals(schema()))
   assert.equal(serieRows(handle.readSerie()).length, 0)
 
   // With no field declared, the rows' own root names the empty value.
-  handle.overwriteSerie(tradesSerie(), { maxRowSize: 0 })
+  assert.deepEqual(counts(handle.overwriteSerie(tradesSerie(), { maxRowSize: 0 })), [0, 0, 0])
   assert.ok(handle.readArrowField().equals(schema()))
   assert.equal(serieRows(handle.readSerie()).length, 0)
 })

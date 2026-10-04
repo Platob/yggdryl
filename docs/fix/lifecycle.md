@@ -869,9 +869,9 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     assert_ne!(column("crossuuid").scalar(2)?, column("crossuuid").scalar(0)?);
     assert!(column("prevuuid").is_null(2)?);
     // Each is first at its instant but the execution, which stands after
-    // the report it was split off: a first place states none.
-    assert_eq!(column("seqnum").scalar(0)?, Scalar::Null, "a first message states no place");
-    assert_eq!(column("seqnum").scalar(1)?, Scalar::Null);
+    // the report it was split off: a first place is zero, never absent.
+    assert_eq!(column("seqnum").scalar(0)?, Scalar::from(0_u64), "a first message stands at zero");
+    assert_eq!(column("seqnum").scalar(1)?, Scalar::from(0_u64));
     assert_eq!(column("seqnum").scalar(2)?, Scalar::from(1_u64));
     ```
 

@@ -420,7 +420,7 @@ macro_rules! container_object_io {
                 &mut self,
                 _batches: BatchReader,
                 _options: &RecordOptions,
-            ) -> Result<()> {
+            ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }
 
@@ -428,7 +428,7 @@ macro_rules! container_object_io {
                 &mut self,
                 _batches: BatchReader,
                 _options: &RecordOptions,
-            ) -> Result<()> {
+            ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }
 
@@ -436,7 +436,7 @@ macro_rules! container_object_io {
                 &mut self,
                 _batches: BatchReader,
                 _options: &RecordOptions,
-            ) -> Result<()> {
+            ) -> Result<crate::IOResult> {
                 Err(super::namespace::no_table(self))
             }
         }

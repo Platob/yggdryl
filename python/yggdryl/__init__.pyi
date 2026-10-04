@@ -46,6 +46,7 @@ from ._native import (
     DataType as DataType,
     Field as Field,
     FieldPath as FieldPath,
+    IOResult as IOResult,
     JoinOptions as JoinOptions,
     ProtocolField as ProtocolField,
     PythonMetadata as PythonMetadata,

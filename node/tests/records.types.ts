@@ -11,6 +11,7 @@ import {
   SerieReader,
   Field,
   IOBase,
+  IOResult,
   MimeType,
   RecordOptions,
   type BatchSource,
@@ -148,13 +149,15 @@ const serieReadUnder: SerieReader = handle.readSerie(options, { maxRowSize: 1 })
 const serieReadBag: SerieReader = handle.readSerie({ numThreads: 2 })
 const serieReadNamed: SerieReader = handle.readSerie(named)
 const serieShapes: SerieSource[] = [heldSerie, heldChunks, heldStream, source, arrowTable, arrowBatch, [arrowBatch], new Uint8Array()]
-handle.writeSerie(heldSerie)
-handle.writeSerie(heldChunks, 'append', options)
-handle.writeSerie(heldStream, 'merge', merging, { numThreads: 1 })
-handle.overwriteSerie(arrowTable)
-handle.overwriteSerie(heldSerie, { field: schema as Field })
-handle.appendSerie(arrowBatch, named)
-handle.mergeSerie(source, merging)
+// Every Serie write answers the rows it read, wrote and skipped.
+const serieWritten: IOResult = handle.writeSerie(heldSerie)
+const serieAppended: IOResult = handle.writeSerie(heldChunks, 'append', options)
+const serieMerged: IOResult = handle.writeSerie(heldStream, 'merge', merging, { numThreads: 1 })
+const serieOverwrote: IOResult = handle.overwriteSerie(arrowTable)
+const serieDeclared: IOResult = handle.overwriteSerie(heldSerie, { field: schema as Field })
+const serieAppendedBatch: IOResult = handle.appendSerie(arrowBatch, named)
+const serieMergedReader: IOResult = handle.mergeSerie(source, merging)
+const serieSkipped: number = serieWritten.skippedRows
 // @ts-expect-error a write's mode is one of the closed IOMode words
 handle.writeSerie(heldSerie, 'upsert')
 // @ts-expect-error rows are a columnar value, never a number
@@ -162,6 +165,7 @@ handle.overwriteSerie(7)
 // @ts-expect-error the native write bridge is hidden
 handle._writeSerieNative
 void [serieRead, serieReadUnder, serieReadBag, serieReadNamed, serieShapes]
+void [serieWritten, serieAppended, serieMerged, serieOverwrote, serieDeclared, serieAppendedBatch, serieMergedReader, serieSkipped]
 
 // The text row's line and its entries answer text; the ranges stand beside them.
 import { TextLine, TextOptions } from '..'

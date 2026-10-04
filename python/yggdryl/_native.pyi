@@ -3500,6 +3500,47 @@ class Records:
     def from_arrow_reader(reader: pyarrow.RecordBatchReader | ArrowStreamReader) -> Records: ...
     def __repr__(self) -> str: ...
 
+class IOResult:
+    """The rows one record write read, wrote and skipped.
+
+    Every record write of an ``IOBase`` answers one: ``read_rows`` is what
+    the write pulled from its source, ``written_rows`` what reached the
+    destination, and ``skipped_rows`` what was read and not written - the
+    rows a ``where`` kept out, the part of the last batch a bound cut off. A
+    write cut into several commits answers their sum. Immutable.
+    """
+
+    # `skipped_rows` absent is the read rows less the written, never below
+    # zero; stated, the three counts are taken as they are - what a sum of
+    # results holds, and what `repr`, pickle and copy rebuild from.
+    def __init__(
+        self,
+        read_rows: int = 0,
+        written_rows: int = 0,
+        skipped_rows: int | None = None,
+    ) -> None: ...
+    @property
+    def read_rows(self) -> int: ...
+    @property
+    def written_rows(self) -> int: ...
+    @property
+    def skipped_rows(self) -> int: ...
+    def is_empty(self) -> bool: ...
+    def stable_hash(self) -> int: ...
+    def __add__(self, other: IOResult, /) -> IOResult: ...
+    def __str__(self) -> str: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object, /) -> bool: ...
+    def __ne__(self, other: object, /) -> bool: ...
+    def __lt__(self, other: IOResult, /) -> bool: ...
+    def __le__(self, other: IOResult, /) -> bool: ...
+    def __gt__(self, other: IOResult, /) -> bool: ...
+    def __ge__(self, other: IOResult, /) -> bool: ...
+    def __hash__(self) -> int: ...
+    def __reduce__(self) -> tuple[object, tuple[int, int, int]]: ...
+    def __copy__(self) -> IOResult: ...
+    def __deepcopy__(self, memo: Any) -> IOResult: ...
+
 class IOBase:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
@@ -3722,28 +3763,28 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def overwrite_serie(
         self,
         value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_serie(
         self,
         value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_serie(
         self,
         value: object,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def read_arrow_reader(
         self,
         *,
@@ -3762,21 +3803,21 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_arrow_reader(
         self,
         reader: ArrowStreamReader,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_arrow_reader(
         self,
         reader: ArrowStreamReader,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_arrow_reader(
         self,
         reader: ArrowStreamReader,
@@ -3784,28 +3825,28 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def overwrite_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_arrow_table(
         self,
         table: pyarrow.Table,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_arrow_table(
         self,
         table: pyarrow.Table,
@@ -3813,28 +3854,28 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def overwrite_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_arrow_batch(
         self,
         batch: pyarrow.RecordBatch,
@@ -3842,7 +3883,7 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     @overload
     def read_records(
         self,
@@ -3865,21 +3906,21 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_records(
         self,
         records: Iterable[Any],
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_records(
         self,
         records: Iterable[Any],
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_records(
         self,
         records: Iterable[Any],
@@ -3887,7 +3928,7 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def cursor(self, position: int = 0) -> IOCursor: ...
     def scan_polars(
         self,
@@ -3919,21 +3960,21 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_pandas(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_pandas(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_pandas(
         self,
         frames: Any,
@@ -3941,28 +3982,28 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def overwrite_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_pandas_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_pandas_frame(
         self,
         frame: Any,
@@ -3970,7 +4011,7 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def read_polars(
         self,
         *,
@@ -3989,21 +4030,21 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_polars(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_polars(
         self,
         frames: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_polars(
         self,
         frames: Any,
@@ -4011,28 +4052,28 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def overwrite_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def append_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def merge_polars_frame(
         self,
         frame: Any,
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def write_polars_frame(
         self,
         frame: Any,
@@ -4040,7 +4081,7 @@ class IOBase:
         *,
         options: RecordOptionsLike | None = None,
         **properties: Unpack[RecordProperties],
-    ) -> None: ...
+    ) -> IOResult: ...
     def __fspath__(self) -> str: ...
     def __len__(self) -> int: ...
     def __iter__(self) -> Iterator[IOBase]: ...

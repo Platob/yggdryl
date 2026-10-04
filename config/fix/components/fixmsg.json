@@ -151,7 +151,7 @@
         "dtype": {
           "type": "null"
         },
-        "nullable": true,
+        "nullable": false,
         "metadata": {
           "FIX:field": "seqnum",
           "FIX:tag": "65014"

@@ -81,6 +81,7 @@ function installRecords({
   Field,
   IcebergOptions,
   IOBase,
+  IOResult,
   RecordOptions,
   Serie,
   SerieReader,
@@ -88,6 +89,9 @@ function installRecords({
   Table,
   nativeWriteMode,
 }) {
+  if (typeof IOResult !== 'function') {
+    throw new TypeError('native binding is missing IOResult')
+  }
   const classFields = new WeakMap()
   const nextIpc = BatchReader.prototype._nextIpcNative
   if (typeof nextIpc !== 'function') {
@@ -585,6 +589,7 @@ function installRecords({
   // core push. The Rust session retains the operation-wide cast, byte/row
   // limits, cadence remainder, and destination routing plan, so a later
   // source/conversion failure leaves every earlier complete prefix visible.
+  // The session's finish answers the write's IOResult, counted in the core.
   async function awaitedCommittedRecordsWrite(
     handle,
     source,
@@ -610,10 +615,10 @@ function installRecords({
         }
         const more = Reflect.apply(pushWriteSession, handle, [session, reader])
         if (!more) {
-          Reflect.apply(finishWriteSession, handle, [session])
+          const result = Reflect.apply(finishWriteSession, handle, [session])
           finished = true
           if (typeof iterator.return === 'function') await iterator.return()
-          return
+          return result
         }
       }
 
@@ -621,8 +626,9 @@ function installRecords({
         const converted = emptyRecordsReader(settings)
         return publish(converted.reader, converted.settings)
       }
-      Reflect.apply(finishWriteSession, handle, [session])
+      const result = Reflect.apply(finishWriteSession, handle, [session])
       finished = true
+      return result
     } catch (error) {
       if (session !== undefined && !finished) {
         try {
@@ -718,6 +724,13 @@ function installRecords({
 
   function writeLimitIsZero(settings) {
     return settings.maxRowSize === 0 || settings.maxByteSize === 0
+  }
+
+  // An append bounded to no row reads no source and writes nothing, which is
+  // the core's own answer to that bound: its empty result, built by its
+  // constructor, so the source is never converted only to be handed over.
+  function emptyAppendResult() {
+    return new IOResult()
   }
 
   // Metadata must be an accessor, not a stored value or a method. Looking up
@@ -872,7 +885,7 @@ function installRecords({
           let settings = resolvedRecordOptions(this, options, properties)
           preflightWriteIntent(settings, intent)
           if (writeLimitIsZero(settings)) {
-            if (intent === 'append') return undefined
+            if (intent === 'append') return emptyAppendResult()
             const converted = emptyRecordsReader(settings)
             return native.call(this, converted.reader, converted.settings)
           }
@@ -895,7 +908,7 @@ function installRecords({
         let settings = resolvedRecordOptions(this, options, properties)
         preflightWriteIntent(settings, intent)
         if (writeLimitIsZero(settings)) {
-          if (intent === 'append') return undefined
+          if (intent === 'append') return emptyAppendResult()
           const converted = emptyRecordsReader(settings)
           return nativeWrite.call(
             this,
@@ -994,7 +1007,7 @@ function installRecords({
     }
     preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
-      if (intent === 'append') return undefined
+      if (intent === 'append') return emptyAppendResult()
       // A limited merge was rejected by preflight. An overwrite bounded to no
       // row publishes the declared field's empty value without reading the
       // source; with no field declared, the source's own root names it.
@@ -1086,7 +1099,7 @@ function installRecords({
     const settings = resolvedRecordOptions(handle, options, properties)
     const defaultBatchRowSize = preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
-      if (intent === 'append') return undefined
+      if (intent === 'append') return emptyAppendResult()
       // A limited merge was rejected by preflight. Overwrite still publishes
       // the explicitly typed empty value without inspecting the input.
       const converted = emptyRecordsReader(settings)

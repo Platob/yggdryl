@@ -45,6 +45,7 @@ mod iceberg;
 mod identifier;
 mod iobase;
 mod iomedia;
+mod ioresult;
 mod isin_registry;
 mod join;
 mod logging;
@@ -677,6 +678,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyParameterIterator>()?;
     module.add_class::<timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
+    module.add_class::<ioresult::PyIOResult>()?;
     holder::handles::register(module)?;
     http::register(module)?;
     coding::handles::register(module)?;

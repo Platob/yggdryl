@@ -355,7 +355,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
-    // The replay bundle and BeginString are required, and nothing else:
+    // The replay bundle, the place at the instant - zero for the first, so
+    // never absent - and BeginString are required, and nothing else:
     // `snapunix` is only what a snapshot stamps, and the state a message
     // reached, stated on every row a message writes, has no neutral member
     // to fill an empty cell with, so both are nullable like every other
@@ -374,6 +375,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             "crosshashcode",
             "currunix",
             "creaunix",
+            "seqnum",
             "beginstring",
         ]
     );

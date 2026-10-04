@@ -316,7 +316,8 @@ const rows = new arrow.Table({
 
 // A handle reads and writes records through the encoding its name declares.
 const file = new IOBase(path.join(root, 'trades.parquet'))
-file.overwriteArrowTable(rows)
+const written = file.overwriteArrowTable(rows)
+console.assert(written.toString() === 'read 2 rows, wrote 2, skipped 0')
 console.assert(file.readArrowReader().intoTable().numRows === 2)
 console.assert(file.isIo())
 console.assert(file.rowSize === 2)
@@ -358,6 +359,12 @@ Configured intent uses `writeArrowReader`, `writeArrowTable`,
 The required mode is `'overwrite'`, `'append'`, or `'merge'` and is checked
 before a one-shot reader, exporter, or iterable is inspected.
 
+Every record write answers an `IOResult` - an async record write a promise of
+one - stating the rows it read from its source (`readRows`), wrote
+(`writtenRows`) and skipped (`skippedRows`: kept out by the options' `where`,
+or cut off a last batch by a bound), as the core counted them. A write cut
+into several commits answers their sum; `add` sums two results the same way.
+
 `isIo()` is the general capability check: byte values and tabular media return
 true, while a container holding neither returns false. `rowSize` and
 `columnSize` are lazy metadata getters for the whole logical media, independent
@@ -380,8 +387,8 @@ The async path alternates one awaited chunk with one opaque Rust-session push,
 so every complete cadence is visible before the next source pull and a later
 failure drops only the incomplete cadence. Global row and byte limits remain
 one operation-wide budget. A zero limit does not inspect the source: append is
-a synchronous no-op, overwrite publishes an explicitly typed empty value, and
-a limited merge is rejected.
+a synchronous no-op answering the empty `IOResult`, overwrite publishes an
+explicitly typed empty value, and a limited merge is rejected.
 
 Every page of the [documentation](https://platob.github.io/yggdryl/) shows its
 operation in Rust, Python and JavaScript, so field conversion, typed rows,

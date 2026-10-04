@@ -5333,9 +5333,11 @@ mod handles {
                         .merge_arrow_reader(one_row_batches(&incoming), &options)
                         .unwrap();
                 }
-                "folder" => folder
-                    .merge_arrow_reader(one_row_batches(&incoming), &by_partition)
-                    .unwrap(),
+                "folder" => {
+                    folder
+                        .merge_arrow_reader(one_row_batches(&incoming), &by_partition)
+                        .unwrap();
+                }
                 _ => {
                     // A session publishes by its own byte default, so one
                     // batch a commit is asked for.
@@ -5394,12 +5396,12 @@ mod handles {
                 )
                 .unwrap();
             let kept = venue_files(&path, "XNYS");
-            match door {
+            let result = match door {
                 "table" => {
                     let mut table = IcebergTable::open(LocalFolder::new(&path).unwrap()).unwrap();
                     table
                         .overwrite_arrow_reader(one_row_batches(&incoming), &options)
-                        .unwrap();
+                        .unwrap()
                 }
                 "folder" => folder
                     .overwrite_arrow_reader(one_row_batches(&incoming), &options)
@@ -5412,9 +5414,12 @@ mod handles {
                             .push(&mut folder, one_row_batches(&incoming))
                             .unwrap()
                     );
-                    session.finish(&mut folder).unwrap();
+                    session.finish(&mut folder).unwrap()
                 }
-            }
+            };
+            // Every door answers the four rows it read and wrote, whatever
+            // it replaced and however many commits it took.
+            assert_eq!(result, yggdryl::IOResult::new(4, 4), "{door}");
             let commits = if door == "session" { 4 } else { 1 };
             assert_eq!(snapshots(&path), 1 + commits, "{door}");
             let mut rows = collect(folder.read_arrow_reader(&options).unwrap());
