@@ -385,22 +385,22 @@ YGGDRYL_ISIN_REGISTRY_URI=/data/instruments.arrows   # one IPC leaf
 
 ## Performance
 
-`graph/isin_registry` over a registry of 4,096 instruments - each with a CFI code, a market, a ticker, a common code and a RIC - and `fix/pipeline/decoded_lifecycle` with and without a shared registry. One containerized x86_64 Linux run: Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.97.0, release profile with thin LTO. Criterion medians.
+`graph/isin_registry` over a registry of 4,096 instruments - each with a CFI code, a market, a ticker, a common code and a RIC - and `fix/pipeline/decoded_lifecycle` with and without a shared registry. One containerized x86_64 Linux run: Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.97.0, release profile with thin LTO. Criterion medians.
 
 | Case | Median | What it does |
 | --- | --- | --- |
-| `learn_known` | 1.27 µs | a statement of a known ISIN saying nothing new: no row moves, nothing allocates |
-| `learn_new` | 6.51 µs | a new ISIN with a CFI code and a common code, into a table no clone shares |
-| `fill_by_isin` | 1.86 µs | an order naming only the ISIN, filled with the row's codes, ticker and CFI code, then finalized |
-| `fill_by_ticker` | 2.11 µs | the same order naming only its ticker on its market: its ISIN derived first through the ticker index |
-| `fill_miss` | 40.1 ns | an ISIN no row holds: one lookup, nothing built |
-| `into_arrow_reader_4096` | 57.5 ms (71.3 K rows/s) | the snapshot stream drained: each row laid out as its named struct, through the row's value door |
-| `extend_from_arrow_reader_4096` | 9.70 ms (422 K rows/s) | the same rows loaded into an empty registry: one cast plan, a code cell adopted as the landing proved it |
-| `ipc_roundtrip_4096` | 68.8 ms (59.5 K rows/s) | the snapshot written to an Arrow IPC buffer and read back by `extend_from_handle` |
-| `decoded_lifecycle` | 1.11 s (12.0 MiB/s) | the decoded capture walked with the walk-local registry |
-| `decoded_lifecycle_shared_registry` | 1.20 s (11.0 MiB/s) | the same walk learning into a registry the codec shares: one uncontended lock per message |
+| `learn_known` | 1.23 µs | a statement of a known ISIN saying nothing new: no row moves, nothing allocates |
+| `learn_new` | 11.7 µs | a new ISIN with a CFI code and a common code, into a table no clone shares: a forty-column row built and its ticker indexed |
+| `fill_by_isin` | 1.87 µs | an order naming only the ISIN, filled with the row's codes, ticker and CFI code, then finalized |
+| `fill_by_ticker` | 2.14 µs | the same order naming only its ticker on its market: its ISIN derived first through the ticker index |
+| `fill_miss` | 185 ns | an ISIN no row holds: the key checked real, one lookup, nothing built |
+| `into_arrow_reader_4096` | 50.9 ms (80.5 K rows/s) | the snapshot stream drained: each row laid out as its named struct, through the row's value door |
+| `extend_from_arrow_reader_4096` | 9.52 ms (430 K rows/s) | the same rows loaded into an empty registry: one cast plan, a code cell adopted as the landing proved it |
+| `ipc_roundtrip_4096` | 65.4 ms (62.7 K rows/s) | the snapshot written to an Arrow IPC buffer and read back by `extend_from_handle` |
+| `decoded_lifecycle` | 420 ms (31.5 MiB/s) | the decoded capture walked with the walk-local registry |
+| `decoded_lifecycle_shared_registry` | 419 ms (31.6 MiB/s) | the same walk learning into a registry the codec shares: one lock per message across the learn and the fill |
 
-Writing a snapshot costs six times reading it back: a row crosses into Arrow as a named struct the row's value door checks and restates - eight allocations a row, pinned in `rust/tests/allocations.rs` - where a load adopts each landed code. The shared walk took 8.6% longer than the walk-local one over ten samples each, their intervals just apart, each walk starting from an empty registry: what taking the shared table's lock once per message costs.
+Writing a snapshot costs five times reading it back: a row crosses into Arrow as a named struct the row's value door checks and restates - eight allocations a row, pinned in `rust/tests/allocations.rs` - where a load adopts each landed code. The shared walk and the walk-local one measure the same within Criterion's interval over ten samples each, each walk starting from an empty registry: the one uncontended lock a message takes across its learn and its fill is below what the walk's own work hides.
 
 ```bash
 cargo bench -p yggdryl --bench graph -- 'graph/isin_registry'
