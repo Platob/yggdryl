@@ -75,7 +75,7 @@ fn pivot_grouping_replays_native_completed_item_grand_order() {
 }
 
 #[test]
-fn pivot_grouping_unifies_authored_blank_axis_and_refuses_unproved_aggregate() {
+fn pivot_grouping_unifies_authored_blank_axis_and_supports_sample_variance() {
     let mut book = Workbook::new();
     let sheet = book.add_sheet("Data").unwrap();
     for (column, label) in ["Region", "Product", "Sales"].into_iter().enumerate() {
@@ -104,12 +104,18 @@ fn pivot_grouping_unifies_authored_blank_axis_and_refuses_unproved_aggregate() {
         Some(&PivotMeasure::Number(7.0))
     );
 
-    let mut unsupported = request;
-    unsupported.values[0].aggregate = Aggregate::Var;
-    let error = PivotComputed::build(&unsupported, &bound, sheet)
-        .err()
-        .unwrap();
-    assert!(matches!(error, Error::InvalidRecord { path, .. } if path == "$.values[0].aggregate"));
+    let mut variance = request;
+    variance.values[0].aggregate = Aggregate::Var;
+    let computed = PivotComputed::build(&variance, &bound, sheet).unwrap();
+    assert_eq!(
+        computed.values.get(&(0, 0, 0)),
+        Some(&PivotMeasure::Error(ExcelError::Div0))
+    );
+    assert_eq!(
+        computed.values.get(&(1, 0, 0)),
+        Some(&PivotMeasure::Number(0.5))
+    );
+    assert_eq!(computed.grand_rollups, [Some(PivotMeasure::Number(1.0))]);
 }
 
 #[test]

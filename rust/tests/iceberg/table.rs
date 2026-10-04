@@ -320,6 +320,9 @@ mod iceberg {
         table
             .commit_append(rows(&[11], &["MSFT"], &["XNYS"]))
             .unwrap();
+        table
+            .commit_append(rows(&[0], &["META"], &["XNYS"]))
+            .unwrap();
 
         let mut declared = schema();
         let text_id = declared
@@ -375,6 +378,28 @@ mod iceberg {
             .collect();
         values.sort();
         assert_eq!(values, ["11", "2"]);
+        // An OR containing a cast-sensitive operand cannot push only its
+        // unchanged venue operand: that would discard the matching XNYS row.
+        let disjunction = options
+            .clone()
+            .with_filter("id > '10' or venue = 'XNAS'")
+            .unwrap();
+        let mut values: Vec<String> = IOMedia::read_arrow_reader(&table, &disjunction)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                ids.iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        values.sort();
+        assert_eq!(values, ["1", "11", "2"]);
         let _ = std::fs::remove_dir_all(path);
     }
 

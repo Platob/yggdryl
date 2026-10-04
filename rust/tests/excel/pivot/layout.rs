@@ -58,16 +58,17 @@ fn pivot_layout_geometry_matches_five_native_tables() {
             .parse::<usize>()
             .unwrap();
         let rendered_rows = u32::try_from(grid.len() - native_header).unwrap();
-        let column_tuples = if c == 0 {
+        // Geometry consumes complete displayed groups, including Grand.
+        let rendered_column_groups = if c == 0 {
             0
         } else {
-            u32::try_from((native_width - r) / v - 1).unwrap()
+            u32::try_from((native_width - r) / v).unwrap()
         };
         let output = geometry(
             &spec(r, c, v),
             "A3".parse().unwrap(),
             rendered_rows,
-            column_tuples,
+            rendered_column_groups,
         )
         .unwrap();
         assert_eq!(
@@ -115,8 +116,9 @@ fn pivot_layout_counts_native_two_axis_subtotals_as_column_groups() {
     let subtotals = classes["default"].as_u64().unwrap();
     let grand = classes["grand"].as_u64().unwrap();
     assert_eq!((leaves, subtotals, grand), (15, 9, 3));
-    let rendered_groups = u32::try_from((leaves + subtotals) / values as u64).unwrap();
-    assert_eq!(rendered_groups, 8);
+    // The display plan includes the native Grand items in its group count.
+    let rendered_groups = u32::try_from((leaves + subtotals + grand) / values as u64).unwrap();
+    assert_eq!(rendered_groups, 9);
     let output = geometry(
         &spec(1, 2, values),
         "A3".parse().unwrap(),

@@ -1930,50 +1930,54 @@ impl<H: IOBase> IcebergTable<H> {
         let filter = options.filter();
         let select = options.select();
         let declared = options.field();
-        let after_select = crate::expression::filter_after_select(
-            filter,
-            select,
-            declared
-                .as_ref()
-                .unwrap_or(&stored)
-                .fields()
-                .iter()
-                .map(Field::name),
-        );
-        // A declared cast can change comparison order. A filter may prune from
-        // stored metadata only when every column it reads is the same field
-        // the row predicate will see after declaration.
-        let source_filter_equivalent = match declared.as_ref() {
-            None => true,
-            Some(declared) => filter.columns().iter().all(|name| {
-                let mut stored_matches = stored
+        let mut late = false;
+        let mut pushed = vec![scope];
+        // A cast-sensitive conjunct stays after declaration; independent
+        // value-preserving conjuncts still prune. Field IDs and other metadata
+        // do not change comparison values. An OR remains one whole conjunct.
+        for predicate in filter.conjuncts() {
+            let after_select = crate::expression::filter_after_select(
+                &predicate,
+                select,
+                declared
+                    .as_ref()
+                    .unwrap_or(&stored)
                     .fields()
                     .iter()
-                    .filter(|field| field.name().eq_ignore_ascii_case(name));
-                let mut declared_matches = declared
-                    .fields()
-                    .iter()
-                    .filter(|field| field.name().eq_ignore_ascii_case(name));
-                match (
-                    stored_matches.next(),
-                    stored_matches.next(),
-                    declared_matches.next(),
-                    declared_matches.next(),
-                ) {
-                    (Some(stored), None, Some(declared), None) => stored == declared,
-                    _ => false,
-                }
-            }),
-        };
-        let late = after_select || !source_filter_equivalent;
+                    .map(Field::name),
+            );
+            let source_equivalent = declared.as_ref().is_none_or(|declared| {
+                predicate.columns().iter().all(|name| {
+                    let mut stored_matches = stored
+                        .fields()
+                        .iter()
+                        .filter(|field| field.name().eq_ignore_ascii_case(name));
+                    let mut declared_matches = declared
+                        .fields()
+                        .iter()
+                        .filter(|field| field.name().eq_ignore_ascii_case(name));
+                    match (
+                        stored_matches.next(),
+                        stored_matches.next(),
+                        declared_matches.next(),
+                        declared_matches.next(),
+                    ) {
+                        (Some(stored), None, Some(declared), None) => {
+                            stored.dtype() == declared.dtype()
+                                && stored.is_nullable() == declared.is_nullable()
+                        }
+                        _ => false,
+                    }
+                })
+            });
+            if after_select || !source_equivalent {
+                late = true;
+            } else {
+                pushed.push(predicate);
+            }
+        }
         let (landing, given) = self.read_landing(options)?;
-        let pushed = if late {
-            scope
-        } else if scope.is_always_true() {
-            filter.clone()
-        } else {
-            Filter::all([scope, filter.clone()])
-        };
+        let pushed = Filter::all(pushed);
         let metadata = &self.opened()?.metadata;
         let spec = metadata.default_spec()?;
         let order = metadata.default_sort_order()?;
