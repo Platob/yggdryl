@@ -355,6 +355,9 @@ fn pasted_text_is_undone_over_every_row_its_line_breaks_make() {
         ("\"a\nb\"\tx\ry\nz", "H1:I3"),
     ] {
         let mut workbook = book();
+        // Settle the fixture's pre-existing formulas before pinning paste's
+        // footprint; apply now publishes every pending recalculation.
+        workbook.calculate_all().unwrap();
         let before = workbook.sheet("Data").unwrap().clone();
         let applied = workbook
             .apply(Edit::PasteText {
@@ -393,6 +396,9 @@ fn a_cut_s_undo_holds_what_it_changed_and_nothing_it_left() {
             )
             .unwrap();
     }
+    // The cost claim is an inverse of the cut, with the unrelated formula
+    // caches already settled. Initial calculation is separately costed.
+    workbook.calculate_all().unwrap();
     let applied = workbook
         .apply(Edit::Paste {
             from: ("Moved".into(), range("A1")),
@@ -455,6 +461,8 @@ fn a_refused_edit_changes_nothing() {
 #[test]
 fn an_applied_edit_says_what_it_touched_and_what_it_answers() {
     let mut workbook = book();
+    // This pin isolates new edit footprints from initial cache publication.
+    workbook.calculate_all().unwrap();
     let applied = workbook
         .apply(Edit::Paste {
             from: ("Data".into(), range("A1:B2")),
@@ -953,8 +961,10 @@ mod internal {
                 cut: true,
             })
             .unwrap();
-        // cut_paste's generated Restore first holds To, then From. The
-        // first step could change To before encountering the missing key.
+        // Inside the calculation receipt, cut_paste's authored Restore
+        // first holds To, then From. restore_direct selects this payload,
+        // whose first step must not change To before the missing later key.
+        // The journal below separately exercises the complete public inverse.
         let inverse = applied.inverse.as_ref().unwrap().clone();
         book.remove_sheet("From").unwrap();
         let state_before = state(&book);
@@ -2435,7 +2445,7 @@ fn land_null_footprint_follows_slice_and_structural_row_edits() {
 }
 
 #[test]
-fn inserted_style_bands_opaque_removal_prefix_refuses_a_foreign_workbook() {
+fn inserted_style_bands_opaque_removal_inverse_refuses_a_foreign_workbook() {
     use crate::excel_package::table_member_map;
     for columns in [false, true] {
         let mut source = insertion_style_edit_book(columns, false);
@@ -2444,15 +2454,14 @@ fn inserted_style_bands_opaque_removal_prefix_refuses_a_foreign_workbook() {
             .unwrap()
             .inverse
             .unwrap();
-        let Edit::Batch(mut pieces) = inverse else {
-            panic!("structural undo retains a prefix and payload")
-        };
-        let prefix = pieces.remove(0);
+        // Calculation and authored undo share one opaque receipt; callers
+        // cannot detach a structural prefix from its retained payload.
+        assert!(matches!(&inverse, Edit::Restore(_)));
         let mut foreign = insertion_style_edit_book(columns, false);
         insertion_style_edit_save(&mut foreign);
         let before = table_member_map(&foreign);
         let revision = foreign.sheet("Data").unwrap().revision();
-        let error = foreign.apply(Edit::Batch(vec![prefix])).unwrap_err();
+        let error = foreign.apply(Edit::Batch(vec![inverse])).unwrap_err();
         assert!(matches!(error, Error::Conflict { .. }), "{error}");
         assert_eq!(foreign.sheet("Data").unwrap().revision(), revision);
         assert!(!foreign.is_dirty());
@@ -2570,5 +2579,257 @@ fn land_at_null_records_replace_existing_values_and_round_trip_the_inverse() {
         let package = workbook.into_package().unwrap();
         workbook.rebase(package).unwrap();
         assert_eq!(table_member_map(&workbook), after, "redo {header:?}");
+    }
+}
+
+
+#[test]
+fn apply_recalculates_dependent_cells_once_per_outer_batch() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+
+    fn seeded() -> Workbook {
+        let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 911));
+        book.add_sheet("Data").unwrap();
+        for (address, entry) in [
+            ("A1", "1"), ("A2", "1"), ("B1", "=RAND()"), ("D1", "=A1+A2"),
+        ] {
+            book.set_entry("Data", at(address), entry).unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+        book
+    }
+    let mut batched = seeded();
+    let mut explicit = seeded();
+    let applied = batched.apply(Edit::Batch(vec![
+        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A1"), "2".into())] },
+        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A2"), "3".into())] },
+    ])).unwrap();
+    explicit.set_entry("Data", at("A1"), "2").unwrap();
+    explicit.set_entry("Data", at("A2"), "3").unwrap();
+    assert_eq!(explicit.recalculate().unwrap().evaluated, 2);
+    let observed = batched.sheet("Data").unwrap();
+    let expected = explicit.sheet("Data").unwrap();
+    assert_eq!(observed.scalar(at("D1")), Scalar::from(5.0));
+    assert_eq!(observed.scalar(at("D1")), expected.scalar(at("D1")));
+    assert_eq!(observed.scalar(at("B1")).as_f64().unwrap().to_bits(),
+        expected.scalar(at("B1")).as_f64().unwrap().to_bits(),
+        "one outer batch consumes one fixed-clock random pass");
+    assert!(applied.touched.iter().any(|(sheet, range)| sheet == "Data" && range.contains(at("D1"))),
+        "the dependent cache needs a tile invalidation receipt");
+}
+
+#[test]
+fn apply_calculation_refusal_restores_authored_cache_and_pending_state() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 13));
+    book.add_sheet("Data").unwrap();
+    for (address, entry) in [("A1", "1"), ("B1", "=A1+1"), ("C1", "=NOW()")]
+    { book.set_entry("Data", at(address), entry).unwrap(); }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+    let saved = book.into_package().unwrap();
+    book.rebase(saved).unwrap();
+    let before = book.sheet("Data").unwrap().clone();
+    let dirty = book.is_dirty();
+    let unknown = Timezone::from_str("Mars/Olympus_Mons").unwrap();
+    book.set_clock(Clock::fixed(0, unknown, 13));
+    let error = book.apply(Edit::SetEntries {
+        sheet: "Data".into(), entries: vec![(at("A1"), "2".into())],
+    }).unwrap_err();
+    assert!(error.to_string().contains("$.clock.timezone"), "{error}");
+    assert_eq!(book.sheet("Data").unwrap(), &before);
+    assert_eq!(book.is_dirty(), dirty);
+    book.set_clock(Clock::fixed(0, Timezone::UTC, 13));
+    let retry = book.recalculate().unwrap();
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(2.0));
+    assert!(retry.evaluated >= 2, "a failed pass must not acknowledge pending changes");
+}
+
+#[test]
+fn journal_undo_redo_restores_volatile_caches_without_new_draws() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::{Clock, Journal};
+
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 23));
+    book.add_sheet("Data").unwrap();
+    for (address, entry) in [("A1", "1"), ("B1", "=RAND()"), ("C1", "=A1+B1")]
+    { book.set_entry("Data", at(address), entry).unwrap(); }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+    let before = ["B1", "C1"].map(|address| book.sheet("Data").unwrap()
+        .scalar(at(address)).as_f64().unwrap().to_bits());
+    let mut journal = Journal::new(8, 1 << 20);
+    let mut applied = book.apply(Edit::SetEntries {
+        sheet: "Data".into(), entries: vec![(at("A1"), "2".into())],
+    }).unwrap();
+    let after = ["B1", "C1"].map(|address| book.sheet("Data").unwrap()
+        .scalar(at(address)).as_f64().unwrap().to_bits());
+    assert_ne!(before, after);
+    assert!(journal.record("edit", &mut applied));
+    journal.undo(&mut book).unwrap().unwrap();
+    assert_eq!(["B1", "C1"].map(|address| book.sheet("Data").unwrap()
+        .scalar(at(address)).as_f64().unwrap().to_bits()), before);
+    journal.redo(&mut book).unwrap().unwrap();
+    assert_eq!(["B1", "C1"].map(|address| book.sheet("Data").unwrap()
+        .scalar(at(address)).as_f64().unwrap().to_bits()), after);
+}
+
+
+#[test]
+fn apply_inverse_restores_overlapping_formula_caches_and_status() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 57));
+    book.add_sheet("Data").unwrap();
+    for (address, entry) in [("A1", "=RAND()"), ("B1", "=A1+1"),
+        ("C1", "=MYSTERY(1)"), ("D1", "=E1"), ("E1", "=D1")] {
+        book.set_entry("Data", at(address), entry).unwrap();
+    }
+    let prior_status = book.calculate_all().unwrap();
+    let prior = ["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
+        .scalar(at(cell)).as_f64().unwrap().to_bits());
+    let mut forward = book.apply(Edit::SetEntries {
+        sheet: "Data".into(), entries: vec![(at("A1"), "=RAND()*2".into())],
+    }).unwrap();
+    assert_eq!(forward.calc.evaluated, 2);
+    assert_eq!((forward.calc.uncomputed, forward.calc.circular_count),
+        (prior_status.uncomputed, prior_status.circular_count));
+    let after_status = forward.calc.clone();
+    let after = ["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
+        .scalar(at(cell)).as_f64().unwrap().to_bits());
+    assert_ne!(prior, after);
+
+    let mut inverse = book.apply(forward.inverse.take().unwrap()).unwrap();
+    assert_eq!(inverse.calc.evaluated, 0, "inverse restores a pass without evaluation");
+    assert_eq!((inverse.calc.uncomputed, inverse.calc.circular_count),
+        (prior_status.uncomputed, prior_status.circular_count));
+    assert_eq!(["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
+        .scalar(at(cell)).as_f64().unwrap().to_bits()), prior);
+    let redo = book.apply(inverse.inverse.take().unwrap()).unwrap();
+    assert_eq!(redo.calc.evaluated, 0, "redo restores the recorded pass");
+    assert_eq!((redo.calc.uncomputed, redo.calc.circular_count),
+        (after_status.uncomputed, after_status.circular_count));
+    assert_eq!(["A1", "B1"].map(|cell| book.sheet("Data").unwrap()
+        .scalar(at(cell)).as_f64().unwrap().to_bits()), after);
+}
+
+
+#[test]
+fn apply_composed_inverse_then_fresh_edit_recalculates_the_fresh_edit() {
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    book.set_entry("Data", at("A1"), "2").unwrap();
+    book.set_entry("Data", at("B1"), "=A1+1").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+    let first = book.apply(Edit::SetEntries {
+        sheet: "Data".into(), entries: vec![(at("A1"), "4".into())],
+    }).unwrap();
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(5.0));
+
+    let composed = book.apply(Edit::Batch(vec![
+        first.inverse.expect("undo"),
+        Edit::SetEntries { sheet: "Data".into(), entries: vec![(at("A1"), "9".into())] },
+    ])).unwrap();
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(9.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(10.0));
+    assert_eq!(composed.calc.evaluated, 1, "the fresh edit owns one new calculation pass");
+
+    book.apply(composed.inverse.expect("composed undo")).unwrap();
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(4.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(5.0));
+}
+
+#[test]
+fn apply_calculation_receipt_with_metadata_preserves_volatile_caches() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+    for visibility in [false,true] {
+        let mut book=Workbook::new().with_clock(Clock::fixed(0,Timezone::UTC,91));
+        book.add_sheet("Data").unwrap();book.add_sheet("Other").unwrap();
+        book.set_entry("Data",at("A1"),"1").unwrap();
+        book.set_entry("Data",at("B1"),"=RAND()").unwrap();
+        book.set_entry("Data",at("C1"),"=A1+B1").unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated,2);
+        let values=|book:&Workbook| ["B1","C1"].map(|address| book.sheet("Data").unwrap().scalar(at(address)).as_f64().unwrap().to_bits());
+        let before=values(&book);
+        let changed=book.apply(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("A1"),"2".into())]}).unwrap();
+        let after=values(&book);assert_ne!(before,after);
+        let metadata=if visibility {Edit::SheetState {name:"Data".into(),state:SheetState::Hidden}}
+            else {Edit::Freeze {sheet:"Data".into(),frozen:Some(Frozen {rows:1,columns:0})}};
+        let restored=book.apply(Edit::Batch(vec![changed.inverse.unwrap(),metadata])).unwrap();
+        assert_eq!(restored.calc.evaluated,0,"metadata plus a receipt must not draw RAND again");
+        assert_eq!(values(&book),before);assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(1.0));
+        let redone=book.apply(restored.inverse.unwrap()).unwrap();
+        assert_eq!(redone.calc.evaluated,0);assert_eq!(values(&book),after);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(2.0));
+    }
+}
+
+#[test]
+fn apply_lazy_style_report_counts_only_new_cell_formats() {
+    let mut authored=Workbook::new();
+    authored.add_sheet("Data").unwrap().set_cell(at("A1"),7.0).unwrap();
+    authored.set_style("Data", &[range("A1")], &StylePatch {bold:Some(true),..StylePatch::default()}).unwrap();
+    let bytes=authored.into_bytes().unwrap();
+    for (entry,new_format) in [("8",false),("12.3456%",true)] {
+        // Neither reopening nor obtaining the edit may read the style part.
+        let mut book=Workbook::from_bytes(bytes.clone()).unwrap();
+        let applied=book.apply(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("B1"),entry.into())]}).unwrap();
+        assert_eq!(applied.styles,new_format,"entry={entry}: parsing existing XFs is not appending one");
+    }
+}
+
+#[test]
+fn apply_appearance_inverse_preserves_volatile_caches_and_passes() {
+    use yggdryl::excel::Clock;
+    use yggdryl::Timezone;
+    let mut book=Workbook::new().with_clock(Clock::fixed(0,Timezone::UTC,1337));
+    book.add_sheet("Data").unwrap();
+    book.set_entry("Data",at("A1"),"=RAND()").unwrap();
+    book.set_entry("Data",at("B1"),"=A1+1").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated,2);
+    let before=[book.sheet("Data").unwrap().scalar(at("A1")),book.sheet("Data").unwrap().scalar(at("B1"))];
+    let applied=book.apply(Edit::SetStyle {sheet:"Data".into(),ranges:vec![range("A1")],patch:StylePatch {bold:Some(true),..StylePatch::default()}}).unwrap();
+    assert_eq!(applied.calc.evaluated,0);
+    let undone=book.apply(applied.inverse.unwrap()).unwrap();
+    assert_eq!(undone.calc.evaluated,0,"appearance undo must not draw another RAND");
+    let redone=book.apply(undone.inverse.unwrap()).unwrap();
+    assert_eq!(redone.calc.evaluated,0,"appearance redo must carry the same relevance fact");
+    assert_eq!([book.sheet("Data").unwrap().scalar(at("A1")),book.sheet("Data").unwrap().scalar(at("B1"))],before);
+}
+
+#[test]
+fn apply_failed_batch_restores_changed_cold_sheet_state() {
+    for (nested,parse_during) in [(false,false),(false,true),(true,false),(true,true)] {
+        let mut authored=Workbook::new();authored.add_sheet("Data").unwrap().set_cell(at("A1"),7.0).unwrap();authored.add_sheet("Other").unwrap();
+        let bytes=authored.into_bytes().unwrap();
+        let mut book=Workbook::from_bytes(bytes.clone()).unwrap();
+        let state=Edit::SheetState {name:"Data".into(),state:SheetState::Hidden};
+        let state=if nested {Edit::Batch(vec![state])}else{state};
+        let mut edits=vec![state];
+        if parse_during {edits.push(Edit::SetEntries {sheet:"Data".into(),entries:vec![(at("A1"),"11".into())]});}
+        edits.push(Edit::SetEntries {sheet:"Missing".into(),entries:vec![(at("A1"),"9".into())]});
+        let failure=book.apply(Edit::Batch(edits)).unwrap_err();
+        assert!(matches!(failure,Error::Absent {..}),"{failure}");
+        assert_eq!(book.sheet_state("Data"),Some(SheetState::Visible));
+        assert!(!book.is_dirty());
+        let saved=book.into_bytes().unwrap();
+        // ZIP entry order is not package identity; every member payload is.
+        let parts = |bytes: Vec<u8>| {
+            use yggdryl::holder::{Buffer, Holder};
+            use yggdryl::zip::ZipArchive;
+            let archive = std::sync::Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(bytes))));
+            archive.entries().unwrap().into_iter().map(|member| {
+                let name = member.name().to_owned();
+                let bytes = archive.read_member(&name).unwrap();
+                (name, bytes)
+            }).collect::<std::collections::BTreeMap<_, _>>()
+        };
+        assert_eq!(parts(saved.clone()),parts(bytes),"failed cold metadata batch changed package members: nested={nested}, parse_during={parse_during}");
+        let reopened=Workbook::from_bytes(saved).unwrap();
+        assert_eq!(reopened.sheet_state("Data"),Some(SheetState::Visible));
+        assert_eq!(reopened.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(7.0));
     }
 }

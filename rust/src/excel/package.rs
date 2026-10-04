@@ -241,6 +241,9 @@ impl RelationshipKind {
 pub(crate) struct Relationship {
     pub(crate) id: SmolStr,
     pub(crate) kind: RelationshipKind,
+    /// Normalized authored Type URI; a suffix classification alone cannot
+    /// authorize a selected pivot or mistake a vendor relationship for one.
+    pub(crate) type_uri: SmolStr,
     /// The member the target names, `None` for an external target.
     pub(crate) target: Option<SmolStr>,
 }
@@ -259,9 +262,12 @@ impl Relationships {
     ///
     /// Returns [`Error::Codec`] when the bytes are not the part.
     pub(crate) fn from_xml(bytes: &[u8], source: &str) -> Result<Self> {
-        let mut reader = super::styles::reader(bytes);
+        let mut reader = quick_xml::NsReader::from_reader(bytes);
+        reader.config_mut().trim_text(false);
         let mut buffer = Vec::new();
         let mut entries = Vec::new();
+        let mut depth = 0usize;
+        let mut root = false;
         loop {
             let position = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
             let event = reader
@@ -269,13 +275,33 @@ impl Relationships {
                 .map_err(|error| codec_error(position, error.to_string()))?;
             match event {
                 Event::Start(ref start) | Event::Empty(ref start) => {
-                    if local_name(start.name().as_ref()) == b"Relationship" {
-                        let id = attribute(start, b"Id", position)?.unwrap_or_default();
-                        let kind = attribute(start, b"Type", position)?
-                            .map_or(RelationshipKind::Other, |uri| RelationshipKind::of(&uri));
-                        let external = attribute(start, b"TargetMode", position)?
+                    let (namespace, name) = reader.resolver().resolve_element(start.name());
+                    let opc = match namespace {
+                        quick_xml::name::ResolveResult::Bound(uri) => {
+                            let uri = std::str::from_utf8(uri.as_ref())
+                                .map_err(|error| codec_error(position, error.to_string()))?;
+                            quick_xml::escape::unescape(uri)
+                                .map_err(|error| codec_error(position, error.to_string()))?
+                                == PACKAGE_RELATIONSHIPS_NAMESPACE
+                        }
+                        _ => false,
+                    };
+                    if depth == 0 {
+                        if root || !opc || name.as_ref() != b"Relationships" {
+                            return Err(codec_error(position,
+                                "expected one OPC Relationships root"));
+                        }
+                        root = true;
+                    } else if depth == 1 && opc && name.as_ref() == b"Relationship" {
+                        // Only direct OPC entries own parts. Foreign wrappers,
+                        // local-name lookalikes and qualified attributes carry
+                        // no relationship identity.
+                        let id = exact_attribute(start, b"Id", position)?.unwrap_or_default();
+                        let type_uri = exact_attribute(start, b"Type", position)?.unwrap_or_default();
+                        let kind = RelationshipKind::of(&type_uri);
+                        let external = exact_attribute(start, b"TargetMode", position)?
                             .is_some_and(|mode| mode.eq_ignore_ascii_case("External"));
-                        let target = attribute(start, b"Target", position)?;
+                        let target = exact_attribute(start, b"Target", position)?;
                         let target = match target {
                             Some(target) if !external => Some(resolve_target(source, &target)),
                             _ => None,
@@ -283,11 +309,19 @@ impl Relationships {
                         entries.push(Relationship {
                             id: SmolStr::new(id),
                             kind,
+                            type_uri: SmolStr::new(type_uri),
                             target,
                         });
                     }
+                    if matches!(event, Event::Start(_)) { depth += 1; }
                 }
-                Event::Eof => break,
+                Event::End(_) => depth = depth.saturating_sub(1),
+                Event::Eof => {
+                    if !root || depth != 0 {
+                        return Err(codec_error(position, "expected a complete OPC Relationships document"));
+                    }
+                    break;
+                }
                 _ => {}
             }
             buffer.clear();

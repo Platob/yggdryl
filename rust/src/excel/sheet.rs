@@ -356,10 +356,13 @@ impl std::ops::DerefMut for CellMut<'_> {
         if !self.checked_serial {
             self.checked_serial = true;
             if let Some(extra) = self.extras.get_mut(&self.reference) {
+                // Invalidate before lending mutation: a forgotten guard must
+                // never expose the spelling of its replaced value.
+                extra.calculation_text = None;
                 if let Some(bits) = extra.original_serial_bits.take() {
                     self.saved_serial = Some((bits, self.cell.clone()));
                 }
-                if *extra == CellExtra::default() {
+                if extra.is_empty() {
                     self.extras.remove(&self.reference);
                 }
             }
@@ -371,6 +374,11 @@ impl std::ops::DerefMut for CellMut<'_> {
 impl Drop for CellMut<'_> {
     fn drop(&mut self) {
         self.cell.move_to(self.reference);
+        if self.checked_serial {
+            if let Some(text) = CellExtra::calculation_text(self.cell) {
+                self.extras.entry(self.reference).or_default().calculation_text = Some(text);
+            }
+        }
         if let Some((bits, original)) = self.saved_serial.take() {
             if self.cell.kind() == original.kind()
                 && self.cell.value() == original.value()
@@ -486,7 +494,7 @@ impl fmt::Debug for Extent {
 
 /// What a few cells state beyond their value, held beside them by the
 /// sheet rather than in every cell.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct CellExtra {
     /// The shared string item the cell was read from, where interning its
     /// text would name another: a rich or phonetic item, or a duplicate.
@@ -505,6 +513,8 @@ pub(crate) struct CellExtra {
     formula: Option<Box<FormulaAttributes>>,
     /// The numeric temporal cache when typed milliseconds cannot reproduce its bits.
     original_serial_bits: Option<u64>,
+    /// Derived shared spelling for authored non-string text; never serialized.
+    calculation_text: Option<crate::Str>,
 }
 
 /// A rich inline string: the raw inside of its `<is>` - its runs, their
@@ -515,7 +525,46 @@ pub(crate) struct RichInline {
     runs: Arc<[u8]>,
 }
 
+impl PartialEq for CellExtra {
+    fn eq(&self, other: &Self) -> bool {
+        self.shared_string == other.shared_string
+            && self.inline_runs == other.inline_runs
+            && self.cell_metadata == other.cell_metadata
+            && self.value_metadata == other.value_metadata
+            && self.phonetic == other.phonetic
+            && self.formula == other.formula
+            && self.original_serial_bits == other.original_serial_bits
+    }
+}
+
+impl Eq for CellExtra {}
+
 impl CellExtra {
+    /// Derived spellings do not participate in source identity.
+    fn is_empty(&self) -> bool {
+        self == &Self::default() && self.calculation_text.is_none()
+    }
+
+    fn source_facts(&self) -> bool {
+        self != &Self::default()
+    }
+
+    /// Lend the intake spelling when retained; forgotten mutation guards
+    /// invalidate it before mutation, so the fallback remains current.
+    fn text<'a>(cell: &'a Cell, extra: Option<&'a Self>) -> std::borrow::Cow<'a, str> {
+        extra.and_then(|extra| extra.calculation_text.as_ref())
+            .map_or_else(|| cell.text(), |text| std::borrow::Cow::Borrowed(text.as_str()))
+    }
+
+    /// Native strings already lend their storage. Authored typed text needs
+    /// one shared display spelling; formula caches are native scalar results.
+    fn calculation_text(cell: &Cell) -> Option<crate::Str> {
+        (cell.formula().is_none() && cell.error().is_none() && cell.kind().is_text()
+            && !matches!(cell.value(), crate::string_scalars!(_)))
+            .then(|| crate::Str::new(cell.text()))
+    }
+
+
     /// What `raw`, read as `cell`, states beyond its value, `None` when it
     /// states nothing.
     fn of(
@@ -544,6 +593,7 @@ impl CellExtra {
                 .as_ref()
                 .and_then(|formula| formula.attributes.kept()),
             original_serial_bits: serial,
+            calculation_text: None,
         };
         (extra != Self::default()).then_some(extra)
     }
@@ -578,8 +628,9 @@ impl CellExtra {
 /// slack of its cell vector, one 64 KiB table of column counts while the
 /// sheet holds any cell, and one map entry per cell stating a fact only a
 /// few cells state (`cm`, `vm`, `ph`, a shared string item interning would
-/// not name, a rich inline string's runs, an array formula's range), none
-/// for any other. Beside the cells: one map entry per row stating a format
+/// not name, a rich inline string's runs, an array formula's range, or
+/// an authored non-string text value's shared calculation spelling), none for
+/// any other. Beside the cells: one map entry per row stating a format
 /// (Excel's `x14ac:dyDescent` makes that every row it writes, the attribute
 /// text shared by the rows repeating it), one span per `<col>`, and - for a
 /// sheet read from a part - what the part states outside its cells, as it
@@ -653,7 +704,8 @@ impl PartialEq for Sheet {
             && self.state == other.state
             && self.system == other.system
             && self.rows == other.rows
-            && self.extras == other.extras
+            && self.extras.iter().filter(|(_, extra)| extra.source_facts())
+                .eq(other.extras.iter().filter(|(_, extra)| extra.source_facts()))
             && self.layout == other.layout
     }
 }
@@ -702,7 +754,7 @@ impl Sheet {
     fn clear_serials(&mut self) {
         self.extras.retain(|_, extra| {
             extra.original_serial_bits = None;
-            *extra != CellExtra::default()
+            !extra.is_empty()
         });
     }
 
@@ -1537,7 +1589,7 @@ impl Sheet {
         let _ = cell.restyle(StyleId::DEFAULT, NumberFormat::General, system, raw);
         if let Some(extra) = self.extras.get_mut(&at) {
             extra.original_serial_bits = None;
-            if *extra == CellExtra::default() {
+            if extra.is_empty() {
                 self.extras.remove(&at);
             }
         }
@@ -1608,7 +1660,15 @@ impl Sheet {
         };
         for cell in moved.cells() {
             let at = landed(cell.reference());
-            self.put(cell.clone().at(at));
+            if moved.extras.get(&cell.reference()).is_some_and(|extra| extra.calculation_text.is_some()) {
+                // The unchanged source payload carries its shared spelling in
+                // the extra-copy loop below; do not render it a second time.
+                self.extras.remove(&at);
+                self.changed();
+                self.place(cell.clone().at(at));
+            } else {
+                self.put(cell.clone().at(at));
+            }
         }
         if let Some(written) = moved
             .record_footprint
@@ -1637,7 +1697,12 @@ impl Sheet {
                     }
                 }
             }
-            self.extras.insert(landed(*at), extra);
+            let target = landed(*at);
+            if extra.calculation_text.is_none() {
+                extra.calculation_text = self.extras.get(&target)
+                    .and_then(|held| held.calculation_text.clone());
+            }
+            self.extras.insert(target, extra);
         }
         self.changed();
     }
@@ -2078,6 +2143,15 @@ impl Sheet {
 
     /// Read one source cell through its exact retained numeric serial.
     pub(crate) fn calculation_operand_at(&self, cell: &Cell) -> super::formula::value::Outcome {
+        use super::formula::value::{Operand, Outcome};
+        if cell.formula().is_none() && cell.error().is_none() && cell.kind().is_text() {
+            if let Some(text) = self.extras.get(&cell.reference())
+                .and_then(|extra| extra.calculation_text.as_ref()) {
+                return Outcome::Computed(Operand::Text(text.clone()));
+            }
+        }
+        // A forgotten mutable guard cannot rebuild its spelling in Drop.
+        // The existing direct conversion remains correct for that cold case.
         cell.calculation_operand(self.system, self.retained_serial(cell.reference()))
     }
 
@@ -2099,7 +2173,7 @@ impl Sheet {
                 .original_serial_bits = Some(bits);
         } else if let Some(extra) = self.extras.get_mut(&reference) {
             extra.original_serial_bits = None;
-            if *extra == CellExtra::default() {
+            if extra.is_empty() {
                 self.extras.remove(&reference);
             }
         }
@@ -2145,7 +2219,12 @@ impl Sheet {
     /// Put `cell` in place of whatever was at its reference, what the
     /// replaced cell stated beside it going with it.
     fn put(&mut self, cell: Cell) -> Option<Cell> {
-        self.extras.remove(&cell.reference());
+        let at = cell.reference();
+        let calculation_text = CellExtra::calculation_text(&cell);
+        self.extras.remove(&at);
+        if let Some(text) = calculation_text {
+            self.extras.insert(at, CellExtra { calculation_text: Some(text), ..CellExtra::default() });
+        }
         self.changed();
         self.place(cell)
     }
@@ -2225,7 +2304,7 @@ impl Sheet {
                     self.extras.entry(at).or_default().original_serial_bits = Some(bits);
                 } else if let Some(extra) = self.extras.get_mut(&at) {
                     extra.original_serial_bits = None;
-                    if *extra == CellExtra::default() {
+                    if extra.is_empty() {
                         self.extras.remove(&at);
                     }
                 }
@@ -2503,7 +2582,7 @@ impl Sheet {
                 extra.cell_metadata = None;
                 extra.value_metadata = None;
                 extra.shared_string = None;
-                *extra != CellExtra::default()
+                !extra.is_empty()
             });
             let clear = |style: &mut Option<StyleId>| *style = None;
             for format in self.layout.rows.values_mut() {
@@ -3758,7 +3837,7 @@ impl<W: Write> PartWriter<'_, '_, '_, W> {
             }
             _ if inline => {
                 write!(writer, "<{prefix}is>")?;
-                let text = cell.text();
+                let text = CellExtra::text(cell, extra);
                 // The runs spell the text the cell was read with; a cell
                 // holding other text since writes its own.
                 match extra
@@ -3784,7 +3863,7 @@ impl<W: Write> PartWriter<'_, '_, '_, W> {
                 write!(writer, "</{prefix}is>")?;
             }
             CellKind::SharedString | CellKind::InlineString | CellKind::FormulaString => {
-                let text = cell.text();
+                let text = CellExtra::text(cell, extra);
                 if has_formula {
                     write!(writer, "<{prefix}v>")?;
                     crate::xml::write_element_text(writer, &super::shared_strings::encode(&text))?;

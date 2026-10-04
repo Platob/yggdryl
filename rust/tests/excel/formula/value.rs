@@ -329,3 +329,38 @@ fn unary_plus_empty_text_keeps_formula_string_cache_through_roundtrip() {
     assert_eq!(cell.kind(), CellKind::FormulaString);
     assert_eq!(cell.value(), &Scalar::from(""));
 }
+
+#[test]
+fn ordered_comparisons_keep_contextual_blanks_identical_text_and_incremental_edges() {
+    let mut book = Workbook::new();
+    let sheet = book.add_sheet("Data").unwrap();
+    sheet.set_cell(CellRef::new(0, 0), 1.0).unwrap();
+    sheet.set_cell(CellRef::new(0, 1), 2.0).unwrap();
+    let operators = ["=", "<>", "<", ">", "<=", ">="];
+    for (index, operator) in operators.iter().enumerate() {
+        for (column, left, right) in [(2, "A1", "B1"), (3, "A9", "FALSE"),
+            (4, "\"a-b\"", "\"a-b\""), (5, "\"\u{e9}\"", "\"\u{e9}\"")] {
+            let at = CellRef::new(index as u32, column);
+            sheet.insert_cell(Cell::from_scalar(at, Scalar::from(77.0), DateSystem::Year1900).unwrap()
+                .with_formula(Formula::from_file(&format!("{left}{operator}{right}"), at))).unwrap();
+        }
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 24);
+    let sheet = book.sheet("Data").unwrap();
+    for (index, expected) in [false, true, true, false, true, false].into_iter().enumerate() {
+        assert_eq!(sheet.scalar(CellRef::new(index as u32, 2)).as_bool(), Some(expected));
+    }
+    for (index, expected) in [true, false, false, false, true, true].into_iter().enumerate() {
+        for column in [3, 4, 5] {
+            assert_eq!(sheet.scalar(CellRef::new(index as u32, column)).as_bool(), Some(expected));
+        }
+    }
+    book.sheet_mut("Data").unwrap().set_cell(CellRef::new(0, 0), 3.0).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 6);
+    for (index, expected) in [false, true, false, true, false, true].into_iter().enumerate() {
+        assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(index as u32, 2)).as_bool(), Some(expected));
+    }
+    book.sheet_mut("Data").unwrap().set_cell(CellRef::new(8, 0), true).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 6);
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
+}

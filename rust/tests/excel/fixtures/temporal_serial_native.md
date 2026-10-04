@@ -15,9 +15,14 @@ reference retains IEEE bits `40e61d8000000089`; the saved cache spells
 
 B4 and B5 show `########` at the authored column width; that is a display
 width limitation, not a numeric error. The report's Value2 bits and saved `<v>`
-are the evidence for those cells. This is native execution evidence only:
-`rust_equivalence_checked=false`, and the Rust serial regression test has not
-been run here.
+are the evidence for those cells. The public Rust test
+`temporal_serial_native_twelve_cache_observations` now reproduces all twelve
+cache values. The same test exported two actual Rust-written workbooks; Excel
+opened, recalculated and saved them without a reported repair. All twelve
+Rust-written caches and Excel-saved caches have identical IEEE-754 bits.
+`temporal_serial_rust_excel.json` records that separate verification (Excel
+16.0 build 20430.0, cleanup complete). The original observation report's
+execution-only flag describes that original run, not this later Rust check.
 
 Inputs: `b74a3d89ed02fba4ef7866d5015938de4e8eff6c819bda44a15703e28c174b1b` (1900),
 `bce5ab5a2ee528ac7b8123ef15e4d671b74c9a63d3163218047ba31216dbf048` (1904). Excel-saved packages:

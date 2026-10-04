@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "kind": "trig_kernel_native_controls",
+  "native_1900_and_1904_equal": true,
+  "native_cases": 28,
+  "refinement_report_sha256": "0c4521bc5ae1cd1c78d75629c8accff9c186290af98bf76539a72fb0d4761365",
+  "identity_report_sha256": "b11a855fff232353972e54f50d5797f439bc1d98c4e67574496bb3e9f113e649",
+  "rows": [
+    {
+      "id": "acos-bound-0",
+      "function": "ACOS",
+      "args": [
+        {
+          "bits": "bff0000000000000",
+          "provenance": "exact:-1"
+        }
+      ],
+      "expected_ieee754_hex": "400921fb54442d18",
+      "wire_formula": "ACOS(-1)"
+    },
+    {
+      "id": "acos-bound-8",
+      "function": "ACOS",
+      "args": [
+        {
+          "bits": "3fe0000000000000",
+          "provenance": "exact:0.5"
+        }
+      ],
+      "expected_ieee754_hex": "3ff0c152382d7365",
+      "wire_formula": "ACOS(0.5)"
+    },
+    {
+      "id": "acos-bound-11",
+      "function": "ACOS",
+      "args": [
+        {
+          "bits": "3feffffffffffff7",
+          "provenance": "identity:identity-positive-literal"
+        }
+      ],
+      "expected_ieee754_hex": "3e68000000000000",
+      "wire_formula": "ACOS(0.999999999999999)"
+    },
+    {
+      "id": "acos-bound-15",
+      "function": "ACOS",
+      "args": [
+        {
+          "bits": "3feffffffffffff7",
+          "provenance": "identity:identity-positive-ref"
+        }
+      ],
+      "expected_ieee754_hex": "3e68000000000000",
+      "wire_formula": "ACOS(Values!A1)"
+    },
+    {
+      "id": "acos-bound-16",
+      "function": "ACOS",
+      "args": [
+        {
+          "bits": "bfeffffffffffff7",
+          "provenance": "identity:identity-negative-ref"
+        }
+      ],
+      "expected_ieee754_hex": "400921fb4e9c057e",
+      "wire_formula": "ACOS(Values!A2)"
+    },
+    {
+      "id": "atan-bound-16",
+      "function": "ATAN",
+      "args": [
+        {
+          "bits": "400921fb54442d18",
+          "provenance": "source:source-pi"
+        }
+      ],
+      "expected_ieee754_hex": "3ff433b8a322ddd3",
+      "wire_formula": "ATAN(Values!B1)"
+    },
+    {
+      "id": "atan-bound-17",
+      "function": "ATAN",
+      "args": [
+        {
+          "bits": "3fd5555555555555",
+          "provenance": "source:source-third"
+        }
+      ],
+      "expected_ieee754_hex": "3fd4978fa3269ee1",
+      "wire_formula": "ATAN(Values!B2)"
+    },
+    {
+      "id": "atan2-bound-5",
+      "function": "ATAN2",
+      "args": [
+        {
+          "bits": "3ff0000000000000",
+          "provenance": "exact:1"
+        },
+        {
+          "bits": "3ff0000000000000",
+          "provenance": "exact:1"
+        }
+      ],
+      "expected_ieee754_hex": "3fe921fb54442d18",
+      "wire_formula": "ATAN2(1,1)"
+    },
+    {
+      "id": "atan2-bound-23",
+      "function": "ATAN2",
+      "args": [
+        {
+          "bits": "400921fb54442d18",
+          "provenance": "source:source-pi"
+        },
+        {
+          "bits": "3fd3333333333334",
+          "provenance": "source:source-sum"
+        }
+      ],
+      "expected_ieee754_hex": "3fb85f4ec4a3a7d8",
+      "wire_formula": "ATAN2(Values!B1,Values!B3)"
+    },
+    {
+      "id": "atan2-bound-24",
+      "function": "ATAN2",
+      "args": [
+        {
+          "bits": "c00921fb54442d18",
+          "provenance": "negated-source:source-pi"
+        },
+        {
+          "bits": "3fd3333333333334",
+          "provenance": "source:source-sum"
+        }
+      ],
+      "expected_ieee754_hex": "40085f00de1f0fd9",
+      "wire_formula": "ATAN2(-Values!B1,Values!B3)"
+    },
+    {
+      "id": "sin-bound-6",
+      "function": "SIN",
+      "args": [
+        {
+          "bits": "4004000000000000",
+          "provenance": "exact:2.5"
+        }
+      ],
+      "expected_ieee754_hex": "3fe326af0dcfcab1",
+      "wire_formula": "SIN(2.5)"
+    },
+    {
+      "id": "sin-bound-11",
+      "function": "SIN",
+      "args": [
+        {
+          "bits": "400921fb54442d18",
+          "provenance": "source:source-pi"
+        }
+      ],
+      "expected_ieee754_hex": "3ca1a80000000000",
+      "wire_formula": "SIN(Values!B1)"
+    },
+    {
+      "id": "tan-bound-6",
+      "function": "TAN",
+      "args": [
+        {
+          "bits": "4004000000000000",
+          "provenance": "exact:2.5"
+        }
+      ],
+      "expected_ieee754_hex": "bfe7e79b4e00bb15",
+      "wire_formula": "TAN(2.5)"
+    },
+    {
+      "id": "tan-bound-11",
+      "function": "TAN",
+      "args": [
+        {
+          "bits": "400921fb54442d18",
+          "provenance": "source:source-pi"
+        }
+      ],
+      "expected_ieee754_hex": "bca1a80000000000",
+      "wire_formula": "TAN(Values!B1)"
+    }
+  ]
+}

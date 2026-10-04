@@ -906,6 +906,45 @@ def write_with_openpyxl(path: Path, path_1904: Path) -> None:
     expect(load_workbook(path_1904).epoch == CALENDAR_MAC_1904, "the 1904 fixture lost its epoch")
 
 
+
+def p6_openpyxl_pivot_exchange(path: Path, *, rust_authored: bool) -> None:
+    """Check typed pivot metadata and the value format with openpyxl."""
+    from openpyxl import load_workbook
+
+    book = load_workbook(path, data_only=True)
+    host = "RustPivot" if rust_authored else "CaseOrder"
+    name = "P6_interop" if rust_authored else "P6_source_order_grand"
+    pivots = [pivot for pivot in book[host]._pivots if pivot.name == name]
+    expect(len(pivots) == 1, f"{path}: expected exactly one {name} pivot")
+    pivot = pivots[0]
+    expect(len(pivot.dataFields) == 1, f"{path}: expected one data field")
+    expect(pivot.dataFields[0].subtotal == "sum", f"{path}: aggregate changed")
+    expect(pivot.dataFields[0].numFmtId == 2, f"{path}: 0.00 number format lost")
+    expect(book[host]["B4"].number_format == "0.00", f"{path}: cell format lost")
+
+
+def write_openpyxl_pivot_exchange(path: Path) -> None:
+    """Modify a committed Excel-authored pivot through openpyxl's pivot model."""
+    from openpyxl import load_workbook
+
+    source = REPO / "rust" / "tests" / "excel" / "fixtures" / "pivot_excel.xlsx"
+    book = load_workbook(source)
+    pivots = [pivot for pivot in book["CaseOrder"]._pivots
+              if pivot.name == "P6_source_order_grand"]
+    expect(len(pivots) == 1, "Excel-authored fixture is missing its pivot")
+    expect(len(pivots[0].dataFields) == 1, "Excel-authored pivot changed shape")
+    pivots[0].dataFields[0].numFmtId = 2  # built-in 0.00
+    # Missing sortType is manual in OOXML. This outside edit explicitly
+    # requests the automatic ordering the public PivotSpec can represent.
+    for field in pivots[0].pivotFields:
+        if field.axis in ("axisRow", "axisCol"):
+            field.sortType = "ascending"
+    for row in book["CaseOrder"]["B4:B6"]:
+        for cell in row:
+            cell.number_format = "0.00"
+    book.save(path)
+
+
 def main() -> int:
     try:
         import openpyxl  # noqa: F401
@@ -937,12 +976,17 @@ def main() -> int:
         "from-rust-named-totals-equal.xlsx",
         "from-rust-named-totals-shrink.xlsx",
         "from-rust-rows.xlsx",
+        "from-rust-pivot.xlsx",
+        "from-openpyxl-pivot.xlsx",
+        "from-rust-pivot-edited.xlsx",
         "from-openpyxl-rows.xlsx",
     ):
         (EXCHANGE / name).unlink(missing_ok=True)
 
     first = run_cargo(allow_skip=True)
     expect("excel-interop: wrote" in first, f"the Rust writing half did not report:\n{first}")
+    expect("excel-interop: wrote pivot" in first, "Rust pivot writer did not report")
+    p6_openpyxl_pivot_exchange(EXCHANGE / "from-rust-pivot.xlsx", rust_authored=True)
     read_with_openpyxl(EXCHANGE / "from-rust.xlsx")
     print("openpyxl read the workbook this crate wrote")
     expect("excel-interop: wrote styled" in first, f"the Rust styling half did not report:\n{first}")
@@ -952,6 +996,7 @@ def main() -> int:
     inspect_rows_with_openpyxl(EXCHANGE / "from-rust-rows.xlsx", from_rust=True)
     print("openpyxl read merged multiline headers and physical all-null records this crate wrote")
 
+    write_openpyxl_pivot_exchange(EXCHANGE / "from-openpyxl-pivot.xlsx")
     write_with_openpyxl(EXCHANGE / "from-openpyxl.xlsx", EXCHANGE / "from-openpyxl-1904.xlsx")
     write_styled_with_openpyxl(EXCHANGE / "from-openpyxl-styled.xlsx")
     write_fidelity_with_openpyxl(EXCHANGE / "from-openpyxl-fidelity.xlsx")
@@ -976,9 +1021,11 @@ def main() -> int:
            f"the Rust named-table resize half did not report:\n{second}")
     expect("excel-interop: resized named totals" in second,
            f"the Rust totals-table resize half did not report:\n{second}")
+    expect("excel-interop: read pivot" in second, "Rust pivot reader did not report")
     expect("excel-interop: read rows" in second, "Rust nested-row reader did not report")
     print("this crate read the workbooks openpyxl wrote, including merged multiline headers and all-null records")
 
+    p6_openpyxl_pivot_exchange(EXCHANGE / "from-rust-pivot-edited.xlsx", rust_authored=False)
     read_edited_with_openpyxl(EXCHANGE / "from-rust-edited.xlsx")
     print("openpyxl read the styled workbook this crate edited, its styles kept")
 

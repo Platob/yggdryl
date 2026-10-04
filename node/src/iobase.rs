@@ -483,11 +483,6 @@ impl JsIOBase {
         Self { inner }
     }
 
-    /// The core handle, borrowed.
-    pub(crate) const fn core(&self) -> &Holder {
-        &self.inner
-    }
-
     /// The core handle, for a caller that takes ownership of it.
     pub(crate) fn into_core(self) -> Holder {
         self.inner

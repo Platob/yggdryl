@@ -721,12 +721,48 @@ fn function_field(
         .cloned()
         .unwrap_or(DataType::Null);
     let dtype = match function {
-        Function::Sqrt => {
+        Function::Factorial => {
+            let dtype = unwrap_dictionary(&first);
+            if !DataTypeKind::Integer.contains(dtype.id())
+                && !matches!(dtype, DataType::Null) {
+                return Err(typing_error(format_smolstr!(
+                    "expected an exact integer for factorial, got {first}"
+                )));
+            }
+            DataType::Float64
+        }
+        Function::Gcd | Function::Lcm => {
+            for field in &fields {
+                let dtype = unwrap_dictionary(field.dtype());
+                if !DataTypeKind::Integer.contains(dtype.id())
+                    && !matches!(dtype, DataType::Null) {
+                    return Err(typing_error(format_smolstr!(
+                        "expected exact integers for {}, got {}", function.as_str(), field.dtype()
+                    )));
+                }
+            }
+            DataType::UInt64
+        }
+        Function::Sqrt | Function::Exp | Function::Ln | Function::Log10
+        | Function::Degrees | Function::Radians | Function::Cos | Function::Asin
+        | Function::Sin | Function::Tan | Function::Acos | Function::Atan => {
             let dtype = unwrap_dictionary(&first);
             if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
                 return Err(typing_error(format_smolstr!(
-                    "expected a number for sqrt, got {first}"
+                    "expected a number for {}, got {first}", function.as_str()
                 )));
+            }
+            DataType::Float64
+        }
+        Function::Pow | Function::Atan2 => {
+            for field in &fields {
+                let dtype = unwrap_dictionary(field.dtype());
+                if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
+                    return Err(typing_error(format_smolstr!(
+                        "expected numbers for {}, got {}", function.as_str(),
+                        field.dtype()
+                    )));
+                }
             }
             DataType::Float64
         }
@@ -864,7 +900,13 @@ fn function_field(
     // - the one that runs out of alternatives - can itself be null.
     let nullable = match function {
         Function::Coalesce | Function::IfNull => fields.last().is_none_or(Field::is_nullable),
-        Function::Abs | Function::Sqrt if matches!(unwrap_dictionary(&first), DataType::Null) => {
+        Function::Abs | Function::Sqrt | Function::Pow | Function::Exp
+        | Function::Ln | Function::Log10 | Function::Degrees | Function::Radians
+        | Function::Cos | Function::Asin | Function::Sin | Function::Tan
+        | Function::Acos | Function::Atan | Function::Atan2
+        | Function::Factorial | Function::Gcd | Function::Lcm
+            if fields.iter().any(|field| matches!(unwrap_dictionary(field.dtype()), DataType::Null)) =>
+        {
             true
         }
         _ => nullable,

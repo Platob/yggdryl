@@ -313,9 +313,9 @@ assert.deepEqual(avro.loads(encoded, { readerSchema: reader }).rows, [{ note: 'n
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
-## Excel: one worksheet as records, the workbook as cells
+## Excel: one worksheet as records
 
-A `.xlsx` handle is a record medium over one worksheet - `sheet`, `header` and `range` pick which cells - and `Workbook` is the same package cell by cell.
+A `.xlsx` handle is a record medium over one worksheet; `sheet`, `header` and the A1 `range` string select the records through the Rust core.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -323,7 +323,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const arrow = require('apache-arrow')
-const { IOBase, Serie, Sheet, Workbook } = require('yggdryl')
+const { IOBase, Serie } = require('yggdryl')
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
 const file = path.join(root, 'trades.xlsx')
@@ -340,15 +340,6 @@ assert.deepEqual([...handle.readArrowReader({ field, sheet: 'Trades' }).intoTabl
 // Inferred, a number column is the float64 the file stores.
 assert.deepEqual([...handle.readArrowReader({ sheet: 'Trades' }).intoTable().getChild('id')], [1, 2])
 
-// The workbook: any cell by its A1 reference, a sheet as a Serie and back.
-const workbook = Workbook.open(file)
-const sheet = workbook.sheet('Trades')
-assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
-sheet.setCell('B3', 'MSFT')
-assert.equal(sheet.intoSerie(field).asJs().length, 2)
-workbook.insertSheet(Sheet.fromSerie('Copy', table))
-workbook.writeInto(file)
-assert.deepEqual(Workbook.open(file).sheetNames, ['Trades', 'Copy'])
 fs.rmSync(root, { recursive: true, force: true })
 ```
 

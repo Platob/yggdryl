@@ -92,7 +92,128 @@ pub enum DateSystem {
     Year1904,
 }
 
+/// Phantom-aware civil fields of one validated Excel serial.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ExcelCalendar {
+    pub(crate) year: i64,
+    pub(crate) month: i64,
+    pub(crate) day: i64,
+    pub(crate) weekday: i64,
+}
+
 impl DateSystem {
+    /// The whole serial day, validated before any formula date arithmetic.
+    pub(crate) fn serial_day(self, serial: f64) -> Option<i64> {
+        if !serial.is_finite() || serial < 0.0 || serial >= (self.last_serial() + 1) as f64 {
+            return None;
+        }
+        Some(serial.floor() as i64)
+    }
+
+    /// Construct DATE's serial from its integer year, month and day parts.
+    /// Month/day overflow uses the civil calendar while the final serial
+    /// retains the 1900 phantom day and the selected workbook epoch.
+    pub(crate) fn date_serial(self, year: f64, month: f64, day: f64) -> Option<i64> {
+        if !year.is_finite() || !(0.0..10_000.0).contains(&year) {
+            return None;
+        }
+        let year = year.trunc() as i64;
+        let year = if year <= 1899 { year + 1900 } else { year };
+        // Bound integer conversion before casting; f64-to-integer saturation
+        // would silently turn a huge argument into a plausible date.
+        const I64_CEILING: f64 = 9_223_372_036_854_775_808.0;
+        if !month.is_finite() || !day.is_finite()
+            || month < i64::MIN as f64 || month >= I64_CEILING
+            || day < i64::MIN as f64 || day >= I64_CEILING
+        {
+            return None;
+        }
+        let month = month.trunc() as i64;
+        let day = day.trunc() as i64;
+        let month_index = year.checked_mul(12)?.checked_add(month)?.checked_sub(1)?;
+        let civil_year = i32::try_from(month_index.div_euclid(12)).ok()?;
+        let civil_month = (month_index.rem_euclid(12) + 1) as u32;
+        // days_from_civil subtracts one from January/February's year.
+        if civil_year == i32::MIN && civil_month <= 2 { return None; }
+        let first = crate::timezone::days_from_civil(civil_year, civil_month, 1);
+        let base = first - self.epoch_days();
+        let base = if self == Self::Year1900
+            && first < crate::timezone::days_from_civil(1900, 3, 1)
+        {
+            base - 1
+        } else {
+            base
+        };
+        let serial = base.checked_add(day)?.checked_sub(1)?;
+        (0..=self.last_serial()).contains(&serial).then_some(serial)
+    }
+
+    /// Rounded whole second within a validated serial day. The clock can
+    /// round through midnight; HOUR/MINUTE/SECOND then read 00:00:00.
+    pub(crate) fn clock_second(self, serial: f64) -> Option<i64> {
+        let day = self.serial_day(serial)?;
+        let seconds = ((serial - day as f64) * 86_400.0).round() as i64;
+        Some(seconds.rem_euclid(86_400))
+    }
+
+    /// Move a serial by whole civil months. EDATE retains/clamps the source
+    /// day; EOMONTH lands on the real last day of the destination month.
+    /// The 1900 phantom day can be a source but is not a civil month end.
+    pub(crate) fn month_serial(self, serial: f64, months: f64, end: bool) -> Option<i64> {
+        let source = self.calendar(serial)?;
+        const I64_CEILING: f64 = 9_223_372_036_854_775_808.0;
+        if !months.is_finite() || months < i64::MIN as f64 || months >= I64_CEILING {
+            return None;
+        }
+        let index = source.year.checked_mul(12)?
+            .checked_add(source.month)?.checked_sub(1)?
+            .checked_add(months.trunc() as i64)?;
+        let year = i32::try_from(index.div_euclid(12)).ok()?;
+        let first_year = if self == Self::Year1900 { 1900 } else { 1904 };
+        if !(first_year..=9999).contains(&year) { return None; }
+        let month = (index.rem_euclid(12) + 1) as u32;
+        let first = crate::timezone::days_from_civil(year, month, 1);
+        let (next_year, next_month) = if month == 12 {
+            (year.checked_add(1)?, 1)
+        } else {
+            (year, month + 1)
+        };
+        let last = crate::timezone::days_from_civil(next_year, next_month, 1) - first;
+        let day = if end { last } else { source.day.min(last) };
+        self.date_serial(f64::from(year), f64::from(month), day as f64)
+    }
+    /// Formula extraction retains day zero and phantom 60 as raw serial facts.
+    pub(crate) fn calendar(self, serial: f64) -> Option<ExcelCalendar> {
+        Some(self.civil_day(self.serial_day(serial)?))
+    }
+
+    /// The formatter and formulas share the existing phantom-aware civil rule.
+    pub(crate) fn civil_day(self, day: i64) -> ExcelCalendar {
+        let (days_from_epoch, weekday) = match self {
+            Self::Year1900 => {
+                let weekday = (day + 6).rem_euclid(7);
+                match day {
+                    0 => {
+                        return ExcelCalendar { year: 1900, month: 1, day: 0, weekday };
+                    }
+                    60 => {
+                        return ExcelCalendar { year: 1900, month: 2, day: 29, weekday };
+                    }
+                    1..=59 => (day - 25_568, weekday),
+                    _ => (day - 25_569, weekday),
+                }
+            }
+            Self::Year1904 => (day - 24_107, (day + 5).rem_euclid(7)),
+        };
+        let (year, month, day) = crate::timezone::civil_from_days(days_from_epoch);
+        ExcelCalendar {
+            year: i64::from(year),
+            month: i64::from(month),
+            day: i64::from(day),
+            weekday,
+        }
+    }
+
     /// The system's name: `1900` or `1904`, the year its day zero falls in.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -125,6 +246,16 @@ impl DateSystem {
     /// Returns [`Error::InvalidRecord`] for a serial before day zero or past
     /// 9999-12-31, which no cell displays as a date.
     pub fn millis_from_serial(self, serial: f64) -> Result<i64> {
+        let (mut day, clock) = self.serial_day_clock(serial)?;
+        // Serials 0..59 of the 1900 system sit before the phantom day and
+        // count one short; 60 is the phantom itself and reads as the 28th.
+        if self == Self::Year1900 && day < 60 {
+            day += 1;
+        }
+        Ok((day + self.epoch_days()) * DAY_MILLIS + clock)
+    }
+
+    fn serial_day_clock(self, serial: f64) -> Result<(i64, i64)> {
         if !serial.is_finite() || serial < 0.0 || serial >= (self.last_serial() + 1) as f64 {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
@@ -134,15 +265,35 @@ impl DateSystem {
                 ),
             });
         }
-        let mut day = serial.floor();
+        let day = serial.floor();
         let fraction = serial - day;
-        // Serials 0..59 of the 1900 system sit before the phantom day and
-        // count one short; 60 is the phantom itself and reads as the 28th.
-        if self == Self::Year1900 && day < 60.0 {
-            day += 1.0;
-        }
         let clock = (fraction * DAY_MILLIS as f64).round() as i64;
-        Ok((day as i64 + self.epoch_days()) * DAY_MILLIS + clock)
+        Ok((day as i64, clock))
+    }
+
+    /// Milliseconds for a PivotCache `<d>` item. Its 1900 day zero is OLE
+    /// 1899-12-30 without the worksheet's phantom adjustment. Both forms
+    /// share serial validation and clock rounding.
+    pub(crate) fn pivot_cache_millis_from_serial(self, serial: f64) -> Result<i64> {
+        let (day, clock) = self.serial_day_clock(serial)?;
+        Ok((day + self.epoch_days()) * DAY_MILLIS + clock)
+    }
+
+    /// Spell a PivotCache `<d>` item once, after the source item is interned.
+    pub(crate) fn pivot_cache_datetime(self, serial: f64) -> Result<SmolStr> {
+        let millis = self.pivot_cache_millis_from_serial(serial)?;
+        // Excel omits fractional seconds when the cache date is integral.
+        let (value, unit) = if millis % 1000 == 0 {
+            (millis / 1000, TimeUnit::Second)
+        } else {
+            (millis, TimeUnit::Millisecond)
+        };
+        crate::temporal::format_datetime(value, unit).ok_or_else(|| {
+            Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: format_smolstr!("expected a pivot cache date for serial {serial}"),
+            }
+        })
     }
 
     /// Write milliseconds since the Unix epoch as a serial.

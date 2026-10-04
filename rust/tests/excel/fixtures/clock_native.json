@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "native": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036,
+    "cleanup_completed": true,
+    "manifest_sha256": "7e5800eb342a763bf5da148a17fa8d55a8af43103cecc4f8073faee6781efe33",
+    "result_sha256": "94774ecba234801542e47021da519ec44a05ffd19394cd7aaa1fdbcfe66b0137",
+    "inputs": {
+      "1900": "2ff2d87d9384a5db5e12d5677958c31a3671a6884cef849a2893251c09a42a0f",
+      "1904": "38d582844ddbd7e618e20afbc7fc87939295f516f4ae33b7bee5b23083ee1a81"
+    }
+  },
+  "observations": [
+    {
+      "id": "clock-1900-now",
+      "system": "1900",
+      "authored_formula": "NOW()",
+      "native_formula": "NOW()",
+      "first": {
+        "kind": "number",
+        "value": 46296.904286226854
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 46296.904290625
+      }
+    },
+    {
+      "id": "clock-1900-today",
+      "system": "1900",
+      "authored_formula": "TODAY()",
+      "native_formula": "TODAY()",
+      "first": {
+        "kind": "number",
+        "value": 46296.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 46296.0
+      }
+    },
+    {
+      "id": "clock-1900-fraction",
+      "system": "1900",
+      "authored_formula": "NOW()-TODAY()",
+      "native_formula": "NOW()-TODAY()",
+      "first": {
+        "kind": "number",
+        "value": 0.9042862268543104
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.9042906250033411
+      }
+    },
+    {
+      "id": "clock-1900-rand",
+      "system": "1900",
+      "authored_formula": "RAND()",
+      "native_formula": "RAND()",
+      "first": {
+        "kind": "number",
+        "value": 0.22003057446077146
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.19798402112450741
+      }
+    },
+    {
+      "id": "clock-1900-between",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(-5,7)",
+      "native_formula": "RANDBETWEEN(-5,7)",
+      "first": {
+        "kind": "number",
+        "value": 3.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.0
+      }
+    },
+    {
+      "id": "clock-1900-between-fixed",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(7,7)",
+      "native_formula": "RANDBETWEEN(7,7)",
+      "first": {
+        "kind": "number",
+        "value": 7.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 7.0
+      }
+    },
+    {
+      "id": "clock-1900-between-reversed",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(8,7)",
+      "native_formula": "RANDBETWEEN(8,7)",
+      "first": {
+        "kind": "error",
+        "literal": "#NUM!"
+      },
+      "after_save": {
+        "kind": "error",
+        "literal": "#NUM!"
+      }
+    },
+    {
+      "id": "clock-1900-between-fraction-positive",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(1.2,1.2)",
+      "native_formula": "RANDBETWEEN(1.2,1.2)",
+      "first": {
+        "kind": "number",
+        "value": 2.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 2.0
+      }
+    },
+    {
+      "id": "clock-1900-between-fraction-negative",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(-1.2,-1.2)",
+      "native_formula": "RANDBETWEEN(-1.2,-1.2)",
+      "first": {
+        "kind": "number",
+        "value": -1.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": -1.0
+      }
+    },
+    {
+      "id": "clock-1900-between-wide",
+      "system": "1900",
+      "authored_formula": "RANDBETWEEN(9007199254740991,9007199254740991)",
+      "native_formula": "RANDBETWEEN(9007199254740990,9007199254740990)",
+      "first": {
+        "kind": "number",
+        "value": 9007199254740990.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 9007199254740990.0
+      }
+    },
+    {
+      "id": "clock-1904-now",
+      "system": "1904",
+      "authored_formula": "NOW()",
+      "native_formula": "NOW()",
+      "first": {
+        "kind": "number",
+        "value": 44834.90431423611
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 44834.90432361111
+      }
+    },
+    {
+      "id": "clock-1904-today",
+      "system": "1904",
+      "authored_formula": "TODAY()",
+      "native_formula": "TODAY()",
+      "first": {
+        "kind": "number",
+        "value": 44834.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 44834.0
+      }
+    },
+    {
+      "id": "clock-1904-fraction",
+      "system": "1904",
+      "authored_formula": "NOW()-TODAY()",
+      "native_formula": "NOW()-TODAY()",
+      "first": {
+        "kind": "number",
+        "value": 0.9043142361115315
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.9043236111101578
+      }
+    },
+    {
+      "id": "clock-1904-rand",
+      "system": "1904",
+      "authored_formula": "RAND()",
+      "native_formula": "RAND()",
+      "first": {
+        "kind": "number",
+        "value": 0.2525003468061171
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.2409483232680657
+      }
+    },
+    {
+      "id": "clock-1904-between",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(-5,7)",
+      "native_formula": "RANDBETWEEN(-5,7)",
+      "first": {
+        "kind": "number",
+        "value": 3.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 0.0
+      }
+    },
+    {
+      "id": "clock-1904-between-fixed",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(7,7)",
+      "native_formula": "RANDBETWEEN(7,7)",
+      "first": {
+        "kind": "number",
+        "value": 7.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 7.0
+      }
+    },
+    {
+      "id": "clock-1904-between-reversed",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(8,7)",
+      "native_formula": "RANDBETWEEN(8,7)",
+      "first": {
+        "kind": "error",
+        "literal": "#NUM!"
+      },
+      "after_save": {
+        "kind": "error",
+        "literal": "#NUM!"
+      }
+    },
+    {
+      "id": "clock-1904-between-fraction-positive",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(1.2,1.2)",
+      "native_formula": "RANDBETWEEN(1.2,1.2)",
+      "first": {
+        "kind": "number",
+        "value": 2.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 2.0
+      }
+    },
+    {
+      "id": "clock-1904-between-fraction-negative",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(-1.2,-1.2)",
+      "native_formula": "RANDBETWEEN(-1.2,-1.2)",
+      "first": {
+        "kind": "number",
+        "value": -1.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": -1.0
+      }
+    },
+    {
+      "id": "clock-1904-between-wide",
+      "system": "1904",
+      "authored_formula": "RANDBETWEEN(9007199254740991,9007199254740991)",
+      "native_formula": "RANDBETWEEN(9007199254740990,9007199254740990)",
+      "first": {
+        "kind": "number",
+        "value": 9007199254740990.0
+      },
+      "after_save": {
+        "kind": "number",
+        "value": 9007199254740990.0
+      }
+    }
+  ]
+}

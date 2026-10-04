@@ -10,6 +10,7 @@ Windows setup: python -m pip install pywin32 openpyxl
     python scripts/check_excel_desktop.py formats --cases PATH
     python scripts/check_excel_desktop.py styles [--cases PATH]
     python scripts/check_excel_desktop.py functions --cases PATH
+    python scripts/check_excel_desktop.py pivots --cases PATH --active
 
 All modes write versioned results.json under --output-dir. Fidelity consumes
 every half of scripts/check_excel_interop.py, plus --rich; it compares Excel's
@@ -217,6 +218,194 @@ def read_function_manifest(path: Path) -> dict[str, Any]:
     for name, workbook in by_file.items():
         if workbook.get("cases") != sum(case["file"] == name for case in cases):
             raise ValueError(f"functions/{name}: case count disagrees with manifest")
+    companions = set()
+    for case in cases:
+        plan = case.get("text_format_oracle")
+        if plan is None:
+            continue
+        if (not isinstance(plan, dict) or set(plan) not in ({"value_expression", "code"}, {"value_expression", "code", "cell", "format_cell"})
+                or any(not isinstance(value, str) or not value for value in plan.values())
+                or case["mode"] == "behavior_only"
+                or not re.fullmatch(r"-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?|DATE\([+-]?[0-9]+,[+-]?[0-9]+,[+-]?[0-9]+\)", plan["value_expression"])
+                or function_text_formula(plan["value_expression"], plan["code"]) != case["wire_formula"]):
+            raise ValueError(f"functions/{case['id']}: TEXT oracle must describe the exact authored formula")
+        for key in (() if "cell" not in plan else ("cell", "format_cell")):
+            address = plan[key]
+            coordinate = (case["file"], case["sheet"], address)
+            if (not re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]{0,6}", address)
+                    or coordinate in coordinates or coordinate in companions):
+                raise ValueError(f"functions/{case['id']}: TEXT companion conflicts with a selected cell")
+            companions.add(coordinate)
+    return payload
+
+
+# https://learn.microsoft.com/en-us/office/vba/api/excel.xlconsolidationfunction
+PIVOT_AGGREGATES = {
+    "sum": -4157, "count": -4112, "average": -4106,
+    "max": -4136, "min": -4139, "product": -4149,
+    "countNumbers": -4113, "stdDev": -4155, "stdDevP": -4156,
+    "var": -4164, "varP": -4165,
+}
+
+def read_pivot_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (not isinstance(payload, dict) or payload.get("schema_version") != 1
+            or payload.get("kind") != "p6_pivot_oracle_inputs"
+            or payload.get("native_answers") is not False):
+        raise ValueError("pivots: expected schema-versioned inputs without native answers")
+    if "verify_existing" in payload:
+        if set(payload) != {"schema_version", "kind", "native_answers", "verify_existing"}:
+            raise ValueError("pivots: verify_existing has no other input mode or native answers")
+        authored = payload["verify_existing"]
+        if (not isinstance(authored, dict) or set(authored) != {"file", "sha256", "pivots"}
+                or not isinstance(authored["file"], str)
+                or Path(authored["file"]).name != authored["file"]
+                or not authored["file"].endswith(".xlsx")):
+            raise ValueError("pivots: invalid authored workbook identity")
+        source = path.parent / authored["file"]
+        if (not source.is_file() or not isinstance(authored["sha256"], str)
+                or hashlib.sha256(source.read_bytes()).hexdigest() != authored["sha256"]):
+            raise ValueError("pivots: authored workbook sha256 mismatch")
+        cases = authored["pivots"]
+        if (not isinstance(cases, list) or not cases
+                or any(not isinstance(case, dict) or set(case) != {"id", "sheet", "name"}
+                       or any(not isinstance(value, str) or not value for value in case.values())
+                       for case in cases)
+                or any(len({case[key] for case in cases}) != len(cases) for key in ("id", "sheet", "name"))):
+            raise ValueError("pivots: expected unique authored pivot identities and sheets")
+        return payload
+    if "compare_existing" in payload:
+        if any(key in payload for key in ("check_existing", "workbook", "source_tables", "cases", "modified_members", "observe_labels")):
+            raise ValueError("pivots: compare_existing has no other pivot input mode")
+        pair = payload["compare_existing"]
+        if (not isinstance(pair, list) or len(pair) != 2
+                or [item.get("id") if isinstance(item, dict) else None for item in pair]
+                   != ["control", "candidate"]):
+            raise ValueError("pivots: compare_existing requires control/candidate roles")
+        chosen = None
+        for item in pair:
+            if (set(item) != {"id", "file", "sha256", "sheet", "name"}
+                    or not all(isinstance(item[key], str) and item[key] for key in item)
+                    or Path(item["file"]).name != item["file"]
+                    or not item["file"].endswith(".xlsx")):
+                raise ValueError("pivots: compare_existing identity invalid")
+            identity = item["sheet"], item["name"]
+            if chosen is not None and identity != chosen:
+                raise ValueError("pivots: compare_existing must select the same pivot")
+            chosen = identity
+            source = path.parent / item["file"]
+            if (not source.is_file() or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
+                    or hashlib.sha256(source.read_bytes()).hexdigest() != item["sha256"]):
+                raise ValueError(f"pivots/{item['id']}: missing workbook or sha256 mismatch")
+        return payload
+    if "check_existing" in payload:
+        if any(key in payload for key in ("workbook", "source_tables", "cases")):
+            raise ValueError("pivots: check_existing cannot also author new pivots")
+        if "observe_labels" in payload and payload["observe_labels"] is not True:
+            raise ValueError("pivots: observe_labels requires true")
+        pair = payload["check_existing"]
+        if (not isinstance(pair, list) or len(pair) != 2
+                or [item.get("id") if isinstance(item, dict) else None for item in pair]
+                   != ["control", "candidate"]):
+            raise ValueError("pivots: check_existing requires control/candidate roles")
+        chosen = None
+        files = []
+        for item in pair:
+            if (set(item) != {"id", "file", "sha256", "sheet", "name"}
+                    or not all(isinstance(item[key], str) and item[key] for key in item)
+                    or Path(item["file"]).name != item["file"]
+                    or not item["file"].endswith(".xlsx")):
+                raise ValueError("pivots: check_existing identity or native answers invalid")
+            identity = (item["sheet"], item["name"])
+            if chosen is not None and identity != chosen:
+                raise ValueError("pivots: check_existing must select the same pivot")
+            chosen = identity
+            source = path.parent / item["file"]
+            if (not source.is_file() or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
+                    or hashlib.sha256(source.read_bytes()).hexdigest() != item["sha256"]):
+                raise ValueError(f"pivots/{item['id']}: missing workbook or sha256 mismatch")
+            files.append(source)
+        members = payload.get("modified_members")
+        if (not isinstance(members, list) or not members
+                or any(not isinstance(name, str) or not name.startswith("xl/") for name in members)
+                or len(set(members)) != len(members)):
+            raise ValueError("pivots: invalid modified members")
+        with zipfile.ZipFile(files[0]) as control, zipfile.ZipFile(files[1]) as candidate:
+            if control.namelist() != candidate.namelist():
+                raise ValueError("pivots: modified members changed package member inventory")
+            changed = {name for name in control.namelist()
+                       if control.read(name) != candidate.read(name)}
+        if changed != set(members):
+            raise ValueError("pivots: modified members disagree with package bytes")
+        return payload
+    workbook = payload.get("workbook")
+    if not isinstance(workbook, dict) or workbook.get("file") != "pivot-input.xlsx":
+        raise ValueError("pivots: expected pivot-input.xlsx")
+    source = path.parent / workbook["file"]
+    digest = workbook.get("sha256")
+    if (not source.is_file() or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or hashlib.sha256(source.read_bytes()).hexdigest() != digest):
+        raise ValueError("pivots: missing source workbook or sha256 mismatch")
+    tables, cases = payload.get("source_tables"), payload.get("cases")
+    if not isinstance(tables, list) or not tables or not isinstance(cases, list) or not cases:
+        raise ValueError("pivots: expected source tables and cases")
+    fields = {}
+    for table in tables:
+        if (not isinstance(table, dict) or not isinstance(table.get("sheet"), str)
+                or not isinstance(table.get("range"), str) or not isinstance(table.get("rows"), list)
+                or not table["rows"] or not isinstance(table["rows"][0], list)):
+            raise ValueError("pivots: invalid source table")
+        header = table["rows"][0]
+        if (table["sheet"] in fields or not header
+                or any(not isinstance(field, str) or not field for field in header)
+                or len(set(header)) != len(header)
+                or any(not isinstance(row, list) or len(row) != len(header) for row in table["rows"])):
+            raise ValueError("pivots: invalid or duplicate source table fields")
+        fields[table["sheet"]] = set(header)
+    ids, destinations = set(), set()
+    for case in cases:
+        if not isinstance(case, dict):
+            raise ValueError("pivots: expected case objects")
+        identifier, sheet, anchor = (case.get(key) for key in ("id", "sheet", "anchor"))
+        source_spec = case.get("source")
+        if not isinstance(identifier, str) or not re.fullmatch(r"[a-z][a-z0-9_]+", identifier):
+            raise ValueError(f"pivots: invalid case id {identifier!r}")
+        if identifier in ids:
+            raise ValueError(f"pivots: duplicate id {identifier!r}")
+        if (not isinstance(sheet, str) or not sheet
+                or not isinstance(anchor, str) or not re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]{0,6}", anchor)
+                or not isinstance(source_spec, dict)
+                or not isinstance(source_spec.get("sheet"), str)
+                or source_spec.get("sheet") not in fields
+                or not isinstance(source_spec.get("range"), str)):
+            raise ValueError(f"pivots: invalid case identity/source {identifier!r}")
+        if sheet in destinations:
+            raise ValueError(f"pivots: duplicate destination {sheet!r}")
+        if source_spec["range"] != next(item["range"] for item in tables if item["sheet"] == source_spec["sheet"]):
+            raise ValueError(f"pivots/{identifier}: source range disagrees with authored table")
+        rows, columns, values = (case.get(key) for key in ("rows", "columns", "values"))
+        if (not isinstance(rows, list) or not isinstance(columns, list) or not isinstance(values, list)
+                or not rows or not values or any(not isinstance(axis, str) for axis in rows + columns)
+                or len(set(rows + columns)) != len(rows + columns)
+                or any(axis not in fields[source_spec["sheet"]] for axis in rows + columns)
+                or any(not isinstance(item, dict) or not isinstance(item.get("field"), str)
+                       or item.get("field") not in fields[source_spec["sheet"]]
+                       or item.get("aggregate") not in PIVOT_AGGREGATES
+                       or not isinstance(item.get("caption"), str) or not item["caption"] for item in values)
+                or any(type(case.get(key)) is not bool for key in
+                       ("subtotals", "row_grand_totals", "column_grand_totals"))):
+            raise ValueError(f"pivots/{identifier}: invalid axes, values or totals")
+        for caption in ("data_caption", "grand_total_caption"):
+            if caption in case and (not isinstance(case[caption], str)
+                                    or not 1 <= len(case[caption]) <= 255):
+                raise ValueError(f"pivots/{identifier}: invalid {caption} caption")
+        if "item_order" in case and case["item_order"] not in ("ascending", "descending"):
+            raise ValueError(f"pivots/{identifier}: invalid item_order")
+        if any(key in case for key in ("actual", "expected", "native_answer")):
+            raise ValueError(f"pivots/{identifier}: native answers must be observed")
+        ids.add(identifier)
+        destinations.add(sheet)
     return payload
 
 
@@ -246,6 +435,12 @@ def function_cell(app: Any, cell: Any, address: str, evaluate: Callable[[str], A
     # Pass the owned Range, not the marshalled NaN/HRESULT: Excel16 can expose
     # a #NUM! cell as either transport. No error identity is guessed from bits.
     error = app.WorksheetFunction.IsError(cell)
+    # Excel16 returns a one-element SAFEARRAY for the owned Range containing
+    # a 32767-character result. Retain that observed transport and accept only
+    # its single typed Boolean; no truthiness or multi-cell reduction is valid.
+    if type(error) is tuple and len(error) == 1 and type(error[0]) is bool:
+        result["is_error_transport"] = {"variant": "tuple", "value": list(error)}
+        error = error[0]
     if type(error) is not bool:
         raise TypeError("ISERROR must return a Boolean")
     result["is_error"] = error
@@ -333,9 +528,11 @@ def function_control(control: dict[str, Any], actual: Any) -> bool:
     return control["lower"] <= actual and (actual <= control["upper"] if control["upper_inclusive"] else actual < control["upper"])
 
 
-def saved_function_cache(path: Path, cases: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
-    # Read the native representation, without date-style coercion (serial60),
-    # decimal rounding, or rejection of a nonfinite numeric spelling.
+def saved_function_cache(path: Path, cases: list[dict[str, Any]], *,
+                         formulas_only: bool = True,
+                         allow_absent: bool = False) -> dict[tuple[str, str], dict[str, Any]]:
+    # One OOXML worksheet/cache reader serves both formula and pivot observations.
+    # No style/date conversion: serial 60 and submillisecond numeric bits stay numeric.
     main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
     document = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     package = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -347,6 +544,13 @@ def saved_function_cache(path: Path, cases: list[dict[str, Any]]) -> dict[tuple[
         targets.add(case["cell"])
     result = {}
     with zipfile.ZipFile(path) as archive:
+        strings = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            strings = ["".join(node.text or "" for node in
+                       [*item.findall(f"{{{main}}}t"),
+                        *(run.find(f"{{{main}}}t") for run in item.findall(f"{{{main}}}r"))]
+                       ) for item in shared.findall(f"{{{main}}}si")]
         workbook = ET.fromstring(archive.read("xl/workbook.xml"))
         relations = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
         for name, cells in requested.items():
@@ -368,15 +572,31 @@ def saved_function_cache(path: Path, cases: list[dict[str, Any]]) -> dict[tuple[
                     continue
                 key = name, address
                 if key in result:
-                    raise ValueError(f"native duplicate formula cell {name}!{address}")
+                    raise ValueError(f"native duplicate cell {name}!{address}")
                 formula, cached = cell.find(f"{{{main}}}f"), cell.find(f"{{{main}}}v")
-                if formula is None or cached is None:
+                if formulas_only and (formula is None or cached is None):
                     raise ValueError(f"native {name}!{address}: formula/cache missing")
-                result[key] = {"type": cell.attrib.get("t", "n"), "value_text": cached.text,
-                               "formula_text": formula.text, "formula_attributes": dict(formula.attrib),
+                kind = cell.attrib.get("t", "n")
+                text = None if cached is None else cached.text
+                if not formulas_only:
+                    if kind == "s":
+                        if text is None or not text.isdecimal() or int(text) >= len(strings):
+                            raise ValueError(f"native {name}!{address}: shared string index invalid")
+                        kind, text = "str", strings[int(text)]
+                    elif kind == "inlineStr":
+                        inline = cell.find(f"{{{main}}}is")
+                        if inline is None:
+                            raise ValueError(f"native {name}!{address}: inline string missing")
+                        kind, text = "str", "".join(node.text or "" for node in
+                            [*inline.findall(f"{{{main}}}t"),
+                             *(run.find(f"{{{main}}}t") for run in inline.findall(f"{{{main}}}r"))]
+                            if node is not None)
+                result[key] = {"type": kind, "value_text": text,
+                               "formula_text": None if formula is None else formula.text,
+                               "formula_attributes": {} if formula is None else dict(formula.attrib),
                                "attributes": dict(cell.attrib)}
             missing = cells - {address for sheet_name, address in result if sheet_name == name}
-            if missing:
+            if missing and not allow_absent:
                 raise ValueError(f"native {name}: missing formula cache cells {sorted(missing)}")
     return result
 
@@ -1110,6 +1330,435 @@ def run_styles(app: Any, args: argparse.Namespace, result: dict) -> None:
     write_json(checkpoint, result)
 
 
+def pivot_snapshot(book: Any, cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    observed = []
+    for case in cases:
+        sheet = book.Worksheets.Item(case["sheet"])
+        pivots = collection(sheet.PivotTables())
+        if len(pivots) != 1:
+            raise AssertionError(f"pivots/{case['id']}: expected one owned PivotTable")
+        pivot = pivots[0]
+        area = pivot.TableRange2
+        if int(area.Rows.Count) * int(area.Columns.Count) > 4096:
+            raise ValueError(f"pivots/{case['id']}: table exceeds bounded observation")
+        grid = [[function_value(area.Cells(row, column).Value2)
+                 for column in range(1, int(area.Columns.Count) + 1)]
+                for row in range(1, int(area.Rows.Count) + 1)]
+        def cell_is_error(cell: Any) -> bool:
+            answer = book.Application.WorksheetFunction.IsError(cell)
+            if type(answer) is tuple and len(answer) == 1 and type(answer[0]) is bool:
+                answer = answer[0]
+            if type(answer) is not bool:
+                raise TypeError("pivots: ISERROR must return a Boolean")
+            return answer
+        errors = [[cell_is_error(area.Cells(row, column))
+                   for column in range(1, int(area.Columns.Count) + 1)]
+                  for row in range(1, int(area.Rows.Count) + 1)]
+        def fields(axis: Any) -> list[dict[str, Any]]:
+            return [{"name": str(field.Name), "caption": str(field.Caption),
+                     "position": int(field.Position)} for field in collection(axis)]
+        observed.append({"id": case["id"], "name": str(pivot.Name),
+                         "table_range2": str(area.Address), "value2": grid, "is_error": errors,
+                         "row_fields": fields(pivot.RowFields),
+                         "column_fields": fields(pivot.ColumnFields),
+                         "data_fields": [{**entry, "function": int(field.Function),
+                                         "number_format": str(field.NumberFormat)}
+                                         for entry, field in zip(fields(pivot.DataFields),
+                                                                 collection(pivot.DataFields))],
+                         "row_grand": bool(pivot.RowGrand), "column_grand": bool(pivot.ColumnGrand)})
+    return observed
+
+
+def assert_pivot_cached(source: Path, sheet: str, refreshed: dict[str, Any],
+                        native_saved: Path | None = None) -> list[list[dict[str, Any]]]:
+    """Compare typed saved cells to Value2 before Excel can refresh on open."""
+    from openpyxl.utils.cell import get_column_letter, range_boundaries
+
+    left, top, right, bottom = range_boundaries(refreshed["table_range2"].replace("$", ""))
+    if (right - left + 1) * (bottom - top + 1) > 4096:
+        raise ValueError("pivots: raw candidate cache exceeds bounded observation")
+    cases = [{"sheet": sheet, "cell": f"{get_column_letter(column)}{row}"}
+             for row in range(top, bottom + 1) for column in range(left, right + 1)]
+    cells = saved_function_cache(source, cases, formulas_only=False, allow_absent=True)
+    native = (saved_function_cache(native_saved, cases, formulas_only=False, allow_absent=True)
+              if native_saved is not None else None)
+    grid: list[list[dict[str, Any]]] = []
+    for row in range(top, bottom + 1):
+        observed = []
+        for column in range(left, right + 1):
+            at = f"{get_column_letter(column)}{row}"
+            cached = cells.get((sheet, at))
+            kind = None if cached is None else cached["type"]
+            if refreshed["is_error"][row - top][column - left] != (kind == "e"):
+                raise AssertionError(f"pivots/{sheet}!{at}: cached worksheet error kind differs from native RefreshTable")
+            if cached is None:
+                value = function_value(None)
+            else:
+                text = cached["value_text"]
+                if kind == "n" and text is not None:
+                    numeric = float(text)
+                    if not math.isfinite(numeric):
+                        raise AssertionError(f"pivots/{sheet}!{at}: unproved nonfinite numeric cache")
+                    value = function_value(numeric)
+                elif kind == "b" and text in ("0", "1"):
+                    value = function_value(text == "1")
+                elif kind == "str":
+                    value = function_value(decode_ooxml_cached_text(text or ""))
+                elif kind == "e":
+                    if native is not None:
+                        agreed = native.get((sheet, at))
+                        if agreed is None or agreed["type"] != "e" or agreed["value_text"] != text:
+                            raise AssertionError(f"pivots/{sheet}!{at}: cached error literal differs from native saved error")
+                        value = {"variant": "error", "value": text}
+                    else:
+                        codes = {"#NULL!": 2000, "#DIV/0!": 2007, "#VALUE!": 2015,
+                                 "#REF!": 2023, "#NAME?": 2029, "#NUM!": 2036,
+                                 "#N/A": 2042, "#GETTING_DATA": 2043}
+                        if text not in codes:
+                            raise AssertionError(f"pivots/{sheet}!{at}: unproved cached error {text!r}")
+                        value = function_value(-2146828288 + codes[text])
+                elif kind == "n" and text is None:
+                    value = function_value(None)
+                else:
+                    raise AssertionError(f"pivots/{sheet}!{at}: unproved cached cell type {kind!r}")
+            expected = refreshed["value2"][row - top][column - left]
+            if value["variant"] == "error" and native is not None:
+                same = True  # ISERROR and the native saved literal were checked above.
+            elif value["variant"] == "float" and expected["variant"] == "int":
+                same = value["value"] == expected["value"]
+            elif value["variant"] == "int" and expected["variant"] == "float":
+                same = value["value"] == expected["value"]
+            else:
+                same = value == expected
+            if not same:
+                raise AssertionError(f"pivots/{sheet}!{at}: cached worksheet cell differs from native RefreshTable")
+            observed.append(value)
+        grid.append(observed)
+    return grid
+
+
+def pivot_xml(path: Path) -> dict[str, str]:
+    with zipfile.ZipFile(path) as archive:
+        return {name: archive.read(name).decode("utf-8")
+                for name in sorted(archive.namelist())
+                if name.startswith(("xl/pivotTables/", "xl/pivotCache/", "xl/worksheets/"))
+                and name.endswith((".xml", ".rels"))}
+
+
+def assert_pivot_snapshots(before: list[dict[str, Any]], after: list[dict[str, Any]], phase: str) -> None:
+    if before != after:
+        for left, right in zip(before, after):
+            if left != right:
+                raise AssertionError(f"pivots/{left['id']}: {phase} changed TableRange2, fields or Value2")
+        raise AssertionError(f"pivots: {phase} changed PivotTable count")
+
+
+def run_existing_pivots(app: Any, args: argparse.Namespace,
+                        result: dict, manifest: dict[str, Any]) -> None:
+    pair = manifest.get("check_existing", manifest.get("compare_existing"))
+    result["pivot_existing"] = []
+    result["pivot_existing_candidates"] = [
+        str(args.output_dir / f"pivot-existing-{item['id']}.pending.xlsx") for item in pair]
+    result["pivot_existing_manifest_sha256"] = hashlib.sha256(args.cases.read_bytes()).hexdigest()
+    write_json(args.output_dir / "results.json", result)
+    for item, pending_name in zip(pair, result["pivot_existing_candidates"]):
+        source = args.cases.parent / item["file"]
+        selected = {"id": "selected", "sheet": item["sheet"]}
+        pending = Path(pending_name)
+        with open_checked(app, source) as book:
+            pivots = collection(book.Worksheets.Item(item["sheet"]).PivotTables())
+            if len(pivots) != 1 or str(pivots[0].Name) != item["name"]:
+                raise AssertionError(f"pivots/{item['id']}: selected pivot identity disagrees")
+            before = pivot_snapshot(book, [selected])
+            if not bool(pivots[0].RefreshTable()):
+                raise AssertionError(f"pivots/{item['id']}: RefreshTable returned false")
+            refreshed = pivot_snapshot(book, [selected])
+            book.SaveAs(str(pending.resolve()), FileFormat=51, AddToMru=False, Local=False)
+            saved = pivot_snapshot(book, [selected])
+            assert_pivot_snapshots(refreshed, saved, "SaveAs")
+        with open_checked(app, pending) as reopened:
+            after_reopen = pivot_snapshot(reopened, [selected])
+        assert_pivot_snapshots(refreshed, after_reopen, "reopen")
+        result["pivot_existing"].append({
+            "id": item["id"], "input_sha256": item["sha256"],
+            "before_refresh": before, "after_refresh": refreshed,
+            "after_save": saved, "after_reopen": after_reopen,
+            "input_xml": {name: text for name, text in pivot_xml(source).items()
+                          if name in manifest.get("modified_members", ())},
+            "saved_xml": {name: text for name, text in pivot_xml(pending).items()
+                          if name in manifest.get("modified_members", ())},
+            "saved_sha256": hashlib.sha256(pending.read_bytes()).hexdigest(),
+        })
+        write_json(args.output_dir / "results.json", result)
+    if not manifest.get("observe_labels", False):
+        candidate = pair[1]
+        refreshed = result["pivot_existing"][1]["after_refresh"][0]
+        differences = []
+        try:
+            result["candidate_input_cache"] = assert_pivot_cached(
+                args.cases.parent / candidate["file"], candidate["sheet"], refreshed,
+                Path(result["pivot_existing_candidates"][1]))
+            result["candidate_raw_cache_equal"] = True
+        except AssertionError as error:
+            result["candidate_raw_cache_equal"] = False
+            differences.append(str(error))
+        try:
+            assert_pivot_snapshots(result["pivot_existing"][0]["after_refresh"],
+                                   result["pivot_existing"][1]["after_refresh"],
+                                   "control/candidate RefreshTable")
+            result["control_candidate_equal"] = True
+        except AssertionError as error:
+            result["control_candidate_equal"] = False
+            differences.append(str(error))
+        write_json(args.output_dir / "results.json", result)
+        if differences:
+            raise AssertionError("; ".join(differences))
+
+
+def run_authored_pivots(app: Any, args: argparse.Namespace, result: dict, manifest: dict) -> None:
+    """Prove authored raw caches against Excel refresh, then SaveAs and reopen."""
+    authored = manifest["verify_existing"]
+    source = args.cases.parent / authored["file"]
+    cases = authored["pivots"]
+    staged = args.output_dir / "pivot-native.pending.xlsx"
+    result["pivot_fixture_candidate"] = str(staged)
+    evidence = result["pivots"] = {
+        "manifest_sha256": hashlib.sha256(args.cases.read_bytes()).hexdigest(),
+        "source_sha256": authored["sha256"], "source_xml": pivot_xml(source),
+        "rust_equivalence_checked": False,
+    }
+    with open_checked(app, source) as book:
+        evidence["before_refresh"] = pivot_snapshot(book, cases)
+        for case, observed in zip(cases, evidence["before_refresh"]):
+            if observed["name"] != case["name"]:
+                raise AssertionError(f"pivots/{case['id']}: unexpected pivot name")
+            pivot = book.Worksheets.Item(case["sheet"]).PivotTables().Item(1)
+            if not bool(pivot.RefreshTable()):
+                raise AssertionError(f"pivots/{case['id']}: RefreshTable returned false")
+        evidence["after_refresh"] = pivot_snapshot(book, cases)
+        assert_pivot_snapshots(evidence["before_refresh"], evidence["after_refresh"], "RefreshTable")
+        book.SaveAs(str(staged.resolve()), FileFormat=51, AddToMru=False, Local=False)
+        evidence["after_save"] = pivot_snapshot(book, cases)
+        assert_pivot_snapshots(evidence["after_refresh"], evidence["after_save"], "SaveAs")
+    with open_checked(app, staged) as reopened:
+        evidence["after_reopen"] = pivot_snapshot(reopened, cases)
+    assert_pivot_snapshots(evidence["after_save"], evidence["after_reopen"], "reopen")
+    evidence["saved_xml"] = pivot_xml(staged)
+    evidence["saved_sha256"] = hashlib.sha256(staged.read_bytes()).hexdigest()
+    evidence["raw_cache_checks"] = []
+    failures = []
+    for case, refreshed in zip(cases, evidence["after_refresh"]):
+        check = {"id": case["id"], "sheet": case["sheet"]}
+        try:
+            check["raw_grid"] = assert_pivot_cached(source, case["sheet"], refreshed, staged)
+            check["equal"] = True
+        except AssertionError as error:
+            check.update(equal=False, error=str(error))
+            failures.append(str(error))
+        evidence["raw_cache_checks"].append(check)
+    evidence["rust_equivalence_checked"] = True
+    write_json(args.output_dir / "results.json", result)
+    if failures:
+        raise AssertionError("; ".join(failures))
+
+
+def apply_pivot_captions(pivot: Any, case: dict[str, Any]) -> dict[str, str]:
+    """Set only the owned pivot's explicitly authored caption properties."""
+    observed = {}
+    if "data_caption" in case:
+        field = pivot.DataPivotField
+        field.Caption = case["data_caption"]
+        observed["data_caption"] = str(field.Caption)
+        if observed["data_caption"] != case["data_caption"]:
+            raise AssertionError(f"pivots/{case['id']}: data caption readback differs")
+    if "grand_total_caption" in case:
+        pivot.GrandTotalName = case["grand_total_caption"]
+        observed["grand_total_caption"] = str(pivot.GrandTotalName)
+        if observed["grand_total_caption"] != case["grand_total_caption"]:
+            raise AssertionError(f"pivots/{case['id']}: grand total caption readback differs")
+    return observed
+
+
+def apply_pivot_order(pivot: Any, case: dict[str, Any]) -> list[dict[str, Any]]:
+    """Resolve an explicitly requested automatic sort on each owned axis."""
+    if "item_order" not in case:
+        return []
+    order = {"ascending": 1, "descending": 2}[case["item_order"]]
+    observed = []
+    for name in case["rows"] + case["columns"]:
+        field = pivot.PivotFields(name)
+        # AutoSort requires SourceName, not the displayed field caption:
+        # https://learn.microsoft.com/en-us/office/vba/api/excel.pivotfield.autosort
+        source = str(field.SourceName)
+        field.AutoSort(order, source)
+        actual = int(field.AutoSortOrder)
+        if actual != order:
+            raise AssertionError(f"pivots/{case['id']}/{name}: AutoSort readback differs")
+        observed.append({"field": source, "order": actual})
+    return observed
+
+
+def run_pivots(app: Any, args: argparse.Namespace, result: dict) -> None:
+    if not args.active:
+        raise ValueError("pivots: active attachment required")
+    if args.cases is None:
+        raise ValueError("pivots: --cases must name the authored pivot manifest")
+    manifest = read_pivot_manifest(args.cases)
+    if "verify_existing" in manifest:
+        return run_authored_pivots(app, args, result, manifest)
+    if "check_existing" in manifest or "compare_existing" in manifest:
+        return run_existing_pivots(app, args, result, manifest)
+    cases = manifest["cases"]
+    staged = args.output_dir / "pivot-native.pending.xlsx"
+    result["pivot_fixture_candidate"] = str(staged)
+    result["pivots"] = {"manifest_sha256": hashlib.sha256(args.cases.read_bytes()).hexdigest(),
+                        "source_sha256": manifest["workbook"]["sha256"],
+                        "source_xml": pivot_xml(args.cases.parent / manifest["workbook"]["file"]),
+                        "execution_only": True, "rust_equivalence_checked": False,
+                        "source_order_grand_is_observed_not_assumed": True}
+    write_json(args.output_dir / "results.json", result)
+    with open_checked(app, args.cases.parent / manifest["workbook"]["file"]) as book:
+        for case in cases:
+            source = case["source"]
+            # PivotCaches.Create documents SourceData as a string reference.
+            # The source and destination are both in this owned workbook.
+            source_data = "'" + source["sheet"].replace("'", "''") + "'!" + source["range"]
+            cache = book.PivotCaches().Create(SourceType=1, SourceData=source_data)
+            pivot = cache.CreatePivotTable(
+                TableDestination=book.Worksheets.Item(case["sheet"]).Range(case["anchor"]),
+                TableName="P6_" + case["id"])
+            pivot.ManualUpdate = True
+            for position, name in enumerate(case["rows"], 1):
+                field = pivot.PivotFields(name)
+                field.Orientation = 1
+                field.Position = position
+                if not case["subtotals"]:
+                    field.Subtotals = (False,) * 12
+            for position, name in enumerate(case["columns"], 1):
+                field = pivot.PivotFields(name)
+                field.Orientation = 2
+                field.Position = position
+            for value in case["values"]:
+                pivot.AddDataField(pivot.PivotFields(value["field"]), value["caption"],
+                                   PIVOT_AGGREGATES[value["aggregate"]])
+            pivot.RowGrand = case["row_grand_totals"]
+            pivot.ColumnGrand = case["column_grand_totals"]
+            captions = apply_pivot_captions(pivot, case)
+            if captions:
+                result["pivots"].setdefault("caption_readback", {})[case["id"]] = captions
+                write_json(args.output_dir / "results.json", result)
+            pivot.RowAxisLayout(1)  # xlTabularRow, explicit for nested row axes.
+            pivot.ManualUpdate = False
+            ordering = apply_pivot_order(pivot, case)
+            if ordering:
+                result["pivots"].setdefault("order_readback", {})[case["id"]] = ordering
+            before_refresh = pivot_snapshot(book, [case])
+            if not bool(pivot.RefreshTable()):
+                raise AssertionError(f"pivots/{case['id']}: RefreshTable returned false")
+            after_refresh = pivot_snapshot(book, [case])
+            assert_pivot_snapshots(before_refresh, after_refresh, "RefreshTable")
+            result["pivots"].setdefault("created", []).append(case["id"])
+            write_json(args.output_dir / "results.json", result)
+        result["pivots"]["before_save"] = pivot_snapshot(book, cases)
+        write_json(args.output_dir / "results.json", result)
+        book.SaveAs(str(staged.resolve()), FileFormat=51, AddToMru=False, Local=False)
+        result["pivots"]["after_save"] = pivot_snapshot(book, cases)
+        assert_pivot_snapshots(result["pivots"]["before_save"], result["pivots"]["after_save"], "SaveAs")
+        write_json(args.output_dir / "results.json", result)
+    with open_checked(app, staged) as reopened:
+        result["pivots"]["after_reopen"] = pivot_snapshot(reopened, cases)
+    assert_pivot_snapshots(result["pivots"]["before_save"], result["pivots"]["after_reopen"], "reopen")
+    result["pivots"]["saved_xml"] = pivot_xml(staged)
+    result["pivots"]["saved_sha256"] = hashlib.sha256(staged.read_bytes()).hexdigest()
+    write_json(args.output_dir / "results.json", result)
+
+
+def finish_pivot_fixture(result: dict, output: Path, passed: bool) -> None:
+    if "pivot_existing_candidates" in result:
+        expected = [output / f"pivot-existing-{role}.pending.xlsx"
+                    for role in ("control", "candidate")]
+        actual = result.pop("pivot_existing_candidates")
+        if actual != [str(path) for path in expected]:
+            raise ValueError("pivots: expected two owned existing-pivot candidates")
+        if not passed:
+            for path in expected:
+                path.unlink(missing_ok=True)
+            return
+        published = [output / f"pivot-existing-{role}.xlsx"
+                     for role in ("control", "candidate")]
+        if any(not path.is_file() for path in expected) or any(path.exists() for path in published):
+            raise ValueError("pivots: missing candidate or existing published file")
+        renamed = []
+        try:
+            for source, target in zip(expected, published):
+                source.rename(target)
+                renamed.append((source, target))
+        except Exception:
+            for source, target in reversed(renamed):
+                target.rename(source)
+            raise
+        result["pivot_existing_published"] = [path.name for path in published]
+        return
+    expected = output / "pivot-native.pending.xlsx"
+    candidate = result.pop("pivot_fixture_candidate", None)
+    if not passed and candidate is None:
+        expected.unlink(missing_ok=True)
+        return
+    if candidate is None or Path(candidate).resolve() != expected.resolve():
+        raise ValueError("pivots: expected one output-directory candidate")
+    if not passed:
+        expected.unlink(missing_ok=True)
+        return
+    target = output / "pivot-native.xlsx"
+    if not expected.is_file() or target.exists():
+        raise ValueError("pivots: missing candidate or existing published fixture")
+    expected.rename(target)
+    result["pivots"]["published_file"] = target.name
+
+
+def function_text_formula(expression: str, code: str) -> str:
+    return 'TEXT(' + expression + ',"' + code.replace('"', '""') + '")'
+
+
+def local_number_format(cell: Any, code: str) -> dict[str, Any]:
+    """Ask Excel to translate one invariant format, without a token translator."""
+    import pythoncom
+    dispatch = cell._oleobj_
+    identifier = dispatch.GetIDsOfNames("NumberFormat")
+    dispatch.InvokeTypes(identifier, 1033, pythoncom.DISPATCH_PROPERTYPUT,
+                         (pythoncom.VT_EMPTY, 0), ((pythoncom.VT_VARIANT, 1),), code)
+    invariant = dispatch.InvokeTypes(identifier, 1033, pythoncom.DISPATCH_PROPERTYGET,
+                                     (pythoncom.VT_VARIANT, 0), ())
+    localized = dispatch.InvokeTypes(dispatch.GetIDsOfNames("NumberFormatLocal"), 1033,
+                                     pythoncom.DISPATCH_PROPERTYGET, (pythoncom.VT_VARIANT, 0), ())
+    if not isinstance(localized, str) or not localized:
+        raise ValueError("functions: NumberFormatLocal must return a nonempty string")
+    return {"input_code": code, "input_lcid": 1033, "invariant_readback": invariant,
+            "number_format_local": localized}
+
+
+def prepare_function_text_oracle(sheet: Any, case: dict, evaluate: Callable[[str], Any]) -> dict:
+    """Separate owned companion formula; the authored case cell stays intact."""
+    plan = case["text_format_oracle"]
+    if "cell" not in plan:
+        return {"sheet": case["sheet"], "cell": case["cell"],
+                "kind": "original_native_cache", "wire_formula": case["wire_formula"],
+                "en_us_original": function_value(evaluate(case["wire_formula"])),
+                "scope": "unchanged authored cell cache equals original expression evaluated at LCID1033; no format translation"}
+    scratch, target = sheet.Range(plan["format_cell"]), sheet.Range(plan["cell"])
+    for cell in (scratch, target):
+        if bool(cell.HasFormula) or cell.Value2 is not None or bool(cell.MergeCells):
+            raise ValueError("functions: TEXT companion and format cells must be empty and unmerged")
+    converted = local_number_format(scratch, "[$-409]" + plan["code"])
+    formula = function_text_formula(plan["value_expression"], converted["number_format_local"])
+    target.Formula = "=" + formula
+    target.Calculate()
+    return {"sheet": case["sheet"], "cell": plan["cell"], "format_cell": plan["format_cell"],
+            "kind": "native_number_format_local_companion", "format_conversion": converted, "wire_formula": formula,
+            "en_us_original": function_value(evaluate(case["wire_formula"])),
+            "scope": "native-local companion cache equals original expression evaluated at LCID1033; original cache remains separately observed"}
+
+
 def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
     if args.cases is None:
         raise ValueError("functions: --cases must name the authored formula manifest")
@@ -1127,7 +1776,9 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
                            "manifest_sha256": hashlib.sha256(args.cases.read_bytes()).hexdigest(),
                            "calculation_scope": "owned workbook worksheets, Cases last; never Application.Calculate",
                            "execution_only": True, "rust_equivalence_checked": False,
-                           "workbooks": [], "cases": [], "calibrations": {}}
+                           "workbooks": [], "cases": [], "calibrations": {},
+                           "text_oracle_case_ids": [case["id"] for case in cases if "text_format_oracle" in case],
+                           "english_cache_scope": "original caches retain native locale; declared original-cell or translated-companion TEXT oracles are checked against explicit en-US evaluation"}
     checkpoint = args.output_dir / "results.json"
     answers: list[dict[str, Any] | None] = [None] * len(cases)
 
@@ -1172,6 +1823,15 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
                             raise AssertionError("expected a physical formula cell")
                         answer["actual"] = function_cell(app, cell, case["cell"], evaluators[case["sheet"]])
                         actual = answer["actual"]["value2"]["value"]
+                        if "text_format_oracle" in case:
+                            text = prepare_function_text_oracle(book.Worksheets.Item(case["sheet"]), case, evaluators[case["sheet"]])
+                            answer["text_oracle"] = text
+                            text["actual"] = function_cell(app, book.Worksheets.Item(case["sheet"]).Range(text["cell"]), text["cell"], evaluators[case["sheet"]])
+                            if text["actual"]["value2"] != text["en_us_original"]:
+                                raise AssertionError("TEXT oracle cache differs from original en-US evaluation")
+                            if case["mode"] == "calibration":
+                                answer["original_control_passed"] = function_control(case["control"], actual)
+                            actual = text["actual"]["value2"]["value"]
                         answer["status"] = "observed"
                         if case["mode"] in ("calibration", "behavior_only"):
                             answer["control_passed"] = function_control(case["control"], actual)
@@ -1192,6 +1852,10 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
                     try:
                         cell = book.Worksheets.Item(case["sheet"]).Range(case["cell"])
                         answer["after_save"] = function_cell(app, cell, case["cell"], evaluators[case["sheet"]])
+                        if text := answer.get("text_oracle"):
+                            text["after_save"] = function_cell(app, book.Worksheets.Item(case["sheet"]).Range(text["cell"]), text["cell"], evaluators[case["sheet"]])
+                            if text["after_save"]["value2"] != text["en_us_original"]:
+                                raise AssertionError("TEXT oracle cache changed from original en-US evaluation after SaveAs")
                         if case["mode"] == "behavior_only":
                             answer["after_save_control_passed"] = function_control(case["control"], answer["after_save"]["value2"]["value"])
                             if not answer["after_save_control_passed"]:
@@ -1200,7 +1864,10 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
                         answer["after_save_error"] = f"{type(error).__name__}: {error}"
                         result["failures"].append(f"functions/{case['id']}: after SaveAs observation: {error}")
                     record(position, answer)
-            persisted = saved_function_cache(staging[name], [case for _, case in selected])
+            cache_cases = [case for _, case in selected]
+            cache_cases += [{**case, "cell": case["text_format_oracle"]["cell"]}
+                            for _, case in selected if "cell" in case.get("text_format_oracle", {})]
+            persisted = saved_function_cache(staging[name], cache_cases)
             for position, case in selected:
                 answer = answers[position]
                 assert answer is not None
@@ -1217,6 +1884,16 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
                     if proof["status"] == "different":
                         result["failures"].append(f"functions/{case['id']}: {phase}/saved cache: {proof['reason']}")
                 answer["native_cache_comparisons"] = comparisons
+                if text := answer.get("text_oracle"):
+                    text["saved_cache"] = persisted[(case["sheet"], text["cell"])]
+                    text["native_cache_comparisons"] = {}
+                    for phase in ("actual", "after_save"):
+                        if phase not in text:
+                            continue
+                        proof = compare_function_cache(text[phase], text["saved_cache"])
+                        text["native_cache_comparisons"][phase] = proof
+                        if proof["status"] != "equal":
+                            result["failures"].append(f"functions/{case['id']}: TEXT companion/{phase}/saved cache: {proof['reason']}")
                 record(position, answer)
         except Exception as error:
             result["failures"].append(f"functions/{name}: {type(error).__name__}: {error}")
@@ -1230,6 +1907,9 @@ def run_functions(app: Any, args: argparse.Namespace, result: dict) -> None:
             result["functions"]["calibrations"][gate] = {
                 "passed": answer.get("control_passed") is True,
                 "actual": answer.get("actual"), "control": answer["control"],
+                "scope": answer.get("text_oracle", {}).get("kind", "original_native_cache"),
+                "text_oracle": answer.get("text_oracle"),
+                "original_control_passed": answer.get("original_control_passed"),
             }
     for answer in answers:
         answer["gate_status"] = {gate: result["functions"]["calibrations"][gate]["passed"]
@@ -1281,6 +1961,8 @@ def finish_function_fixtures(result: dict, output: Path, passed: bool) -> None:
                 "coverage": {
                     "scope": "selected manifest cases; other workbook formulas are not validated",
                     "manifest_case_count": len(functions["cases"]), "checked_case_count": len(cases),
+                    "text_oracle_case_ids": [case["id"] for case in cases if "text_oracle" in case],
+                    "english_cache_scope": functions.get("english_cache_scope", "original native caches; no language adaptation"),
                     "checked_case_ids": [case["id"] for case in cases],
                     "case_gate_status": {case["id"]: case["gate_status"] for case in cases},
                     "calibration_status": {name: gate["passed"] for name, gate in functions["calibrations"].items()},
@@ -1418,6 +2100,8 @@ def worker(args: argparse.Namespace) -> int:
             run_styles(app, args, result)
         elif args.mode == "functions":
             run_functions(app, args, result)
+        elif args.mode == "pivots":
+            run_pivots(app, args, result)
         elif args.mode == "inspect":
             if not args.workbook:
                 raise ValueError("inspect: at least one --workbook is required")
@@ -1462,7 +2146,7 @@ def worker(args: argparse.Namespace) -> int:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    result.add_argument("mode", choices=("probe", "inspect", "fidelity", "shift", "formats", "styles", "functions"))
+    result.add_argument("mode", choices=("probe", "inspect", "fidelity", "shift", "formats", "styles", "functions", "pivots"))
     result.add_argument("--output-dir", type=Path, default=OUTPUT)
     result.add_argument("--exchange", type=Path, default=EXCHANGE)
     result.add_argument("--rich", type=Path)
@@ -1499,6 +2183,16 @@ def main() -> int:
         for name in ("rich_excel.xlsx", "rich_excel.json", "rich_excel.pending.xlsx", "rich_excel.pending.json", "rich_excel.control.xlsx"):
             if (args.output_dir / name).exists():
                 raise SystemExit(f"fidelity: {name} already exists; select a fresh --output-dir")
+    if args.mode == "pivots":
+        if not args.active or args.cases is None:
+            raise SystemExit("pivots: --active and --cases are required")
+        manifest = read_pivot_manifest(args.cases)
+        names = ((f"pivot-existing-{role}{suffix}.xlsx"
+                  for role in ("control", "candidate") for suffix in (".pending", ""))
+                 if "check_existing" in manifest or "compare_existing" in manifest else
+                 iter(("pivot-native.pending.xlsx", "pivot-native.xlsx")))
+        if any((args.output_dir / name).exists() for name in names):
+            raise SystemExit("pivots: fixture output exists; select a fresh --output-dir")
     if args.mode == "functions":
         if args.cases is None:
             raise SystemExit("functions: --cases must name the authored formula manifest")
@@ -1569,6 +2263,8 @@ def main() -> int:
                 finish_fixture(result, args.output_dir, passed)
             elif args.mode == "functions":
                 finish_function_fixtures(result, args.output_dir, passed)
+            elif args.mode == "pivots":
+                finish_pivot_fixture(result, args.output_dir, passed)
         except Exception as error:
             result["failures"].append(f"fixture finalization: {error}")
             passed = False

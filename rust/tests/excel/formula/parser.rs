@@ -423,12 +423,13 @@ fn strict_evaluation_policy_excludes_unsupported_and_malformed_edges() {
         ("SUM(A1,B1)", 2),
         ("A1+B1", 2),
         ("A1=B1", 2),
+        ("1^A1", 2),
     ] {
         let formula = Formula::from_file(text, host);
         assert_eq!(strict_root_child_count(&formula), Some(count), "{text}");
         assert_eq!(
             strict_references(&formula).unwrap().len(),
-            if text == "ROUND(A1,2)" { 1 } else { count },
+            if matches!(text, "ROUND(A1,2)" | "1^A1") { 1 } else { count },
             "{text}"
         );
     }
@@ -439,7 +440,6 @@ fn strict_evaluation_policy_excludes_unsupported_and_malformed_edges() {
         "SUM(A1,,B1)",
         "IF(FALSE,A1,0)",
         "CHOOSE(2,A1,0)",
-        "1^A1",
         "IF(FALSE,1^A1,0)",
     ] {
         let formula = Formula::from_file(text, host);
@@ -450,6 +450,100 @@ fn strict_evaluation_policy_excludes_unsupported_and_malformed_edges() {
         );
     }
     let nested = Formula::from_file("SUM(A1,IF(FALSE,B1,0),C1)", host);
-    // SUM is strict, but the unsupported lazy IF contributes no B1 edge.
+    // SUM is strict, but the constant IF predicate contributes no B1 edge.
     assert_eq!(strict_references(&nested).unwrap().len(), 2);
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn lazy_selectors_policy_registers_only_the_initial_selector_input() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula::{strict_references, strict_root_child_count};
+
+    let host: CellRef = "H8".parse().unwrap();
+    let references = |text: &str| strict_references(&Formula::from_file(text, host)).unwrap();
+    for text in ["IF(A1,B1,C1)", "IFERROR(A1,B1)", "IFNA(A1,B1)", "CHOOSE(A1,B1,C1)"] {
+        assert_eq!(references(text), references("A1"), "{text}");
+        assert_eq!(strict_root_child_count(&Formula::from_file(text, host)), None, "{text}");
+    }
+    for text in ["IF(,B1,C1)", "IFERROR(,B1)", "IFNA(,B1)", "CHOOSE(,B1,C1)"] {
+        assert!(references(text).is_empty(), "{text}");
+    }
+    let nested = Formula::from_file("SUM(A1,IF(B1,C1,D1),E1)", host);
+    assert_eq!(strict_root_child_count(&nested), Some(3));
+    assert_eq!(strict_references(&nested).unwrap(), references("SUM(A1,B1,E1)"));
+    // An omitted result is valid; wrong arity remains held before any input read.
+    for text in ["IF(A1)", "IFERROR(A1)", "IFNA(A1,B1,C1)"] {
+        assert!(strict_references(&Formula::from_file(text, host)).unwrap_or_default().is_empty(), "{text}");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn multi_selectors_policy_keeps_all_tests_and_keys_out_of_result_branches() {
+    use yggdryl::excel::{CellRef,Formula};
+    use yggdryl::internals::excel_formula::strict_references;
+    let host=CellRef::new(7,7);
+    let refs=|text:&str|strict_references(&Formula::from_file(text,host)).unwrap();
+    for (formula,inputs) in [
+        ("IFS(A1,B1,C1,D1,E1,F1)","SUM(A1,C1,E1)"),
+        ("SWITCH(A1,B1,C1,D1,E1,F1)","SUM(A1,B1,D1)"),
+        ("IFS(,B1,C1,)","C1"),
+        ("SWITCH(,B1,C1,,E1,F1)","B1"),
+    ] {assert_eq!(refs(formula),refs(inputs),"{formula}");}
+    for formula in ["IFS(A1,B1,C1)","SWITCH(A1,B1)"] {
+        assert!(strict_references(&Formula::from_file(formula,host)).unwrap_or_default().is_empty(),"{formula}");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn geometry_functions_reuse_the_typed_call_and_array_grammar() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula::strict_root_child_count;
+    for (text, children) in [("ROW()",0),("COLUMN()",0),("ROWS(A1:A5)",1),
+        ("COLUMNS({1,2;3,4})",1)] {
+        let formula = Formula::from_entry(text, CellRef::new(0,0)).unwrap();
+        assert_eq!(strict_root_child_count(&formula), Some(children), "{text}");
+    }
+    for text in ["ROW(A1,A2)", "COLUMN(A1,A2)", "ROWS()", "COLUMNS()", "ROWS({1,2;3})"] {
+        assert!(Formula::from_entry(text, CellRef::new(0,0)).is_err(), "{text}");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn reference_operator_binding_powers_preserve_typed_geometry() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula::arena;
+    let host = CellRef::new(0, 0);
+    let children = |node: &str| -> (usize, usize) {
+        let left = node.split("left: ").nth(1).unwrap()
+            .split(',').next().unwrap().parse().unwrap();
+        let right = node.split("right: ").nth(1).unwrap()
+            .split(|ch: char| !ch.is_ascii_digit()).next().unwrap().parse().unwrap();
+        (left, right)
+    };
+    let (root, nodes) = arena(&Formula::from_file("A1:B2 C2:D3", host)).unwrap();
+    assert!(nodes[root].starts_with("Binary { op: Intersection"));
+    let (left, right) = children(&nodes[root]);
+    // The lexer owns ordinary A1:B2 area syntax as one typed Reference;
+    // the parser owns the space intersection between those references.
+    assert!(nodes[left].starts_with("Reference("));
+    assert!(nodes[right].starts_with("Reference("));
+
+    let (root, nodes) = arena(&Formula::from_file("A1:B2:C3:D4:E5", host)).unwrap();
+    assert!(nodes[root].starts_with("Binary { op: Range"));
+    let (left, _) = children(&nodes[root]);
+    assert!(nodes[left].starts_with("Binary { op: Range"), "colon associates left");
+
+    for (text, intersect_left) in [("(A1 B1,C1)", true), ("(A1,B1 C1)", false)] {
+        let (root, nodes) = arena(&Formula::from_file(text, host)).unwrap();
+        let group = nodes[root].strip_prefix("Group(").unwrap()
+            .strip_suffix(')').unwrap().parse::<usize>().unwrap();
+        assert!(nodes[group].starts_with("Binary { op: Union"), "{text}");
+        let (left, right) = children(&nodes[group]);
+        let intersection = if intersect_left { left } else { right };
+        assert!(nodes[intersection].starts_with("Binary { op: Intersection"), "{text}");
+    }
 }

@@ -1,0 +1,1833 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_item_native_observations",
+  "execution_only": true,
+  "rust_equivalence_checked": false,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036
+  },
+  "all_passed": true,
+  "all_cleanup_completed": true,
+  "batches": [
+    {
+      "id": "lexical",
+      "input_sha256": "bf174561f5b72c23d5321b312c74e2c62e7c27e35e525cfaceb224b083b0fe44",
+      "manifest_sha256": "a7945f689db4774d3d94503205832ce1cc316bc2f89dc1bb07f79ea8cc9a4933",
+      "report_sha256": "072a7090271f8464aabf136553b82ebe827ead7f0b4bf414aeb5cff9a5f1f099",
+      "saved_sha256": "b40e30a8774e748945e20a92d422acd948223c982274c45f97f49a09e0903b33",
+      "refresh_save_reopen_equal": true,
+      "cases": [
+        {
+          "id": "case_variants",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              "East",
+              1
+            ],
+            [
+              "east",
+              2
+            ],
+            [
+              "EAST",
+              4
+            ],
+            [
+              "West",
+              8
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A2",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "East"
+            },
+            {
+              "ref": "A3",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "east"
+            },
+            {
+              "ref": "A4",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "EAST"
+            },
+            {
+              "ref": "A5",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "West"
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "count": "2"
+            },
+            "items": [
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "East"
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "West"
+                }
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "4",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "8"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$6",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "East"
+              },
+              {
+                "variant": "float",
+                "value": 7.0,
+                "hex": "0x1.c000000000000p+2",
+                "ieee754_hex": "401c000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "West"
+              },
+              {
+                "variant": "float",
+                "value": 8.0,
+                "hex": "0x1.0000000000000p+3",
+                "ieee754_hex": "4020000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 15.0,
+                "hex": "0x1.e000000000000p+3",
+                "ieee754_hex": "402e000000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "space_variants",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              " East",
+              1
+            ],
+            [
+              "East",
+              2
+            ],
+            [
+              "East ",
+              4
+            ],
+            [
+              "  East",
+              8
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A2",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": " East"
+            },
+            {
+              "ref": "A3",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "East"
+            },
+            {
+              "ref": "A4",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "East "
+            },
+            {
+              "ref": "A5",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "  East"
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "count": "4"
+            },
+            "items": [
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": " East"
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "East"
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "East "
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "  East"
+                }
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "4",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "2"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "3"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "8"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "2"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "3"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$8",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "  East"
+              },
+              {
+                "variant": "float",
+                "value": 8.0,
+                "hex": "0x1.0000000000000p+3",
+                "ieee754_hex": "4020000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": " East"
+              },
+              {
+                "variant": "float",
+                "value": 1.0,
+                "hex": "0x1.0000000000000p+0",
+                "ieee754_hex": "3ff0000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "East"
+              },
+              {
+                "variant": "float",
+                "value": 2.0,
+                "hex": "0x1.0000000000000p+1",
+                "ieee754_hex": "4000000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "East "
+              },
+              {
+                "variant": "float",
+                "value": 4.0,
+                "hex": "0x1.0000000000000p+2",
+                "ieee754_hex": "4010000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 15.0,
+                "hex": "0x1.e000000000000p+3",
+                "ieee754_hex": "402e000000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        },
+        {
+          "id": "empty_text_blank",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              null,
+              1
+            ],
+            [
+              "",
+              2
+            ],
+            [
+              "x",
+              4
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A3",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": null
+            },
+            {
+              "ref": "A4",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "x"
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "containsBlank": "1",
+              "count": "2"
+            },
+            "items": [
+              {
+                "tag": "m",
+                "attributes": {}
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "x"
+                }
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "3",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$6",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "x"
+              },
+              {
+                "variant": "float",
+                "value": 4.0,
+                "hex": "0x1.0000000000000p+2",
+                "ieee754_hex": "4010000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "(vide)"
+              },
+              {
+                "variant": "float",
+                "value": 3.0,
+                "hex": "0x1.8000000000000p+1",
+                "ieee754_hex": "4008000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 7.0,
+                "hex": "0x1.c000000000000p+2",
+                "ieee754_hex": "401c000000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scalar_types",
+      "input_sha256": "530757da96fe9d5617076a8599a05ba8947fd1ff7cf029c77b5c77e54c211981",
+      "manifest_sha256": "94f3ec88dbf2201c6f7bb0fcab2b2d290535877ffda4a652093f8b32d9fe480a",
+      "report_sha256": "468300d7f28ad5ae612735322cc5325a9d79d7b6e2cd82349c142a23eebc7f70",
+      "saved_sha256": "69c3dabe709423ece3eb66b61419a1c58c24d17d5efee6d2e0ea672d83215aa0",
+      "refresh_save_reopen_equal": true,
+      "cases": [
+        {
+          "id": "numeric_text_boolean_blank",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              "1",
+              2
+            ],
+            [
+              1.0,
+              4
+            ],
+            [
+              true,
+              8
+            ],
+            [
+              false,
+              16
+            ],
+            [
+              null,
+              32
+            ],
+            [
+              "",
+              64
+            ],
+            [
+              "TRUE",
+              128
+            ],
+            [
+              -1,
+              256
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A2",
+              "type": "n",
+              "style": null,
+              "value": "1",
+              "inline": null
+            },
+            {
+              "ref": "A3",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "1"
+            },
+            {
+              "ref": "A4",
+              "type": "n",
+              "style": null,
+              "value": "1",
+              "inline": null
+            },
+            {
+              "ref": "A5",
+              "type": "b",
+              "style": null,
+              "value": "1",
+              "inline": null
+            },
+            {
+              "ref": "A6",
+              "type": "b",
+              "style": null,
+              "value": "0",
+              "inline": null
+            },
+            {
+              "ref": "A8",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": null
+            },
+            {
+              "ref": "A9",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "TRUE"
+            },
+            {
+              "ref": "A10",
+              "type": "n",
+              "style": null,
+              "value": "-1",
+              "inline": null
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "containsBlank": "1",
+              "containsMixedTypes": "1",
+              "containsNumber": "1",
+              "containsInteger": "1",
+              "minValue": "-1",
+              "maxValue": "1",
+              "count": "7"
+            },
+            "items": [
+              {
+                "tag": "n",
+                "attributes": {
+                  "v": "1"
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "1"
+                }
+              },
+              {
+                "tag": "b",
+                "attributes": {
+                  "v": "1"
+                }
+              },
+              {
+                "tag": "b",
+                "attributes": {
+                  "v": "0"
+                }
+              },
+              {
+                "tag": "m",
+                "attributes": {}
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "TRUE"
+                }
+              },
+              {
+                "tag": "n",
+                "attributes": {
+                  "v": "-1"
+                }
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "9",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "2"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "8"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "3"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "16"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "4"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "32"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "4"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "64"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "5"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "128"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "6"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "256"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "2"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "3"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "4"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "5"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "6"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$11",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": -1.0,
+                "hex": "-0x1.0000000000000p+0",
+                "ieee754_hex": "bff0000000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 256.0,
+                "hex": "0x1.0000000000000p+8",
+                "ieee754_hex": "4070000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 1.0,
+                "hex": "0x1.0000000000000p+0",
+                "ieee754_hex": "3ff0000000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 5.0,
+                "hex": "0x1.4000000000000p+2",
+                "ieee754_hex": "4014000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "1"
+              },
+              {
+                "variant": "float",
+                "value": 2.0,
+                "hex": "0x1.0000000000000p+1",
+                "ieee754_hex": "4000000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "TRUE"
+              },
+              {
+                "variant": "float",
+                "value": 128.0,
+                "hex": "0x1.0000000000000p+7",
+                "ieee754_hex": "4060000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "FAUX"
+              },
+              {
+                "variant": "float",
+                "value": 16.0,
+                "hex": "0x1.0000000000000p+4",
+                "ieee754_hex": "4030000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "VRAI"
+              },
+              {
+                "variant": "float",
+                "value": 8.0,
+                "hex": "0x1.0000000000000p+3",
+                "ieee754_hex": "4020000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "(vide)"
+              },
+              {
+                "variant": "float",
+                "value": 96.0,
+                "hex": "0x1.8000000000000p+6",
+                "ieee754_hex": "4058000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 511.0,
+                "hex": "0x1.ff00000000000p+8",
+                "ieee754_hex": "407ff00000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "date_serial",
+      "input_sha256": "70bf299752c9f170e3b12da020b3383dfce5e96a6cee58f4708870413f0194b3",
+      "manifest_sha256": "b4236a2c61f6ed9aacd451ab6294f40b45afce958a0fb5148753a0ad4d78b17b",
+      "report_sha256": "a65920c12be047d20ad5e32980a6dd476792934e5c07daafb6c57e4b162aeec3",
+      "saved_sha256": "cc9eff867e341fa401b19b9ecc0d3080bd44f410075e560c4a6c77e28dd5428b",
+      "refresh_save_reopen_equal": true,
+      "cases": [
+        {
+          "id": "general_versus_date_serial",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              59,
+              1
+            ],
+            [
+              59,
+              2
+            ],
+            [
+              60,
+              4
+            ],
+            [
+              60,
+              8
+            ],
+            [
+              61,
+              16
+            ],
+            [
+              61,
+              32
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A2",
+              "type": "n",
+              "style": null,
+              "value": "59",
+              "inline": null
+            },
+            {
+              "ref": "A3",
+              "type": "n",
+              "style": "1",
+              "value": "59",
+              "inline": null
+            },
+            {
+              "ref": "A4",
+              "type": "n",
+              "style": null,
+              "value": "60",
+              "inline": null
+            },
+            {
+              "ref": "A5",
+              "type": "n",
+              "style": "1",
+              "value": "60",
+              "inline": null
+            },
+            {
+              "ref": "A6",
+              "type": "n",
+              "style": null,
+              "value": "61",
+              "inline": null
+            },
+            {
+              "ref": "A7",
+              "type": "n",
+              "style": "1",
+              "value": "61",
+              "inline": null
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "containsSemiMixedTypes": "0",
+              "containsDate": "1",
+              "containsString": "0",
+              "containsMixedTypes": "1",
+              "minDate": "1900-01-05T09:18:04",
+              "maxDate": "1900-03-02T00:00:00",
+              "count": "6"
+            },
+            "items": [
+              {
+                "tag": "n",
+                "attributes": {
+                  "v": "59"
+                }
+              },
+              {
+                "tag": "d",
+                "attributes": {
+                  "v": "1900-02-27T00:00:00"
+                }
+              },
+              {
+                "tag": "n",
+                "attributes": {
+                  "v": "60"
+                }
+              },
+              {
+                "tag": "d",
+                "attributes": {
+                  "v": "1900-02-28T00:00:00"
+                }
+              },
+              {
+                "tag": "n",
+                "attributes": {
+                  "v": "61"
+                }
+              },
+              {
+                "tag": "d",
+                "attributes": {
+                  "v": "1900-03-01T00:00:00"
+                }
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "6",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "2"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "3"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "8"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "4"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "16"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "5"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "32"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "2"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "3"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "4"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "5"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$10",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 59.0,
+                "hex": "0x1.d800000000000p+5",
+                "ieee754_hex": "404d800000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 1.0,
+                "hex": "0x1.0000000000000p+0",
+                "ieee754_hex": "3ff0000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 60.0,
+                "hex": "0x1.e000000000000p+5",
+                "ieee754_hex": "404e000000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 4.0,
+                "hex": "0x1.0000000000000p+2",
+                "ieee754_hex": "4010000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 61.0,
+                "hex": "0x1.e800000000000p+5",
+                "ieee754_hex": "404e800000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 16.0,
+                "hex": "0x1.0000000000000p+4",
+                "ieee754_hex": "4030000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 59.0,
+                "hex": "0x1.d800000000000p+5",
+                "ieee754_hex": "404d800000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 2.0,
+                "hex": "0x1.0000000000000p+1",
+                "ieee754_hex": "4000000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 60.0,
+                "hex": "0x1.e000000000000p+5",
+                "ieee754_hex": "404e000000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 8.0,
+                "hex": "0x1.0000000000000p+3",
+                "ieee754_hex": "4020000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "float",
+                "value": 61.0,
+                "hex": "0x1.e800000000000p+5",
+                "ieee754_hex": "404e800000000000",
+                "classification": "finite"
+              },
+              {
+                "variant": "float",
+                "value": 32.0,
+                "hex": "0x1.0000000000000p+5",
+                "ieee754_hex": "4040000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 63.0,
+                "hex": "0x1.f800000000000p+5",
+                "ieee754_hex": "404f800000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "error_items",
+      "input_sha256": "40223bf65b09fa9541e06893ee630210fa781737f991098ab3d90ef326ffde09",
+      "manifest_sha256": "cd8dd7a602b476051c6af81359c461e9e7b6c496ee9555946d4ea01c9ded6c9c",
+      "report_sha256": "4e8d1b6a534a0c2f6d3cdea417b8030a9a55f36e4dbe7e7847535f80cd6998eb",
+      "saved_sha256": "e404f5b0ea76e5e712d10a5eecb4bd570fdd8a8a37d395e0b93373d6b644dd18",
+      "refresh_save_reopen_equal": true,
+      "cases": [
+        {
+          "id": "error_versus_text",
+          "source_rows": [
+            [
+              "Group",
+              "Value"
+            ],
+            [
+              "#N/A",
+              1
+            ],
+            [
+              "#DIV/0!",
+              2
+            ],
+            [
+              "ordinary",
+              4
+            ],
+            [
+              null,
+              8
+            ]
+          ],
+          "source_cells": [
+            {
+              "ref": "A2",
+              "type": "e",
+              "style": null,
+              "value": "#N/A",
+              "inline": null
+            },
+            {
+              "ref": "A3",
+              "type": "e",
+              "style": null,
+              "value": "#DIV/0!",
+              "inline": null
+            },
+            {
+              "ref": "A4",
+              "type": "inlineStr",
+              "style": null,
+              "value": null,
+              "inline": "ordinary"
+            }
+          ],
+          "cache_group_items": {
+            "attributes": {
+              "containsBlank": "1",
+              "count": "4"
+            },
+            "items": [
+              {
+                "tag": "e",
+                "attributes": {
+                  "v": "#N/A"
+                }
+              },
+              {
+                "tag": "e",
+                "attributes": {
+                  "v": "#DIV/0!"
+                }
+              },
+              {
+                "tag": "s",
+                "attributes": {
+                  "v": "ordinary"
+                }
+              },
+              {
+                "tag": "m",
+                "attributes": {}
+              }
+            ]
+          },
+          "cache_records": {
+            "count": "4",
+            "rows": [
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "0"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "1"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "1"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "2"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "2"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "4"
+                  }
+                }
+              ],
+              [
+                {
+                  "tag": "x",
+                  "attributes": {
+                    "v": "3"
+                  }
+                },
+                {
+                  "tag": "n",
+                  "attributes": {
+                    "v": "8"
+                  }
+                }
+              ]
+            ]
+          },
+          "pivot_row_items": [
+            {
+              "attributes": {},
+              "indexes": [
+                {}
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "1"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "2"
+                }
+              ]
+            },
+            {
+              "attributes": {},
+              "indexes": [
+                {
+                  "v": "3"
+                }
+              ]
+            },
+            {
+              "attributes": {
+                "t": "grand"
+              },
+              "indexes": [
+                {}
+              ]
+            }
+          ],
+          "table_range2": "$A$3:$B$8",
+          "value2": [
+            [
+              {
+                "variant": "str",
+                "value": "Group"
+              },
+              {
+                "variant": "str",
+                "value": "Value Sum"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "ordinary"
+              },
+              {
+                "variant": "float",
+                "value": 4.0,
+                "hex": "0x1.0000000000000p+2",
+                "ieee754_hex": "4010000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "#DIV/0!"
+              },
+              {
+                "variant": "float",
+                "value": 2.0,
+                "hex": "0x1.0000000000000p+1",
+                "ieee754_hex": "4000000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "#N/A"
+              },
+              {
+                "variant": "float",
+                "value": 1.0,
+                "hex": "0x1.0000000000000p+0",
+                "ieee754_hex": "3ff0000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "(vide)"
+              },
+              {
+                "variant": "float",
+                "value": 8.0,
+                "hex": "0x1.0000000000000p+3",
+                "ieee754_hex": "4020000000000000",
+                "classification": "finite"
+              }
+            ],
+            [
+              {
+                "variant": "str",
+                "value": "Total g\u00e9n\u00e9ral"
+              },
+              {
+                "variant": "float",
+                "value": 15.0,
+                "hex": "0x1.e000000000000p+3",
+                "ieee754_hex": "402e000000000000",
+                "classification": "finite"
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

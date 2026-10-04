@@ -1,0 +1,85 @@
+{
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_report_sha256": "fef99512a58d96743c61dfe38b3b750c9575a0638c86e36ef749a195f9560f87",
+  "cases": [
+    {
+      "id": "serial-1900-b2",
+      "rust_cache": "59",
+      "excel_cache": "59",
+      "ieee754_hex": "404d800000000000"
+    },
+    {
+      "id": "serial-1900-b3",
+      "rust_cache": "60",
+      "excel_cache": "60",
+      "ieee754_hex": "404e000000000000"
+    },
+    {
+      "id": "serial-1900-b4",
+      "rust_cache": "60.5",
+      "excel_cache": "60.5",
+      "ieee754_hex": "404e400000000000"
+    },
+    {
+      "id": "serial-1900-b5",
+      "rust_cache": "45292.000000001",
+      "excel_cache": "45292.000000000997",
+      "ieee754_hex": "40e61d8000000089"
+    },
+    {
+      "id": "serial-1900-b6",
+      "rust_cache": "1",
+      "excel_cache": "1",
+      "ieee754_hex": "3ff0000000000000"
+    },
+    {
+      "id": "serial-1900-b7",
+      "rust_cache": "9.968061931431293e-10",
+      "excel_cache": "9.9680619314312935E-10",
+      "ieee754_hex": "3e11200000000000"
+    },
+    {
+      "id": "serial-1904-b2",
+      "rust_cache": "59",
+      "excel_cache": "59",
+      "ieee754_hex": "404d800000000000"
+    },
+    {
+      "id": "serial-1904-b3",
+      "rust_cache": "60",
+      "excel_cache": "60",
+      "ieee754_hex": "404e000000000000"
+    },
+    {
+      "id": "serial-1904-b4",
+      "rust_cache": "60.5",
+      "excel_cache": "60.5",
+      "ieee754_hex": "404e400000000000"
+    },
+    {
+      "id": "serial-1904-b5",
+      "rust_cache": "45292.000000001",
+      "excel_cache": "45292.000000000997",
+      "ieee754_hex": "40e61d8000000089"
+    },
+    {
+      "id": "serial-1904-b6",
+      "rust_cache": "1",
+      "excel_cache": "1",
+      "ieee754_hex": "3ff0000000000000"
+    },
+    {
+      "id": "serial-1904-b7",
+      "rust_cache": "9.968061931431293e-10",
+      "excel_cache": "9.9680619314312935E-10",
+      "ieee754_hex": "3e11200000000000"
+    }
+  ]
+}

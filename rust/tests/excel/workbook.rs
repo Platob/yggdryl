@@ -4303,41 +4303,58 @@ fn remove_sheet_undo_escapes_inherited_namespace_quotes_and_entities_once() {
 
 #[test]
 fn remove_sheet_undo_refuses_missing_shared_dependencies_atomically() {
-    use yggdryl::excel::Edit;
+    use yggdryl::excel::{Clock, Edit};
 
-    let mut book = Workbook::from_bytes(removal_shared_parts_package()).unwrap();
-    let original = save_removed_sheet_book(&mut book);
-    let first = book
-        .apply(Edit::RemoveSheet {
-            name: "Pivot".into(),
-        })
-        .unwrap();
-    let second = book
-        .apply(Edit::RemoveSheet {
-            name: "Report".into(),
-        })
-        .unwrap();
-    let before = save_removed_sheet_book(&mut book);
-    assert!(!member_names(&before).contains(&"xl/pivotCache/pivotCacheDefinition1.xml".to_owned()));
-    let inverse = first.inverse.unwrap();
-    let error = book.apply(inverse.clone()).unwrap_err();
-    assert!(matches!(error, Error::Conflict { .. }), "{error}");
-    assert!(
-        error.to_string().contains("pivotCacheDefinition1.xml"),
-        "{error}"
-    );
-    assert_eq!(book.sheet_names(), ["Data"]);
-    assert!(!book.is_dirty());
-    assert_eq!(
-        removal_member_map(&before),
-        removal_member_map(&book.into_bytes().unwrap())
-    );
-    // The refused inverse is still usable once the other inverse restores
-    // the shared cache which its removal, as the final owner, retained.
-    book.apply(second.inverse.unwrap()).unwrap();
-    save_removed_sheet_book(&mut book);
-    book.apply(inverse).unwrap();
-    assert_removed_sheet_package_restored(&original, &save_removed_sheet_book(&mut book));
+    for settled in [false, true] {
+        let mut book = Workbook::from_bytes(removal_shared_parts_package()).unwrap()
+            .with_clock(Clock::fixed(0, Timezone::UTC, 73));
+        let report_key = book.sheet_key("Report").unwrap();
+        // A settled baseline makes the first removal's receipt contain no
+        // incidental Report cache replacements (including its volatile TODAY).
+        // The cold arm retains the new, earlier receipt-owner refusal as well.
+        if settled { book.calculate_all().unwrap(); }
+        let original = save_removed_sheet_book(&mut book);
+        let first = book
+            .apply(Edit::RemoveSheet {
+                name: "Pivot".into(),
+            })
+            .unwrap();
+        let second = book
+            .apply(Edit::RemoveSheet {
+                name: "Report".into(),
+            })
+            .unwrap();
+        let before = save_removed_sheet_book(&mut book);
+        assert!(!member_names(&before).contains(&"xl/pivotCache/pivotCacheDefinition1.xml".to_owned()));
+        let inverse = first.inverse.unwrap();
+        let error = book.apply(inverse.clone()).unwrap_err();
+        if settled {
+            assert!(matches!(error, Error::Conflict { .. }), "{error}");
+            assert!(error.to_string().contains("pivotCacheDefinition1.xml"), "{error}");
+        } else {
+            // The receipt must restore Report's old caches before its paired
+            // sheet inverse; that owner is absent after the second removal.
+            match &error {
+                Error::Absent { expected, path } => {
+                    assert_eq!(*expected, "worksheet");
+                    assert_eq!(path.as_str(), report_key.as_u32().to_string());
+                }
+                _ => panic!("expected missing receipt worksheet, got {error}"),
+            }
+        }
+        assert_eq!(book.sheet_names(), ["Data"]);
+        assert!(!book.is_dirty());
+        assert_eq!(
+            removal_member_map(&before),
+            removal_member_map(&book.into_bytes().unwrap())
+        );
+        // The refused inverse is still usable once the other inverse restores
+        // the shared cache which its removal, as the final owner, retained.
+        book.apply(second.inverse.unwrap()).unwrap();
+        save_removed_sheet_book(&mut book);
+        book.apply(inverse).unwrap();
+        assert_removed_sheet_package_restored(&original, &save_removed_sheet_book(&mut book));
+    }
 }
 
 #[test]
@@ -7741,8 +7758,14 @@ mod internal {
         let Resolved::Name(rate) = resolver.resolve_name_reference(&binding).unwrap() else {
             panic!()
         };
-        assert_eq!(rate.definition().scope(), book.sheet_key("Jan"));
-        let Resolved::Range(range) = resolver.resolve_name_reference(&rate).unwrap() else {
+        // Native-defined local Alias=Rate binds the global Rate, not a local
+        // shadow. Direct cell lookup above still selects local-before-global.
+        assert_eq!(rate.definition().scope(), None);
+        assert_eq!(rate.definition().text(), "7");
+        let Resolved::Name(direct) = resolver.resolve("Jan", &Formula::from_file("Rate", at), at).unwrap() else {
+            panic!()
+        };
+        let Resolved::Range(range) = resolver.resolve_name_reference(&direct).unwrap() else {
             panic!()
         };
         assert_eq!(
@@ -7773,19 +7796,14 @@ mod internal {
                 "{text}"
             );
         }
-        for name in ["Relative", "Unqualified"] {
-            let formula = Formula::from_file(name, at);
-            let Resolved::Name(binding) = resolver.resolve("Jan", &formula, at).unwrap() else {
-                panic!()
-            };
-            assert!(
-                matches!(
-                    resolver.resolve_name_reference(&binding).unwrap(),
-                    Resolved::Held("defined-name anchor")
-                ),
-                "{name}"
-            );
-        }
+        let consumer: CellRef = "C7".parse().unwrap();
+        let formula = Formula::from_file("Relative", consumer);
+        let Resolved::Name(binding) = resolver.resolve("Jan", &formula, consumer).unwrap() else { panic!() };
+        let Resolved::Range(range) = resolver.resolve_name_reference(&binding).unwrap() else { panic!() };
+        assert_eq!(range.areas().next().unwrap(), (book.sheet_key("Jan").unwrap(), "C7".parse().unwrap()));
+        let formula = Formula::from_file("Unqualified", at);
+        let Resolved::Name(binding) = resolver.resolve("Jan", &formula, at).unwrap() else { panic!() };
+        assert!(matches!(resolver.resolve_name_reference(&binding).unwrap(), Resolved::Held("defined-name anchor")));
         let formula = Formula::from_file("Feb!GlobalOnly", at);
         assert!(matches!(
             resolver.resolve("Jan", &formula, at).unwrap(),
@@ -13519,8 +13537,11 @@ fn workbook_calculation_never_reads_clean_held_predecessor_caches_as_values() {
     let report = book.calculate_all().unwrap();
     assert_eq!(
         (report.evaluated, report.uncomputed, report.circular_count),
-        (0, 4, 0)
+        (1, 3, 0)
     );
+    // The selected IF branch computes; its inactive self-reference is no
+    // longer a held formula. The three reached unknown dependencies remain held.
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("D1")), 1.0.into());
     // Only the consumers are dirty: A1's retained status must block its cache.
     let data = book.sheet_mut("Data").unwrap();
     data.insert_cell(calculation_cached("B1", "A1+2", 201.0))
@@ -13530,7 +13551,7 @@ fn workbook_calculation_never_reads_clean_held_predecessor_caches_as_values() {
     let report = book.recalculate().unwrap();
     assert_eq!(
         (report.evaluated, report.uncomputed, report.circular_count),
-        (0, 4, 0)
+        (0, 3, 0)
     );
     assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), 201.0.into());
     assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")), 301.0.into());
@@ -14430,7 +14451,9 @@ fn workbook_recalculate_structural_rename_remove_and_undo_follow_sheet_identity(
             name: "Renamed Data".into(),
         })
         .unwrap();
-    let report = book.recalculate().unwrap();
+    // An Edit commits its recalculation with the authored mutation.
+    let report = &removed.calc;
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
     assert_eq!(
         (report.evaluated, report.uncomputed, report.circular_count),
         (2, 0, 0)
@@ -14445,8 +14468,9 @@ fn workbook_recalculate_structural_rename_remove_and_undo_follow_sheet_identity(
             Some(ExcelError::Ref)
         );
     }
-    book.apply(removed.inverse.expect("removal has an inverse"))
+    let restored_edit = book.apply(removed.inverse.expect("removal has an inverse"))
         .unwrap();
+    assert_eq!(restored_edit.calc.evaluated, 0, "undo restores retained caches without evaluating");
     assert_eq!(book.recalculate().unwrap().evaluated, 2);
     assert_eq!(
         book.sheet("Report").unwrap().scalar(at("A1")),
@@ -14533,7 +14557,7 @@ fn workbook_recalculate_structural_tab_move_rebinds_three_dimensional_ranges() {
 }
 
 #[test]
-fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status() {
+fn workbook_recalculate_structural_name_rewrites_remove_and_restore_computed_status() {
     use yggdryl::excel::{Edit, ExcelError};
     let document = workbook(&["Data", "Report"], false).replace(
         "</workbook>",
@@ -14565,7 +14589,7 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
     let first = book.recalculate().unwrap();
     assert_eq!(
         (first.evaluated, first.uncomputed, first.circular_count),
-        (1, 1, 0)
+        (2, 0, 0)
     );
 
     book.insert_rows("Data", 0, 1).unwrap();
@@ -14573,11 +14597,11 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
     let moved = book.recalculate().unwrap();
     assert_eq!(
         (moved.evaluated, moved.uncomputed, moved.circular_count),
-        (1, 1, 0)
+        (2, 0, 0)
     );
     assert_eq!(
         book.sheet("Data").unwrap().scalar(at("B2")),
-        Scalar::from(99.0)
+        Scalar::from(2.0)
     );
     book.rename_sheet("Data", "Source").unwrap();
     assert_eq!(book.defined_names().next().unwrap().text(), "Source!$A$2");
@@ -14588,7 +14612,7 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
             renamed.uncomputed,
             renamed.circular_count
         ),
-        (1, 1, 0)
+        (2, 0, 0)
     );
 
     let removed = book
@@ -14597,7 +14621,9 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
         })
         .unwrap();
     assert_eq!(book.defined_names().count(), 0);
-    let after = book.recalculate().unwrap();
+    // An Edit commits its recalculation with the authored mutation.
+    let after = &removed.calc;
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
     assert_eq!(
         (after.evaluated, after.uncomputed, after.circular_count),
         (1, 0, 0)
@@ -14610,8 +14636,9 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
             .error(),
         Some(ExcelError::Ref)
     );
-    book.apply(removed.inverse.expect("removal has an inverse"))
+    let restored_edit = book.apply(removed.inverse.expect("removal has an inverse"))
         .unwrap();
+    assert_eq!(restored_edit.calc.evaluated, 0, "undo restores retained caches without evaluating");
     assert_eq!(book.defined_names().next().unwrap().text(), "Source!$A$2");
     let restored = book.recalculate().unwrap();
     assert_eq!(
@@ -14620,7 +14647,7 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
             restored.uncomputed,
             restored.circular_count
         ),
-        (1, 1, 0)
+        (2, 0, 0)
     );
     assert_eq!(
         book.sheet("Report").unwrap().scalar(at("A1")),
@@ -14628,12 +14655,12 @@ fn workbook_recalculate_structural_name_rewrites_remove_and_restore_held_status(
     );
     assert_eq!(
         book.sheet("Source").unwrap().scalar(at("B2")),
-        Scalar::from(99.0)
+        Scalar::from(2.0)
     );
     let idle = book.recalculate().unwrap();
     assert_eq!(
         (idle.evaluated, idle.uncomputed, idle.circular_count),
-        (0, 1, 0)
+        (0, 0, 0)
     );
 }
 
@@ -14862,4 +14889,4532 @@ fn calculation_reads_iso_date_cells_as_canonical_serials() {
         workbook.sheet("Sheet1").unwrap().scalar(at("B1")),
         Scalar::from(expected)
     );
+}
+
+/// All 58 TRUE/FALSE/NOT observations are read; the nine text cases per epoch
+/// remain named held caches until a formula-locale contract is available.
+#[test]
+fn logical_native_numeric_boolean_blank_and_error_cache_match_40_of_58_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/logical_native.json")).unwrap();
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 72);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    let mut matched = 0usize;
+    let mut held_text = 0usize;
+    let mut lazy_controls = 0usize;
+    for year in ["1900", "1904"] {
+        let system = if year == "1900" {
+            DateSystem::Year1900
+        } else {
+            DateSystem::Year1904
+        };
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        assert_eq!(fixture["source_cells"].as_array().unwrap().len(), 11);
+        for source in fixture["source_cells"].as_array().unwrap() {
+            let address = at(source["cell"].as_str().unwrap());
+            let kind = source["kind"].as_str().unwrap();
+            let inputs = book.sheet_mut("Inputs").unwrap();
+            match kind {
+                "number_zero" | "number_positive" | "number_negative" => {
+                    inputs
+                        .set_cell(address, source["value"].as_f64().unwrap())
+                        .unwrap();
+                }
+                "boolean_true" | "boolean_false" => {
+                    inputs
+                        .set_cell(address, source["value"].as_bool().unwrap())
+                        .unwrap();
+                }
+                "physically_absent_blank" => {
+                    assert_eq!(source["cell"], "A6");
+                }
+                "text_zero" | "text_one" | "text_invalid" => {
+                    inputs
+                        .set_cell(address, source["value"].as_str().unwrap())
+                        .unwrap();
+                }
+                "formula_empty_text" | "formula_div_zero" => {
+                    let formula = source["value"].as_str().unwrap().strip_prefix('=').unwrap();
+                    inputs
+                        .insert_cell(
+                            Cell::from_scalar(address, Scalar::Null, system)
+                                .unwrap()
+                                .with_formula(Formula::from_file(formula, address)),
+                        )
+                        .unwrap();
+                }
+                other => panic!("unexpected native source kind {other}"),
+            }
+        }
+        let selected: Vec<_> = all
+            .iter()
+            .filter(|case| {
+                if case["date_system"] != year {
+                    return false;
+                }
+                case["parameters"]["origin"] != "lazy_control"
+            })
+            .collect();
+        assert_eq!(selected.len(), 29, "{year}: native NOT selection changed");
+        lazy_controls += all
+            .iter()
+            .filter(|case| {
+                case["date_system"] == year && case["parameters"]["origin"] == "lazy_control"
+            })
+            .count();
+        for case in &selected {
+            assert_eq!(case["sheet"], "Cases");
+            assert_eq!(
+                case["actual_value2"], case["after_save_value2"],
+                "{}",
+                case["id"]
+            );
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (22, 9, 0),
+            "{year}"
+        );
+        for case in selected {
+            let label = case["id"].as_str().unwrap();
+            let address = at(case["cell"].as_str().unwrap());
+            let cell = book.sheet("Cases").unwrap().cell(address).unwrap();
+            let kind = case["parameters"]["source_kind"].as_str().unwrap();
+            let text = matches!(
+                kind,
+                "text_zero" | "text_one" | "text_invalid" | "text_empty" | "formula_empty_text"
+            );
+            let cache = case["cache_value_text"].as_str().unwrap();
+            if text {
+                held_text += 1;
+                assert_eq!(
+                    (case["cache_type"].as_str(), cache),
+                    (Some("e"), "#VALUE!"),
+                    "{label}"
+                );
+                assert_eq!(
+                    cell.value().as_f64().map(f64::to_bits),
+                    Some(77.0f64.to_bits()),
+                    "held text cache changed: {label}"
+                );
+                assert_eq!(cell.error(), None, "{label}");
+            } else {
+                matched += 1;
+                match case["cache_type"].as_str().unwrap() {
+                    "b" => {
+                        let expected = cache == "1";
+                        assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+                        assert_eq!(case["actual_value2"]["value"], expected, "{label}");
+                        assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+                        assert_eq!(cell.error(), None, "{label}");
+                    }
+                    "e" => {
+                        assert_eq!(cache, "#DIV/0!", "{label}");
+                        assert_eq!(
+                            cell.error().map(|error| error.as_str()),
+                            Some(cache),
+                            "{label}"
+                        );
+                    }
+                    other => panic!("unsupported native NOT cache type {other}: {label}"),
+                }
+            }
+        }
+    }
+    assert_eq!((matched, held_text, lazy_controls), (40, 18, 14));
+}
+
+/// The host was French (1036): VRAI/FAUX were accepted, but without a typed
+/// formula locale every text argument is held with its old cache intact.
+#[test]
+fn logical_text_native_locale_boundary_is_explicitly_held_for_all_68_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/logical_text_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 68);
+    assert_eq!(fixture["excel"]["ui_language"], 1036);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    let cases = fixture["cases"].as_array().unwrap();
+    let mut native_boolean = 0usize;
+    let mut native_error = 0usize;
+    let mut held = 0usize;
+    for year in ["1900", "1904"] {
+        let system = if year == "1900" {
+            DateSystem::Year1900
+        } else {
+            DateSystem::Year1904
+        };
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        assert_eq!(fixture["source_cells"].as_array().unwrap().len(), 17);
+        for source in fixture["source_cells"].as_array().unwrap() {
+            let address = at(source["cell"].as_str().unwrap());
+            let inputs = book.sheet_mut("Inputs").unwrap();
+            if let Some(text) = source["text"].as_str() {
+                inputs.set_cell(address, text).unwrap();
+            } else {
+                let expression = source["formula"].as_str().unwrap();
+                inputs
+                    .insert_cell(
+                        Cell::from_scalar(address, Scalar::Null, system)
+                            .unwrap()
+                            .with_formula(Formula::from_file(
+                                expression.strip_prefix('=').unwrap(),
+                                address,
+                            )),
+                    )
+                    .unwrap();
+            }
+        }
+        let selected: Vec<_> = cases
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(selected.len(), 34, "{year}");
+        for case in &selected {
+            let address = at(case["cell"].as_str().unwrap());
+            assert_eq!(case["sheet"], "Cases");
+            assert_eq!(case["actual_value2"], case["after_save_value2"]);
+            assert_eq!(case["actual_formula"], case["actual_formula2"]);
+            match case["cache_type"].as_str().unwrap() {
+                "b" => {
+                    native_boolean += 1;
+                    assert!(matches!(
+                        case["parameters"]["kind"].as_str(),
+                        Some("french_true" | "french_false")
+                    ));
+                    assert!(matches!(case["cache_value_text"].as_str(), Some("0" | "1")));
+                }
+                "e" => {
+                    native_error += 1;
+                    assert_eq!(case["cache_value_text"], "#VALUE!");
+                }
+                other => panic!("unexpected native cache {other}: {}", case["id"]),
+            }
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (1, 34, 0),
+            "{year}"
+        );
+        for case in selected {
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            assert_eq!(
+                cell.value().as_f64().map(f64::to_bits),
+                Some(77.0f64.to_bits()),
+                "{}",
+                case["id"]
+            );
+            assert_eq!(cell.error(), None, "{}", case["id"]);
+            held += 1;
+        }
+    }
+    assert_eq!((native_boolean, native_error, held), (8, 60, 68));
+}
+
+/// Direct numeric/Boolean properties and scalar references share one NOT path.
+#[test]
+fn logical_not_numeric_boolean_blank_reference_and_error_boundaries() {
+    use yggdryl::excel::Formula;
+
+    for system in [DateSystem::Year1900, DateSystem::Year1904] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        let inputs = book.add_sheet("Inputs").unwrap();
+        inputs.set_cell(at("A1"), false).unwrap();
+        inputs.set_cell(at("A2"), 3.0).unwrap();
+        // A3 is physically absent. A4 is text even though its spelling is numeric.
+        inputs.set_cell(at("A4"), "3").unwrap();
+        for (address, formula, cache) in [
+            ("A5", "1/0", Scalar::from(9.0)),
+            ("A6", "UNSUPPORTED_LOGIC(1)", Scalar::from(false)),
+        ] {
+            let address = at(address);
+            inputs
+                .insert_cell(
+                    Cell::from_scalar(address, cache, system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula, address)),
+                )
+                .unwrap();
+        }
+        let cases = book.add_sheet("Cases").unwrap();
+        for (address, formula, cache) in [
+            ("B2", "NOT(Inputs!A1)", Scalar::from(false)),
+            ("B3", "NOT(Inputs!A2)", Scalar::from(true)),
+            ("B4", "NOT(Inputs!A3)", Scalar::from(false)),
+            ("B5", "NOT(Inputs!A4)", Scalar::from(true)),
+            ("B6", "NOT(Inputs!A5)", Scalar::from(true)),
+            ("B7", "NOT(Inputs!A6)", Scalar::from(true)),
+            ("B8", "NOT(-0)", Scalar::from(false)),
+            ("B9", "NOT(2)", Scalar::from(true)),
+            ("B10", "NOT(TRUE)", Scalar::from(true)),
+            ("B11", "NOT(FALSE)", Scalar::from(false)),
+        ] {
+            let address = at(address);
+            cases
+                .insert_cell(
+                    Cell::from_scalar(address, cache, system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula, address)),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        // A5 and eight supported NOT calls compute; A6, text B5, and B7 hold.
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (9, 3, 0)
+        );
+        let cases = book.sheet("Cases").unwrap();
+        for (address, value) in [
+            ("B2", true),
+            ("B3", false),
+            ("B4", true),
+            ("B8", true),
+            ("B9", false),
+            ("B10", false),
+            ("B11", true),
+        ] {
+            assert_eq!(
+                cases.cell(at(address)).unwrap().value().as_bool(),
+                Some(value),
+                "{system:?} {address}"
+            );
+        }
+        assert_eq!(
+            book.sheet("Inputs")
+                .unwrap()
+                .cell(at("A5"))
+                .unwrap()
+                .error()
+                .map(|e| e.as_str()),
+            Some("#DIV/0!")
+        );
+        assert_eq!(
+            cases.cell(at("B6")).unwrap().error().map(|e| e.as_str()),
+            Some("#DIV/0!")
+        );
+        for address in ["B5", "B7"] {
+            assert_eq!(
+                cases.cell(at(address)).unwrap().value().as_bool(),
+                Some(true),
+                "held cache changed: {system:?} {address}"
+            );
+            assert_eq!(cases.cell(at(address)).unwrap().error(), None);
+        }
+        assert_eq!(
+            book.sheet("Inputs")
+                .unwrap()
+                .cell(at("A6"))
+                .unwrap()
+                .value()
+                .as_bool(),
+            Some(false)
+        );
+    }
+}
+
+/// The existing registry owns arity; wrong shapes remain held with prior cache.
+#[test]
+fn logical_constant_and_not_wrong_arity_preserves_cached_values() {
+    use yggdryl::excel::Formula;
+
+    let mut book = Workbook::new();
+    let sheet = book.add_sheet("Cases").unwrap();
+    for (address, formula) in [
+        ("B2", "TRUE(1)"),
+        ("B3", "FALSE(1)"),
+        ("B4", "NOT()"),
+        ("B5", "NOT(1,2)"),
+    ] {
+        let address = at(address);
+        sheet
+            .insert_cell(
+                Cell::from_scalar(address, Scalar::from(9.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, address)),
+            )
+            .unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (0, 4, 0)
+    );
+    for address in ["B2", "B3", "B4", "B5"] {
+        assert_eq!(
+            book.sheet("Cases").unwrap().scalar(at(address)),
+            Scalar::from(9.0)
+        );
+    }
+}
+
+#[test]
+fn temporal_serial_native_twelve_cache_observations() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/temporal_serial_native.json")).unwrap();
+    assert_eq!(fixture["native_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 12);
+    let input = std::env::var_os("YGGDRYL_EXCEL_TEMPORAL_IN");
+    let output = std::env::var_os("YGGDRYL_EXCEL_TEMPORAL_OUT");
+    assert!(output.is_none() || input.is_some(), "native export needs its native-oracle input directory");
+    for year in ["1900", "1904"] {
+        let name = format!("functions-input-{year}.xlsx");
+        let source = if let Some(root) = &input {
+            std::fs::read(std::path::Path::new(root).join(&name)).unwrap()
+        } else {
+            let data = "<row r=\"2\"><c r=\"A2\" s=\"1\"><v>59</v></c><c r=\"B2\" s=\"1\"><f>A2</f><v>0</v></c></row>\
+                <row r=\"3\"><c r=\"A3\" s=\"1\"><v>60</v></c><c r=\"B3\" s=\"1\"><f>A3</f><v>0</v></c></row>\
+                <row r=\"4\"><c r=\"A4\" s=\"2\"><v>60.5</v></c><c r=\"B4\" s=\"2\"><f>A4</f><v>0</v></c></row>\
+                <row r=\"5\"><c r=\"A5\" s=\"2\"><v>45292.000000001</v></c><c r=\"B5\" s=\"2\"><f>A5</f><v>0</v></c></row>\
+                <row r=\"6\"><c r=\"B6\"><f>A3-A2</f><v>0</v></c></row>\
+                <row r=\"7\"><c r=\"B7\"><f>A5-45292</f><v>0</v></c></row>";
+            let types = crate::excel_package::content_types(1, false, true);
+            let root = crate::excel_package::root_relationships();
+            let book = crate::excel_package::workbook(&["Sheet1"], year == "1904");
+            let rels = crate::excel_package::workbook_relationships(1, false, true);
+            let sheet = crate::excel_package::worksheet(data);
+            let styles = crate::excel_package::styles(&[], &[0, 14, 22]);
+            crate::excel_package::package(&[
+                ("[Content_Types].xml", types.as_str()), ("_rels/.rels", root.as_str()),
+                ("xl/workbook.xml", book.as_str()), ("xl/_rels/workbook.xml.rels", rels.as_str()),
+                ("xl/worksheets/sheet1.xml", sheet.as_str()), ("xl/styles.xml", styles.as_str()),
+            ])
+        };
+        let mut workbook = Workbook::from_bytes(source).unwrap();
+        let report = workbook.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), (6, 0), "{year}");
+        let sheet_name = workbook.sheet_names()[0];
+        let worksheet = member(&workbook, "xl/worksheets/sheet1.xml");
+        for case in cases.iter().filter(|case| case["date_system"] == year) {
+            let address = case["cell"].as_str().unwrap();
+            let expected = u64::from_str_radix(case["cached_ieee754_hex"].as_str().unwrap(), 16).unwrap();
+            let cell = worksheet.split_once(&format!("<c r=\"{address}\"")).unwrap().1
+                .split_once("</c>").unwrap().0;
+            let actual: f64 = cell.split_once("<v>").unwrap().1.split_once("</v>").unwrap().0.parse().unwrap();
+            assert_eq!(actual.to_bits(), expected, "{}: {}", case["id"], worksheet);
+            assert!(workbook.sheet(&sheet_name).unwrap().cell(at(address)).unwrap().formula().is_some());
+        }
+        if let Some(root) = &output {
+            let path = std::path::Path::new(root).join(name);
+            assert!(!path.exists(), "native export must use fresh filenames: {}", path.display());
+            std::fs::write(path, workbook.into_bytes().unwrap()).unwrap();
+        }
+    }
+}
+
+/// Replay all 266 typed native information caches, including 32 ISREF
+/// reference-identity results.
+#[test]
+fn information_native_typed_cases_match_266_including_isref_geometry() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/information_native.json")).unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 266);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["b"], 218);
+    assert_eq!(fixture["cache_type_counts"]["n"], 28);
+    assert_eq!(fixture["cache_type_counts"]["e"], 20);
+    let mut matched = 0usize;
+    for year in ["1900", "1904"] {
+        let system = if year == "1900" {
+            DateSystem::Year1900
+        } else {
+            DateSystem::Year1904
+        };
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        assert_eq!(fixture["source_cells"].as_array().unwrap().len(), 12);
+        for source in fixture["source_cells"].as_array().unwrap() {
+            let address = at(source["cell"].as_str().unwrap());
+            let inputs = book.sheet_mut("Inputs").unwrap();
+            match source["kind"].as_str().unwrap() {
+                "number_zero" | "number_even" | "number_negative_fraction" => {
+                    inputs
+                        .set_cell(address, source["value"].as_f64().unwrap())
+                        .unwrap();
+                }
+                "boolean_true" | "boolean_false" => {
+                    inputs
+                        .set_cell(address, source["value"].as_bool().unwrap())
+                        .unwrap();
+                }
+                "numeric_text" | "other_text" => {
+                    inputs
+                        .set_cell(address, source["value"].as_str().unwrap())
+                        .unwrap();
+                }
+                "formula_empty_text" | "formula_div_zero" | "formula_na" => {
+                    let expression = source["value"].as_str().unwrap().strip_prefix('=').unwrap();
+                    inputs
+                        .insert_cell(
+                            Cell::from_scalar(address, Scalar::Null, system)
+                                .unwrap()
+                                .with_formula(Formula::from_file(expression, address)),
+                        )
+                        .unwrap();
+                }
+                "physically_absent_blank" => assert_eq!(source["cell"], "A9"),
+                "date_2024_01_01" => {
+                    assert_eq!(source["value"], "2024-01-01T00:00:00");
+                    inputs.set_cell(address, Scalar::date32(19_723)).unwrap();
+                }
+                other => panic!("unexpected native input kind {other}"),
+            }
+        }
+        let selected: Vec<_> = cases
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(selected.len(), 133, "{year}");
+        for case in &selected {
+            assert_eq!(case["actual_cache_equal"], true, "{}", case["id"]);
+            assert_eq!(case["after_save_cache_equal"], true, "{}", case["id"]);
+            assert_eq!(
+                case["actual_value2"], case["after_save_value2"],
+                "{}",
+                case["id"]
+            );
+            assert_eq!(
+                case["actual_formula"], case["actual_formula2"],
+                "{}",
+                case["id"]
+            );
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (136, 0, 0),
+            "{year}"
+        );
+        for case in selected {
+            let label = case["id"].as_str().unwrap();
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            matched += 1;
+            match case["cache_type"].as_str().unwrap() {
+                "b" => {
+                    let expected = case["cache_value_text"] == "1";
+                    assert!(
+                        matches!(case["cache_value_text"].as_str(), Some("0" | "1")),
+                        "{label}"
+                    );
+                    assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+                    assert_eq!(case["actual_value2"]["value"], expected, "{label}");
+                    assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+                    assert_eq!(cell.error(), None, "{label}");
+                }
+                "n" => {
+                    let expected: f64 = case["cache_value_text"].as_str().unwrap().parse().unwrap();
+                    let native_bits = u64::from_str_radix(
+                        case["actual_value2"]["ieee754_hex"].as_str().unwrap(),
+                        16,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        expected.to_bits(),
+                        native_bits,
+                        "native transport/cache: {label}"
+                    );
+                    assert_eq!(
+                        cell.value().as_f64().map(f64::to_bits),
+                        Some(expected.to_bits()),
+                        "{label}"
+                    );
+                    assert_eq!(cell.error(), None, "{label}");
+                }
+                "e" => {
+                    let expected = case["cache_value_text"].as_str().unwrap();
+                    assert_eq!(
+                        cell.error().map(|error| error.as_str()),
+                        Some(expected),
+                        "{label}"
+                    );
+                }
+                other => panic!("unsupported native cache {other}: {label}"),
+            }
+        }
+    }
+    assert_eq!(matched, 266);
+}
+
+fn calculation_named_book(names: &str, system: DateSystem) -> Workbook {
+    let document = workbook(&["Data", "LocalA", "LocalB", "Cases"], system == DateSystem::Year1904)
+        .replace("</workbook>", &format!("<definedNames>{names}</definedNames></workbook>"));
+    let mut parts = vec![
+        ("[Content_Types].xml".to_owned(), content_types(4, false, false)),
+        ("_rels/.rels".to_owned(), root_relationships()),
+        ("xl/workbook.xml".to_owned(), document),
+        ("xl/_rels/workbook.xml.rels".to_owned(), workbook_relationships(4, false, false)),
+    ];
+    for index in 1..=4 {
+        parts.push((format!("xl/worksheets/sheet{index}.xml"), worksheet("")));
+    }
+    Workbook::from_bytes(package(&parts.iter().map(|(key, value)| (key.as_str(), value.as_str())).collect::<Vec<_>>())).unwrap()
+}
+
+#[test]
+fn workbook_calculation_defined_names_match_all_220_native_contexts() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/defined_names_native.json")).unwrap();
+    let sheets = ["Data", "LocalA", "LocalB", "Cases"];
+    let mut names = String::new();
+    for name in fixture["defined_names"].as_array().unwrap() {
+        let scope = name["scope"].as_str().map(|scope| format!(" localSheetId=\"{}\"", sheets.iter().position(|sheet| *sheet == scope).unwrap())).unwrap_or_default();
+        names.push_str(&format!("<definedName name=\"{}\"{scope}>{}</definedName>", name["name"].as_str().unwrap(), quick_xml::escape::escape(name["wire_formula"].as_str().unwrap())));
+    }
+    let mut checked = 0;
+    for context in ["a1", "d5"] {
+        for year in ["1900", "1904"] {
+            let system = if year == "1900" { DateSystem::Year1900 } else { DateSystem::Year1904 };
+            let mut book = calculation_named_book(&names, system);
+            for (sheet, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let scalar = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(sheet).unwrap().set_cell(at(address), scalar).unwrap();
+                }
+            }
+            let cases: Vec<_> = fixture["cases"].as_array().unwrap().iter().filter(|case| case["context"] == context && case["date_system"] == year).collect();
+            assert_eq!(cases.len(), 55);
+            for case in &cases {
+                let address = at(case["cell"].as_str().unwrap());
+                let cell = Cell::from_scalar(address, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(), address));
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(cell).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (55, 0, 0), "{context}/{year}");
+            for case in cases {
+                let id = case["id"].as_str().unwrap();
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                // Shared Power now computes the forty cancellation controls as well.
+                    let cache = &case["saved_cache"];
+                    let value = cache["value_text"].as_str().unwrap();
+                    match cache["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(value.parse::<f64>().unwrap().to_bits()), "{context}/{id}"),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), Some(value), "{context}/{id}"),
+                        "b" => assert_eq!(cell.value(), &Scalar::from(value == "1"), "{context}/{id}"),
+                        "str" => assert_eq!(cell.value(), &Scalar::from(value), "{context}/{id}"),
+                        other => panic!("unhandled native type {other}"),
+                    }
+                checked += 1;
+            }
+            let unchanged = book.recalculate().unwrap();
+            assert_eq!((unchanged.evaluated, unchanged.uncomputed, unchanged.circular_count), (0, 0, 0));
+        }
+    }
+    assert_eq!(checked, 220);
+}
+
+#[test]
+fn workbook_calculation_defined_names_keep_range_use_and_incremental_edges() {
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"Column\">Data!$A:$A</definedName>",
+        "<definedName name=\"Point\">Data!$A$1</definedName>",
+        "<definedName name=\"Alias\">Point</definedName>",
+    ), DateSystem::Year1900);
+    book.sheet_mut("Data").unwrap().set_cell(at("A1"), 1.0).unwrap();
+    for (sheet, address, formula) in [("Data", "B1", "Column"), ("Data", "A2", "B1+1"),
+        ("Data", "C1", "Alias+Alias"), ("Cases", "A1", "SUM(Column)")] {
+        book.sheet_mut(sheet).unwrap().insert_cell(calculation_cached(address, formula, -1.0)).unwrap();
+    }
+    let first = book.calculate_all().unwrap();
+    assert_eq!((first.evaluated, first.uncomputed, first.circular_count), (4, 0, 0));
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(3.0));
+    book.sheet_mut("Data").unwrap().set_cell(at("A1"), 3.0).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 4);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(7.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")), Scalar::from(6.0));
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
+}
+
+#[test]
+fn workbook_calculation_defined_names_distinguish_alias_loops_from_cell_cycles() {
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"First\">Second</definedName>",
+        "<definedName name=\"Second\">First</definedName>",
+        "<definedName name=\"LoopCell\">Data!$A$1</definedName>",
+        "<definedName name=\"Constant\">7</definedName>",
+    ), DateSystem::Year1900);
+    for (address, formula) in [("A1", "LoopCell+1"), ("B1", "A1+1"), ("C1", "First"), ("D1", "Constant+Constant")] {
+        book.sheet_mut("Data").unwrap().insert_cell(calculation_cached(address, formula, 99.0)).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (1, 3, 1));
+    assert_eq!(report.circular, [("Data".into(), at("A1"))]);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")), Scalar::from(99.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("D1")), Scalar::from(14.0));
+}
+
+#[test]
+fn workbook_calculation_defined_names_refuse_nested_ambiguity_atomically() {
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"Alias\">Rate</definedName>",
+        "<definedName name=\"Rate\">1</definedName>",
+        "<definedName name=\"rAtE\">2</definedName>",
+    ), DateSystem::Year1900);
+    book.sheet_mut("Data").unwrap().insert_cell(calculation_cached("A1", "1+1", 99.0)).unwrap();
+    book.sheet_mut("Data").unwrap().insert_cell(calculation_cached("B1", "Alias", 88.0)).unwrap();
+    let before = table_member_map(&book);
+    let revision = book.sheet("Data").unwrap().revision();
+    let dirty = book.is_dirty();
+    let error = book.calculate_all().unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { ref path, ref reason } if path.contains("definedName[Rate]") && reason.contains("got 2")), "{error}");
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(99.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")), Scalar::from(88.0));
+    assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+    assert_eq!(book.is_dirty(), dirty);
+    assert_eq!(table_member_map(&book), before);
+}
+
+/// Native classic error literals, including referenced source error caches,
+/// produce ERROR.TYPE codes 1..7 in both Excel date systems.
+#[test]
+fn error_type_classic7_native_cache_matches_28_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/error_type_classic7_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 28);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["n"], 28);
+    let cases = fixture["cases"].as_array().unwrap();
+    let mut matched = 0;
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        for source in fixture["source_cells"].as_array().unwrap() {
+            let address = at(source["cell"].as_str().unwrap());
+            let expression = source["formula"]
+                .as_str()
+                .unwrap()
+                .strip_prefix('=')
+                .unwrap();
+            book.sheet_mut("Inputs")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::Null, system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(expression, address)),
+                )
+                .unwrap();
+        }
+        let selected: Vec<_> = cases
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(selected.len(), 14);
+        for case in &selected {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (21, 0, 0)
+        );
+        for case in selected {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["cache_type"], "n", "{label}");
+            assert_eq!(case["actual_formula"], case["actual_formula2"], "{label}");
+            let expected: f64 = case["cache_value_text"].as_str().unwrap().parse().unwrap();
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            assert_eq!(
+                cell.value().as_f64().map(f64::to_bits),
+                Some(expected.to_bits()),
+                "{label}"
+            );
+            assert_eq!(cell.error(), None, "{label}");
+            matched += 1;
+        }
+    }
+    assert_eq!(matched, 28);
+}
+
+/// Excel evaluates typed #GETTING_DATA as 8, while its SaveAs rewrites the
+/// source error cache to #N/A. This checks the calculation boundary only.
+#[test]
+fn error_type_getting_data_typed_source_matches_native_code_8() {
+    use yggdryl::excel::{ExcelError, Formula};
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/error_type_getting_data_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 2);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let saved = &fixture["saved_workbooks"][year]["cells"][0];
+        assert_eq!(saved["type"], "e");
+        assert_eq!(saved["value_text"], "#N/A");
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        let source = at("A1");
+        book.sheet_mut("Inputs")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(source, Scalar::Null, system)
+                    .unwrap()
+                    .with_error(ExcelError::GettingData),
+            )
+            .unwrap();
+        let case = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["date_system"] == year)
+            .unwrap();
+        let address = at(case["cell"].as_str().unwrap());
+        book.sheet_mut("Cases")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(address, Scalar::from(77.0), system)
+                    .unwrap()
+                    .with_formula(Formula::from_file(
+                        case["wire_formula"].as_str().unwrap(),
+                        address,
+                    )),
+            )
+            .unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (1, 0, 0)
+        );
+        assert_eq!(case["cache_type"], "n");
+        assert_eq!(case["cache_value_text"], "8");
+        assert_eq!(case["actual_value2"]["ieee754_hex"], "4020000000000000");
+        let cell = book.sheet("Cases").unwrap().cell(address).unwrap();
+        assert_eq!(
+            cell.value().as_f64().map(f64::to_bits),
+            Some(8.0f64.to_bits())
+        );
+        assert_eq!(cell.error(), None);
+    }
+}
+
+/// Parity text intake differs from entry grammar: dates/times and percent
+/// strings coerce, while currency text is a value error.
+#[test]
+fn parity_text_native_cache_matches_72_direct_and_reference_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/parity_text_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 72);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["b"], 56);
+    assert_eq!(fixture["cache_type_counts"]["e"], 16);
+    let cases = fixture["cases"].as_array().unwrap();
+    let mut matched = 0;
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        for source in fixture["source_cells"].as_array().unwrap() {
+            book.sheet_mut("Inputs")
+                .unwrap()
+                .set_cell(
+                    at(source["cell"].as_str().unwrap()),
+                    source["text"].as_str().unwrap(),
+                )
+                .unwrap();
+        }
+        let selected: Vec<_> = cases
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(selected.len(), 36);
+        for case in &selected {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (36, 0, 0)
+        );
+        for case in selected {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["actual_formula"], case["actual_formula2"], "{label}");
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            match case["cache_type"].as_str().unwrap() {
+                "b" => {
+                    let expected = case["cache_value_text"] == "1";
+                    assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+                    assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+                    assert_eq!(cell.error(), None, "{label}");
+                }
+                "e" => {
+                    let expected = case["cache_value_text"].as_str().unwrap();
+                    assert_eq!(case["actual_value2"]["variant"], "int", "{label}");
+                    assert_eq!(
+                        cell.error().map(|error| error.as_str()),
+                        Some(expected),
+                        "{label}"
+                    );
+                }
+                other => panic!("unexpected native cache {other}: {label}"),
+            }
+            matched += 1;
+        }
+    }
+    assert_eq!(matched, 72);
+}
+
+/// One error-valued information result cannot prevent neighboring typed
+/// predicates and parity calls from updating their own cached cells.
+#[test]
+fn information_parity_and_error_predicates_update_independently() {
+    use yggdryl::excel::Formula;
+
+    for system in [DateSystem::Year1900, DateSystem::Year1904] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        let sheet = book.add_sheet("Cases").unwrap();
+        let cases = [
+            ("B2", "ISEVEN(0.1)", Some(true), None),
+            ("B3", "ISODD(-0.1)", Some(false), None),
+            ("B4", "ISEVEN(TRUE)", None, Some("#VALUE!")),
+            ("B5", "ISODD(FALSE)", None, Some("#VALUE!")),
+            ("B6", "ISEVEN(1/0)", None, Some("#DIV/0!")),
+            ("B7", "ISODD(NA())", None, Some("#N/A")),
+            ("B8", "ISERR(NA())", Some(false), None),
+            ("B9", "ISERROR(1/0)", Some(true), None),
+            ("B10", "ISNA(NA())", Some(true), None),
+            ("B11", "ERROR.TYPE(1/0)", None, None),
+        ];
+        for (address, formula, _, _) in cases {
+            let address = at(address);
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula, address)),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (10, 0, 0)
+        );
+        let sheet = book.sheet("Cases").unwrap();
+        for (address, _, boolean, error) in cases {
+            let cell = sheet.cell(at(address)).unwrap();
+            if let Some(expected) = boolean {
+                assert_eq!(
+                    cell.value().as_bool(),
+                    Some(expected),
+                    "{system:?} {address}"
+                );
+                assert_eq!(cell.error(), None, "{system:?} {address}");
+            } else if let Some(expected) = error {
+                assert_eq!(
+                    cell.error().map(|error| error.as_str()),
+                    Some(expected),
+                    "{system:?} {address}"
+                );
+            } else {
+                assert_eq!(address, "B11");
+                assert_eq!(
+                    cell.value().as_f64().map(f64::to_bits),
+                    Some(2.0f64.to_bits())
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn workbook_calculation_defined_name_dag_work_is_bounded_by_reached_syntax() {
+    use yggdryl::internals::excel_workbook::calculation_work;
+    for levels in [10, 16] {
+        let mut names = String::from("<definedName name=\"AliasLevel0\">Data!$A$1</definedName>");
+        for index in 1..=levels {
+            names.push_str(&format!("<definedName name=\"AliasLevel{index}\">AliasLevel{}+AliasLevel{}</definedName>", index - 1, index - 1));
+        }
+        let mut book = calculation_named_book(&names, DateSystem::Year1900);
+        book.sheet_mut("Data").unwrap().set_cell(at("A1"), 1.0).unwrap();
+        book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", &format!("AliasLevel{levels}"), -1.0)).unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from((1_u64 << levels) as f64));
+        let (dependency_nodes, evaluation_nodes, registrations, scheduled) = calculation_work(&book);
+        let bound = 4 * (levels + 1);
+        assert!(dependency_nodes <= bound && evaluation_nodes <= bound,
+            "{levels} aliases: dependency nodes={dependency_nodes}, evaluator nodes={evaluation_nodes}, bound={bound}");
+        assert_eq!(registrations, 1, "the reached base reference is registered once");
+        assert_eq!(scheduled, 1);
+    }
+}
+
+#[test]
+fn workbook_calculation_defined_name_chains_use_an_explicit_stack() {
+    // Cold package parsing and even one named expression exceed 64 KiB on
+    // Windows debug builds. Both one and 4096 names fit the same 128 KiB;
+    // this pins alias-depth independence without conflating that fixed floor.
+    for depth in [1, 4096] {
+        let mut names = String::from("<definedName name=\"AliasLevel0\">7</definedName>");
+        for index in 1..depth {
+            names.push_str(&format!("<definedName name=\"AliasLevel{index}\">AliasLevel{}</definedName>", index - 1));
+        }
+        let mut book = calculation_named_book(&names, DateSystem::Year1900);
+        book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", &format!("AliasLevel{}", depth - 1), -1.0)).unwrap();
+        std::thread::Builder::new().stack_size(128 * 1024).spawn(move || {
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (1, 0, 0));
+            assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(7.0));
+        }).unwrap().join().expect("deep names do not consume the machine stack");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn workbook_calculation_defined_name_memo_keeps_reference_use_and_volatile_paths() {
+    use yggdryl::internals::excel_workbook::calculation_work;
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"Column\">Data!$A:$A</definedName>",
+        "<definedName name=\"RandomName\">INDIRECT(&quot;A1&quot;,FALSE)</definedName>",
+        "<definedName name=\"RandomAlias\">RandomName</definedName>",
+    ), DateSystem::Year1900);
+    book.sheet_mut("Data").unwrap().set_cell(at("A1"), 1.0).unwrap();
+    book.sheet_mut("Data").unwrap().set_cell(at("A2"), 2.0).unwrap();
+    book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("B1", "Column+SUM(Column)", -1.0)).unwrap();
+    let first = book.calculate_all().unwrap();
+    assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("B1")), Scalar::from(4.0));
+    book.sheet_mut("Data").unwrap().set_cell(at("A2"), 3.0).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("B1")), Scalar::from(5.0));
+    book.sheet_mut("Cases").unwrap().remove_cell(at("B1"));
+    book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", "RandomAlias+RandomAlias", 99.0)).unwrap();
+    assert_eq!(book.calculate_all().unwrap().uncomputed, 1);
+    // R1C1 INDIRECT stays held and volatile. Its now-implemented strict
+    // call visits the text and FALSE arguments before the named refusal:
+    // the prior five-node name/memo path therefore gains exactly two visits.
+    // The held name is still memoized and is rescheduled on the next pass.
+    assert_eq!(calculation_work(&book).1, 7);
+    assert_eq!(book.recalculate().unwrap().uncomputed, 1);
+    assert_eq!(calculation_work(&book).1, 7);
+    assert_eq!(calculation_work(&book).3, 1);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(99.0),
+        "an unsupported R1C1 INDIRECT preserves its prior cache");
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn workbook_calculation_defined_name_held_volatile_dag_work_is_bounded() {
+    use yggdryl::internals::excel_workbook::calculation_work;
+    for levels in [10, 16] {
+        let mut names = String::from("<definedName name=\"AliasLevel0\">INDIRECT(&quot;A1&quot;,FALSE)</definedName>");
+        for index in 1..=levels {
+            names.push_str(&format!("<definedName name=\"AliasLevel{index}\">AliasLevel{}+AliasLevel{}</definedName>", index - 1, index - 1));
+        }
+        let mut book = calculation_named_book(&names, DateSystem::Year1900);
+        book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", &format!("AliasLevel{levels}"), 99.0)).unwrap();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (0, 1));
+        let bound = 4 * (levels + 1);
+        let (dependency_nodes, evaluation_nodes, registrations, scheduled) = calculation_work(&book);
+        assert!(dependency_nodes <= bound && evaluation_nodes <= bound,
+            "{levels} held aliases: dependency nodes={dependency_nodes}, evaluator nodes={evaluation_nodes}, bound={bound}");
+        assert_eq!((registrations, scheduled), (0, 1));
+        let second = book.recalculate().unwrap();
+        assert_eq!((second.evaluated, second.uncomputed), (0, 1));
+        assert!(calculation_work(&book).1 <= bound);
+        assert_eq!(calculation_work(&book).3, 1);
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(99.0));
+    }
+}
+
+
+#[test]
+fn workbook_power_bounded_native_cases_keep_unproved_fractional_roots_held() {
+    let fixture: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/power_native.json"),
+    ).unwrap();
+    assert_eq!(fixture["cleanup_completed"], true);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 15);
+    let mut book = Workbook::new();
+    let sheet = book.add_sheet("Cases").unwrap();
+    for case in cases {
+        sheet.insert_cell(calculation_cached(
+            case["cell"].as_str().unwrap(), case["formula"].as_str().unwrap(), -777.0,
+        )).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (12, 3));
+    let xml = member(&book, "xl/worksheets/sheet1.xml");
+    for case in cases {
+        let id = case["id"].as_str().unwrap();
+        let address = case["cell"].as_str().unwrap();
+        let held = matches!(id,
+            "power-negative-fraction" | "power-negative-third" | "power-function-negative-third"
+        );
+        let cell = xml.split_once(&format!("<c r=\"{address}\"")).unwrap().1
+            .split_once("</c>").unwrap().0;
+        if held {
+            assert_eq!(book.sheet("Cases").unwrap().scalar(at(address)), Scalar::from(-777.0), "{id}");
+            assert!(cell.contains("<v>-777</v>"), "{id}: {cell}");
+        } else if case["cache_type"] == "e" {
+            assert!(cell.contains("t=\"e\""), "{id}: {cell}");
+            assert!(cell.contains(&format!("<v>{}</v>", case["cache_text"].as_str().unwrap())), "{id}: {cell}");
+        } else {
+            let expected = u64::from_str_radix(case["value2_ieee754_hex"].as_str().unwrap(), 16).unwrap();
+            let actual: f64 = cell.split_once("<v>").unwrap().1.split_once("</v>").unwrap().0.parse().unwrap();
+            assert_eq!(actual.to_bits(), expected, "{id}: {cell}");
+        }
+    }
+}
+
+
+/// A reference remains a reference across grouping, names later, and a
+/// blank/error target; arithmetic consumes it into a scalar first.
+#[test]
+fn information_isref_native_reference_identity_matches_32_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/information_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    let selected: Vec<_> = fixture["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| case["function"] == "ISREF")
+        .collect();
+    assert_eq!(selected.len(), 32);
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        book.add_sheet("Inputs").unwrap();
+        book.add_sheet("Cases").unwrap();
+        let inputs = book.sheet_mut("Inputs").unwrap();
+        inputs.set_cell(at("A1"), 0.0).unwrap();
+        inputs.set_cell(at("A4"), true).unwrap();
+        inputs.set_cell(at("A6"), "2").unwrap();
+        for (address, formula) in [("A8", "\"\""), ("A10", "1/0")] {
+            let at = at(address);
+            inputs
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::Null, system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(formula, at)),
+                )
+                .unwrap();
+        }
+        let cases: Vec<_> = selected
+            .iter()
+            .copied()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(cases.len(), 16);
+        for case in &cases {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (18, 0, 0),
+            "{year}"
+        );
+        for case in cases {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["cache_type"], "b", "{label}");
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["actual_formula"], case["actual_formula2"], "{label}");
+            let expected = case["cache_value_text"] == "1";
+            assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+            assert_eq!(case["actual_value2"]["value"], expected, "{label}");
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+            assert_eq!(cell.error(), None, "{label}");
+        }
+    }
+}
+
+fn isref_native_book(names: &serde_json::Value, system: DateSystem) -> Workbook {
+    let mut definitions = String::new();
+    for (name, formula) in names.as_object().unwrap() {
+        definitions.push_str(&format!(
+            "<definedName name=\"{name}\">{}</definedName>",
+            quick_xml::escape::escape(formula.as_str().unwrap())
+        ));
+    }
+    let document = workbook(&["Inputs", "Cases"], system == DateSystem::Year1904).replace(
+        "</workbook>",
+        &format!("<definedNames>{definitions}</definedNames></workbook>"),
+    );
+    let parts = [
+        ("[Content_Types].xml", content_types(2, false, false)),
+        ("_rels/.rels", root_relationships()),
+        ("xl/workbook.xml", document),
+        (
+            "xl/_rels/workbook.xml.rels",
+            workbook_relationships(2, false, false),
+        ),
+        ("xl/worksheets/sheet1.xml", worksheet("")),
+        ("xl/worksheets/sheet2.xml", worksheet("")),
+    ];
+    Workbook::from_bytes(package(
+        &parts
+            .iter()
+            .map(|(name, content)| (*name, content.as_str()))
+            .collect::<Vec<_>>(),
+    ))
+    .unwrap()
+}
+
+#[test]
+fn information_isref_safe_geometry_native_28_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/isref_safe_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 28);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["b"], 28);
+    let mut checked = 0;
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = isref_native_book(&fixture["defined_names"], system);
+        book.sheet_mut("Inputs")
+            .unwrap()
+            .set_cell(at("A1"), 2.0)
+            .unwrap();
+        book.sheet_mut("Inputs")
+            .unwrap()
+            .set_cell(at("A2"), "text")
+            .unwrap();
+        book.sheet_mut("Inputs")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(at("A4"), Scalar::Null, system)
+                    .unwrap()
+                    .with_formula(Formula::from_file("1/0", at("A4"))),
+            )
+            .unwrap();
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(cases.len(), 14);
+        for case in &cases {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (15, 0, 0),
+            "{year}"
+        );
+        for case in cases {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["actual_formula"], case["actual_formula2"], "{label}");
+            assert_eq!(case["cache_type"], "b", "{label}");
+            let expected = case["cache_value_text"] == "1";
+            assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+            assert_eq!(case["actual_value2"]["value"], expected, "{label}");
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+            assert_eq!(cell.error(), None, "{label}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 28);
+}
+
+#[test]
+fn information_isref_self_geometry_avoids_false_cycles_but_computed_cycle_holds() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/isref_self_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 16);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["b"], 12);
+    assert_eq!(fixture["cache_type_counts"]["str"], 4);
+    let mut checked = 0;
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = isref_native_book(&fixture["defined_names"], system);
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(cases.len(), 8);
+        for case in &cases {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(""), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (6, 2, 2),
+            "{year}"
+        );
+        for case in cases {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["actual_formula"], case["actual_formula2"], "{label}");
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            match case["cache_type"].as_str().unwrap() {
+                "b" => {
+                    let expected = case["cache_value_text"] == "1";
+                    assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+                    assert_eq!(cell.error(), None, "{label}");
+                }
+                "str" => {
+                    assert_eq!(case["cache_value_text"], serde_json::Value::Null, "{label}");
+                    assert_eq!(case["actual_value2"]["variant"], "str", "{label}");
+                    assert_eq!(case["actual_value2"]["value"], "", "{label}");
+                    assert_eq!(
+                        cell.value(),
+                        &Scalar::from(""),
+                        "held circular cache: {label}"
+                    );
+                }
+                other => panic!("unexpected cache type {other}: {label}"),
+            }
+            checked += 1;
+        }
+        assert_eq!(book.recalculate().unwrap().evaluated, 0);
+    }
+    assert_eq!(checked, 16);
+}
+
+/// ISREF sees address identity; only a computed child has a value precedent.
+#[test]
+fn information_isref_geometry_has_no_value_edges_but_arithmetic_child_does() {
+    let mut book = Workbook::new();
+    book.add_sheet("Inputs").unwrap().set_cell(at("A1"), 1.0).unwrap();
+    book.add_sheet("Cases").unwrap();
+    for (address, formula) in [
+        ("B2", "ISREF(Inputs!A1)"),
+        ("B3", "ISREF(Inputs!A:A)"),
+        ("B4", "ISREF(Inputs!A1+0)"),
+        ("B5", "ISREF(B5)"),
+    ] {
+        book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached(address, formula, 77.0)).unwrap();
+    }
+    let first = book.calculate_all().unwrap();
+    assert_eq!((first.evaluated, first.uncomputed, first.circular_count), (4, 0, 0));
+    let cases = book.sheet("Cases").unwrap();
+    for address in ["B2", "B3", "B5"] {
+        assert_eq!(cases.cell(at(address)).unwrap().value().as_bool(), Some(true), "{address}");
+    }
+    assert_eq!(cases.cell(at("B4")).unwrap().value().as_bool(), Some(false));
+    book.sheet_mut("Inputs").unwrap().set_cell(at("A1"), 3.0).unwrap();
+    let changed = book.recalculate().unwrap();
+    assert_eq!((changed.evaluated, changed.uncomputed, changed.circular_count), (1, 0, 0));
+    let cases = book.sheet("Cases").unwrap();
+    assert_eq!(cases.cell(at("B2")).unwrap().value().as_bool(), Some(true));
+    assert_eq!(cases.cell(at("B3")).unwrap().value().as_bool(), Some(true));
+    assert_eq!(cases.cell(at("B4")).unwrap().value().as_bool(), Some(false));
+    assert_eq!(cases.cell(at("B5")).unwrap().value().as_bool(), Some(true));
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
+}
+
+/// Native @/SINGLE cases remain held at this slice; proven numeric unary
+/// results are false. The original native Boolean answer remains in fixture.
+#[test]
+fn information_isref_unary_boundary_computes_14_and_holds_22_cases() {
+    use yggdryl::excel::Formula;
+
+    let groups = [
+        (
+            include_str!("fixtures/isref_at_native.json"),
+            28usize,
+            14usize,
+            14usize,
+        ),
+        (
+            include_str!("fixtures/isref_single_native.json"),
+            8usize,
+            0usize,
+            8usize,
+        ),
+    ];
+    let (mut computed, mut held) = (0, 0);
+    for (source, total, group_computed, group_held) in groups {
+        let fixture: serde_json::Value = serde_json::from_str(source).unwrap();
+        assert_eq!(fixture["case_count"], total);
+        assert_eq!(fixture["native_run_passed"], true);
+        assert_eq!(fixture["cleanup_completed"], true);
+        assert_eq!(fixture["native_comparisons_equal"], true);
+        assert_eq!(fixture["cache_type_counts"]["b"], total);
+        let (mut group_actual, mut group_pending) = (0, 0);
+        for (year, system) in [
+            ("1900", DateSystem::Year1900),
+            ("1904", DateSystem::Year1904),
+        ] {
+            let mut book = isref_native_book(&fixture["defined_names"], system);
+            for (row, value) in [
+                ("A1", Scalar::from(2.0)),
+                ("A2", Scalar::from("text")),
+                ("A3", Scalar::from(0.0)),
+                ("A4", Scalar::from(4.0)),
+            ] {
+                book.sheet_mut("Inputs")
+                    .unwrap()
+                    .set_cell(at(row), value)
+                    .unwrap();
+            }
+            let cases: Vec<_> = fixture["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|case| case["date_system"] == year)
+                .collect();
+            assert_eq!(cases.len(), total / 2);
+            for case in &cases {
+                let address = at(case["cell"].as_str().unwrap());
+                book.sheet_mut("Cases")
+                    .unwrap()
+                    .insert_cell(
+                        Cell::from_scalar(address, Scalar::from(77.0), system)
+                            .unwrap()
+                            .with_formula(Formula::from_file(
+                                case["wire_formula"].as_str().unwrap(),
+                                address,
+                            )),
+                    )
+                    .unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!(
+                (report.evaluated, report.uncomputed, report.circular_count),
+                ((group_computed / 2) as u64, (group_held / 2) as u64, 0),
+                "{year}"
+            );
+            for case in cases {
+                let label = case["id"].as_str().unwrap();
+                assert_eq!(case["actual_cache_equal"], true, "{label}");
+                assert_eq!(case["after_save_cache_equal"], true, "{label}");
+                assert_eq!(case["cache_type"], "b", "{label}");
+                assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+                let cell = book
+                    .sheet("Cases")
+                    .unwrap()
+                    .cell(at(case["cell"].as_str().unwrap()))
+                    .unwrap();
+                let kind = case["parameters"]["kind"].as_str().unwrap();
+                if kind.starts_with("positive_")
+                    || kind.starts_with("negative_")
+                    || kind.starts_with("percent_")
+                {
+                    assert_eq!(case["cache_value_text"], "0", "{label}");
+                    assert_eq!(cell.value().as_bool(), Some(false), "{label}");
+                    group_actual += 1;
+                } else {
+                    assert_eq!(
+                        cell.value().as_f64().map(f64::to_bits),
+                        Some(77.0f64.to_bits()),
+                        "held @/SINGLE spelling: {label}"
+                    );
+                    group_pending += 1;
+                }
+            }
+        }
+        assert_eq!((group_actual, group_pending), (group_computed, group_held));
+        computed += group_actual;
+        held += group_pending;
+    }
+    assert_eq!((computed, held), (14, 22));
+}
+
+/// A named @ result must carry its origin through grouping and alias memo
+/// until ISREF declines it; ordinary numeric consumers still see its scalar.
+#[test]
+fn information_isref_named_intersection_alias_is_held_without_leaking_to_values() {
+    use yggdryl::excel::Formula;
+
+    let names = serde_json::json!({
+        "WithAt": "@Inputs!$A$1",
+        "Alias": "WithAt",
+    });
+    let mut book = isref_native_book(&names, DateSystem::Year1900);
+    book.sheet_mut("Inputs")
+        .unwrap()
+        .set_cell(at("A1"), 2.0)
+        .unwrap();
+    let cases: [(&str, &str, Option<f64>); 6] = [
+        ("B2", "ISREF(WithAt)", None),
+        ("B3", "ISREF((WithAt))", None),
+        ("B4", "ISREF(Alias)", None),
+        ("B5", "WithAt", Some(2.0)),
+        ("B6", "WithAt+1", Some(3.0)),
+        ("B7", "SUM(WithAt,1)", Some(3.0)),
+    ];
+    for (address, formula, _) in cases {
+        let address = at(address);
+        book.sheet_mut("Cases")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(address, Scalar::from(77.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, address)),
+            )
+            .unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (3, 3, 0)
+    );
+    for (address, _, expected) in cases {
+        let cell = book.sheet("Cases").unwrap().cell(at(address)).unwrap();
+        assert_eq!(cell.error(), None, "{address}");
+        assert_eq!(
+            cell.value().as_f64().map(f64::to_bits),
+            Some(expected.unwrap_or(77.0).to_bits()),
+            "{address}"
+        );
+    }
+}
+
+fn isref_three_sheet_book(system: DateSystem) -> Workbook {
+    let parts = [
+        ("[Content_Types].xml", content_types(4, false, false)),
+        ("_rels/.rels", root_relationships()),
+        (
+            "xl/workbook.xml",
+            workbook(&["Jan", "Feb", "Mar", "Cases"], system == DateSystem::Year1904),
+        ),
+        (
+            "xl/_rels/workbook.xml.rels",
+            workbook_relationships(4, false, false),
+        ),
+        ("xl/worksheets/sheet1.xml", worksheet("")),
+        ("xl/worksheets/sheet2.xml", worksheet("")),
+        ("xl/worksheets/sheet3.xml", worksheet("")),
+        ("xl/worksheets/sheet4.xml", worksheet("")),
+    ];
+    Workbook::from_bytes(package(
+        &parts
+            .iter()
+            .map(|(name, content)| (*name, content.as_str()))
+            .collect::<Vec<_>>(),
+    ))
+    .unwrap()
+}
+
+/// Native Excel returns FALSE for a genuine 3-D span and TRUE when Jan:Jan
+/// is rewritten to a single-sheet reference. Compare both dates and caches.
+#[test]
+fn information_isref_native_3d_sheet_span_8_cases() {
+    use yggdryl::excel::Formula;
+
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/isref_3d_native.json")).unwrap();
+    assert_eq!(fixture["case_count"], 8);
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_comparisons_equal"], true);
+    assert_eq!(fixture["cache_type_counts"]["b"], 8);
+    let mut checked = 0;
+    for (year, system) in [
+        ("1900", DateSystem::Year1900),
+        ("1904", DateSystem::Year1904),
+    ] {
+        let mut book = isref_three_sheet_book(system);
+        for sheet in fixture["source_cells"].as_array().unwrap() {
+            for (address, value) in sheet["cells"].as_object().unwrap() {
+                book.sheet_mut(sheet["sheet"].as_str().unwrap())
+                    .unwrap()
+                    .set_cell(at(address), value.as_f64().unwrap())
+                    .unwrap();
+            }
+        }
+        let cases: Vec<_> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["date_system"] == year)
+            .collect();
+        assert_eq!(cases.len(), 4);
+        for case in &cases {
+            let address = at(case["cell"].as_str().unwrap());
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(address, Scalar::from(77.0), system)
+                        .unwrap()
+                        .with_formula(Formula::from_file(
+                            case["wire_formula"].as_str().unwrap(),
+                            address,
+                        )),
+                )
+                .unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (4, 0, 0),
+            "{year}"
+        );
+        for case in cases {
+            let label = case["id"].as_str().unwrap();
+            assert_eq!(case["actual_cache_equal"], true, "{label}");
+            assert_eq!(case["after_save_cache_equal"], true, "{label}");
+            assert_eq!(case["cache_type"], "b", "{label}");
+            let expected = case["cache_value_text"] == "1";
+            assert_eq!(case["actual_value2"]["variant"], "bool", "{label}");
+            assert_eq!(case["actual_value2"]["value"], expected, "{label}");
+            let cell = book
+                .sheet("Cases")
+                .unwrap()
+                .cell(at(case["cell"].as_str().unwrap()))
+                .unwrap();
+            assert_eq!(cell.value().as_bool(), Some(expected), "{label}");
+            assert_eq!(cell.error(), None, "{label}");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 8);
+}
+
+/// ISREF declines direct and named @ results without inventing self-value
+/// dependencies. This is a Rust scheduling assertion, not a native @self claim.
+#[test]
+fn information_isref_intersected_self_is_held_without_false_cycle() {
+    use yggdryl::excel::Formula;
+
+    let names = serde_json::json!({
+        "WithAt": "@Cases!$B$3",
+        "Alias": "WithAt",
+    });
+    let mut book = isref_native_book(&names, DateSystem::Year1900);
+    for (cell, formula) in [("B2", "ISREF(@B2)"), ("B3", "ISREF(Alias)")] {
+        let address = at(cell);
+        book.sheet_mut("Cases")
+            .unwrap()
+            .insert_cell(
+                Cell::from_scalar(address, Scalar::from(77.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(formula, address)),
+            )
+            .unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!(
+        (report.evaluated, report.uncomputed, report.circular_count),
+        (0, 2, 0)
+    );
+    for address in ["B2", "B3"] {
+        let cell = book.sheet("Cases").unwrap().cell(at(address)).unwrap();
+        assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(77.0f64.to_bits()));
+        assert_eq!(cell.error(), None);
+    }
+}
+
+#[test]
+fn fixed_clock_recalculation_uses_one_serial_and_bounded_random() {
+    use yggdryl::excel::Clock;
+
+    let mut book = Workbook::new().with_clock(Clock::fixed(
+        -2_203_977_600_000_000_000, Timezone::UTC, 0x1234_5678,
+    ));
+    book.add_sheet("Cases").unwrap();
+    for (address, text) in [
+        ("A1", "=NOW()"), ("A2", "=TODAY()"),
+        ("A3", "=RAND()"), ("A4", "=RANDBETWEEN(7,7)"),
+        ("A5", "=RANDBETWEEN(8,7)"),
+    ] {
+        book.set_entry("Cases", at(address), text).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (5, 0));
+    let sheet = book.sheet("Cases").unwrap();
+    assert_eq!(sheet.scalar(at("A1")), Scalar::from(59.0));
+    assert_eq!(sheet.scalar(at("A2")), Scalar::from(59.0));
+    let random = sheet.scalar(at("A3")).as_f64().unwrap();
+    assert!((0.0..1.0).contains(&random));
+    assert_eq!(sheet.scalar(at("A4")), Scalar::from(7.0));
+    assert_eq!(sheet.cell(at("A5")).unwrap().error(), Some(yggdryl::excel::ExcelError::Num));
+
+    let mut other = Workbook::new().with_clock(Clock::fixed(
+        -2_203_977_600_000_000_000, Timezone::UTC, 0x1234_5678,
+    ));
+    other.add_sheet("Cases").unwrap();
+    other.set_entry("Cases", at("A3"), "=RAND()").unwrap();
+    other.calculate_all().unwrap();
+    assert_eq!(other.sheet("Cases").unwrap().scalar(at("A3")).as_f64().unwrap().to_bits(),
+               random.to_bits());
+}
+
+#[test]
+fn fixed_clock_date_system_and_naive_wall_reading() {
+    use yggdryl::excel::Clock;
+
+    let mut book = Workbook::new().with_clock(Clock::fixed(
+        -2_082_844_800_000_000_000, Timezone::NAIVE, 1,
+    ));
+    book.set_date_system(DateSystem::Year1904);
+    book.add_sheet("Cases").unwrap();
+    book.set_entry("Cases", at("A1"), "=TODAY()").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(0.0));
+}
+
+#[test]
+fn workbook_calculation_volatile_name_consumes_successive_host_draws() {
+    use yggdryl::excel::Clock;
+    let names = "<definedName name=\"RandomName\">RAND()</definedName>";
+    let clock = Clock::fixed(-2_203_977_600_000_000_000, Timezone::UTC, 0x1234_5678);
+    let mut named = calculation_named_book(names, DateSystem::Year1900).with_clock(clock);
+    named.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", "RandomName+RandomName", -1.0)).unwrap();
+    let mut direct = calculation_named_book(names, DateSystem::Year1900).with_clock(clock);
+    direct.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", "RAND()+RAND()", -1.0)).unwrap();
+    let mut single = calculation_named_book(names, DateSystem::Year1900).with_clock(clock);
+    single.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1", "RAND()", -1.0)).unwrap();
+    for book in [&mut named, &mut direct, &mut single] {
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+    }
+    let named = named.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    let direct = direct.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    let first = single.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    assert_eq!(named.to_bits(), direct.to_bits());
+    assert_ne!(named.to_bits(), (first + first).to_bits());
+}
+
+#[test]
+fn workbook_clock_failure_preserves_earlier_random_cache_and_pass_seed() {
+    use yggdryl::excel::Clock;
+    let clock = Clock::fixed(-2_300_000_000_000_000_000, Timezone::UTC, 73);
+    let mut book = Workbook::new().with_clock(clock);
+    book.add_sheet("Cases").unwrap();
+    book.set_entry("Cases", at("A1"), "=RAND()").unwrap();
+    book.set_entry("Cases", at("A2"), "=NOW()").unwrap();
+    let error = book.calculate_all().unwrap_err();
+    assert!(error.to_string().contains("$.clock"), "{error}");
+    assert!(book.sheet("Cases").unwrap().scalar(at("A1")).is_null());
+    book.sheet_mut("Cases").unwrap().remove_cell(at("A2"));
+    assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+    let retried = book.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+
+    let mut fresh = Workbook::new().with_clock(clock);
+    fresh.add_sheet("Cases").unwrap();
+    fresh.set_entry("Cases", at("A1"), "=RAND()").unwrap();
+    fresh.calculate_all().unwrap();
+    let first = fresh.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    assert_eq!(retried.to_bits(), first.to_bits());
+}
+
+#[test]
+fn workbook_randbetween_fractional_interval_remains_uncomputed() {
+    use yggdryl::excel::Clock;
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 73));
+    book.add_sheet("Cases").unwrap();
+    book.set_entry("Cases", at("A1"), "=RANDBETWEEN(1.2,2.9)").unwrap();
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (0, 1));
+    assert!(book.sheet("Cases").unwrap().scalar(at("A1")).is_null());
+}
+
+#[test]
+fn fixed_clock_reset_replays_random_and_incremental_volatile_dependents() {
+    use yggdryl::excel::Clock;
+    let initial = Clock::fixed(-2_203_977_600_000_000_000, Timezone::UTC, 83);
+    let mut book = Workbook::new().with_clock(initial);
+    book.add_sheet("Cases").unwrap();
+    for (at_text, formula) in [("A1", "=RAND()"), ("B1", "=A1+1"), ("C1", "=TODAY()")] {
+        book.set_entry("Cases", at(at_text), formula).unwrap();
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 3);
+    let first = book.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("C1")), Scalar::from(59.0));
+    assert_eq!(book.recalculate().unwrap().evaluated, 3);
+    let second = book.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap();
+    assert_ne!(first.to_bits(), second.to_bits());
+    let dependent = book.sheet("Cases").unwrap().scalar(at("B1")).as_f64().unwrap();
+    assert_eq!(dependent.to_bits(), (second + 1.0).to_bits());
+    book.set_clock(initial);
+    assert_eq!(book.recalculate().unwrap().evaluated, 3);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")).as_f64().unwrap().to_bits(), first.to_bits());
+    book.set_clock(Clock::fixed(-2_203_891_200_000_000_000, Timezone::UTC, 83));
+    assert_eq!(book.recalculate().unwrap().evaluated, 3);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("C1")), Scalar::from(61.0));
+}
+
+#[test]
+fn fixed_clock_signed_nanos_midnight_and_dst_use_one_timezone_owner() {
+    use yggdryl::excel::Clock;
+    fn observe(nanos: i64, zone: Timezone) -> (f64, f64) {
+        let mut book = Workbook::new().with_clock(Clock::fixed(nanos, zone, 1));
+        book.add_sheet("Cases").unwrap();
+        book.set_entry("Cases", at("A1"), "=NOW()").unwrap();
+        book.set_entry("Cases", at("A2"), "=TODAY()").unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+        let sheet = book.sheet("Cases").unwrap();
+        (sheet.scalar(at("A1")).as_f64().unwrap(), sheet.scalar(at("A2")).as_f64().unwrap())
+    }
+    let (before_epoch, old_day) = observe(-1_000_000_000, Timezone::UTC);
+    assert_eq!(old_day, 25_568.0);
+    assert!(before_epoch > old_day && before_epoch < 25_569.0);
+    let paris = Timezone::from_str("Europe/Paris").unwrap();
+    let (paris_midnight, paris_day) = observe(1_711_841_400_000_000_000, paris);
+    let (_, utc_day) = observe(1_711_841_400_000_000_000, Timezone::UTC);
+    assert_eq!((paris_day, utc_day), (45_382.0, 45_381.0));
+    assert!((paris_midnight - (paris_day + 0.5 / 24.0)).abs() < 1e-10);
+    let (before_jump, before_day) = observe(1_711_845_000_000_000_000, paris);
+    let (after_jump, after_day) = observe(1_711_848_600_000_000_000, paris);
+    assert_eq!((before_day, after_day), (45_382.0, 45_382.0));
+    assert!(((after_jump - before_jump) - 2.0 / 24.0).abs() < 1e-10);
+}
+
+#[test]
+fn unknown_clock_zone_is_lazy_and_a_late_refusal_is_atomic() {
+    use yggdryl::excel::Clock;
+    let unknown = Timezone::from_str("Mars/Olympus_Mons").unwrap();
+    assert!(!unknown.is_known());
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, unknown, 1));
+    book.add_sheet("Cases").unwrap();
+    book.set_entry("Cases", at("A1"), "=2+3").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(5.0));
+    book.set_entry("Cases", at("A2"), "=RAND()").unwrap();
+    book.set_entry("Cases", at("A3"), "=NOW()").unwrap();
+    let error = book.recalculate().unwrap_err();
+    assert!(error.to_string().contains("$.clock.timezone"), "{error}");
+    assert!(book.sheet("Cases").unwrap().scalar(at("A2")).is_null());
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(5.0));
+    book.set_clock(Clock::fixed(0, Timezone::UTC, 1));
+    // The failed pass invalidates its prepared graph; retry rebuilds all
+    // three formulas while preserving the previously published values.
+    assert_eq!(book.recalculate().unwrap().evaluated, 3);
+}
+
+#[test]
+fn lazy_selectors_match_all_native_omissions_reference_identities_and_inactive_cycles() {
+    use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/lazy_selectors_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_cache_comparisons_equal"],240);
+    let cases=fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(),120);
+    let mut covered=(0,0);
+    for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        let mut book=Workbook::new();book.set_date_system(system);
+        for name in ["Values","CycleShape","Cases"] {book.add_sheet(name).unwrap();}
+        for (name,cells) in fixture["source_cells"].as_object().unwrap() {
+            for (address,value) in cells.as_object().unwrap() {
+                let scalar=if let Some(value)=value.as_bool(){Scalar::from(value)}
+                    else if let Some(value)=value.as_str(){Scalar::from(value)}
+                    else{Scalar::from(value.as_f64().unwrap())};
+                book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(),scalar).unwrap();
+            }
+        }
+        for case in cases.iter().filter(|case|case["date_system"]==year) {
+            let at:CellRef=case["cell"].as_str().unwrap().parse().unwrap();
+            book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                Cell::from_scalar(at,Scalar::from(-777.0),system).unwrap()
+                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(),at)),
+            ).unwrap();
+        }
+        let report=book.calculate_all().unwrap();
+        assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(58,2,0));
+        for case in cases.iter().filter(|case|case["date_system"]==year) {
+            let cell=book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+            if case["rust_policy"]=="held_locale_text" {
+                covered.1+=1;assert_eq!(cell.value(),&Scalar::from(-777.0),"{}",case["id"]);continue;
+            }
+            covered.0+=1;let expected=&case["saved_cache"];
+            match expected["type"].as_str().unwrap() {
+                "n"=>assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]),
+                "b"=>assert_eq!(cell.value().as_bool(),Some(expected["value_text"]=="1"),"{}",case["id"]),
+                "e"=>assert_eq!(cell.error().map(|error|error.as_str()),expected["value_text"].as_str(),"{}",case["id"]),
+                "str"=>assert_eq!(cell.value().as_str(),Some(expected["value_text"].as_str().unwrap_or("")),"{}",case["id"]),
+                kind=>panic!("unexpected cache type {kind}"),
+            }
+        }
+        let before=["Values","CycleShape","Cases"].map(|name|book.sheet(name).unwrap().revision());
+        let repeat=book.calculate_all().unwrap();
+        assert_eq!((repeat.evaluated,repeat.uncomputed,repeat.circular_count),(58,2,0));
+        assert_eq!(before,["Values","CycleShape","Cases"].map(|name|book.sheet(name).unwrap().revision()));
+        let idle=book.recalculate().unwrap();assert_eq!((idle.evaluated,idle.uncomputed),(0,2));
+    }
+    assert_eq!(covered,(116,4));
+}
+
+#[test]
+fn lazy_selectors_replace_active_dependencies_after_predicate_changes() {
+    use yggdryl::excel::{CellRef,Workbook};
+    let at=|text:&str|text.parse::<CellRef>().unwrap();
+    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+    for (cell,text) in [("A1","TRUE"),("B1","=IF(A1,C1,D1)"),("C1","10"),("D1","20")] {
+        book.set_entry("Data",at(cell),text).unwrap();
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated,1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(10.0));
+    book.set_entry("Data",at("D1"),"30").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated,0);
+    book.set_entry("Data",at("C1"),"11").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated,1);
+    book.set_entry("Data",at("A1"),"FALSE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated,1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(30.0));
+    book.set_entry("Data",at("C1"),"12").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated,0);
+    book.set_entry("Data",at("D1"),"31").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated,1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(31.0));
+}
+
+#[test]
+fn lazy_selectors_use_this_pass_predicate_and_report_only_active_cycles() {
+    use yggdryl::excel::{CellRef,Workbook};
+    let at=|text:&str|text.parse::<CellRef>().unwrap();
+    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+    for (cell,text) in [("A1","TRUE"),("A2","=NOT(A1)"),("B1","=IF(A2,C1,7)"),("C1","=B1+1")] {
+        book.set_entry("Data",at(cell),text).unwrap();
+    }
+    let first=book.calculate_all().unwrap();
+    assert_eq!((first.evaluated,first.uncomputed,first.circular_count),(3,0,0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(7.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")).as_f64(),Some(8.0));
+    book.set_entry("Data",at("A1"),"FALSE").unwrap();
+    let cycle=book.recalculate().unwrap();
+    assert_eq!((cycle.evaluated,cycle.uncomputed,cycle.circular_count),(1,2,2));
+    assert_eq!(cycle.circular,vec![("Data".into(),at("B1")),("Data".into(),at("C1"))]);
+    // The cycle's old values are retained by the core contract, not inferred
+    // from Excel's default zero cache for a newly introduced circular formula.
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(7.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")).as_f64(),Some(8.0));
+    book.set_entry("Data",at("A1"),"TRUE").unwrap();
+    let broken=book.recalculate().unwrap();
+    assert_eq!((broken.evaluated,broken.uncomputed,broken.circular_count),(3,0,0));
+}
+
+#[test]
+fn lazy_selectors_skip_inactive_held_formulas_and_preserve_active_held_status() {
+    use yggdryl::Scalar;
+    use yggdryl::excel::{Cell,CellRef,DateSystem,Formula,Workbook};
+    let at=|text:&str|text.parse::<CellRef>().unwrap();
+    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+    book.sheet_mut("Data").unwrap().insert_cell(
+        Cell::from_scalar(at("A1"),Scalar::from(false),DateSystem::Year1900).unwrap()
+            .with_formula(Formula::from_file("NO_SUCH_LAZY_FUNCTION(1)",at("A1"))),
+    ).unwrap();
+    book.set_entry("Data",at("A2"),"TRUE").unwrap();
+    book.set_entry("Data",at("B1"),"=IF(A2,7,A1)").unwrap();
+    let first=book.calculate_all().unwrap();assert_eq!((first.evaluated,first.uncomputed),(1,1));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(7.0));
+    book.set_entry("Data",at("A2"),"FALSE").unwrap();
+    let held=book.recalculate().unwrap();assert_eq!((held.evaluated,held.uncomputed,held.circular_count),(0,2,0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(7.0));
+}
+
+#[test]
+fn lazy_selectors_name_memos_keep_scalar_range_and_geometry_uses_after_suspension() {
+    for formula in ["IF(Span,SUM(Span),0)", "SUM(Span)+IF(Span,0,0)"] {
+        let mut book = calculation_named_book(
+            "<definedName name=\"Span\">Cases!$Z$1:$Z$2</definedName>", DateSystem::Year1900,
+        );
+        book.set_entry("Cases", at("Z1"), "1").unwrap();
+        book.set_entry("Cases", at("Y1"), "10").unwrap();
+        book.set_entry("Cases", at("Z2"), "=Y1+1").unwrap();
+        book.sheet_mut("Data").unwrap().insert_cell(calculation_cached("A1", formula, -1.0)).unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (2, 0, 0), "{formula}");
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(12.0), "{formula}");
+        book.set_entry("Cases", at("Y1"), "20").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 2, "{formula}");
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(22.0), "{formula}");
+    }
+    let mut book = calculation_named_book(
+        "<definedName name=\"Span\">Cases!$Z$1:$Z$2</definedName>", DateSystem::Year1900,
+    );
+    for (sheet, cell, value) in [("Cases","Z1","1"),("Cases","Y1","10"),
+        ("Cases","Z2","=Y1+1"),("Data","B1","TRUE"),
+        ("Data","A1","=IF(B1,IF(Span,SUM(Span),0),IF(Span,ISREF(Span),FALSE))")] {
+        book.set_entry(sheet, at(cell), value).unwrap();
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+    book.set_entry("Data", at("B1"), "FALSE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(true));
+    book.set_entry("Cases", at("Y1"), "20").unwrap();
+    // The selected result inspects reference identity: it must not retain
+    // the previous SUM branch's dependency on the second source row.
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(true));
+    book.set_entry("Data", at("B1"), "TRUE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(22.0));
+}
+
+#[test]
+fn lazy_selectors_suspension_does_not_replay_random_draws_or_inactive_calls() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+    let make = |formula: &str, dependency: bool| {
+        let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 73));
+        book.add_sheet("Data").unwrap();
+        book.set_entry("Data", at("A1"), formula).unwrap();
+        if dependency { book.set_entry("Data", at("Z1"), "=1+1").unwrap(); }
+        book
+    };
+    for (formula, control, dependency) in [
+        ("=IF(RAND()>=0,Z1+RAND(),1/0)", "=IF(RAND()>=0,2+RAND(),1/0)", true),
+        ("=IF(TRUE,RAND(),RAND()+RAND())", "=RAND()", false),
+    ] {
+        let mut book = make(formula, dependency);
+        let mut expected = make(control, false);
+        for _ in 0..2 {
+            assert_eq!(book.calculate_all().unwrap().uncomputed, 0);
+            assert_eq!(expected.calculate_all().unwrap().uncomputed, 0);
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),
+                expected.sheet("Data").unwrap().scalar(at("A1")), "{formula}");
+        }
+    }
+}
+
+#[test]
+fn lazy_selectors_late_selected_name_refusal_keeps_all_caches_atomic() {
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"Rate\">1</definedName>",
+        "<definedName name=\"rAtE\">2</definedName>",
+    ), DateSystem::Year1900);
+    for (cell, formula) in [("A1","=1+1"),("A2","TRUE"),("B1","=IF(A2,7,Rate)")] {
+        book.set_entry("Data", at(cell), formula).unwrap();
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+    book.set_entry("Data", at("A1"), "=3+4").unwrap();
+    book.set_entry("Data", at("A2"), "FALSE").unwrap();
+    let before = table_member_map(&book);
+    let revision = book.sheet("Data").unwrap().revision();
+    let dirty = book.is_dirty();
+    let error = book.recalculate().unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { ref path, ref reason }
+        if path.contains("definedName[Rate]") && reason.contains("got 2")), "{error}");
+    assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+    assert_eq!(book.is_dirty(), dirty);
+    assert_eq!(table_member_map(&book), before);
+    book.set_entry("Data", at("A2"), "TRUE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 2);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(7.0));
+}
+
+#[test]
+fn lazy_selectors_deep_cell_dependencies_use_suspended_heap_frames() {
+    for depth in [1, 2048] {
+        let mut book = Workbook::new();
+        book.add_sheet("Data").unwrap();
+        for row in 1..=depth {
+            book.set_entry("Data", at(&format!("A{row}")),
+                &format!("=IF(TRUE,A{},0)", row + 1)).unwrap();
+        }
+        book.set_entry("Data", at(&format!("A{}", depth + 1)), "7").unwrap();
+        // The fixed workbook/name path already needs 128 KiB on this build.
+        // Increasing dependency depth must not increase machine-stack use.
+        std::thread::Builder::new().stack_size(128 * 1024).spawn(move || {
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (depth, 0, 0));
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(7.0));
+        }).unwrap().join().expect("lazy dependencies use explicit suspension frames");
+    }
+}
+
+#[test]
+fn lazy_selectors_track_volatility_only_while_its_branch_is_reached() {
+    use yggdryl::Timezone;
+    use yggdryl::excel::Clock;
+    let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 73));
+    book.add_sheet("Data").unwrap();
+    book.set_entry("Data", at("B1"), "FALSE").unwrap();
+    book.set_entry("Data", at("A1"), "=IF(B1,RAND(),7)").unwrap();
+    assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
+    book.set_entry("Data", at("B1"), "TRUE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    book.set_entry("Data", at("B1"), "FALSE").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), Scalar::from(7.0));
+    let revision = book.sheet("Data").unwrap().revision();
+    assert_eq!(book.recalculate().unwrap().evaluated, 0);
+    assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+}
+
+#[test]
+fn multi_selectors_match_native_typed_selection_and_reference_identity() {
+    use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/selector_order_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_cache_comparisons_equal"],260);
+    let cases=fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(),130);
+    let mut covered=(0,0);
+    for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        let mut book=Workbook::new();book.set_date_system(system);
+        for name in ["Values","CycleShape","Cases"] {book.add_sheet(name).unwrap();}
+        for (name,cells) in fixture["source_cells"].as_object().unwrap() {
+            for (address,value) in cells.as_object().unwrap() {
+                let scalar=if let Some(value)=value.as_bool(){Scalar::from(value)}
+                    else if let Some(value)=value.as_str(){Scalar::from(value)}
+                    else{Scalar::from(value.as_f64().unwrap())};
+                book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(),scalar).unwrap();
+            }
+        }
+        for case in cases.iter().filter(|case|case["date_system"]==year) {
+            let at:CellRef=case["cell"].as_str().unwrap().parse().unwrap();
+            book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                Cell::from_scalar(at,Scalar::from(-777.0),system).unwrap()
+                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(),at)),
+            ).unwrap();
+        }
+        let report=book.calculate_all().unwrap();
+        assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(60,5,0));
+        for case in cases.iter().filter(|case|case["date_system"]==year) {
+            let cell=book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+            if case["rust_policy"]=="held_locale" {
+                covered.1+=1;assert_eq!(cell.value(),&Scalar::from(-777.0),"{}",case["id"]);continue;
+            }
+            covered.0+=1;let expected=&case["saved_cache"];
+            match expected["type"].as_str().unwrap() {
+                "n"=>assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]),
+                "b"=>assert_eq!(cell.value().as_bool(),Some(expected["value_text"]=="1"),"{}",case["id"]),
+                "e"=>assert_eq!(cell.error().map(|error|error.as_str()),expected["value_text"].as_str(),"{}",case["id"]),
+                "str"=>assert_eq!(cell.value().as_str(),Some(expected["value_text"].as_str().unwrap_or("")),"{}",case["id"]),
+                kind=>panic!("unexpected cache type {kind}"),
+            }
+        }
+        let before=["Values","CycleShape","Cases"].map(|name|book.sheet(name).unwrap().revision());
+        let repeat=book.calculate_all().unwrap();
+        assert_eq!((repeat.evaluated,repeat.uncomputed,repeat.circular_count),(60,5,0));
+        assert_eq!(before,["Values","CycleShape","Cases"].map(|name|book.sheet(name).unwrap().revision()));
+        let idle=book.recalculate().unwrap();assert_eq!((idle.evaluated,idle.uncomputed),(0,5));
+    }
+    assert_eq!(covered,(120,10));
+}
+
+#[test]
+fn multi_selectors_register_all_tests_but_only_the_selected_result() {
+    use yggdryl::excel::{CellRef,Workbook};
+    let at=|text:&str|text.parse::<CellRef>().unwrap();
+    for (formula,first,next) in [
+        ("IFS(A1,C1,A2,D1,TRUE,E1)","TRUE","FALSE"),
+        ("SWITCH(A1,1,C1,A2,D1,E1)","1","2"),
+    ] {
+        let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+        for (cell,text) in [("A1",first),("A2","2"),("C1","10"),("D1","20"),("E1","30")] {book.set_entry("Data",at(cell),text).unwrap();}
+        book.set_entry("Data",at("B1"),&format!("={formula}")).unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated,1,"{formula}");
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(10.0));
+        // Later tests/keys remain dependencies even after the first match.
+        book.set_entry("Data",at("A2"),"3").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated,1,"{formula}");
+        book.set_entry("Data",at("A2"),"2").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated,1,"{formula}");
+        book.set_entry("Data",at("D1"),"21").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated,0,"{formula}");
+        book.set_entry("Data",at("A1"),next).unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated,1,"{formula}");
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(),Some(21.0));
+        book.set_entry("Data",at("C1"),"11").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated,0,"{formula}");
+    }
+}
+
+#[test]
+fn multi_selectors_match_native_cycle_locations_and_retain_prior_caches() {
+    use yggdryl::{Scalar,excel::{Cell,CellRef,DateSystem,Formula,Workbook}};
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/selector_order_native.json")).unwrap();
+    let evidence=&fixture["scheduling_evidence"];
+    assert_eq!(evidence["cleanup_completed"],true);
+    assert_eq!(evidence["application_iteration"],false);
+    assert_eq!(evidence["cached_values_are_answers"],false);
+    let mut checked=(0,0);
+    for case in evidence["cases"].as_array().unwrap() {
+        let at=CellRef::new(0,0);let mut book=Workbook::new();
+        book.add_sheet("Cases").unwrap().insert_cell(
+            Cell::from_scalar(at,Scalar::from(77.0),DateSystem::Year1900).unwrap()
+                .with_formula(Formula::from_file(case["requested_formula"].as_str().unwrap(),at)),
+        ).unwrap();
+        let result=book.calculate_all().unwrap();
+        if case["circular_address"].is_null() {
+            checked.0+=1;
+            assert_eq!((result.evaluated,result.uncomputed,result.circular_count),(1,0,0),"{}",case["id"]);
+            assert_eq!(book.sheet("Cases").unwrap().scalar(at).as_f64(),case["value2"]["value"].as_f64(),"{}",case["id"]);
+        } else {
+            checked.1+=1;
+            assert_eq!(case["circular_address"],"$A$1");
+            assert_eq!((result.evaluated,result.uncomputed,result.circular_count),(0,1,1),"{}",case["id"]);
+            assert_eq!(result.circular,vec![("Cases".into(),at)],"{}",case["id"]);
+            // The core contract retains 77; native's default circular zero is not an answer.
+            assert_eq!(book.sheet("Cases").unwrap().scalar(at),Scalar::from(77.0));
+        }
+    }
+    assert_eq!(checked,(8,3));
+}
+
+#[test]
+fn multi_selectors_use_this_pass_formula_keys_and_retire_only_result_edges() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    for formula in ["=IFS(Z1=1,C1,Z2=2,D1,TRUE,99)", "=SWITCH(Z1,1,C1,Z2,D1,99)"] {
+        let mut book = Workbook::new();
+        book.add_sheet("Data").unwrap();
+        for (cell, value) in [("A1","1"),("A2","2"),("A3","10"),("A4","20"),
+            ("Z1","=A1+0"),("Z2","=A2+0"),("C1","=A3+1"),("D1","=A4+1"),("B1",formula)] {
+            book.set_entry("Data", at(cell), value).unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, 5, "{formula}");
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(11.0));
+        book.set_entry("Data", at("A3"), "11").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 2);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(12.0));
+        book.set_entry("Data", at("A1"), "2").unwrap();
+        book.set_entry("Data", at("A4"), "30").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 3);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(31.0));
+        book.set_entry("Data", at("A2"), "3").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 2);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(99.0));
+        book.set_entry("Data", at("A4"), "40").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 1);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(99.0));
+        book.set_entry("Data", at("A1"), "1").unwrap();
+        assert_eq!(book.recalculate().unwrap().evaluated, 2);
+        assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(12.0));
+    }
+}
+
+#[test]
+fn multi_selectors_resume_selected_formula_chains_without_replaying_inputs() {
+    use yggdryl::{Timezone, excel::{CellRef, Clock, Workbook}};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let make = |formula: &str, dependency: bool| {
+        let mut book = Workbook::new().with_clock(Clock::fixed(0, Timezone::UTC, 73));
+        book.add_sheet("Data").unwrap();
+        book.set_entry("Data", at("A1"), formula).unwrap();
+        if dependency {
+            book.set_entry("Data", at("B1"), "=IF(TRUE,Z1,1/0)").unwrap();
+            book.set_entry("Data", at("Z1"), "=7").unwrap();
+        }
+        book
+    };
+    for (formula, control) in [
+        ("=IFS(RAND()>=0,B1+RAND(),FALSE,1/0)", "=IFS(RAND()>=0,7+RAND(),FALSE,1/0)"),
+        ("=SWITCH(RAND()>=0,TRUE,B1+RAND(),FALSE,1/0,1/0)", "=SWITCH(RAND()>=0,TRUE,7+RAND(),FALSE,1/0,1/0)"),
+    ] {
+        let mut book = make(formula, true);
+        let mut expected = make(control, false);
+        for _ in 0..2 {
+            let result = book.calculate_all().unwrap();
+            assert_eq!((result.evaluated, result.uncomputed, result.circular_count), (3,0,0), "{formula}");
+            assert_eq!(expected.calculate_all().unwrap().evaluated, 1);
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")), expected.sheet("Data").unwrap().scalar(at("A1")), "{formula}");
+        }
+    }
+}
+
+#[test]
+fn order_statistics_hold_omitted_parameters_without_panic() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    for formula in ["LARGE(Data!A1:A2,)", "RANK(2,Data!A1:A2,)"] {
+        let mut book = Workbook::new();
+        book.add_sheet("Data").unwrap();
+        book.add_sheet("Cases").unwrap();
+        book.sheet_mut("Data").unwrap().set_cell("A1".parse().unwrap(), 2.0).unwrap();
+        let at: CellRef = "B2".parse().unwrap();
+        book.sheet_mut("Cases").unwrap().insert_cell(
+            Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900).unwrap()
+                .with_formula(Formula::from_file(formula, at)),
+        ).unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (0, 1, 0), "{formula}");
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at), Scalar::from(-777.0), "{formula}");
+    }
+}
+
+#[test]
+fn blank_and_conditional_extrema_match_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/blank_extrema_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 102);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(204));
+    assert_eq!(evidence["cleanup_completed"], true);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (51, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    "str" => assert_eq!(cell.value().as_str(), Some(""),
+                        "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected blank/extrema cache type {other}"),
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 204);
+}
+
+#[test]
+fn sumproduct_native_scalar_range_shape_and_precision() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/sumproduct_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 76);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(152));
+    assert_eq!(evidence["cleanup_completed"], true);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut computed = 0;
+    let mut held = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (33, 5, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                if case["shape"]["operand_shape"] == "array_expression" {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0),
+                        "{} saved={saved}", case["id"]);
+                    held += 1;
+                    continue;
+                }
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    "str" => assert_eq!(cell.value().as_str(), Some(""),
+                        "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected SUMPRODUCT native cache type {other}"),
+                }
+                computed += 1;
+            }
+        }
+    }
+    assert_eq!((computed, held), (132, 20));
+}
+
+#[test]
+fn remaining_order_statistics_match_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/order_stat_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 198);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(396));
+    assert_eq!(evidence["cleanup_completed"], true);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            let source: CellRef = "E1".parse().unwrap();
+            book.sheet_mut("Values").unwrap().insert_cell(
+                Cell::from_scalar(source, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file("1/0", source)),
+            ).unwrap();
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["sheet"] == "Cases") {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (99, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["sheet"] == "Cases") {
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native order-stat cache type {other}"),
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 392);
+}
+
+#[test]
+fn remaining_order_statistics_fractional_rank_and_interpolation_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/order_stat_refinement_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 84);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(168));
+    assert_eq!(evidence["cleanup_completed"], true);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (42, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native refinement cache type {other}"),
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 168);
+}
+
+#[test]
+fn statistics_rank_edges_match_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(include_str!("fixtures/rank_edge_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 44);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(88));
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            let source: CellRef = "E1".parse().unwrap();
+            book.sheet_mut("Values").unwrap().insert_cell(
+                Cell::from_scalar(source, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file("1/0", source)),
+            ).unwrap();
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["sheet"] == "Cases") {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (22, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["sheet"] == "Cases") {
+                checked += 1;
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native rank edge cache type {other}"),
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 84);
+}
+
+#[test]
+fn statistics_median_and_mode_match_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(include_str!("fixtures/statistical_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 438);
+    assert_eq!(evidence["provenance"].as_array().unwrap().len(), 8);
+    let cases = evidence["cases"].as_array().unwrap();
+    let ranked = |case: &&serde_json::Value| matches!(case["shape"]["function"].as_str(),
+        Some("MEDIAN" | "MODE" | "_xlfn.MODE.SNGL"));
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            // The rank corpus references E1's authored #DIV/0! source.
+            let source: CellRef = "E1".parse().unwrap();
+            book.sheet_mut("Values").unwrap().insert_cell(
+                Cell::from_scalar(source, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file("1/0", source)),
+            ).unwrap();
+            for case in cases.iter().filter(|case| case["date_system"] == year).filter(&ranked) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (37, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year).filter(&ranked) {
+                checked += 1;
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native rank cache type {other}"),
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 144);
+}
+
+#[test]
+fn statistics_rank_refinement_matches_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/rank_refinement_stable_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 28);
+    assert_eq!(evidence["native_cache_equal"].as_u64(), Some(56));
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            book.sheet_mut("Values").unwrap()
+                .set_cell("A1".parse().unwrap(), Scalar::from("3")).unwrap();
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (14, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                checked += 1;
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native rank refinement cache type {other}"),
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 56);
+}
+
+#[test]
+fn statistical_criteria_match_native_cache_bits() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(include_str!("fixtures/statistical_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 438);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            // E2/E3 are native-observed source caches: empty text and 6.
+            // Their producing formulas are outside the criteria contract.
+            book.sheet_mut("Values").unwrap()
+                .set_cell("E2".parse().unwrap(), Scalar::from("")).unwrap();
+            book.sheet_mut("Values").unwrap()
+                .set_cell("E3".parse().unwrap(), Scalar::from(6.0)).unwrap();
+            let source: CellRef = "E1".parse().unwrap();
+            book.sheet_mut("Values").unwrap().insert_cell(
+                Cell::from_scalar(source, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file("1/0", source)),
+            ).unwrap();
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["shape"]["kind"] == "criteria") {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (58, 0, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["shape"]["kind"] == "criteria") {
+                checked += 1;
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native criteria cache type {other}"),
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 228);
+}
+
+#[test]
+fn subtotal_native_codes_hidden_rows_and_nested_sources() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let evidence: serde_json::Value = serde_json::from_str(include_str!("fixtures/statistical_native.json")).unwrap();
+    assert_eq!(evidence["cases"].as_array().unwrap().len(), 438);
+    let cases = evidence["cases"].as_array().unwrap();
+    let mut exact = 0;
+    let mut held = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            book.sheet_mut("Values").unwrap().set_rows_hidden(2..3, true).unwrap();
+            for (address, formula) in [("E1", "1/0"), ("E3", "SUBTOTAL(9,B1:B3)")] {
+                let at: CellRef = address.parse().unwrap();
+                book.sheet_mut("Values").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula, at)),
+                ).unwrap();
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["shape"]["kind"] == "subtotal") {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (25, 4, 0),
+                "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year && case["shape"]["kind"] == "subtotal") {
+                let cell = book.sheet("Cases").unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let code = case["wire_formula"].as_str().unwrap()
+                    .strip_prefix("SUBTOTAL(").unwrap().split(',').next().unwrap().parse::<u16>().unwrap();
+                // The four hidden-row variance means are33/7, outside the
+                // exact dyadic-moment domain. Ordinary1..8 has exact moments.
+                if matches!(code, 107 | 108 | 110 | 111) {
+                    held += 1;
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                    continue;
+                }
+                exact += 1;
+                let cache = &case["saved_cache"];
+                match cache["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                        Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                        cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected native subtotal cache type {other}"),
+                }
+            }
+        }
+    }
+    assert_eq!((exact, held), (92, 16));
+}
+
+#[test]
+fn criteria_boundaries_match_native_source_types_and_saved_cache() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let boundary: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/criteria_boundary_native.json")).unwrap();
+    let isolated: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/criteria_isolation_native.json")).unwrap();
+    assert_eq!(boundary["cases"].as_array().unwrap().len(), 56);
+    assert_eq!(isolated["cases"].as_array().unwrap().len(), 46);
+    assert_eq!(boundary["cleanup_completed"], true);
+    assert_eq!(isolated["cleanup_completed"], true);
+    assert_eq!(boundary["native_cache_equal"], 112);
+    assert_eq!(isolated["native_cache_equal"], 92);
+    let mut exact = 0;
+    let mut held = 0;
+    for evidence in [&boundary, &isolated] {
+        let cases = evidence["cases"].as_array().unwrap();
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            for saved in [false, true] {
+                let mut book = Workbook::new();
+                book.set_date_system(system);
+                for name in ["Values", "Cases"] { book.add_sheet(name).unwrap(); }
+                for (name, cells) in evidence["source_cells"].as_object().unwrap() {
+                    for (address, value) in cells.as_object().unwrap() {
+                        let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                            else if let Some(value) = value.as_str() { Scalar::from(value) }
+                            else { Scalar::from(value.as_f64().unwrap()) };
+                        book.sheet_mut(name).unwrap()
+                            .set_cell(address.parse().unwrap(), value).unwrap();
+                    }
+                }
+                for case in cases.iter().filter(|case| case["date_system"] == year) {
+                    let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                    let cache = case.get("saved_cache")
+                        .or_else(|| case["after_save"].get("saved_cache")).unwrap();
+                    let text = if saved { &cache["formula_text"] } else { &case["wire_formula"] };
+                    book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                        Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                            .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                    ).unwrap();
+                }
+                book.calculate_all().unwrap();
+                for case in cases.iter().filter(|case| case["date_system"] == year) {
+                    let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                        .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                    // Native establishes the answer but not the text collation
+                    // rule for relational >abc under another Excel locale.
+                    if case["id"].as_str().unwrap().starts_with("countif-text-greater-") {
+                        held += 1;
+                        assert_eq!(cell.value().as_f64(), Some(-777.0),
+                            "{} saved={saved}", case["id"]);
+                        continue;
+                    }
+                    let cache = case.get("saved_cache")
+                        .or_else(|| case["after_save"].get("saved_cache")).unwrap();
+                    match cache["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits),
+                            Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                            "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()),
+                            cache["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), Some(""),
+                            "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native criteria cache type {other}"),
+                    }
+                    exact += 1;
+                }
+            }
+        }
+    }
+    assert_eq!((exact, held), (200, 4));
+}
+
+#[test]
+fn geometry_functions_match_all_successful_native_partitions_and_saved_formulas() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/geometry_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_cache_comparisons_equal"], 300);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 150);
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for sheet in ["Values", "CycleShape", "Cases"] { book.add_sheet(sheet).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+                }
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (75, 0, 0), "{year} saved={saved}");
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                checked += 1;
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                    .cell(case["cell"].as_str().unwrap().parse().unwrap()).unwrap();
+                let expected = &case["saved_cache"];
+                match expected["type"].as_str().unwrap() {
+                    "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()), "{} saved={saved}", case["id"]),
+                    "e" => assert_eq!(cell.error().map(|error| error.as_str()), expected["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                    other => panic!("unexpected geometry cache type {other}"),
+                }
+            }
+            let before = ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision());
+            assert_eq!(book.calculate_all().unwrap().evaluated, 75);
+            assert_eq!(["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision()), before);
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 300);
+}
+
+#[test]
+fn geometry_functions_have_no_cell_value_dependencies_or_false_self_cycles() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (cell, formula) in [("A1", "=ROW(A1)"), ("A2", "=COLUMN(A2)"),
+        ("B1", "=ROWS(C:C)"), ("B2", "=COLUMNS(3:3)"), ("C1", "=1/0")] {
+        book.set_entry("Data", at(cell), formula).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (5, 0, 0));
+    for (cell, value) in [("A1", 1.0), ("A2", 1.0), ("B1", 1_048_576.0), ("B2", 16_384.0)] {
+        assert_eq!(book.sheet("Data").unwrap().scalar(at(cell)).as_f64(), Some(value));
+    }
+    book.set_entry("Data", at("C1"), "=2").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    book.set_entry("Data", at("C100"), "=3").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+}
+
+#[test]
+fn geometry_functions_rebuild_coordinates_and_dimensions_after_structural_edits() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    book.add_sheet("Cases").unwrap();
+    for (cell, formula) in [("A1", "=ROW(Data!B3:D5)"), ("A2", "=COLUMN(Data!B3:D5)"),
+        ("A3", "=ROWS(Data!B3:D5)"), ("A4", "=COLUMNS(Data!B3:D5)")] {
+        book.set_entry("Cases", at(cell), formula).unwrap();
+    }
+    assert_eq!(book.calculate_all().unwrap().evaluated, 4);
+    book.insert_rows("Data", 3, 1).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 4);
+    book.insert_columns("Data", 0, 1).unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 4);
+    for (cell, expected) in [("A1",3.0),("A2",3.0),("A3",4.0),("A4",3.0)] {
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at(cell)).as_f64(), Some(expected));
+    }
+}
+
+#[test]
+fn geometry_functions_keep_named_intersections_and_arrays_independent_of_consumer_order() {
+    let mut book = calculation_named_book(concat!(
+        "<definedName name=\"Point\">_xlfn.SINGLE(Cases!$B$1:$B$3)</definedName>",
+        "<definedName name=\"Matrix\">{1,2;3,4}</definedName>",
+    ), DateSystem::Year1900);
+    for cell in ["B1", "B2", "B3"] { book.set_entry("Cases", at(cell), "TRUE").unwrap(); }
+    for (cell, text) in [("A1", "=SUM(Point)+COLUMN(Point)"), ("A2", "=COLUMN(Point)+SUM(Point)"),
+        ("C1", "=COLUMN(Point)"), ("D1", "=ROWS(Matrix)+COLUMNS(Matrix)"),
+        ("D2", "=ROWS(IF(TRUE,Matrix,0))")] {
+        book.set_entry("Data", at(cell), text).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (5, 0, 0));
+    for (cell, expected) in [("A1",2.0),("A2",2.0),("C1",2.0),("D1",4.0),("D2",2.0)] {
+        assert_eq!(book.sheet("Data").unwrap().scalar(at(cell)).as_f64(), Some(expected));
+    }
+    book.set_entry("Cases", at("B1"), "7").unwrap();
+    // Only the value consumer follows B1. The geometry-only C1 does not.
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")).as_f64(), Some(9.0));
+    book.set_entry("Cases", at("B2"), "11").unwrap();
+    assert_eq!(book.recalculate().unwrap().evaluated, 1);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A2")).as_f64(), Some(13.0));
+}
+
+const TEXT_COMPATIBILITY_NS: &str = "http://schemas.microsoft.com/office/spreadsheetml/2024/workbookCompatibilityVersion";
+const TEXT_COMPATIBILITY_URI: &str = "{D14903EA-33C4-47F7-8F05-3474C54BE107}";
+
+fn text_compatibility_package(root_attributes: &str, extension: &str) -> Vec<u8> {
+    let document = workbook(&["Sheet1"], false)
+        .replace("<workbook ", &format!("<workbook {root_attributes} "))
+        .replace("</workbook>", &format!("{extension}</workbook>"));
+    package(&[
+        ("[Content_Types].xml", content_types(1, false, false)),
+        ("_rels/.rels", root_relationships()),
+        ("xl/workbook.xml", document),
+        ("xl/_rels/workbook.xml.rels", workbook_relationships(1, false, false)),
+        ("xl/worksheets/sheet1.xml", worksheet("<row r=\"1\"><c r=\"A1\"><f>LEN(&quot;A\u{1f600}Z&quot;)</f><v>777</v></c><c r=\"B1\"><f>1+2</f><v>333</v></c></row>")),
+    ])
+}
+
+#[test]
+fn text_compatibility_resolves_the_authored_version_and_keeps_wire_metadata() {
+    for (attributes, extension, expected) in [
+        (String::new(), String::new(), Some(4.0)),
+        (String::new(), format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"1\"/></ext></extLst>"), Some(4.0)),
+        (format!("xmlns:alt=\"{}\"", TEXT_COMPATIBILITY_NS.replace("2024", "20&#x32;4")), format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><alt:version warnBelowVersion=\"2\" setVersion=\"&#x32;\"/></ext></extLst>"), Some(3.0)),
+        (String::new(), format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><version xmlns=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"2\"/></ext></extLst>"), Some(3.0)),
+        (String::new(), format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"9\"/></ext></extLst>"), None),
+        (String::new(), format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\"/></ext></extLst>"), None),
+    ] {
+        let mut book = Workbook::from_bytes(text_compatibility_package(&attributes, &extension)).unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), if expected.is_some() { (2, 0) } else { (1, 1) });
+        assert_eq!(book.sheet("Sheet1").unwrap().scalar(at("A1")).as_f64(), Some(expected.unwrap_or(777.0)));
+        assert_eq!(book.sheet("Sheet1").unwrap().scalar(at("B1")).as_f64(), Some(3.0));
+        let bytes = book.into_bytes().unwrap();
+        assert!(member_text(&bytes, "xl/workbook.xml").contains(&extension));
+        let mut reopened = Workbook::from_bytes(bytes).unwrap();
+        assert_eq!(reopened.calculate_all().unwrap().uncomputed, u64::from(expected.is_none()));
+        assert_eq!(reopened.sheet("Sheet1").unwrap().scalar(at("A1")).as_f64(), Some(expected.unwrap_or(777.0)));
+    }
+}
+
+#[test]
+fn text_compatibility_requires_the_exact_extension_ancestor_path() {
+    for extension in [
+        format!("<x:extLst xmlns:x=\"urn:foreign\"><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"2\"/></ext></x:extLst>"),
+        format!("<extLst><x:ext xmlns:x=\"urn:foreign\" uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"2\"/></x:ext></extLst>"),
+        format!("<extLst><ext uri=\"urn:other\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"2\"/></ext></extLst>"),
+        format!("<vendor xmlns=\"urn:vendor\"><extLst xmlns=\"{NS}\"><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"2\"/></ext></extLst></vendor>"),
+    ] {
+        let mut book = Workbook::from_bytes(text_compatibility_package("", &extension)).unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+        assert_eq!(book.sheet("Sheet1").unwrap().scalar(at("A1")).as_f64(), Some(4.0));
+        assert!(member_text(&book.into_bytes().unwrap(), "xl/workbook.xml").contains(&extension));
+    }
+}
+
+#[test]
+fn text_compatibility_refuses_ambiguous_or_invalid_genuine_metadata() {
+    for children in [
+        "<v:version setVersion=\"1\"/><v:version setVersion=\"2\"/>",
+        "<v:version setVersion=\"2\" setVersion=\"1\"/>",
+        "<v:version setVersion=\"-1\"/>",
+        "<v:version setVersion=\"4294967296\"/>",
+        "<v:version setVersion=\"1\" warnBelowVersion=\"2\"/>",
+        "<v:version setVersion=\"2\" warnBelowVersion=\"0\"/>",
+        "<fake:version xmlns:fake=\"urn:foreign\" setVersion=\"2\"/>",
+        "<vendor xmlns=\"urn:vendor\"><v:version setVersion=\"2\"/></vendor>",
+    ] {
+        let extension = format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\" xmlns:v=\"{TEXT_COMPATIBILITY_NS}\">{children}</ext></extLst>");
+        let error = Workbook::from_bytes(text_compatibility_package("", &extension)).unwrap_err();
+        let Error::InvalidRecord { path, reason } = error else { panic!("{error}") };
+        assert_eq!(path, "xl/workbook.xml#extLst/ext/version", "{children}");
+        assert!(reason.contains("expected") && reason.contains("got"), "{reason}");
+    }
+}
+
+#[test]
+fn text_compatibility_len_uses_all_native_version_vectors() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/unicode_native.json")).unwrap();
+    let mut checked = 0;
+    for case in fixture["cases"].as_array().unwrap().iter().filter(|case| case["wire_formula"].as_str().unwrap().starts_with("LEN(")) {
+        let version = case["version_marker"].as_str().unwrap();
+        let extension = if version == "absent" { String::new() } else { format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"{version}\"/></ext></extLst>") };
+        let mut book = Workbook::from_bytes(text_compatibility_package("", &extension)).unwrap();
+        book.set_entry("Sheet1", at("A1"), &format!("={}", case["wire_formula"].as_str().unwrap())).unwrap();
+        assert_eq!(book.calculate_all().unwrap().evaluated, 2);
+        let expected = case["cache_value_xml"].as_str().unwrap().parse::<f64>().unwrap();
+        assert_eq!(book.sheet("Sheet1").unwrap().scalar(at("A1")).as_f64(), Some(expected), "{} {}", version, case["id"]);
+        checked += 1;
+    }
+    assert_eq!(checked, 12);
+}
+
+#[test]
+fn text_compatibility_resolves_strict_prefixes_and_locates_custom_parts() {
+    let strict = yggdryl::excel::STRICT_NAMESPACE;
+    let relationships = yggdryl::excel::STRICT_RELATIONSHIPS_NAMESPACE;
+    let custom = "custom/actual.xml";
+    for (attributes, accepted) in [("setVersion=\"2\"", true), ("setVersion=\"NaN\"", false)] {
+        let source = format!("<s:workbook xmlns:s=\"{strict}\" xmlns:r=\"{relationships}\" xmlns:v=\"{TEXT_COMPATIBILITY_NS}\"><s:sheets><s:sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></s:sheets><s:extLst><s:ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version {attributes}/></s:ext></s:extLst></s:workbook>");
+        let data = worksheet("<row r=\"1\"><c r=\"A1\"><f>LEN(&quot;A\u{1f600}Z&quot;)</f><v>777</v></c></row>").replace(NS, strict).replace(R_NS, relationships);
+        let bytes = package(&[
+            ("[Content_Types].xml", content_types(1, false, false).replace("xl/workbook.xml", custom)),
+            ("_rels/.rels", root_relationships().replace("xl/workbook.xml", custom).replace(R_NS, relationships)),
+            (custom, source),
+            ("custom/_rels/actual.xml.rels", workbook_relationships(1, false, false).replace("Target=\"worksheets/", "Target=\"../xl/worksheets/").replace(R_NS, relationships)),
+            ("xl/worksheets/sheet1.xml", data),
+        ]);
+        if accepted {
+            let mut book = Workbook::from_bytes(bytes).unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+            assert_eq!(book.sheet("Sheet1").unwrap().scalar(at("A1")).as_f64(), Some(3.0));
+        } else {
+            let Error::InvalidRecord { path, reason } = Workbook::from_bytes(bytes).unwrap_err() else { panic!("expected located refusal") };
+            assert_eq!(path, "custom/actual.xml#extLst/ext/version");
+            assert!(reason.contains("expected") && reason.contains("NaN"));
+        }
+    }
+}
+
+#[test]
+fn text_functions_portable_initial_cases_match_native_and_hold_locale_or_utf16_boundaries() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["LEN", "T", "CLEAN", "TRIM", "LEFT", "RIGHT", "MID", "EXACT", "REPT", "SUBSTITUTE"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 284);
+    let held = |case: &serde_json::Value| case["id"].as_str().unwrap().starts_with("mid-surrogate-window-");
+    assert_eq!(selected.iter().filter(|case| held(case)).count(), 2);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (141, 1, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    let expected = case.get("en_us").map_or(&case["actual"]["value2"], |value| &value["raw"]);
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), expected["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), expected["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), expected["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 568); // 564 exact computations, 4 explicit UTF-16 held-cache controls.
+}
+
+#[test]
+fn text_functions_native_compatibility_windows_never_publish_lone_surrogates() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/unicode_native.json")).unwrap();
+    let mut checked = 0;
+    for case in fixture["cases"].as_array().unwrap().iter().filter(|case| ["MID(", "LEFT(", "RIGHT("].iter().any(|function| case["wire_formula"].as_str().unwrap().starts_with(function))) {
+        let version = case["version_marker"].as_str().unwrap();
+        let extension = if version == "absent" { String::new() } else { format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"{version}\"/></ext></extLst>") };
+        let mut book = Workbook::from_bytes(text_compatibility_package("", &extension)).unwrap();
+        let host = at("A1");
+        book.sheet_mut("Sheet1").unwrap().insert_cell(Cell::from_scalar(host, Scalar::from("held original"), DateSystem::Year1900).unwrap()
+            .with_formula(yggdryl::excel::Formula::from_file(case["wire_formula"].as_str().unwrap(), host))).unwrap();
+        let unrepresentable = case["value2_before"]["text_transport"].is_object();
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), if unrepresentable { (1, 1) } else { (2, 0) });
+        let expected = if unrepresentable { "held original" } else { case["value2_before"]["value"].as_str().unwrap() };
+        assert_eq!(book.sheet("Sheet1").unwrap().scalar(host).as_str(), Some(expected), "{} {}", version, case["id"]);
+        checked += 1;
+    }
+    assert_eq!(checked, 48);
+}
+
+#[test]
+fn text_functions_numeric_coercion_and_utf16_limits_match_all_native_observations() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_number_native.json")).unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 676);
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1352);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            book.add_sheet("Cases").unwrap();
+            let selected: Vec<_> = cases.iter().filter(|case| case["date_system"] == year).collect();
+            // Source runs reuse B1 onward: separate fixture addresses preserve
+            // every formula while avoiding collisions between those runs.
+            for (row, case) in selected.iter().enumerate() {
+                let at = CellRef::new(row as u32, 0);
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (337, 1, 0), "{year} saved={saved}");
+            for (row, case) in selected.iter().enumerate() {
+                let cell = book.sheet("Cases").unwrap().cell(CellRef::new(row as u32, 0)).unwrap();
+                let id = case["id"].as_str().unwrap();
+                if id.contains("trim-controls") {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{id}");
+                } else {
+                    let expected = &case["saved_cache"];
+                    match expected["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().unwrap().to_bits(), expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits(), "{id} saved={saved}"),
+                        "str" => assert_eq!(cell.value().as_str(), expected["value_text"].as_str(), "{id} saved={saved}"),
+                        "b" => assert_eq!(cell.value().as_bool(), Some(expected["value_text"] == "1"), "{id} saved={saved}"),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), expected["value_text"].as_str(), "{id} saved={saved}"),
+                        kind => panic!("unexpected native cache {kind}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 1352); //1348 computed and4 explicit CHAR(160) code-page held comparisons.
+}
+
+#[test]
+fn text_join_preserves_sparse_blank_positions_and_explicit_empty_strings() {
+    let mut book = Workbook::new();
+    book.add_sheet("Values").unwrap();
+    book.add_sheet("Cases").unwrap();
+    for (address, value) in [("B2", "a"), ("D2", ""), ("C3", "b")] {
+        book.sheet_mut("Values").unwrap().set_cell(at(address), Scalar::from(value)).unwrap();
+    }
+    for (address, formula, expected) in [
+        ("A1", "TEXTJOIN(\"|\",FALSE,Values!B2:D3)", "a||||b|"),
+        ("A2", "TEXTJOIN(\"|\",TRUE,Values!B2:D3)", "a|b"),
+        ("A3", "CONCAT(Values!B2:D3)", "ab"),
+        ("A4", "TEXTJOIN(\"|\",FALSE,Values!A1:A3)", "||"),
+        ("A5", "TEXTJOIN(\"\",FALSE,Values!A:A)", ""),
+    ] {
+        book.set_entry("Cases", at(address), &format!("={formula}")).unwrap();
+        let report = book.calculate_all().unwrap();
+        assert_eq!(report.uncomputed, 0, "{formula}");
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at(address)).as_str(), Some(expected), "{formula}");
+    }
+}
+
+#[test]
+fn text_join_checks_output_bound_before_expanding_absent_positions() {
+    let mut book = Workbook::new();
+    book.add_sheet("Values").unwrap();
+    book.add_sheet("Cases").unwrap();
+    for (address, formula) in [
+        ("A1", "TEXTJOIN(\"|\",FALSE,Values!A:A)"),
+        ("A2", "TEXTJOIN(\"|\",FALSE,Values!1:1048576)"),
+        ("A3", "TEXTJOIN(\"\",FALSE,Values!1:1048576)"),
+    ] {
+        book.set_entry("Cases", at(address), &format!("={formula}")).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (3, 0));
+    for address in ["A1", "A2"] {
+        assert_eq!(book.sheet("Cases").unwrap().cell(at(address)).unwrap().error(), Some(yggdryl::excel::ExcelError::Value));
+    }
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A3")).as_str(), Some(""));
+}
+
+#[test]
+fn text_join_never_skips_a_held_or_error_dependency_behind_its_old_empty_cache() {
+    use yggdryl::excel::Formula;
+    let mut book = Workbook::new();
+    book.add_sheet("Values").unwrap();
+    book.add_sheet("Cases").unwrap();
+    book.sheet_mut("Values").unwrap().insert_cell(
+        Cell::from_scalar(at("A3"), Scalar::from(""), DateSystem::Year1900).unwrap()
+            .with_formula(Formula::from_file("UNKNOWN(1)", at("A3"))),
+    ).unwrap();
+    book.sheet_mut("Cases").unwrap().insert_cell(
+        Cell::from_scalar(at("A1"), Scalar::from("prior"), DateSystem::Year1900).unwrap()
+            .with_formula(Formula::from_file("_xlfn.TEXTJOIN(\"|\",TRUE,Values!A1:A5)", at("A1"))),
+    ).unwrap();
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (0, 2));
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")).as_str(), Some("prior"));
+    book.set_entry("Values", at("A3"), "=1/0").unwrap();
+    let report = book.recalculate().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed), (2, 0));
+    assert_eq!(book.sheet("Cases").unwrap().cell(at("A1")).unwrap().error(), Some(yggdryl::excel::ExcelError::Div0));
+}
+
+#[test]
+fn text_join_functions_match_native_range_and_scalar_inputs() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["CONCAT", "CONCATENATE", "TEXTJOIN"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 38);
+    let held = |_: &serde_json::Value| false;
+    assert_eq!(selected.iter().filter(|case| held(case)).count(), 0);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (19, 0, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    let expected = case.get("en_us").map_or(&case["actual"]["value2"], |value| &value["raw"]);
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), expected["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), expected["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), expected["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 76); //76 exact computations; Boolean text uses the separate en-US observations.
+}
+
+#[test]
+fn text_find_replace_match_native_positions_and_preserve_unrepresentable_cache() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["FIND", "REPLACE"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 48);
+    let held = |case: &serde_json::Value| case["id"].as_str().unwrap().starts_with("replace-unicode-");
+    assert_eq!(selected.iter().filter(|case| held(case)).count(), 2);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (23, 1, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), case["actual"]["value2"]["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), case["actual"]["value2"]["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), case["actual"]["value2"]["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 96); //92 exact computations,4 unpaired-UTF16 held comparisons.
+}
+
+#[test]
+fn text_find_empty_and_inside_pair_starts_match_native_search_boundaries() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/text_find_boundary_native.json")).unwrap();
+    let cases=fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(),36);
+    assert_eq!(fixture["native_cache_comparisons_equal"],72);
+    let mut checked=0;
+    for saved in [false,true] {
+        for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+            let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Cases").unwrap();
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let at=at(case["cell"].as_str().unwrap());
+                let formula=if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(at,Scalar::from(-777.0),system).unwrap()
+                    .with_formula(Formula::from_file(formula.as_str().unwrap(),at))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();
+            assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(18,0,0));
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                {
+                    let expected=&case["saved_cache"];
+                    if expected["type"]=="e" {
+                        assert_eq!(cell.error().map(|error|error.as_str()),expected["value_text"].as_str(),"{}",case["id"]);
+                    } else {
+                        assert_eq!(cell.value().as_f64().unwrap().to_bits(),expected["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits(),"{}",case["id"]);
+                    }
+                }
+                checked+=1;
+            }
+        }
+    }
+    assert_eq!(checked,72); //All72 authored/saved FIND and SEARCH comparisons are exact.
+}
+
+#[test]
+fn text_find_replace_use_authored_compatibility_and_never_emit_half_surrogates() {
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/unicode_native.json")).unwrap();
+    let mut checked=0;
+    for case in fixture["cases"].as_array().unwrap().iter().filter(|case|case["wire_formula"].as_str().unwrap().starts_with("FIND(") || case["wire_formula"].as_str().unwrap().starts_with("REPLACE(")) {
+        let version=case["version_marker"].as_str().unwrap();
+        let extension=if version=="absent" { String::new() } else {format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"{version}\"/></ext></extLst>")};
+        let mut book=Workbook::from_bytes(text_compatibility_package("",&extension)).unwrap();
+        let host=at("A1");
+        book.sheet_mut("Sheet1").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from("held original"),DateSystem::Year1900).unwrap()
+            .with_formula(yggdryl::excel::Formula::from_file(case["wire_formula"].as_str().unwrap(),host))).unwrap();
+        let held=case["value2_before"]["text_transport"].is_object();
+        let report=book.calculate_all().unwrap();
+        assert_eq!((report.evaluated,report.uncomputed),if held {(1,1)}else{(2,0)});
+        let cell=book.sheet("Sheet1").unwrap().cell(host).unwrap();
+        if held {assert_eq!(cell.value().as_str(),Some("held original"));}
+        else if let Some(number)=case["value2_before"]["value"].as_f64() {assert_eq!(cell.value().as_f64(),Some(number));}
+        else {assert_eq!(cell.value().as_str(),case["value2_before"]["value"].as_str());}
+        checked+=1;
+    }
+    assert_eq!(checked,18);
+}
+
+#[test]
+fn text_casing_matches_portable_native_cases_and_preserves_locale_sensitive_caches() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["LOWER", "UPPER"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 62);
+    let held = |case: &serde_json::Value| ["accented"].iter().any(|label| case["id"].as_str().unwrap().starts_with(&format!("lower-{label}-")) || case["id"].as_str().unwrap().starts_with(&format!("upper-{label}-")));
+    assert_eq!(selected.iter().filter(|case| held(case)).count(), 4);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (29, 2, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    let expected = case.get("en_us").map_or(&case["actual"]["value2"], |value| &value["raw"]);
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), expected["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), expected["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), expected["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 124); //116 exact computations,8 explicit locale-sensitive held comparisons.
+}
+
+#[test]
+fn text_search_matches_native_wildcards_coercion_and_error_precedence() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["SEARCH"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 32);
+    let held = |_: &serde_json::Value| false;
+    assert_eq!(selected.iter().filter(|case| held(case)).count(), 0);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (16, 0, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), case["actual"]["value2"]["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), case["actual"]["value2"]["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), case["actual"]["value2"]["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 64); //All32 original native observations, authored and saved formulas.
+}
+
+#[test]
+fn text_search_keeps_native_utf16_wildcards_and_versioned_positions_distinct() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/text_search_native.json")).unwrap();
+    let cases=fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(),176);assert_eq!(fixture["native_cache_comparisons_equal"],352);
+    let held=|case:&serde_json::Value| {
+        if case["corpus"] != "primary" { return false; }
+        let ordinal=case["id"].as_str().unwrap().split('-').nth(1).unwrap().parse::<usize>().unwrap();
+        (23..=30).contains(&ordinal)
+    };
+    assert_eq!(cases.iter().filter(|case|held(case)).count(),32);
+    let mut checked=0;
+    for corpus in ["primary","followup"] {
+    for marker in ["1","2"] {
+        let extension=format!("<extLst><ext uri=\"{TEXT_COMPATIBILITY_URI}\"><v:version xmlns:v=\"{TEXT_COMPATIBILITY_NS}\" setVersion=\"{marker}\"/></ext></extLst>");
+        for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+            for saved in [false,true] {
+                let mut book=Workbook::from_bytes(text_compatibility_package("",&extension)).unwrap();
+                book.set_date_system(system);book.add_sheet("Cases").unwrap();
+                let selected:Vec<_>=cases.iter().filter(|case|case["corpus"]==corpus&&case["version_marker"]==marker&&case["date_system"]==year).collect();
+                assert_eq!(selected.len(),if corpus=="primary" {32}else{12});
+                for case in &selected {
+                    let host=at(case["cell"].as_str().unwrap());
+                    let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                    book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+                }
+                let report=book.calculate_all().unwrap();
+                assert_eq!((report.evaluated,report.uncomputed,report.circular_count),if corpus=="primary" {(26,8,0)}else{(14,0,0)},"corpus={corpus} marker={marker} year={year} saved={saved}");
+                for case in selected {
+                    let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                    if held(case) {assert_eq!(cell.value().as_f64(),Some(-777.0),"{}",case["id"]);}
+                    else if case["saved_cache"]["type"]=="e" {
+                        assert_eq!(cell.error().map(|error|error.as_str()),case["saved_cache"]["value_text"].as_str(),"{} v{marker}",case["id"]);
+                    } else {
+                        assert_eq!(cell.value().as_f64().map(f64::to_bits),case["actual"]["value2"]["value"].as_f64().map(f64::to_bits),"{} v{marker}",case["id"]);
+                    }
+                    checked+=1;
+                }
+                assert_eq!(book.recalculate().unwrap().evaluated,0);
+            }
+        }
+    }
+    }
+    assert_eq!(checked,352); //288 computations,64 explicit non-ASCII case-policy holds.
+}
+
+#[test]
+fn text_character_functions_match_native_ascii_and_word_boundaries() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 1128);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 564);
+    let functions = ["CHAR", "CODE", "PROPER"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 100);
+    let held = |case: &serde_json::Value| {
+        let id=case["id"].as_str().unwrap();
+        id.starts_with("char-code-128-") || id.starts_with("char-code-255-")
+            || ["code", "proper"].iter().any(|function|
+                ["accented"].iter()
+                    .any(|label| id.starts_with(&format!("{function}-{label}-"))))
+    };
+    assert_eq!(selected.iter().filter(|case|held(case)).count(),8);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (46, 4, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    let expected = case.get("en_us").map_or(&case["actual"]["value2"], |value| &value["raw"]);
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), expected["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), expected["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), expected["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 200); //184 exact computations,16 explicit code-page/locale holds.
+}
+
+#[test]
+fn text_character_followup_preserves_all_native_code_page_observations() {
+    use yggdryl::excel::Formula;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/text_remaining_native.json")).unwrap();
+    assert_eq!(fixture["native_cache_comparisons_equal"], 484);
+    let all = fixture["cases"].as_array().unwrap();
+    assert_eq!(all.len(), 242);
+    let functions = ["CHAR", "CODE", "PROPER"];
+    let selected: Vec<_> = all.iter().filter(|case| case["shape"]["kind"] == "source"
+        || functions.contains(&case["shape"]["function"].as_str().unwrap_or(""))).collect();
+    assert_eq!(selected.len(), 100);
+    let held = |case: &serde_json::Value| {
+        let id=case["id"].as_str().unwrap();
+        if id.starts_with("char-") {
+            let value=case["wire_formula"].as_str().unwrap().strip_prefix("CHAR(").unwrap().strip_suffix(')').unwrap().parse::<f64>().unwrap();
+            return value.trunc()>127.0 && value.trunc()<=255.0;
+        }
+        if id.starts_with("code-") {return !id.starts_with("code-10-");}
+        [8,16,17,18].iter().any(|ordinal|id.starts_with(&format!("proper-{ordinal}-")))
+    };
+    assert_eq!(selected.iter().filter(|case|held(case)).count(),52);
+    let mut checked = 0;
+    for saved in [false, true] {
+        for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+                for (address, value) in cells.as_object().unwrap() {
+                    let value = if let Some(value) = value.as_str() { Scalar::from(value) }
+                        else if let Some(value) = value.as_bool() { Scalar::from(value) }
+                        else { Scalar::from(value.as_f64().unwrap()) };
+                    book.sheet_mut(name).unwrap().set_cell(at(address), value).unwrap();
+                }
+            }
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let at = at(case["cell"].as_str().unwrap());
+                let formula = if saved { &case["saved_cache"]["formula_text"] } else { &case["wire_formula"] };
+                book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(formula.as_str().unwrap(), at)),
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (24, 26, 0), "{year} saved={saved}");
+            for case in selected.iter().filter(|case| case["date_system"] == year) {
+                let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {
+                    assert_eq!(cell.value().as_f64(), Some(-777.0), "{} saved={saved}", case["id"]);
+                } else {
+                    match case["saved_cache"]["type"].as_str().unwrap() {
+                        "n" => assert_eq!(cell.value().as_f64().map(f64::to_bits), case["actual"]["value2"]["value"].as_f64().map(f64::to_bits), "{} saved={saved}", case["id"]),
+                        "b" => assert_eq!(cell.value().as_bool(), case["actual"]["value2"]["value"].as_bool(), "{} saved={saved}", case["id"]),
+                        "str" => assert_eq!(cell.value().as_str(), case["actual"]["value2"]["value"].as_str(), "{} saved={saved}", case["id"]),
+                        "e" => assert_eq!(cell.error().map(|error| error.as_str()), case["saved_cache"]["value_text"].as_str(), "{} saved={saved}", case["id"]),
+                        other => panic!("unexpected native text cache {other}"),
+                    }
+                }
+                checked += 1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated, 0);
+        }
+    }
+    assert_eq!(checked, 200); //96 exact computations,104 explicit code-page/locale holds.
+}
+
+#[test]
+fn text_value_matches_explicit_en_us_observations_without_rewriting_native_caches() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/text_en_us_native.json")).unwrap();
+    assert_eq!(fixture["native_observations"],162);
+    assert_eq!(fixture["native_cache_equivalence_claim"],false);
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|case["wire_formula"].as_str().unwrap().starts_with("VALUE(")).collect();
+    assert_eq!(cases.len(),76);
+    let held=|case:&serde_json::Value| [14,19,20].iter().any(|number|case["id"].as_str().unwrap().starts_with(&format!("value-{number}-")));
+    assert_eq!(cases.iter().filter(|case|held(case)).count(),6);
+    let mut checked=0;
+    for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        for saved in [false,true] {
+            let mut book=Workbook::new();book.set_date_system(system);
+            book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+            book.set_entry("Values",at("D2"),"=1/0").unwrap();
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let host=at(case["cell"].as_str().unwrap());
+                let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(36,3),"{year} saved={saved}");
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {assert_eq!(cell.value().as_f64(),Some(-777.0),"{}",case["id"]);}
+                else if case["en_us"]["is_error"]==true {assert_eq!(cell.error().map(|v|v.as_str()),case["en_us"]["error_type"]["literal"].as_str(),"{}",case["id"]);}
+                else {assert_eq!(cell.value().as_f64().map(f64::to_bits),case["en_us"]["raw"]["value"].as_f64().map(f64::to_bits),"{}",case["id"]);}
+                checked+=1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated,0);
+        }
+    }
+    assert_eq!(checked,152); //140 exact LCID comparisons;12 unsupported temporal spelling holds.
+}
+
+#[test]
+fn text_format_matches_explicit_en_us_observations_without_rewriting_native_caches() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/text_en_us_native.json")).unwrap();
+    assert_eq!(fixture["native_observations"],162);
+    assert_eq!(fixture["native_cache_equivalence_claim"],false);
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|case["wire_formula"].as_str().unwrap().starts_with("TEXT(")).collect();
+    assert_eq!(cases.len(),86);
+    let held=|_:&serde_json::Value|false;
+    assert_eq!(cases.iter().filter(|case|held(case)).count(),0);
+    let mut checked=0;
+    for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        for saved in [false,true] {
+            let mut book=Workbook::new();book.set_date_system(system);
+            book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+            book.set_entry("Values",at("D2"),"=1/0").unwrap();
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let host=at(case["cell"].as_str().unwrap());
+                let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from("prior"),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(44,0),"{year} saved={saved}");
+            for case in cases.iter().filter(|case|case["date_system"]==year) {
+                let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                if held(case) {assert_eq!(cell.value().as_str(),Some("prior"),"{}",case["id"]);}
+                else if case["en_us"]["is_error"]==true {assert_eq!(cell.error().map(|v|v.as_str()),case["en_us"]["error_type"]["literal"].as_str(),"{}",case["id"]);}
+                else {assert_eq!(cell.value().as_str(),case["en_us"]["raw"]["value"].as_str(),"{}",case["id"]);}
+                checked+=1;
+            }
+            assert_eq!(book.recalculate().unwrap().evaluated,0);
+        }
+    }
+    assert_eq!(checked,172); //172 exact LCID comparisons, including Boolean format coercion to #VALUE!.
+}
+
+#[test]
+fn financial_annuities_match_both_native_corpora_and_saved_spellings() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/financial_native.json")).unwrap();
+    assert_eq!(fixture["native_observations"],382);
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|matches!(case["shape"]["function"].as_str(),Some("PV"|"FV"))).collect();
+    assert_eq!(cases.len(),176);let mut checked=0;
+    for (corpus,count) in [("primary",52),("orders",36)] {
+        for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+            for saved in [false,true] {
+                let mut book=Workbook::new();book.set_date_system(system);
+                book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+                book.set_entry("Values",at("D2"),"=1/0").unwrap();
+                let selected:Vec<_>=cases.iter().filter(|case|case["corpus"]==corpus && case["date_system"]==year).collect();
+                assert_eq!(selected.len(),count);
+                for case in &selected {
+                    let host=at(case["cell"].as_str().unwrap());
+                    let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                    book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+                }
+                let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),((count+1) as u64,0),"{corpus} {year} saved={saved}");
+                for case in selected {
+                    let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();
+                    let cache=&case["saved_cache"];
+                    if cache["type"]=="e" {assert_eq!(cell.error().map(|v|v.as_str()),cache["value_text"].as_str(),"{}",case["id"]);}
+                    else {assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]);}
+                    checked+=1;
+                }
+                assert_eq!(book.recalculate().unwrap().evaluated,0);
+            }
+        }
+    }
+    assert_eq!(checked,352);
+}
+
+// SUBTOTAL source exclusion is also the graph dependency boundary.
+
+#[test]
+fn subtotal_nested_formula_is_excluded_from_value_but_watched_for_changes() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (cell, entry) in [
+        ("A1", "1"),
+        ("A2", "=SUBTOTAL(9,A1:A1)"),
+        ("A3", "2"),
+        ("B1", "=SUBTOTAL(9,A1:A3)"),
+    ] {
+        book.set_entry("Data", at(cell), entry).unwrap();
+    }
+    let result = book.calculate_all().unwrap();
+    assert_eq!(result.circular_count, 0);
+    assert_eq!(result.uncomputed, 0);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(3.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A2")).as_f64(), Some(1.0));
+    // A skipped formula can become an included literal. The full-range
+    // dirty watch must notice this change without a prior value edge.
+    book.set_entry("Data", at("A2"), "4").unwrap();
+    let changed = book.recalculate().unwrap();
+    assert_eq!(changed.circular_count, 0);
+    assert_eq!(changed.uncomputed, 0);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")).as_f64(), Some(7.0));
+}
+
+#[test]
+fn subtotal_109_hidden_formula_does_not_create_a_circular_dependency() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (cell, entry) in [
+        ("A1", "1"),
+        ("A2", "=B2+100"),
+        ("A3", "2"),
+        ("B2", "=SUBTOTAL(109,A1:A3)"),
+    ] {
+        book.set_entry("Data", at(cell), entry).unwrap();
+    }
+    book.sheet_mut("Data").unwrap().set_rows_hidden(1..2, true).unwrap();
+    let result = book.calculate_all().unwrap();
+    assert_eq!(result.circular_count, 0);
+    assert_eq!(result.uncomputed, 0);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("B2")).as_f64(), Some(3.0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A2")).as_f64(), Some(103.0));
+}
+
+
+#[test]
+fn subtotal_nested_value_exclusion_keeps_native_circular_dependencies() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let at = |text: &str| text.parse::<CellRef>().unwrap();
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (cell, entry) in [
+        ("A1", "1"),
+        ("A2", "=SUBTOTAL(9,B1:B1)"),
+        ("A3", "2"),
+        ("B1", "=SUBTOTAL(9,A1:A3)"),
+    ] {
+        book.set_entry("Data", at(cell), entry).unwrap();
+    }
+    let result = book.calculate_all().unwrap();
+    // Excel 16.0 build 20430 reports Worksheet.CircularReference=$A$2.
+    // Its default zero cache is not a calculated numeric answer.
+    assert_eq!((result.evaluated, result.uncomputed, result.circular_count), (0, 2, 2));
+    assert_eq!(result.circular, vec![("Data".into(), at("B1")), ("Data".into(), at("A2"))]);
+}
+
+#[test]
+fn financial_npv_matches_native_discount_order_and_argument_origins() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/financial_native.json")).unwrap();
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|case["shape"]["function"]=="NPV").collect();
+    assert_eq!(cases.len(),88);let mut checked=0;
+    for (corpus,count) in [("primary",14),("orders",30)] {
+        let run=fixture["runs"].as_array().unwrap().iter().find(|run|run["corpus"]==corpus).unwrap();
+        for (year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+            for saved in [false,true] {
+                let mut book=Workbook::new();book.set_date_system(system);
+                book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+                for (sheet,cells) in run["source_cells"].as_object().unwrap() {
+                    for (address,value) in cells.as_object().unwrap() {
+                        let value=if let Some(value)=value.as_bool(){Scalar::from(value)}else if let Some(value)=value.as_str(){Scalar::from(value)}else{Scalar::from(value.as_f64().unwrap())};
+                        book.sheet_mut(sheet).unwrap().set_cell(at(address),value).unwrap();
+                    }
+                }
+                book.set_entry("Values",at("D2"),"=1/0").unwrap();
+                let selected:Vec<_>=cases.iter().filter(|case|case["corpus"]==corpus && case["date_system"]==year).collect();
+                assert_eq!(selected.len(),count);
+                for case in &selected {
+                    let host=at(case["cell"].as_str().unwrap());let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                    book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+                }
+                let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),((count+1) as u64,0),"{corpus} {year} saved={saved}");
+                for case in selected {
+                    let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();let cache=&case["saved_cache"];
+                    if cache["type"]=="e" {assert_eq!(cell.error().map(|v|v.as_str()),cache["value_text"].as_str(),"{}",case["id"]);}
+                    else {assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]);}
+                    checked+=1;
+                }
+            }
+        }
+    }
+    assert_eq!(checked,176);
+}
+
+#[test]
+fn financial_pmt_keeps_nonzero_rate_policy_explicit_while_computing_proven_domains() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/financial_native.json")).unwrap();
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|case["shape"]["function"]=="PMT").collect();
+    assert_eq!(cases.len(),114);let(mut checked,mut held)=(0,0);
+    for(corpus,count,supported) in [("primary",26,8),("orders",31,6)] {
+        for(year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+            for saved in [false,true] {
+                let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+                book.set_entry("Values",at("D2"),"=1/0").unwrap();
+                let selected:Vec<_>=cases.iter().filter(|case|case["corpus"]==corpus && case["date_system"]==year).collect();assert_eq!(selected.len(),count);
+                for case in &selected {
+                    let host=at(case["cell"].as_str().unwrap());let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                    book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+                }
+                let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),((supported+1) as u64,(count-supported) as u64),"{corpus} {year} saved={saved}");
+                for case in selected {
+                    let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();let cache=&case["saved_cache"];
+                    // The native corpus is retained in full. This slice only
+                    // promises zero-rate arithmetic and observed error domains.
+                    if cache["type"]=="e" {
+                        assert_eq!(cell.error().map(|v|v.as_str()),cache["value_text"].as_str(),"{}",case["id"]);checked+=1;
+                    } else if case["shape"]["args"].as_str().unwrap().starts_with("0,") {
+                        assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]);checked+=1;
+                    } else {assert_eq!(cell.value().as_f64(),Some(-777.0),"{}",case["id"]);held+=1;}
+                }
+            }
+        }
+    }
+    assert_eq!((checked,held),(56,172));
+}
+
+#[test]
+fn statistical_variance_exact_domain_keeps_all_native_cases_accounted_for() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/statistical_native.json")).unwrap();
+    let cases:Vec<_>=fixture["cases"].as_array().unwrap().iter().filter(|case|matches!(case["shape"]["function"].as_str(),Some("VAR"|"VARP"|"STDEV"|"STDEVP"|"_xlfn.VAR.S"|"_xlfn.VAR.P"|"_xlfn.STDEV.S"|"_xlfn.STDEV.P"))).collect();
+    assert_eq!(cases.len(),192);let(mut checked,mut held)=(0,0);
+    for(year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        for saved in [false,true] {
+            let mut book=Workbook::new();book.set_date_system(system);
+            for name in ["Values","CycleShape","Cases"] {book.add_sheet(name).unwrap();}
+            for(sheet,cells) in fixture["source_cells"].as_object().unwrap() {
+                for(address,value) in cells.as_object().unwrap() {
+                    let value=if let Some(value)=value.as_bool(){Scalar::from(value)}else if let Some(value)=value.as_str(){Scalar::from(value)}else{Scalar::from(value.as_f64().unwrap())};
+                    book.sheet_mut(sheet).unwrap().set_cell(at(address),value).unwrap();
+                }
+            }
+            book.set_entry("Values",at("E1"),"=1/0").unwrap();
+            let selected:Vec<_>=cases.iter().filter(|case|case["date_system"]==year).collect();
+            for case in &selected {
+                let host=at(case["cell"].as_str().unwrap());let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(73,24),"{year} saved={saved}");
+            for case in selected {
+                let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();let cache=&case["saved_cache"];
+                let supported=matches!(case["shape"]["operand_shape"].as_str(),Some("error-reference"|"single"|"three"|"zeros"|"mixed-range"|"numeric-plus-zero"|"numeric-range"|"numeric-text-direct"|"true-direct"));
+                if !supported {assert_eq!(cell.value().as_f64(),Some(-777.0),"{}",case["id"]);held+=1;continue;}
+                if cache["type"]=="e" {assert_eq!(cell.error().map(|v|v.as_str()),cache["value_text"].as_str(),"{}",case["id"]);}
+                else {assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]);}
+                checked+=1;
+            }
+        }
+    }
+    assert_eq!((checked,held),(288,96));
+}
+
+#[test]
+fn statistical_variance_exact_boundary_observations_preserve_outside_domain_caches() {
+    use yggdryl::excel::Formula;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/variance_exact_native.json")).unwrap();
+    let cases=fixture["cases"].as_array().unwrap();assert_eq!(cases.len(),192);
+    let(mut checked,mut held)=(0,0);
+    for(year,system) in [("1900",DateSystem::Year1900),("1904",DateSystem::Year1904)] {
+        for saved in [false,true] {
+            let mut book=Workbook::new();book.set_date_system(system);book.add_sheet("Values").unwrap();book.add_sheet("Cases").unwrap();
+            let selected:Vec<_>=cases.iter().filter(|case|case["date_system"]==year).collect();
+            for case in &selected {
+                let host=at(case["cell"].as_str().unwrap());let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                book.sheet_mut("Cases").unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap().with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(72,24),"{year} saved={saved}");
+            for case in selected {
+                let cell=book.sheet("Cases").unwrap().cell(at(case["cell"].as_str().unwrap())).unwrap();let cache=&case["saved_cache"];
+                if matches!(case["shape"]["label"].as_str(),Some("past-bound"|"decimal"|"square-sum-bound")) {
+                    assert_eq!(cell.value().as_f64(),Some(-777.0),"{}",case["id"]);held+=1;continue;
+                }
+                if cache["type"]=="e" {assert_eq!(cell.error().map(|v|v.as_str()),cache["value_text"].as_str(),"{}",case["id"]);}
+                else {assert_eq!(cell.value().as_f64().map(f64::to_bits),Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),"{}",case["id"]);}
+                checked+=1;
+            }
+        }
+    }
+    assert_eq!((checked,held),(288,96));
+}
+
+#[test]
+fn criteria_typed_text_cache_follows_normal_and_forgotten_cell_mutation() {
+    use yggdryl::excel::{Cell,DateSystem};
+    for forgotten in [false,true] {
+        for number in [false,true] {
+            let mut book=Workbook::new();let sheet=book.add_sheet("Data").unwrap();
+            sheet.set_cell(at("A1"),Scalar::from_sequence([Scalar::from("before"),Scalar::from(17_i64)])).unwrap();
+            book.set_entry("Data",at("B1"),"=COUNTIF(A1,\"*before*\")").unwrap();
+            book.set_entry("Data",at("C1"),"=COUNTIF(A1,\"*after*\")").unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated,2);
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")),Scalar::from(1.0));
+            let value=if number {Scalar::from(42.0)} else {Scalar::from_sequence([Scalar::from("after"),Scalar::from(23_i64)])};
+            let mut guard=book.sheet_mut("Data").unwrap().cell_mut(at("A1")).unwrap();
+            *guard=Cell::from_scalar(at("A1"),value,DateSystem::Year1900).unwrap();
+            if forgotten {std::mem::forget(guard)} else {drop(guard)};
+            assert_eq!(book.recalculate().unwrap().evaluated,2);
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("B1")),Scalar::from(0.0),"forgotten={forgotten} number={number}");
+            assert_eq!(book.sheet("Data").unwrap().scalar(at("C1")),Scalar::from(if number {0.0}else{1.0}));
+        }
+    }
+}
+
+#[test]
+fn full_function_native_oracle_replays_exact_scope_and_explicit_policy_holds() {
+    use yggdryl::excel::{Clock,Formula};
+    use yggdryl::Timezone;
+    let fixture:serde_json::Value=serde_json::from_str(include_str!("fixtures/functions_oracle_native.json")).unwrap();
+    let cases=fixture["cases"].as_array().unwrap();assert_eq!(cases.len(),324);
+    assert_eq!((fixture["native_passed"].as_bool(),fixture["cleanup_completed"].as_bool()),(Some(true),Some(true)));
+    let(mut exact,mut held,mut behavior)=(0,0,0);
+    let mut failures=Vec::new();
+    for(year,system,authored,native) in [
+        ("1900",DateSystem::Year1900,include_bytes!("fixtures/functions_oracle_input_1900.xlsx").as_slice(),include_bytes!("fixtures/functions_excel.xlsx").as_slice()),
+        ("1904",DateSystem::Year1904,include_bytes!("fixtures/functions_oracle_input_1904.xlsx").as_slice(),include_bytes!("fixtures/functions_excel_1904.xlsx").as_slice()),
+    ] {
+        for saved in [false,true] {
+            let mut book=Workbook::from_bytes(if saved {native}else{authored}.to_vec()).unwrap().with_clock(Clock::fixed(0,Timezone::UTC,711));
+            book.parse_all().unwrap();
+            if saved && year == "1900" {
+                assert_eq!(book.sheet("Errors").unwrap().cell(at("A8")).unwrap().error().map(|error| error.as_str()),Some("#N/A"));
+                assert_eq!(book.sheet("Cases").unwrap().scalar(at("B293")).as_f64(),Some(8.0));
+            }
+            let selected:Vec<_>=cases.iter().filter(|case|case["date_system"]==year).collect();
+            for case in &selected {
+                let host=at(case["cell"].as_str().unwrap());let sheet=case["sheet"].as_str().unwrap();
+                // English source TEXT is evaluated by Rust's en-US owner.
+                // Its independently proved companion supplies the expected
+                // value only; a French localized formula is never substituted.
+                let formula=if saved {&case["saved_cache"]["formula_text"]}else{&case["wire_formula"]};
+                book.sheet_mut(sheet).unwrap().insert_cell(Cell::from_scalar(host,Scalar::from(-777.0),system).unwrap()
+                    .with_formula(Formula::from_file(formula.as_str().unwrap(),host))).unwrap();
+            }
+            let report=book.calculate_all().unwrap();
+            assert_eq!(report.circular_count,0,"{year} saved={saved}");
+            for case in selected {
+                let id=case["id"].as_str().unwrap();let cell=book.sheet(case["sheet"].as_str().unwrap()).unwrap()
+                    .cell(at(case["cell"].as_str().unwrap())).unwrap();
+                // Excel SaveAs may normalize a source error without recomputing
+                // its same-session consumer cache. Reopened native evidence is
+                // distinct from the original retained cache and input proof.
+                let cache=if saved && case.get("rust_saved_recalculated_cache").is_some() {
+                    &case["rust_saved_recalculated_cache"]
+                } else { &case["rust_expected_cache"] };
+                let okay=match case["rust_policy"]["kind"].as_str().unwrap() {
+                    "held" => {held+=1;cell.error().is_none() && cell.value().as_f64()==Some(-777.0)},
+                    "behavior" => {
+                        behavior+=1;
+                        cell.value().as_f64().is_some_and(|number|match id {
+                            "function-rand"=>number>=0.0 && number<1.0,
+                            "function-randbetween"=>number.fract()==0.0 && (-5.0..=7.0).contains(&number),
+                            "function-now"|"function-today"=>number==if year=="1900" {25569.0}else{24107.0},
+                            "clock-day-fraction"=>number==0.0,
+                            _=>panic!("unclassified volatile case {id}"),
+                        })
+                    },
+                    "exact"=>{exact+=1;match cache["type"].as_str().unwrap() {
+                        "n"=>cell.error().is_none() && cell.value().as_f64().map(f64::to_bits)==Some(cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits()),
+                        "b"=>cell.value().as_bool()==Some(cache["value_text"]=="1"),
+                        "str"=>cell.value().as_str()==cache["value_text"].as_str(),
+                        "e"=>cell.error().map(|error|error.as_str())==cache["value_text"].as_str(),
+                        other=>panic!("unexpected cache type {other} for {id}"),
+                    }},
+                    other=>panic!("unclassified Rust policy {other}"),
+                };
+                if !okay {failures.push(format!("{id} ({year}, saved={saved}): policy={} expected={cache}, actual={:?}, error={:?}",case["rust_policy"]["kind"],cell.value(),cell.error()));}
+            }
+        }
+    }
+    // Union and intersection now compute the four authored/saved native cases.
+    assert_eq!((exact,held,behavior),(624,14,10));
+    assert!(failures.is_empty(),"{} mismatches:\n{}",failures.len(),failures.join("\n"));
+}
+
+#[test]
+fn cold_sheet_state_survives_late_parse_and_native_package_save() {
+    use yggdryl::excel::SheetState;
+    for parse_before_save in [false,true] {
+        let mut authored=Workbook::new();authored.add_sheet("Data").unwrap().set_cell(at("A1"),7.0).unwrap();authored.add_sheet("Other").unwrap();
+        let mut book=Workbook::from_bytes(authored.into_bytes().unwrap()).unwrap();
+        book.set_sheet_state("Data",SheetState::VeryHidden).unwrap();
+        assert_eq!(book.sheet_state("Data"),Some(SheetState::VeryHidden));
+        if parse_before_save {assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(7.0));}
+        let saved=book.into_bytes().unwrap();let reopened=Workbook::from_bytes(saved).unwrap();
+        assert_eq!(reopened.sheet_state("Data"),Some(SheetState::VeryHidden));
+        assert_eq!(reopened.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(7.0));
+        assert_eq!(reopened.sheet_state("Data"),Some(SheetState::VeryHidden));
+    }
+}
+
+
+#[test]
+fn criteria_tilde_literal_and_wildcard_native_292_cache_cases() {
+    use yggdryl::{Scalar, excel::{Cell, CellRef, DateSystem, Formula, Workbook}};
+    let fixture: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/criteria_tilde_native.json")).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_cache_equal"], 584);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 292);
+    let mut checked = 0;
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        for saved in [false, true] {
+            let mut book = Workbook::new();
+            book.set_date_system(system);
+            for name in ["Values", "Cases"] { book.add_sheet(name).unwrap(); }
+            for (address, value) in fixture["source_cells"]["Values"].as_object().unwrap() {
+                let value = if let Some(text) = value.as_str() { Scalar::from(text) }
+                    else { Scalar::from(value.as_f64().unwrap()) };
+                book.sheet_mut("Values").unwrap()
+                    .set_cell(address.parse().unwrap(), value).unwrap();
+            }
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let text = if saved { &case["saved_cache"]["formula_text"] }
+                    else { &case["wire_formula"] };
+                book.sheet_mut("Cases").unwrap().insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                        .with_formula(Formula::from_file(text.as_str().unwrap(), at))
+                ).unwrap();
+            }
+            let report = book.calculate_all().unwrap();
+            assert_eq!(report.circular_count, 0);
+            for case in cases.iter().filter(|case| case["date_system"] == year) {
+                let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+                let cell = book.sheet("Cases").unwrap().cell(at).unwrap();
+                let cache = &case["saved_cache"];
+                assert_eq!(cache["type"], "n", "{}", case["id"]);
+                let expected = cache["value_text"].as_str().unwrap().parse::<f64>().unwrap();
+                assert_eq!(cell.value().as_f64().map(f64::to_bits), Some(expected.to_bits()),
+                    "{} saved={saved}", case["id"]);
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 584);
+}
+
+#[test]
+fn literal_arrays_named_aliases_preserve_shape_and_origin_through_selected_results() {
+    use yggdryl::excel::Formula;
+    let mut book = calculation_named_book(r#"<definedName name="Constants">{1,TRUE,"3"}</definedName><definedName name="Alias">Constants</definedName>"#, DateSystem::Year1900);
+    for (address, formula, number, text) in [
+        ("A1", "SUM(Alias)", Some(1.0), None),
+        ("A2", "COUNTA(Alias)", Some(3.0), None),
+        ("A3", "COLUMNS(Alias)", Some(3.0), None),
+        ("A4", "SUM(IF(TRUE,Alias,{9,8,7}))", Some(1.0), None),
+        ("A5", "_xlfn.CONCAT(Alias)", None, Some("1TRUE3")),
+        ("A6", "SUM(Alias)+SUM(Constants)", Some(2.0), None),
+    ] {
+        book.sheet_mut("Data").unwrap().insert_cell(Cell::from_scalar(at(address), Scalar::from(-777.0), DateSystem::Year1900).unwrap()
+            .with_formula(Formula::from_file(formula, at(address)))).unwrap();
+        let report=book.calculate_all().unwrap();assert_eq!(report.uncomputed,0,"{formula}");
+        let value=book.sheet("Data").unwrap().scalar(at(address));
+        if let Some(number)=number {assert_eq!(value.as_f64(),Some(number),"{formula}");}
+        if let Some(text)=text {assert_eq!(value.as_str(),Some(text),"{formula}");}
+    }
+}
+
+#[test]
+fn reference_intersection_generated_components_have_a_named_bound() {
+    use yggdryl::excel::Formula;
+    let mut book = Workbook::new();
+    book.add_sheet("Values").unwrap();
+    book.add_sheet("Cases").unwrap();
+    for row in 0..65 {
+        book.sheet_mut("Values").unwrap()
+            .set_cell(CellRef::new(row, 0), f64::from(row + 1)).unwrap();
+    }
+    let union = |count: u32| (1..=count)
+        .map(|row| format!("Values!$A${row}"))
+        .collect::<Vec<_>>().join(",");
+    let limited = union(32);
+    let excessive = union(65);
+    let formulas = [
+        format!("SUM(({limited}) ({limited}))"),
+        format!("SUM(({excessive}) ({excessive}))"),
+        "SUM(Values!$A:$A Values!$A$1)".to_owned(),
+    ];
+    for (row, formula) in formulas.iter().enumerate() {
+        let at = CellRef::new(row as u32, 0);
+        book.sheet_mut("Cases").unwrap().insert_cell(
+            Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900)
+                .unwrap().with_formula(Formula::from_file(formula, at)),
+        ).unwrap();
+    }
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (2, 1, 0));
+    let cases = book.sheet("Cases").unwrap();
+    assert_eq!(cases.scalar(CellRef::new(0, 0)).as_f64(), Some(528.0));
+    assert_eq!(cases.scalar(CellRef::new(1, 0)).as_f64(), Some(-777.0));
+    // Cell count is not the reference-component budget: a full sparse column
+    // plus one point has only two area descriptors.
+    assert_eq!(cases.scalar(CellRef::new(2, 0)).as_f64(), Some(1.0));
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn named_union_dag_respects_reference_component_budget() {
+    let mut names = String::from("<definedName name=\"AreaLevel0\">Data!$A$1</definedName>");
+    for level in 1..=14 {
+        names.push_str(&format!(
+            "<definedName name=\"AreaLevel{level}\">(AreaLevel{},AreaLevel{})</definedName>",
+            level - 1, level - 1));
+    }
+    let mut book = calculation_named_book(&names, DateSystem::Year1900);
+    book.sheet_mut("Data").unwrap().set_cell(at("A1"), 1.0).unwrap();
+    book.sheet_mut("Cases").unwrap().insert_cell(
+        calculation_cached("A1", "SUM(AreaLevel12)", -777.0)).unwrap();
+    book.sheet_mut("Cases").unwrap().insert_cell(
+        calculation_cached("A2", "SUM(AreaLevel14)", -777.0)).unwrap();
+    let report = book.calculate_all().unwrap();
+    assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (1, 1, 0));
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")), Scalar::from(4096.0));
+    // The prior cache remains because 16,384 repeated leaves exceed the
+    // formula-derived 8,192 component budget before any value is published.
+    assert_eq!(book.sheet("Cases").unwrap().scalar(at("A2")), Scalar::from(-777.0));
+}
+
+#[test]
+fn literal_arrays_selected_branches_admit_only_reached_cycles_and_dirty_sources() {
+    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+    for (address,formula) in [
+        ("A1","=SUM(IF({TRUE,TRUE},{1,2},A1))"),
+        ("B1","=SUM(IF({TRUE,FALSE},{1,2},B1))"),
+        ("C1","=SUM(CHOOSE({1,1},{1,2},C1))"),
+        ("D1","=SUM(IF({TRUE,FALSE},E1,F1))"),
+        ("E1","=10"),("F1","=20"),
+    ] {book.set_entry("Data",at(address),formula).unwrap();}
+    let report=book.calculate_all().unwrap();
+    assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(5,1,1));
+    assert_eq!(report.circular,[("Data".into(),at("B1"))]);
+    for (address,value) in [("A1",3.0),("C1",3.0),("D1",30.0)] {
+        assert_eq!(book.sheet("Data").unwrap().scalar(at(address)).as_f64(),Some(value));
+    }
+    book.set_entry("Data",at("E1"),"=11").unwrap();
+    let report=book.recalculate().unwrap();assert_eq!(report.evaluated,2);
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("D1")).as_f64(),Some(31.0));
+    assert_eq!(book.recalculate().unwrap().evaluated,0);
+}
+
+#[test]
+fn literal_arrays_selected_unrepresented_range_does_not_admit_false_cycles() {
+    let mut book=Workbook::new();book.add_sheet("Data").unwrap();
+    book.sheet_mut("Data").unwrap().insert_cell(calculation_cached("A1","SUM(IF({TRUE,FALSE},A1:A3,{0,0}))",77.0)).unwrap();
+    let report=book.calculate_all().unwrap();
+    assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(0,1,0));
+    assert_eq!(book.sheet("Data").unwrap().scalar(at("A1")),Scalar::from(77.0));
+}
+
+#[cfg(feature="internals")]
+#[test]
+fn literal_arrays_named_mapped_dag_executes_each_plan_once_per_position() {
+    for levels in [10,20] {
+        let mut names=String::from("<definedName name=\"ArrayLevel0\">{1,2}</definedName>");
+        for index in 1..=levels {
+            names.push_str(&format!("<definedName name=\"ArrayLevel{index}\">ArrayLevel{}+ArrayLevel{}</definedName>",index-1,index-1));
+        }
+        let mut book=calculation_named_book(&names,DateSystem::Year1900);
+        book.sheet_mut("Cases").unwrap().insert_cell(calculation_cached("A1",&format!("SUM(ArrayLevel{levels})"),-1.0)).unwrap();
+        let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(1,0));
+        assert_eq!(book.sheet("Cases").unwrap().scalar(at("A1")),Scalar::from(3.0*(1_u64<<levels) as f64));
+        assert_eq!(yggdryl::internals::excel_workbook::array_work(&book),2*levels,"repeated alias operands must reuse each position");
+    }
 }

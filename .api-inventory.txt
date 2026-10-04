@@ -3301,7 +3301,6 @@ pub struct Sheet
 pub enum NumberFormat  (`General`, `Date`, `DateTime`, `DateTimeFraction`, `Time`, `Duration`; `FromStr` reads `general`, `date`, `datetime`, `datetime_fraction`, `time`, `duration`)
   pub const ALL: [Self; 6] = [ Self::General, Self::Date, Self::DateTime, Self::DateTimeFraction, Self::Time, Self::Duration, ];
   pub const fn as_str(self) -> &'static str
-  pub const fn style_index(self) -> u32
   pub const fn is_temporal(self) -> bool
   pub const fn builtin(id: u32) -> Option<Self>
   pub fn from_code(code: &str) -> Self

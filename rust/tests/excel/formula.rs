@@ -1,5 +1,64 @@
 //! `rust/src/excel/formula.rs`: `Formula` - one shape per formula, its file and entry spellings, what a user types refused at the byte of its first syntax error, and the per-sheet interning a parse shares shapes through.
 
+fn native_function_fixture(text: &str, count: u64) {
+    use yggdryl::Scalar;
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let fixture: serde_json::Value = serde_json::from_str(text).unwrap();
+    assert_eq!(fixture["native_run_passed"], true);
+    assert_eq!(fixture["cleanup_completed"], true);
+    assert_eq!(fixture["native_cache_comparisons_equal"], count * 2);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len() as u64, count);
+    let mut seen = 0;
+    let mut addresses = std::collections::HashSet::new();
+    for case in cases {
+        assert!(addresses.insert((case["date_system"].as_str().unwrap(), case["sheet"].as_str().unwrap(), case["cell"].as_str().unwrap())),
+            "native workbooks with overlapping cell addresses must replay separately: {}", case["id"]);
+    }
+    for (year, system) in [("1900", DateSystem::Year1900), ("1904", DateSystem::Year1904)] {
+        let mut book = Workbook::new();
+        book.set_date_system(system);
+        for name in ["Values", "CycleShape", "Cases"] { book.add_sheet(name).unwrap(); }
+        for (name, cells) in fixture["source_cells"].as_object().unwrap() {
+            for (address, value) in cells.as_object().unwrap() {
+                let value = if let Some(value) = value.as_bool() { Scalar::from(value) }
+                    else if let Some(value) = value.as_str() { Scalar::from(value) }
+                    else { Scalar::from(value.as_f64().unwrap()) };
+                book.sheet_mut(name).unwrap().set_cell(address.parse().unwrap(), value).unwrap();
+            }
+        }
+        for case in cases.iter().filter(|case| case["date_system"] == year) {
+            let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+            book.sheet_mut(case["sheet"].as_str().unwrap()).unwrap().insert_cell(
+                Cell::from_scalar(at, Scalar::from(-777.0), system).unwrap()
+                    .with_formula(Formula::from_file(case["wire_formula"].as_str().unwrap(), at)),
+            ).unwrap();
+        }
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated as u64, report.uncomputed, report.circular_count), (count / 2, 0, 0));
+        for case in cases.iter().filter(|case| case["date_system"] == year) {
+            seen += 1;
+            let at: CellRef = case["cell"].as_str().unwrap().parse().unwrap();
+            let cell = book.sheet(case["sheet"].as_str().unwrap()).unwrap().cell(at).unwrap();
+            let cache = &case["saved_cache"];
+            match cache["type"].as_str().unwrap() {
+                "n" => assert_eq!(cell.value().as_f64().unwrap().to_bits(),
+                    cache["value_text"].as_str().unwrap().parse::<f64>().unwrap().to_bits(), "{}", case["id"]),
+                "b" => assert_eq!(cell.value().as_bool(), Some(cache["value_text"] == "1"), "{}", case["id"]),
+                "e" => assert_eq!(cell.error().map(|error| error.as_str()), cache["value_text"].as_str(), "{}", case["id"]),
+                "str" => assert_eq!(cell.value().as_str(), Some(cache["value_text"].as_str().unwrap_or("")), "{}", case["id"]),
+                kind => panic!("unexpected native cache kind {kind}"),
+            }
+        }
+        let revisions = ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision());
+        assert_eq!(book.calculate_all().unwrap().evaluated as u64, count / 2);
+        assert_eq!(["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision()), revisions);
+        assert_eq!(book.recalculate().unwrap().evaluated,
+            fixture["incremental_evaluated_per_epoch"].as_u64().unwrap_or(0));
+    }
+    assert_eq!(seen, count);
+}
+
 #[path = "formula/aggregate.rs"]
 mod aggregate;
 #[path = "formula/criteria.rs"]
@@ -364,4 +423,59 @@ fn optional_call_slot_survives_space_before_close() {
         let file = Formula::from_file(text, host);
         assert!(file.is_computed(), "{text}");
     }
+}
+
+#[test]
+fn native_clock_observations_pin_bounds_without_random_bits() {
+    use yggdryl::excel::DateSystem;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/clock_native.json")).unwrap();
+    assert_eq!(fixture["native"]["cleanup_completed"], true);
+    let cases = fixture["observations"].as_array().unwrap();
+    assert_eq!(cases.len(), 20);
+    let find = |system: &str, formula: &str| {
+        cases.iter().find(|case| case["system"] == system && case["authored_formula"] == formula).unwrap()
+    };
+    let number = |case: &serde_json::Value, phase: &str| {
+        assert_eq!(case[phase]["kind"], "number");
+        case[phase]["value"].as_f64().unwrap()
+    };
+    for phase in ["first", "after_save"] {
+        for system in ["1900", "1904"] {
+            let today = number(find(system, "TODAY()"), phase);
+            let now = number(find(system, "NOW()"), phase);
+            let date_system = if system == "1900" { DateSystem::Year1900 } else { DateSystem::Year1904 };
+            let millis = date_system.millis_from_serial(now).unwrap();
+            assert_eq!(date_system.serial_from_millis(millis).unwrap().to_bits(), now.to_bits(),
+                "{system} {phase} native NOW must lie on the existing millisecond serial grid");
+            assert_eq!(today.fract(), 0.0);
+            assert!((today..today + 1.0).contains(&now));
+            let fraction = number(find(system, "NOW()-TODAY()"), phase);
+            assert!((0.0..1.0).contains(&fraction));
+            let rand = number(find(system, "RAND()"), phase);
+            assert!((0.0..1.0).contains(&rand));
+            let between = number(find(system, "RANDBETWEEN(-5,7)"), phase);
+            assert!(between.fract() == 0.0 && (-5.0..=7.0).contains(&between));
+            assert_eq!(number(find(system, "RANDBETWEEN(7,7)"), phase), 7.0);
+            assert_eq!(find(system, "RANDBETWEEN(8,7)")[phase]["literal"], "#NUM!");
+        }
+        let old = number(find("1900", "TODAY()"), phase);
+        let modern = number(find("1904", "TODAY()"), phase);
+        assert_eq!(old - modern, 1_462.0);
+    }
+}
+#[path = "formula/text.rs"]
+mod text;
+
+// P5 public documented function catalog.
+
+#[test]
+fn documented_function_catalog_uses_the_one_parser_registry() {
+    let entries: Vec<_> = yggdryl::excel::Formula::functions().collect();
+    assert_eq!(entries.len(), 159);
+    assert!(entries.windows(2).all(|pair| pair[0].name < pair[1].name));
+    let sum = entries.iter().find(|entry| entry.name == "SUM").expect("SUM");
+    assert_eq!(sum.category, "Math and trigonometry");
+    assert_eq!(sum.signature, "SUM(number1, [number2], ...)");
+    assert!(!sum.description.is_empty());
+    assert!(!entries.iter().any(|entry| entry.name == "SINGLE"));
 }

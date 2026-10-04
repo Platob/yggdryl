@@ -1,0 +1,917 @@
+{
+  "schema_version": 1,
+  "scope": "native scalar lookup fallback and key-axis error controls; no Rust equivalence claim",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 36,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "774e23520bd98d091735b98d4cf4fcaa57298f1e89c04d719ae167f784929673",
+      "cases": 9,
+      "physical_formula_cells": 9
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "cfaf70d462922d3906727266ed88c5e7de4e27112564c372df258a1c4bfbf157",
+      "cases": 9,
+      "physical_formula_cells": 9
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "A1": 1,
+      "A2": 3,
+      "A3": 5,
+      "B1": 10,
+      "B2": 30,
+      "B3": 50,
+      "J1": 1,
+      "K1": 3,
+      "L1": 5,
+      "J2": 10,
+      "K2": 30,
+      "L2": 50
+    }
+  },
+  "manifest_sha256": "53d35a30112a2ed1bd6a2e5c70a8568c03ad9b26bdacf425f2fdf74b494e76f6",
+  "source_report": "rust/target/excel-desktop/p5-lookup-dependency-native/results.json",
+  "source_report_sha256": "4ffee6ea40dbed47354b016271510e760f75ecce605b4cbaadb7a45c7d55494f",
+  "cases": [
+    {
+      "id": "source-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "C1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "C1",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "source-key-tail-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "A4",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A4",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "source-h-return-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "J3",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "J3",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "x-found-literal-error-fallback-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "x-missing-literal-error-fallback-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "_xlfn.XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "x-found-reference-error-fallback-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "v-unselected-return-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "VLOOKUP(1,Values!A1:C3,2,FALSE)",
+      "shape": {
+        "function": "VLOOKUP"
+      },
+      "actual": {
+        "formula": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula2": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula2": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      }
+    },
+    {
+      "id": "h-unselected-return-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "HLOOKUP(1,Values!J1:L3,2,FALSE)",
+      "shape": {
+        "function": "HLOOKUP"
+      },
+      "actual": {
+        "formula": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula2": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula2": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      }
+    },
+    {
+      "id": "match-tail-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "MATCH(1,Values!A1:A4,0)",
+      "shape": {
+        "function": "MATCH"
+      },
+      "actual": {
+        "formula": "=MATCH(1,Values!A1:A4,0)",
+        "formula2": "=MATCH(1,Values!A1:A4,0)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MATCH(1,Values!A1:A4,0)",
+        "formula2": "=MATCH(1,Values!A1:A4,0)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MATCH(1,Values!A1:A4,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      }
+    },
+    {
+      "id": "source-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "C1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "C1",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "source-key-tail-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "A4",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A4",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "source-h-return-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "J3",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "J3",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "x-found-literal-error-fallback-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "x-missing-literal-error-fallback-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "_xlfn.XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula2": "=XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.XLOOKUP(0,Values!A1:A3,Values!B1:B3,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "x-found-reference-error-fallback-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+      "shape": {
+        "function": "XLOOKUP"
+      },
+      "actual": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula2": "=XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.XLOOKUP(1,Values!A1:A3,Values!B1:B3,Values!C1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "v-unselected-return-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "VLOOKUP(1,Values!A1:C3,2,FALSE)",
+      "shape": {
+        "function": "VLOOKUP"
+      },
+      "actual": {
+        "formula": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula2": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula2": "=VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "VLOOKUP(1,Values!A1:C3,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      }
+    },
+    {
+      "id": "h-unselected-return-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "HLOOKUP(1,Values!J1:L3,2,FALSE)",
+      "shape": {
+        "function": "HLOOKUP"
+      },
+      "actual": {
+        "formula": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula2": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula2": "=HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "HLOOKUP(1,Values!J1:L3,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      }
+    },
+    {
+      "id": "match-tail-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "MATCH(1,Values!A1:A4,0)",
+      "shape": {
+        "function": "MATCH"
+      },
+      "actual": {
+        "formula": "=MATCH(1,Values!A1:A4,0)",
+        "formula2": "=MATCH(1,Values!A1:A4,0)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MATCH(1,Values!A1:A4,0)",
+        "formula2": "=MATCH(1,Values!A1:A4,0)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MATCH(1,Values!A1:A4,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      }
+    }
+  ]
+}

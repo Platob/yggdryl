@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "scope": "Excel 16.0 saved GCD/LCM direct and computed boundary formulas; individual observations",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "source_report_sha256": "8e38a3151c6d42afd27b2d4e09cda28501f802bddd065705dc81f181251a00df",
+  "manifest_sha256": "832aace77d3c06f8edcd3b7a6f46e7cee4ae6e50c8a960dc27971c5d0f82e20f",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "gcd_direct_below-1900",
+      "date_system": "1900",
+      "cell": "A1",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_direct_equal-1900",
+      "date_system": "1900",
+      "cell": "A2",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_direct_above-1900",
+      "date_system": "1900",
+      "cell": "A3",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_computed_equal-1900",
+      "date_system": "1900",
+      "cell": "A4",
+      "formula": "=GCD(POWER(2,53),3)",
+      "cache_type": "n",
+      "cache_value": "1"
+    },
+    {
+      "id": "gcd_computed_54-1900",
+      "date_system": "1900",
+      "cell": "A5",
+      "formula": "=GCD(POWER(2,54),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "gcd_computed_63-1900",
+      "date_system": "1900",
+      "cell": "A6",
+      "formula": "=GCD(POWER(2,63),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "gcd_computed_64-1900",
+      "date_system": "1900",
+      "cell": "A7",
+      "formula": "=GCD(POWER(2,64),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_direct_below-1900",
+      "date_system": "1900",
+      "cell": "A8",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_direct_equal-1900",
+      "date_system": "1900",
+      "cell": "A9",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_direct_above-1900",
+      "date_system": "1900",
+      "cell": "A10",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_computed_equal-1900",
+      "date_system": "1900",
+      "cell": "A11",
+      "formula": "=LCM(POWER(2,53),1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740992"
+    },
+    {
+      "id": "lcm_computed_54-1900",
+      "date_system": "1900",
+      "cell": "A12",
+      "formula": "=LCM(POWER(2,54),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_63-1900",
+      "date_system": "1900",
+      "cell": "A13",
+      "formula": "=LCM(POWER(2,63),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_64-1900",
+      "date_system": "1900",
+      "cell": "A14",
+      "formula": "=LCM(POWER(2,64),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_64_zero-1900",
+      "date_system": "1900",
+      "cell": "A15",
+      "formula": "=LCM(POWER(2,64),0)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "gcd_direct_below-1904",
+      "date_system": "1904",
+      "cell": "A1",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_direct_equal-1904",
+      "date_system": "1904",
+      "cell": "A2",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_direct_above-1904",
+      "date_system": "1904",
+      "cell": "A3",
+      "formula": "=GCD(9007199254740990,3)",
+      "cache_type": "n",
+      "cache_value": "3"
+    },
+    {
+      "id": "gcd_computed_equal-1904",
+      "date_system": "1904",
+      "cell": "A4",
+      "formula": "=GCD(POWER(2,53),3)",
+      "cache_type": "n",
+      "cache_value": "1"
+    },
+    {
+      "id": "gcd_computed_54-1904",
+      "date_system": "1904",
+      "cell": "A5",
+      "formula": "=GCD(POWER(2,54),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "gcd_computed_63-1904",
+      "date_system": "1904",
+      "cell": "A6",
+      "formula": "=GCD(POWER(2,63),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "gcd_computed_64-1904",
+      "date_system": "1904",
+      "cell": "A7",
+      "formula": "=GCD(POWER(2,64),3)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_direct_below-1904",
+      "date_system": "1904",
+      "cell": "A8",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_direct_equal-1904",
+      "date_system": "1904",
+      "cell": "A9",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_direct_above-1904",
+      "date_system": "1904",
+      "cell": "A10",
+      "formula": "=LCM(9007199254740990,1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740990"
+    },
+    {
+      "id": "lcm_computed_equal-1904",
+      "date_system": "1904",
+      "cell": "A11",
+      "formula": "=LCM(POWER(2,53),1)",
+      "cache_type": "n",
+      "cache_value": "9007199254740992"
+    },
+    {
+      "id": "lcm_computed_54-1904",
+      "date_system": "1904",
+      "cell": "A12",
+      "formula": "=LCM(POWER(2,54),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_63-1904",
+      "date_system": "1904",
+      "cell": "A13",
+      "formula": "=LCM(POWER(2,63),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_64-1904",
+      "date_system": "1904",
+      "cell": "A14",
+      "formula": "=LCM(POWER(2,64),1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "lcm_computed_64_zero-1904",
+      "date_system": "1904",
+      "cell": "A15",
+      "formula": "=LCM(POWER(2,64),0)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    }
+  ]
+}

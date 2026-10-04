@@ -356,6 +356,30 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
             }
         });
     });
+    for (name, expression) in [
+        ("exp", "exp(size)"), ("ln", "ln(size)"),
+        ("log10", "log10(size)"), ("degrees", "degrees(size)"),
+        ("radians", "radians(size)"),
+        ("cos", "cos(size)"), ("asin", "asin(size)"),
+        ("sin", "sin(size)"), ("tan", "tan(size)"),
+        ("acos", "acos(0.5)"), ("atan", "atan(size)"),
+        ("atan2", "atan2(size,1)"),
+    ] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                for row in &rows { black_box(bound.eval(black_box(row)).unwrap()); }
+            });
+        });
+    }
+    let power = "pow(size, 2)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    group.bench_function("power_int64", |bencher| {
+        bencher.iter(|| {
+            for row in &rows {
+                black_box(power.eval(black_box(row)).unwrap());
+            }
+        });
+    });
     group.bench_function("absolute_int64", |bencher| {
         bencher.iter(|| {
             for row in &rows {
@@ -768,6 +792,45 @@ criterion_group!(
     map_key_benchmarks,
     star_projection_benchmarks,
     plan_benchmarks,
-    prune_benchmarks
+    prune_benchmarks,
+    casing_benchmarks,
+    integer_math_benchmarks
 );
 criterion_main!(expression);
+
+fn casing_benchmarks(criterion: &mut Criterion) {
+    let schema=StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from).unwrap().required_field("row");
+    let mut group=criterion.benchmark_group("expression_casing");
+    for (name,expression,input) in [("short_lower","lower(s)","AbC".to_owned()),
+                                   ("short_upper","upper(s)","aBc".to_owned()),
+                                   ("shared_lower","lower(s)","unchanged long lowercase ".repeat(32)),
+                                   ("unicode_context","lower(s)","\u{039f}\u{03a3}".repeat(32))] {
+        let bound=expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        let row=Scalar::from_sequence([Scalar::from(input.as_str())]);
+        group.bench_function(name,|bencher|bencher.iter(||black_box(bound.eval(black_box(&row)).unwrap())));
+    }
+    group.finish();
+}
+
+
+/// Exact integer functions, bound once and evaluated without row scratch.
+fn integer_math_benchmarks(criterion: &mut Criterion) {
+    let schema = StructType::from_fields([
+        DataType::Int64.required_field("left"),
+        DataType::UInt64.required_field("right"),
+    ]).map(DataType::from).unwrap().required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(12_i64), Scalar::from(18_u64)]);
+    let mut group = criterion.benchmark_group("expression_integer_math");
+    for (name, expression) in [
+        ("gcd", "gcd(left,right)"),
+        ("lcm", "lcm(left,right)"),
+        ("factorial", "factorial(left)"),
+    ] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| black_box(bound.eval(black_box(&row)).unwrap()));
+        });
+    }
+    group.finish();
+}

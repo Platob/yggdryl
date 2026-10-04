@@ -1,0 +1,2848 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_native_observations",
+  "execution_only": true,
+  "rust_equivalence_checked": false,
+  "source": {
+    "manifest_sha256": "a1857135f36e1a8c77020dde7bd5fbf03ae7b512d136166d0571e7ac67999e5d",
+    "input_sha256": "53c56557c14ad252fd38aa0dd670702978dfbfc85cb0f0d91b468eb9c3d2dfb6"
+  },
+  "native": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036,
+    "country_setting": 33.0,
+    "active_attachment": true,
+    "cleanup_completed": true,
+    "refresh_save_reopen_equal": true
+  },
+  "saved": {
+    "file": "pivot-native.xlsx",
+    "sha256": "cdb20d3f40f5b5ac7f14ee00d2ecdb839b8927e9d4907bfbcdc2bb937a4a054b"
+  },
+  "cases": [
+    {
+      "id": "matrix_one_value",
+      "source": {
+        "sheet": "Data",
+        "range": "A1:F9"
+      },
+      "destination": {
+        "sheet": "CaseMatrix",
+        "anchor": "A3"
+      },
+      "table_range2": "$A$3:$E$8",
+      "location": {
+        "ref": "A3:E8",
+        "firstHeaderRow": "1",
+        "firstDataRow": "2",
+        "firstDataCol": "1"
+      },
+      "row_fields": [
+        0
+      ],
+      "column_fields": [
+        1
+      ],
+      "data_fields": [
+        {
+          "name": "Sales Sum",
+          "fld": "3",
+          "baseField": "0",
+          "baseItem": "0"
+        }
+      ],
+      "row_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "column_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "row_fields_com": [
+        {
+          "name": "Region",
+          "caption": "Region",
+          "position": 1
+        }
+      ],
+      "column_fields_com": [
+        {
+          "name": "Product",
+          "caption": "Product",
+          "position": 1
+        }
+      ],
+      "data_fields_com": [
+        {
+          "name": "Sales Sum",
+          "caption": "Sales Sum",
+          "position": 1,
+          "function": -4157
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Product"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Apples"
+          },
+          {
+            "variant": "str",
+            "value": "Pears"
+          },
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 13.0,
+            "hex": "0x1.a000000000000p+3",
+            "ieee754_hex": "402a000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 22.0,
+            "hex": "0x1.6000000000000p+4",
+            "ieee754_hex": "4036000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 20.0,
+            "hex": "0x1.4000000000000p+4",
+            "ieee754_hex": "4034000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 18.0,
+            "hex": "0x1.2000000000000p+4",
+            "ieee754_hex": "4032000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 38.0,
+            "hex": "0x1.3000000000000p+5",
+            "ieee754_hex": "4043000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 35.0,
+            "hex": "0x1.1800000000000p+5",
+            "ieee754_hex": "4041800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 23.0,
+            "hex": "0x1.7000000000000p+4",
+            "ieee754_hex": "4037000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 62.0,
+            "hex": "0x1.f000000000000p+5",
+            "ieee754_hex": "404f000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "record_count": 8,
+      "cache_fields": [
+        {
+          "name": "Region",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "West"
+            },
+            {
+              "kind": "s",
+              "value": "East"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Product",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "Pears"
+            },
+            {
+              "kind": "s",
+              "value": "Apples"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Year",
+          "shared_items": []
+        },
+        {
+          "name": "Sales",
+          "shared_items": []
+        },
+        {
+          "name": "Units",
+          "shared_items": []
+        },
+        {
+          "name": "Mixed",
+          "shared_items": []
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "text"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "20"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "m",
+            "value": null
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ]
+      ],
+      "saved_xml_sha256": {
+        "xl/pivotTables/pivotTable1.xml": "13bf9439c9a07de678f8a995b3a8eacf9e3bc0dfff775a87fc21c075ec152199",
+        "xl/pivotCache/pivotCacheDefinition1.xml": "fee4eef5cdb6b8b248683796ce866f710d9f72b4ce7f3fe5c750ff7888f9f1ee",
+        "xl/pivotCache/pivotCacheRecords1.xml": "266235d70a866e9f5ecd508af006f06cac8ae72ad3c74762953c902c39169a67",
+        "xl/worksheets/sheet3.xml": "22facad67341e87419e894472562400d6c389fefb0c8514ae78177c484be76b0"
+      }
+    },
+    {
+      "id": "matrix_two_values",
+      "source": {
+        "sheet": "Data",
+        "range": "A1:F9"
+      },
+      "destination": {
+        "sheet": "CaseTwoValues",
+        "anchor": "A3"
+      },
+      "table_range2": "$A$3:$I$9",
+      "location": {
+        "ref": "A3:I9",
+        "firstHeaderRow": "1",
+        "firstDataRow": "3",
+        "firstDataCol": "1"
+      },
+      "row_fields": [
+        0
+      ],
+      "column_fields": [
+        1,
+        -2
+      ],
+      "data_fields": [
+        {
+          "name": "Sales Sum",
+          "fld": "3",
+          "baseField": "0",
+          "baseItem": "0"
+        },
+        {
+          "name": "Units Average",
+          "fld": "4",
+          "subtotal": "average",
+          "baseField": "0",
+          "baseItem": "0"
+        }
+      ],
+      "row_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "column_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {},
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1",
+            "i": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            },
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1",
+            "i": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            },
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1",
+            "i": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand",
+            "i": "1"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "row_fields_com": [
+        {
+          "name": "Region",
+          "caption": "Region",
+          "position": 1
+        }
+      ],
+      "column_fields_com": [
+        {
+          "name": "Product",
+          "caption": "Product",
+          "position": 1
+        },
+        {
+          "name": "Valeurs",
+          "caption": "Valeurs",
+          "position": 2
+        }
+      ],
+      "data_fields_com": [
+        {
+          "name": "Sales Sum",
+          "caption": "Sales Sum",
+          "position": 1,
+          "function": -4157
+        },
+        {
+          "name": "Units Average",
+          "caption": "Units Average",
+          "position": 2,
+          "function": -4106
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Product"
+          },
+          {
+            "variant": "str",
+            "value": "Valeurs"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Apples"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Pears"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Total Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Total Units Average"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Units Average"
+          },
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Units Average"
+          },
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Units Average"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 13.0,
+            "hex": "0x1.a000000000000p+3",
+            "ieee754_hex": "402a000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.5,
+            "hex": "0x1.4000000000000p+1",
+            "ieee754_hex": "4004000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 22.0,
+            "hex": "0x1.6000000000000p+4",
+            "ieee754_hex": "4036000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.75,
+            "hex": "0x1.c000000000000p+0",
+            "ieee754_hex": "3ffc000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 20.0,
+            "hex": "0x1.4000000000000p+4",
+            "ieee754_hex": "4034000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 18.0,
+            "hex": "0x1.2000000000000p+4",
+            "ieee754_hex": "4032000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 38.0,
+            "hex": "0x1.3000000000000p+5",
+            "ieee754_hex": "4043000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.3333333333333335,
+            "hex": "0x1.aaaaaaaaaaaabp+1",
+            "ieee754_hex": "400aaaaaaaaaaaab",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 35.0,
+            "hex": "0x1.1800000000000p+5",
+            "ieee754_hex": "4041800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 23.0,
+            "hex": "0x1.7000000000000p+4",
+            "ieee754_hex": "4037000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 62.0,
+            "hex": "0x1.f000000000000p+5",
+            "ieee754_hex": "404f000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.25,
+            "hex": "0x1.2000000000000p+1",
+            "ieee754_hex": "4002000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "record_count": 8,
+      "cache_fields": [
+        {
+          "name": "Region",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "West"
+            },
+            {
+              "kind": "s",
+              "value": "East"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Product",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "Pears"
+            },
+            {
+              "kind": "s",
+              "value": "Apples"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Year",
+          "shared_items": []
+        },
+        {
+          "name": "Sales",
+          "shared_items": []
+        },
+        {
+          "name": "Units",
+          "shared_items": []
+        },
+        {
+          "name": "Mixed",
+          "shared_items": []
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "text"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "20"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "m",
+            "value": null
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ]
+      ],
+      "saved_xml_sha256": {
+        "xl/pivotTables/pivotTable2.xml": "d4963db5ae3e8d5a2449436ba88c0095a07b9e9cc5770064e0ebafcc87748e6f",
+        "xl/pivotCache/pivotCacheDefinition2.xml": "d41533971961e6350496b8ec3f3a21c112bbe835a775a43d3b117e0ba1a3bb2c",
+        "xl/pivotCache/pivotCacheRecords2.xml": "266235d70a866e9f5ecd508af006f06cac8ae72ad3c74762953c902c39169a67",
+        "xl/worksheets/sheet4.xml": "42be76cec9c3c3e361173864ff281f83bf152466f6e421820be6850f224e6e5e"
+      }
+    },
+    {
+      "id": "values_without_column",
+      "source": {
+        "sheet": "Data",
+        "range": "A1:F9"
+      },
+      "destination": {
+        "sheet": "CaseNoColumn",
+        "anchor": "A3"
+      },
+      "table_range2": "$A$3:$C$7",
+      "location": {
+        "ref": "A3:C7",
+        "firstHeaderRow": "0",
+        "firstDataRow": "1",
+        "firstDataCol": "1"
+      },
+      "row_fields": [
+        0
+      ],
+      "column_fields": [
+        -2
+      ],
+      "data_fields": [
+        {
+          "name": "Sales Sum",
+          "fld": "3",
+          "baseField": "0",
+          "baseItem": "0"
+        },
+        {
+          "name": "Units Average",
+          "fld": "4",
+          "subtotal": "average",
+          "baseField": "0",
+          "baseItem": "0"
+        }
+      ],
+      "row_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "column_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "i": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        }
+      ],
+      "row_fields_com": [
+        {
+          "name": "Region",
+          "caption": "Region",
+          "position": 1
+        }
+      ],
+      "column_fields_com": [
+        {
+          "name": "Valeurs",
+          "caption": "Valeurs",
+          "position": 1
+        }
+      ],
+      "data_fields_com": [
+        {
+          "name": "Sales Sum",
+          "caption": "Sales Sum",
+          "position": 1,
+          "function": -4157
+        },
+        {
+          "name": "Units Average",
+          "caption": "Units Average",
+          "position": 2,
+          "function": -4106
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "str",
+            "value": "Units Average"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 22.0,
+            "hex": "0x1.6000000000000p+4",
+            "ieee754_hex": "4036000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.75,
+            "hex": "0x1.c000000000000p+0",
+            "ieee754_hex": "3ffc000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 38.0,
+            "hex": "0x1.3000000000000p+5",
+            "ieee754_hex": "4043000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.3333333333333335,
+            "hex": "0x1.aaaaaaaaaaaabp+1",
+            "ieee754_hex": "400aaaaaaaaaaaab",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 62.0,
+            "hex": "0x1.f000000000000p+5",
+            "ieee754_hex": "404f000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.25,
+            "hex": "0x1.2000000000000p+1",
+            "ieee754_hex": "4002000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "record_count": 8,
+      "cache_fields": [
+        {
+          "name": "Region",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "West"
+            },
+            {
+              "kind": "s",
+              "value": "East"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Product",
+          "shared_items": []
+        },
+        {
+          "name": "Year",
+          "shared_items": []
+        },
+        {
+          "name": "Sales",
+          "shared_items": []
+        },
+        {
+          "name": "Units",
+          "shared_items": []
+        },
+        {
+          "name": "Mixed",
+          "shared_items": []
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "s",
+            "value": "Pears"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "Apples"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "Pears"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "text"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "s",
+            "value": "Apples"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "20"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "m",
+            "value": null
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "Apples"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "s",
+            "value": "Pears"
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "m",
+            "value": null
+          },
+          {
+            "kind": "n",
+            "value": "2023"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "s",
+            "value": "Apples"
+          },
+          {
+            "kind": "n",
+            "value": "2024"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ]
+      ],
+      "saved_xml_sha256": {
+        "xl/pivotTables/pivotTable3.xml": "7148f7d1c565b9ef59cc3a13c07d710148bd141c250b6bcecaae8632b7590543",
+        "xl/pivotCache/pivotCacheDefinition3.xml": "576ab69a46a6a9b8eecef3e3c7fb3aeb7730b10b934197f85ec03ed8f47fba1f",
+        "xl/pivotCache/pivotCacheRecords3.xml": "0d24e14e251dddbf95da8f406890293cf3e3fb472d32582de387459933440c58",
+        "xl/worksheets/sheet5.xml": "14bd347a9f5e64e8529f8d1cbe4827c711fda34cbd583cfbc493fc69352a81fc"
+      }
+    },
+    {
+      "id": "nested_subtotals",
+      "source": {
+        "sheet": "Data",
+        "range": "A1:F9"
+      },
+      "destination": {
+        "sheet": "CaseNested",
+        "anchor": "A3"
+      },
+      "table_range2": "$A$3:$E$14",
+      "location": {
+        "ref": "A3:E14",
+        "firstHeaderRow": "1",
+        "firstDataRow": "2",
+        "firstDataCol": "2"
+      },
+      "row_fields": [
+        0,
+        1
+      ],
+      "column_fields": [
+        2
+      ],
+      "data_fields": [
+        {
+          "name": "Sales Sum",
+          "fld": "3",
+          "baseField": "0",
+          "baseItem": "0"
+        }
+      ],
+      "row_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {},
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1"
+          },
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "default"
+          },
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            },
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "r": "1"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "default"
+          },
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "2"
+            },
+            {}
+          ]
+        },
+        {
+          "attributes": {
+            "t": "default"
+          },
+          "indexes": [
+            {
+              "v": "2"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "column_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "row_fields_com": [
+        {
+          "name": "Region",
+          "caption": "Region",
+          "position": 1
+        },
+        {
+          "name": "Product",
+          "caption": "Product",
+          "position": 2
+        }
+      ],
+      "column_fields_com": [
+        {
+          "name": "Year",
+          "caption": "Year",
+          "position": 1
+        }
+      ],
+      "data_fields_com": [
+        {
+          "name": "Sales Sum",
+          "caption": "Sales Sum",
+          "position": 1,
+          "function": -4157
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Sales Sum"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Year"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Product"
+          },
+          {
+            "variant": "float",
+            "value": 2023.0,
+            "hex": "0x1.f9c0000000000p+10",
+            "ieee754_hex": "409f9c0000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2024.0,
+            "hex": "0x1.fa00000000000p+10",
+            "ieee754_hex": "409fa00000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "str",
+            "value": "Apples"
+          },
+          {
+            "variant": "float",
+            "value": 10.0,
+            "hex": "0x1.4000000000000p+3",
+            "ieee754_hex": "4024000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 13.0,
+            "hex": "0x1.a000000000000p+3",
+            "ieee754_hex": "402a000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Pears"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total East"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 14.0,
+            "hex": "0x1.c000000000000p+3",
+            "ieee754_hex": "402c000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 22.0,
+            "hex": "0x1.6000000000000p+4",
+            "ieee754_hex": "4036000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "str",
+            "value": "Apples"
+          },
+          {
+            "variant": "float",
+            "value": 20.0,
+            "hex": "0x1.4000000000000p+4",
+            "ieee754_hex": "4034000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 20.0,
+            "hex": "0x1.4000000000000p+4",
+            "ieee754_hex": "4034000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Pears"
+          },
+          {
+            "variant": "float",
+            "value": 11.0,
+            "hex": "0x1.6000000000000p+3",
+            "ieee754_hex": "4026000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 7.0,
+            "hex": "0x1.c000000000000p+2",
+            "ieee754_hex": "401c000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 18.0,
+            "hex": "0x1.2000000000000p+4",
+            "ieee754_hex": "4032000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total West"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 31.0,
+            "hex": "0x1.f000000000000p+4",
+            "ieee754_hex": "403f000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 7.0,
+            "hex": "0x1.c000000000000p+2",
+            "ieee754_hex": "401c000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 38.0,
+            "hex": "0x1.3000000000000p+5",
+            "ieee754_hex": "4043000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "(vide)"
+          },
+          {
+            "variant": "str",
+            "value": "Apples"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total (vide)"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 45.0,
+            "hex": "0x1.6800000000000p+5",
+            "ieee754_hex": "4046800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 17.0,
+            "hex": "0x1.1000000000000p+4",
+            "ieee754_hex": "4031000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 62.0,
+            "hex": "0x1.f000000000000p+5",
+            "ieee754_hex": "404f000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "record_count": 8,
+      "cache_fields": [
+        {
+          "name": "Region",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "West"
+            },
+            {
+              "kind": "s",
+              "value": "East"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Product",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "Pears"
+            },
+            {
+              "kind": "s",
+              "value": "Apples"
+            },
+            {
+              "kind": "m",
+              "value": null
+            }
+          ]
+        },
+        {
+          "name": "Year",
+          "shared_items": [
+            {
+              "kind": "n",
+              "value": "2024"
+            },
+            {
+              "kind": "n",
+              "value": "2023"
+            }
+          ]
+        },
+        {
+          "name": "Sales",
+          "shared_items": []
+        },
+        {
+          "name": "Units",
+          "shared_items": []
+        },
+        {
+          "name": "Mixed",
+          "shared_items": []
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "7"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "10"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "s",
+            "value": "text"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "20"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "m",
+            "value": null
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "3"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "11"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ]
+      ],
+      "saved_xml_sha256": {
+        "xl/pivotTables/pivotTable4.xml": "c5695f9d60303f3a79f1dabce96934d4da7eec76dd888f3398011dce8a02d480",
+        "xl/pivotCache/pivotCacheDefinition4.xml": "6db3ddd6f121053475fb370e28982ee67372f40e8f8f3ebe1da3d542e5784c97",
+        "xl/pivotCache/pivotCacheRecords4.xml": "70f933a19beb8cc9697647965f938c7c6e54bdeb2acbb37da93ac2282747c4a4",
+        "xl/worksheets/sheet6.xml": "4e53c78e16b8ad84834b1f3833be3b4348921aa90cb1d1bb88c39e37102b7481"
+      }
+    },
+    {
+      "id": "source_order_grand",
+      "source": {
+        "sheet": "Order",
+        "range": "A1:B5"
+      },
+      "destination": {
+        "sheet": "CaseOrder",
+        "anchor": "A3"
+      },
+      "table_range2": "$A$3:$B$6",
+      "location": {
+        "ref": "A3:B6",
+        "firstHeaderRow": "1",
+        "firstDataRow": "1",
+        "firstDataCol": "1"
+      },
+      "row_fields": [
+        0
+      ],
+      "column_fields": [],
+      "data_fields": [
+        {
+          "name": "Value Sum",
+          "fld": "1",
+          "baseField": "0",
+          "baseItem": "0"
+        }
+      ],
+      "row_items": [
+        {
+          "attributes": {},
+          "indexes": [
+            {}
+          ]
+        },
+        {
+          "attributes": {},
+          "indexes": [
+            {
+              "v": "1"
+            }
+          ]
+        },
+        {
+          "attributes": {
+            "t": "grand"
+          },
+          "indexes": [
+            {}
+          ]
+        }
+      ],
+      "column_items": [
+        {
+          "attributes": {},
+          "indexes": []
+        }
+      ],
+      "row_fields_com": [
+        {
+          "name": "Group",
+          "caption": "Group",
+          "position": 1
+        }
+      ],
+      "column_fields_com": [],
+      "data_fields_com": [
+        {
+          "name": "Value Sum",
+          "caption": "Value Sum",
+          "position": 1,
+          "function": -4157
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "Value Sum"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "record_count": 4,
+      "cache_fields": [
+        {
+          "name": "Group",
+          "shared_items": [
+            {
+              "kind": "s",
+              "value": "East"
+            },
+            {
+              "kind": "s",
+              "value": "West"
+            }
+          ]
+        },
+        {
+          "name": "Value",
+          "shared_items": []
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "1E+16"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "-1E+16"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ]
+      ],
+      "saved_xml_sha256": {
+        "xl/pivotTables/pivotTable5.xml": "ea74bfad83f7b54eb6d0b798a135b964c3ad6336b60c720bf38dd092221b4536",
+        "xl/pivotCache/pivotCacheDefinition5.xml": "4825f3c849e47836ffb80dc09b6565bfe589497d77e868d81ebe5949b624a2dd",
+        "xl/pivotCache/pivotCacheRecords5.xml": "a8faace675cd64f3e0d12bf01ace4228606cd2e1f77732ab6b5e83eb1c3587e9",
+        "xl/worksheets/sheet7.xml": "54e477ade6973f6e6adc0fa9018abfc3da96b5297e320aadb546e87c7bbe3545"
+      }
+    }
+  ]
+}

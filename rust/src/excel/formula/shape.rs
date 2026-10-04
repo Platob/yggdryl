@@ -52,6 +52,8 @@ pub(crate) enum Held {
     Spill,
     /// A function that only a dynamic array states: `_xlfn.ANCHORARRAY`.
     DynamicArray,
+    /// Array-valued arithmetic not yet modeled by the scalar evaluator.
+    ArrayExpression,
     /// An unknown or prefix-only function this engine cannot compute.
     UnknownFunction,
     /// Text the grammar does not read.
@@ -67,6 +69,7 @@ impl Held {
             Self::Structured => "a structured reference into a table",
             Self::Spill => "a spilled range reference",
             Self::DynamicArray => "a dynamic array's own function",
+            Self::ArrayExpression => "array-valued arithmetic inside SUMPRODUCT",
             Self::UnknownFunction => "a function this engine does not implement",
             Self::Unrecognized => "text the formula grammar does not read",
         }

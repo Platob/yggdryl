@@ -482,19 +482,23 @@ impl JsRecordOptions {
             .map_err(napi_error)
     }
 
-    /// The cells a workbook read or write addresses, `null` for the whole
+    /// The A1 range a workbook read or write addresses, `null` for the whole
     /// sheet - or for another encoding.
     #[napi(getter)]
-    pub fn range(&self) -> Option<crate::excel::JsCellRange> {
-        self.inner
-            .excel_range()
-            .map(|inner| crate::excel::JsCellRange { inner })
+    pub fn range(&self) -> Option<String> {
+        self.inner.excel_range().map(|range| range.to_string())
     }
 
     /// Address the cells of `range`, or the whole sheet for `null`.
     #[napi(setter)]
-    pub fn set_range(&mut self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<()> {
-        let range = range.map(crate::excel::cell_range_from).transpose()?;
+    pub fn set_range(&mut self, range: Option<String>) -> Result<()> {
+        let range = range
+            .map(|range| {
+                range
+                    .parse::<yggdryl::excel::CellRange>()
+                    .map_err(napi_error)
+            })
+            .transpose()?;
         self.inner.set_excel_range(range).map_err(napi_error)
     }
 
@@ -508,7 +512,7 @@ impl JsRecordOptions {
 
     /// These options addressing the cells of `range`.
     #[napi]
-    pub fn with_range(&self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<Self> {
+    pub fn with_range(&self, range: Option<String>) -> Result<Self> {
         let mut options = self.clone();
         options.set_range(range)?;
         Ok(options)

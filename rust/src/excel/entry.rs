@@ -140,10 +140,10 @@ impl Entry {
                 return Ok(Self::Error(error));
             }
         }
-        if let Some((value, format)) = number(trimmed) {
+        if let Some(parsed) = number(trimmed) {
             return Ok(Self::Value {
-                value: Scalar::from(value),
-                format: format.map(SmolStr::new),
+                value: Scalar::from(parsed.value),
+                format: parsed.format.map(SmolStr::new),
             });
         }
         if let Some((value, format)) = temporal(trimmed, system) {
@@ -295,9 +295,17 @@ impl Entry {
     }
 }
 
+/// A number resolved once at the entry boundary. Currency is a
+/// parser-proved spelling, independent of its display format.
+pub(crate) struct ParsedNumber {
+    pub(crate) value: f64,
+    pub(crate) format: Option<&'static str>,
+    pub(crate) currency: bool,
+}
+
 /// A number as en-US entry spells one, and the format its spelling
 /// suggests.
-pub(crate) fn number(text: &str) -> Option<(f64, Option<&'static str>)> {
+pub(crate) fn number(text: &str) -> Option<ParsedNumber> {
     let mut rest = text;
     let mut negative = false;
     if let Some(inner) = rest
@@ -358,7 +366,11 @@ pub(crate) fn number(text: &str) -> Option<(f64, Option<&'static str>)> {
             return None;
         }
         let format = if bottom < 10 { "# ?/?" } else { "# ??/??" };
-        return Some((signed(whole + top as f64 / bottom as f64), Some(format)));
+        return Some(ParsedNumber {
+            value: signed(whole + top as f64 / bottom as f64),
+            format: Some(format),
+            currency: false,
+        });
     }
     // Digits, thousands separators in the integer part only, a point, and
     // an exponent.
@@ -422,54 +434,99 @@ pub(crate) fn number(text: &str) -> Option<(f64, Option<&'static str>)> {
     } else {
         None
     };
-    Some((signed(value), format))
+    Some(ParsedNumber {
+        value: signed(value),
+        format,
+        currency,
+    })
 }
 
-/// A date, a time, a duration or a datetime, and the format it suggests.
-pub(crate) fn temporal(text: &str, system: DateSystem) -> Option<(Scalar, &'static str)> {
-    if let Some(days) = date(text) {
-        system.serial_from_millis(days * 86_400_000).ok()?;
-        return Some((Scalar::date32(i32::try_from(days).ok()?), "m/d/yyyy"));
+/// Formula VALUE and typed entry share one temporal parse, then choose a
+/// numeric serial or a public temporal scalar without losing phantom day60.
+enum ParsedTemporal {
+    Date(ParsedDate),
+    Clock(i64, &'static str),
+    DateTime(ParsedDate, i64),
+}
+
+impl ParsedTemporal {
+    fn read(text: &str) -> Option<Self> {
+        if let Some(date) = date(text) { return Some(Self::Date(date)); }
+        if let Some((millis, format)) = clock(text) { return Some(Self::Clock(millis, format)); }
+        let (day, time) = text.split_once(' ')?;
+        let day = date(day)?;
+        let (millis, _) = clock(time.trim_start())?;
+        (millis < 86_400_000).then_some(Self::DateTime(day, millis))
     }
-    if let Some((millis, format)) = clock(text) {
-        if millis >= 86_400_000 {
-            let format = if format.contains(":ss") {
-                "[h]:mm:ss"
-            } else {
-                "[h]:mm"
-            };
-            return Some((
-                Scalar::duration64(millis, TimeUnit::Millisecond).ok()?,
-                format,
-            ));
+
+    fn scalar(self, system: DateSystem) -> Option<(Scalar, &'static str)> {
+        match self {
+            Self::Date(ParsedDate::Civil(days)) => {
+                system.serial_from_millis(days * 86_400_000).ok()?;
+                Some((Scalar::date32(i32::try_from(days).ok()?), "m/d/yyyy"))
+            }
+            Self::Clock(millis, format) if millis >= 86_400_000 => {
+                let format = if format.contains(":ss") { "[h]:mm:ss" } else { "[h]:mm" };
+                Some((Scalar::duration64(millis, TimeUnit::Millisecond).ok()?, format))
+            }
+            Self::Clock(millis, format) => Some((Scalar::time32(
+                i32::try_from(millis).ok()?, TimeUnit::Millisecond, Timezone::NAIVE).ok()?, format)),
+            Self::DateTime(ParsedDate::Civil(days), millis) => {
+                let instant = days.checked_mul(86_400_000)?.checked_add(millis)?;
+                system.serial_from_millis(instant).ok()?;
+                Some((Scalar::datetime64(instant, TimeUnit::Millisecond, Timezone::NAIVE).ok()?, "m/d/yyyy h:mm"))
+            }
+            Self::Date(ParsedDate::Phantom1900) | Self::DateTime(ParsedDate::Phantom1900, _) => None,
         }
-        return Some((
-            Scalar::time32(
-                i32::try_from(millis).ok()?,
-                TimeUnit::Millisecond,
-                Timezone::NAIVE,
-            )
-            .ok()?,
-            format,
-        ));
     }
-    let (day, time) = text.split_once(' ')?;
-    let days = date(day)?;
-    let (millis, _) = clock(time.trim_start())?;
-    if millis >= 86_400_000 {
+
+    fn serial(self, system: DateSystem) -> std::result::Result<f64, ExcelError> {
+        match self {
+            Self::Date(date) => date.serial(system),
+            Self::Clock(millis, _) => Ok(millis as f64 / 86_400_000.0),
+            Self::DateTime(date, millis) => Ok(date.serial(system)? + millis as f64 / 86_400_000.0),
+        }
+    }
+}
+
+/// A date, time, duration or datetime projected into the public scalar domain.
+pub(crate) fn temporal(text: &str, system: DateSystem) -> Option<(Scalar, &'static str)> {
+    ParsedTemporal::read(text)?.scalar(system)
+}
+
+/// VALUE's fixed en-US intake. Unsupported current-year and sub-millisecond
+/// spelling keeps its cache; invalid represented syntax is a value error.
+pub(crate) fn value_number(text: &str, system: DateSystem) -> Option<std::result::Result<f64, ExcelError>> {
+    let text = text.trim_matches(' ');
+    if text.is_empty() || text.chars().any(char::is_control) { return Some(Err(ExcelError::Value)); }
+    if let Some(number) = number(text) { return Some(Ok(number.value)); }
+    if let Some(temporal) = ParsedTemporal::read(text) { return Some(temporal.serial(system)); }
+    if text.contains(':') && text.rsplit_once('.').is_some_and(|(_, tail)| {
+        tail.len() > 3 && tail.bytes().all(|byte| byte.is_ascii_digit())
+    }) { return None; }
+    if text.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && text.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'/' | b'-'))
+        && text.bytes().filter(|byte| matches!(*byte, b'/' | b'-')).count() == 1 {
         return None;
     }
-    let instant = days.checked_mul(86_400_000)?.checked_add(millis)?;
-    system.serial_from_millis(instant).ok()?;
-    Some((
-        Scalar::datetime64(instant, TimeUnit::Millisecond, Timezone::NAIVE).ok()?,
-        "m/d/yyyy h:mm",
-    ))
+    Some(Err(ExcelError::Value))
 }
+
+impl ParsedDate {
+    fn serial(self, system: DateSystem) -> std::result::Result<f64, ExcelError> {
+        match self {
+            Self::Phantom1900 if system == DateSystem::Year1900 => Ok(60.0),
+            Self::Civil(days) => system.serial_from_millis(days * 86_400_000).map_err(|_| ExcelError::Value),
+            Self::Phantom1900 => Err(ExcelError::Value),
+        }
+    }
+}
+
+enum ParsedDate { Civil(i64), Phantom1900 }
 
 /// A date as days since 1970-01-01: `m/d/yyyy` or `m-d-yyyy` with a two-
 /// or four-digit year, or `yyyy-mm-dd`.
-fn date(text: &str) -> Option<i64> {
+fn date(text: &str) -> Option<ParsedDate> {
     let separator = if text.contains('/') { '/' } else { '-' };
     let mut parts = text.split(separator);
     let (first, second, third) = (parts.next()?, parts.next()?, parts.next()?);
@@ -507,10 +564,35 @@ fn date(text: &str) -> Option<i64> {
         u32::try_from(month).ok()?,
         u32::try_from(day).ok()?,
     );
+    if civil == (1900, 2, 29) { return Some(ParsedDate::Phantom1900); }
     let days = days_from_civil(civil.0, civil.1, civil.2);
-    (civil_from_days(days) == civil).then_some(days)
+    (civil_from_days(days) == civil).then_some(ParsedDate::Civil(days))
 }
 
+/// Formula DATEVALUE accepts year-first text without choosing a workbook
+/// locale for ambiguous day/month spellings. None keeps the cached result.
+pub(crate) fn date_value(
+    text: &str,
+    system: DateSystem,
+) -> Option<std::result::Result<f64, ExcelError>> {
+    let text = text.trim();
+    let first = text.split(|c| c == '-' || c == '/').next().unwrap_or("");
+    if first.len() != 4 {
+        return None;
+    }
+    Some(match date(text) {
+        Some(date) => date.serial(system),
+        _ => Err(ExcelError::Value),
+    })
+}
+
+/// Formula TIMEVALUE uses the same clock grammar as a typed cell entry.
+pub(crate) fn time_value(text: &str) -> std::result::Result<f64, ExcelError> {
+    match clock(text.trim()) {
+        Some((millis, _)) if millis < 86_400_000 => Ok(millis as f64 / 86_400_000.0),
+        _ => Err(ExcelError::Value),
+    }
+}
 /// A clock as milliseconds since midnight - past a day for an elapsed
 /// time - and the format it suggests: `h:mm`, `h:mm:ss`, a fraction of a
 /// second, and `AM`/`PM` (`A`/`P`, any case, a space before it or not).
@@ -547,7 +629,13 @@ fn clock(text: &str) -> Option<(i64, &'static str)> {
             if !fraction.bytes().all(|byte| byte.is_ascii_digit()) || fraction.len() > 3 {
                 return None;
             }
-            let millis = format!("{fraction:0<3}").parse::<i64>().ok()?;
+            let millis = match fraction.len() {
+                0 => 0,
+                1 => fraction.parse::<i64>().ok()? * 100,
+                2 => fraction.parse::<i64>().ok()? * 10,
+                3 => fraction.parse::<i64>().ok()?,
+                _ => unreachable!("clock fraction length was validated"),
+            };
             (whole, millis)
         }
     };

@@ -376,6 +376,8 @@ pub mod internals {
     pub use crate::error::internals as error;
     pub use crate::excel::carried::internals as excel_carried;
     pub use crate::excel::edit::internals as excel_edit;
+    pub use crate::excel::fill::internals as excel_fill;
+    pub use crate::excel::format::internals as excel_format;
     pub use crate::excel::formula::aggregate::internals as excel_formula_aggregate;
     pub use crate::excel::formula::criteria::internals as excel_formula_criteria;
     pub use crate::excel::formula::eval::internals as excel_formula_eval;
@@ -386,6 +388,8 @@ pub mod internals {
     pub use crate::excel::formula::reference::internals as excel_formula_reference;
     pub use crate::excel::formula::value::internals as excel_formula_value;
     pub use crate::excel::package::internals as excel_package;
+    pub use crate::excel::pivot::compute::internals as excel_pivot_compute;
+    pub use crate::excel::pivot::layout::internals as excel_pivot_layout;
     pub use crate::excel::sheet::internals as excel_sheet;
     pub use crate::excel::shift::internals as excel_shift;
     pub use crate::excel::styles::internals as excel_styles;

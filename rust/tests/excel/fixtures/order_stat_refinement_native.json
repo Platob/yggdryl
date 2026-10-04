@@ -1,0 +1,4976 @@
+{
+  "schema_version": 1,
+  "kind": "p5_order_stat_refinement_native_evidence",
+  "report": "rust/target/excel-desktop/p5-order-stat-refinement-observed/results.json",
+  "report_sha256": "420401d664741af56420e20d1403b676ba39ec33b766517948265d43925e3fcd",
+  "manifest": ".scratch/p5-order-stat-refinement-inputs/cases.json",
+  "manifest_sha256": "c35ed774d3425970cd36c2bc9713a6a390d2abf5cbad1a0b9ec41755fd0d2724",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_cache_equal": 168,
+  "source_cells": {
+    "Values": {
+      "B1": 1,
+      "B2": 2,
+      "B3": 3,
+      "B4": 4,
+      "B5": 5,
+      "B6": 6,
+      "B7": 7,
+      "B8": 8,
+      "C4": 0.1,
+      "C5": 0.2,
+      "C6": 0.3,
+      "G1": 100000000000000,
+      "G2": 100000000000001,
+      "G3": 100000000000002,
+      "H1": -0.3,
+      "H2": -0.2,
+      "H3": -0.1
+    }
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "84da5a95704b09c190270f7fb880f227e43f944ca17173791830298b340756f4",
+      "cases": 42,
+      "physical_formula_cells": 42
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "553312e635a0f27fc0a9e35a26f94c879795dd9237dba8099d9330ff46f69c10",
+      "cases": 42,
+      "physical_formula_cells": 42
+    }
+  ],
+  "cases": [
+    {
+      "id": "large-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "LARGE(Values!B1:B8,0.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,0.1)",
+        "formula2": "=LARGE(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,0.1)",
+        "formula2": "=LARGE(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "LARGE(Values!B1:B8,0.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,0.9)",
+        "formula2": "=LARGE(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,0.9)",
+        "formula2": "=LARGE(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-1-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "LARGE(Values!B1:B8,1.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "1.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,1.1)",
+        "formula2": "=LARGE(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,1.1)",
+        "formula2": "=LARGE(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "LARGE(Values!B1:B8,1.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-1-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "LARGE(Values!B1:B8,1.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "1.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,1.9)",
+        "formula2": "=LARGE(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,1.9)",
+        "formula2": "=LARGE(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "LARGE(Values!B1:B8,1.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-2-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "LARGE(Values!B1:B8,2.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "2.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,2.1)",
+        "formula2": "=LARGE(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,2.1)",
+        "formula2": "=LARGE(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "LARGE(Values!B1:B8,2.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-2-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "LARGE(Values!B1:B8,2.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "2.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,2.9)",
+        "formula2": "=LARGE(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,2.9)",
+        "formula2": "=LARGE(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "LARGE(Values!B1:B8,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-7-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "LARGE(Values!B1:B8,7.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "7.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,7.1)",
+        "formula2": "=LARGE(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,7.1)",
+        "formula2": "=LARGE(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LARGE(Values!B1:B8,7.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-7-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "LARGE(Values!B1:B8,7.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "7.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,7.9)",
+        "formula2": "=LARGE(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,7.9)",
+        "formula2": "=LARGE(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LARGE(Values!B1:B8,7.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-8-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "LARGE(Values!B1:B8,8.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "8.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,8.1)",
+        "formula2": "=LARGE(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,8.1)",
+        "formula2": "=LARGE(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,8.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SMALL(Values!B1:B8,0.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,0.1)",
+        "formula2": "=SMALL(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,0.1)",
+        "formula2": "=SMALL(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SMALL(Values!B1:B8,0.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,0.9)",
+        "formula2": "=SMALL(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,0.9)",
+        "formula2": "=SMALL(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-1-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SMALL(Values!B1:B8,1.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "1.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,1.1)",
+        "formula2": "=SMALL(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,1.1)",
+        "formula2": "=SMALL(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "SMALL(Values!B1:B8,1.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-1-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SMALL(Values!B1:B8,1.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "1.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,1.9)",
+        "formula2": "=SMALL(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,1.9)",
+        "formula2": "=SMALL(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "SMALL(Values!B1:B8,1.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-2-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SMALL(Values!B1:B8,2.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "2.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,2.1)",
+        "formula2": "=SMALL(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,2.1)",
+        "formula2": "=SMALL(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SMALL(Values!B1:B8,2.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-2-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SMALL(Values!B1:B8,2.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "2.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,2.9)",
+        "formula2": "=SMALL(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,2.9)",
+        "formula2": "=SMALL(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SMALL(Values!B1:B8,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-7-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SMALL(Values!B1:B8,7.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "7.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,7.1)",
+        "formula2": "=SMALL(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,7.1)",
+        "formula2": "=SMALL(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "SMALL(Values!B1:B8,7.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-7-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SMALL(Values!B1:B8,7.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "7.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,7.9)",
+        "formula2": "=SMALL(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,7.9)",
+        "formula2": "=SMALL(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "SMALL(Values!B1:B8,7.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-8-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "SMALL(Values!B1:B8,8.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "8.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,8.1)",
+        "formula2": "=SMALL(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,8.1)",
+        "formula2": "=SMALL(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,8.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.12",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.16000000000000003",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.24",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.27999999999999997",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.2",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.59",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.41",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.8",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.28000000000000003",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.24",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.16000000000000003",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.12000000000000002",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.12",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.16000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.24",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.27999999999999997",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.2",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.59",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.41",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.8",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.28000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.24",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.16000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.12000000000000002",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "LARGE(Values!B1:B8,0.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,0.1)",
+        "formula2": "=LARGE(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,0.1)",
+        "formula2": "=LARGE(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "LARGE(Values!B1:B8,0.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,0.9)",
+        "formula2": "=LARGE(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,0.9)",
+        "formula2": "=LARGE(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-1-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "LARGE(Values!B1:B8,1.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "1.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,1.1)",
+        "formula2": "=LARGE(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,1.1)",
+        "formula2": "=LARGE(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "LARGE(Values!B1:B8,1.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-1-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "LARGE(Values!B1:B8,1.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "1.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,1.9)",
+        "formula2": "=LARGE(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,1.9)",
+        "formula2": "=LARGE(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "LARGE(Values!B1:B8,1.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-2-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "LARGE(Values!B1:B8,2.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "2.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,2.1)",
+        "formula2": "=LARGE(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,2.1)",
+        "formula2": "=LARGE(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "LARGE(Values!B1:B8,2.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-2-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "LARGE(Values!B1:B8,2.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "2.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,2.9)",
+        "formula2": "=LARGE(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,2.9)",
+        "formula2": "=LARGE(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "LARGE(Values!B1:B8,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-7-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "LARGE(Values!B1:B8,7.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "7.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,7.1)",
+        "formula2": "=LARGE(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,7.1)",
+        "formula2": "=LARGE(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LARGE(Values!B1:B8,7.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-7-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "LARGE(Values!B1:B8,7.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "7.9"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,7.9)",
+        "formula2": "=LARGE(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,7.9)",
+        "formula2": "=LARGE(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LARGE(Values!B1:B8,7.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "large-8-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "LARGE(Values!B1:B8,8.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "LARGE",
+        "parameter": "8.1"
+      },
+      "actual": {
+        "formula": "=LARGE(Values!B1:B8,8.1)",
+        "formula2": "=LARGE(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LARGE(Values!B1:B8,8.1)",
+        "formula2": "=LARGE(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LARGE(Values!B1:B8,8.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SMALL(Values!B1:B8,0.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,0.1)",
+        "formula2": "=SMALL(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,0.1)",
+        "formula2": "=SMALL(Values!B1:B8,0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SMALL(Values!B1:B8,0.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,0.9)",
+        "formula2": "=SMALL(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,0.9)",
+        "formula2": "=SMALL(Values!B1:B8,0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-1-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SMALL(Values!B1:B8,1.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "1.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,1.1)",
+        "formula2": "=SMALL(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,1.1)",
+        "formula2": "=SMALL(Values!B1:B8,1.1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "SMALL(Values!B1:B8,1.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-1-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SMALL(Values!B1:B8,1.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "1.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,1.9)",
+        "formula2": "=SMALL(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,1.9)",
+        "formula2": "=SMALL(Values!B1:B8,1.9)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "SMALL(Values!B1:B8,1.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-2-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SMALL(Values!B1:B8,2.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "2.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,2.1)",
+        "formula2": "=SMALL(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,2.1)",
+        "formula2": "=SMALL(Values!B1:B8,2.1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SMALL(Values!B1:B8,2.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-2-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SMALL(Values!B1:B8,2.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "2.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,2.9)",
+        "formula2": "=SMALL(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,2.9)",
+        "formula2": "=SMALL(Values!B1:B8,2.9)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SMALL(Values!B1:B8,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-7-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SMALL(Values!B1:B8,7.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "7.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,7.1)",
+        "formula2": "=SMALL(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,7.1)",
+        "formula2": "=SMALL(Values!B1:B8,7.1)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "SMALL(Values!B1:B8,7.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-7-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SMALL(Values!B1:B8,7.9)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "7.9"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,7.9)",
+        "formula2": "=SMALL(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,7.9)",
+        "formula2": "=SMALL(Values!B1:B8,7.9)",
+        "value2": {
+          "variant": "float",
+          "value": 7.0,
+          "hex": "0x1.c000000000000p+2",
+          "ieee754_hex": "401c000000000000",
+          "classification": "finite"
+        },
+        "display": "7",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "7",
+        "formula_text": "SMALL(Values!B1:B8,7.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "small-8-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "SMALL(Values!B1:B8,8.1)",
+      "shape": {
+        "kind": "rank_refinement",
+        "function": "SMALL",
+        "parameter": "8.1"
+      },
+      "actual": {
+        "formula": "=SMALL(Values!B1:B8,8.1)",
+        "formula2": "=SMALL(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SMALL(Values!B1:B8,8.1)",
+        "formula2": "=SMALL(Values!B1:B8,8.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SMALL(Values!B1:B8,8.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.12",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.16000000000000003",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.24",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-C-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "PERCENTILE(Values!C4:C6,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "C4:C6",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.27999999999999997",
+        "formula_text": "PERCENTILE(Values!C4:C6,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.2",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.59",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.41",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-G-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "PERCENTILE(Values!G1:G3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "G1:G3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.8",
+        "formula_text": "PERCENTILE(Values!G1:G3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.28000000000000003",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.24",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.16000000000000003",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-H-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "PERCENTILE(Values!H1:H3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "PERCENTILE",
+        "source": "H1:H3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.12000000000000002",
+        "formula_text": "PERCENTILE(Values!H1:H3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.12,
+          "hex": "0x1.eb851eb851eb8p-4",
+          "ieee754_hex": "3fbeb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.12",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.16000000000000003,
+          "hex": "0x1.47ae147ae147cp-3",
+          "ieee754_hex": "3fc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.16000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.24,
+          "hex": "0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "3fceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.24",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-C-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "C4:C6",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!C4:C6,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.27999999999999997,
+          "hex": "0x1.1eb851eb851ebp-2",
+          "ieee754_hex": "3fd1eb851eb851eb",
+          "classification": "finite"
+        },
+        "display": "0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.27999999999999997",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!C4:C6,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.2,
+          "hex": "0x1.6bcc41e90000dp+46",
+          "ieee754_hex": "42d6bcc41e90000d",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.2",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000000.6,
+          "hex": "0x1.6bcc41e900026p+46",
+          "ieee754_hex": "42d6bcc41e900026",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000000.59",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.4,
+          "hex": "0x1.6bcc41e90005ap+46",
+          "ieee754_hex": "42d6bcc41e90005a",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.41",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-G-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "G1:G3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!G1:G3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": 100000000000001.8,
+          "hex": "0x1.6bcc41e900073p+46",
+          "ieee754_hex": "42d6bcc41e900073",
+          "classification": "finite"
+        },
+        "display": "1E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "100000000000001.8",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!G1:G3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.1)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.1"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -0.28,
+          "hex": "-0x1.1eb851eb851ecp-2",
+          "ieee754_hex": "bfd1eb851eb851ec",
+          "classification": "finite"
+        },
+        "display": "-0.28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.28000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.3)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.3"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": -0.24,
+          "hex": "-0x1.eb851eb851eb8p-3",
+          "ieee754_hex": "bfceb851eb851eb8",
+          "classification": "finite"
+        },
+        "display": "-0.24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.24",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.7)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.7"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.7)",
+        "value2": {
+          "variant": "float",
+          "value": -0.16000000000000003,
+          "hex": "-0x1.47ae147ae147cp-3",
+          "ieee754_hex": "bfc47ae147ae147c",
+          "classification": "finite"
+        },
+        "display": "-0.16",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.16000000000000003",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "percentile-inc-H-0-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.9)",
+      "shape": {
+        "kind": "interpolation_refinement",
+        "function": "_xlfn.PERCENTILE.INC",
+        "source": "H1:H3",
+        "parameter": "0.9"
+      },
+      "actual": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula2": "=PERCENTILE.INC(Values!H1:H3,0.9)",
+        "value2": {
+          "variant": "float",
+          "value": -0.12000000000000002,
+          "hex": "-0x1.eb851eb851ebap-4",
+          "ieee754_hex": "bfbeb851eb851eba",
+          "classification": "finite"
+        },
+        "display": "-0.12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.12000000000000002",
+        "formula_text": "_xlfn.PERCENTILE.INC(Values!H1:H3,0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    }
+  ]
+}

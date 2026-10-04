@@ -730,7 +730,10 @@ impl Binder<'_> {
                 let mut lowered = Vec::with_capacity(arguments.len());
                 let unified = match function {
                     Function::Coalesce | Function::IfNull => Some(field.dtype().clone()),
-                    Function::Sqrt => Some(DataType::Float64),
+                    Function::Sqrt | Function::Factorial | Function::Pow | Function::Exp | Function::Ln
+                    | Function::Log10 | Function::Degrees | Function::Radians
+                    | Function::Cos | Function::Asin | Function::Sin | Function::Tan
+                    | Function::Acos | Function::Atan | Function::Atan2 => Some(DataType::Float64),
                     _ => None,
                 };
                 for argument in arguments.iter() {

@@ -51,12 +51,24 @@ mod grammar {
     fn unnest_is_one_of_the_closed_functions_under_its_duckdb_name() {
         use yggdryl::expression::Function;
 
-        // ABS and SQRT are shared numeric functions in the closed vocabulary.
-        assert_eq!(Function::ALL.len(), 22);
+        // ABS, SQRT and POW are shared numeric functions in the closed vocabulary.
+        // Seven prior bound Float64 operations and five trigonometric calls
+        // share one closed registry; the latter explain 33 -> 38.
+        // GCD and LCM are exact-integer calls; factorial adds one more.
+        assert_eq!(Function::ALL.len(), 38);
         assert_eq!(Function::ALL.last(), Some(&Function::Unnest));
         assert_eq!(Function::Unnest.as_str(), "unnest");
         assert_eq!(Function::Sqrt.as_str(), "sqrt");
         assert_eq!(Function::from_name("SQRT"), Some(Function::Sqrt));
+        assert_eq!(Function::from_name("POWER"), Some(Function::Pow));
+        assert_eq!(Function::Pow.as_str(), "pow");
+        assert_eq!(Function::Pow.arity(), (2, 2));
+        assert_eq!(Function::from_name("FACTORIAL"), Some(Function::Factorial));
+        assert_eq!(Function::Factorial.arity(), (1, 1));
+        assert_eq!(Function::from_name("GCD"), Some(Function::Gcd));
+        assert_eq!(Function::from_name("LCM"), Some(Function::Lcm));
+        assert_eq!(Function::Gcd.arity(), (2, 2));
+        assert_eq!(Function::Lcm.arity(), (2, 2));
         for spelling in ["unnest", "UNNEST", "explode"] {
             assert_eq!(
                 Function::from_name(spelling),

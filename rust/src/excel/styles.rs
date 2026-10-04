@@ -511,7 +511,7 @@ impl StyleSheet {
                                 .and_then(|id| id.trim().parse::<u32>().ok());
                             let code = attribute(start, b"formatCode", position)?;
                             if let (Some(id), Some(code)) = (id, code) {
-                                sheet.codes.insert(id, SmolStr::new(code));
+                                sheet.codes.insert(id, SmolStr::new(super::shared_strings::decode(&code)));
                             }
                         }
                         (Section::Fonts, b"font") => font = Some(blank_font()),
@@ -740,6 +740,12 @@ impl StyleSheet {
         self.xfs.len()
     }
 
+    /// Cell formats appended since this part was read. Reading existing
+    /// formats alone cannot be reported as a style mutation.
+    pub(crate) fn appended_len(&self) -> usize {
+        self.xfs.len() - self.original_xfs
+    }
+
     /// Whether the part holds no cell format at all.
     #[must_use]
     pub fn is_empty(&self) -> bool {
@@ -933,6 +939,19 @@ impl StyleSheet {
     /// Returns [`Error::InvalidRecord`] when the part already holds
     /// [`MAX_CELL_FORMATS`] entries, which is as many as Excel opens.
     pub(crate) fn intern(&mut self, style: &CellStyle) -> Result<StyleId> {
+        self.intern_parsed(style, None)
+    }
+
+    /// A plain XF for a user-validated code, without parsing it again.
+    pub(crate) fn intern_format(&mut self, format: FormatCode) -> Result<StyleId> {
+        let style = CellStyle {
+            number_format: if format.is_general() { SmolStr::new_static("General") } else { SmolStr::new(format.code()) },
+            ..CellStyle::default()
+        };
+        self.intern_parsed(&style, Some(format))
+    }
+
+    fn intern_parsed(&mut self, style: &CellStyle, parsed: Option<FormatCode>) -> Result<StyleId> {
         if let Some(id) = self.find(style) {
             return Ok(id);
         }
@@ -968,14 +987,15 @@ impl StyleSheet {
             apply: [None; 6],
         };
         let id = StyleId::new(u16::try_from(self.xfs.len()).unwrap_or(u16::MAX));
-        let format = self
-            .xfs
-            .iter()
-            .position(|held| held.number_format == xf.number_format)
-            .map_or_else(
-                || FormatCode::from_file(&self.code_of(xf.number_format)),
-                |at| self.formats[at].clone(),
-            );
+        let format = parsed.unwrap_or_else(|| {
+            self.xfs
+                .iter()
+                .position(|held| held.number_format == xf.number_format)
+                .map_or_else(
+                    || FormatCode::from_file(&self.code_of(xf.number_format)),
+                    |at| self.formats[at].clone(),
+                )
+        });
         self.styles.push(self.resolved(&xf));
         self.kinds.push(format.kind());
         self.formats.push(format);
@@ -1090,8 +1110,13 @@ impl StyleSheet {
         Ok(id)
     }
 
+    /// The OOXML number-format ID belonging to a resolved cell style.
+    pub(crate) fn format_id(&self, id: StyleId) -> Option<u32> {
+        self.xfs.get(usize::from(id.as_u16())).map(|xf| xf.number_format)
+    }
+
     /// The code the id `id` displays with in this part.
-    fn code_of(&self, id: u32) -> SmolStr {
+    pub(crate) fn code_of(&self, id: u32) -> SmolStr {
         self.codes
             .get(&id)
             .cloned()
@@ -1143,7 +1168,7 @@ impl StyleSheet {
                 if let Some(code) = self.codes.get(id) {
                     fragment.push_str(&format!(
                         "<numFmt numFmtId=\"{id}\" formatCode=\"{}\"/>",
-                        escape_attribute(code)
+                        escape_attribute(&super::shared_strings::encode(code))
                     ));
                 }
             }

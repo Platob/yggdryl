@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kind": "asin_negative_endpoint_native_hold",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 4,
+  "report_sha256": "b11a855fff232353972e54f50d5797f439bc1d98c4e67574496bb3e9f113e649",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "asin-identity-negative-literal-1900",
+      "date_system": "1900",
+      "wire_formula": "ASIN(-0.999999999999999)",
+      "actual": {
+        "formula": "=ASIN(-0.999999999999999)",
+        "formula2": "=ASIN(-0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -1.570796284648048,
+          "hex": "-0x1.921fb48f3dde5p+0",
+          "ieee754_hex": "bff921fb48f3dde5",
+          "classification": "finite"
+        },
+        "display": "-1.5708",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707962846480481",
+        "formula_text": "ASIN(-0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      }
+    },
+    {
+      "id": "asin-identity-negative-literal-1904",
+      "date_system": "1904",
+      "wire_formula": "ASIN(-0.999999999999999)",
+      "actual": {
+        "formula": "=ASIN(-0.999999999999999)",
+        "formula2": "=ASIN(-0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -1.570796284648048,
+          "hex": "-0x1.921fb48f3dde5p+0",
+          "ieee754_hex": "bff921fb48f3dde5",
+          "classification": "finite"
+        },
+        "display": "-1.5708",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707962846480481",
+        "formula_text": "ASIN(-0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      }
+    }
+  ]
+}

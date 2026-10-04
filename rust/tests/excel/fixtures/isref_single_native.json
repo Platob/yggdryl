@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "kind": "isref_single_native",
+  "source_report": "rust/target/excel-desktop/p5-isref-single-observed/results.json",
+  "source_report_sha256": "aa4dc1e3c71979532011958abba9db5cd30b4e2085cbe8688c26e0cda744ff6f",
+  "manifest_sha256": "57f45dfb89d4adf937174c7b1082e19b4d5e006c11323fc1deeb1f6573917d69",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "82dfb855dcb683f30cb269ec42dc8ff5997d0564c4620103ccdebbfd1b58ac1e",
+      "cases": 4,
+      "physical_formula_cells": 4
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "ea494c224a71d39758a4690b74ca932f551c53284c0db6670cfd4ee7c25a558d",
+      "cases": 4,
+      "physical_formula_cells": 4
+    }
+  ],
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "calculation_scope": "owned workbook worksheets, Cases last; never Application.Calculate",
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": false,
+  "source_cells": [
+    {
+      "cell": "A1",
+      "value": 2
+    },
+    {
+      "cell": "A2",
+      "value": "text"
+    },
+    {
+      "cell": "A3",
+      "value": 0
+    },
+    {
+      "cell": "A4",
+      "value": 4
+    }
+  ],
+  "defined_names": {
+    "RangeName": "Inputs!$A$1:$A$4",
+    "ScalarName": "Inputs!$A$1"
+  },
+  "case_count": 8,
+  "cache_type_counts": {
+    "b": 8
+  },
+  "cases": [
+    {
+      "id": "isref-single-single_scalar-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A1))",
+      "parameters": {
+        "kind": "single_scalar",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A1)",
+      "actual_formula2": "=ISREF(@Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A1)",
+      "after_save_formula2": "=ISREF(@Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A1))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A1:A4))",
+      "parameters": {
+        "kind": "single_range",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A1:A4)",
+      "actual_formula2": "=ISREF(@Inputs!A1:A4)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A1:A4)",
+      "after_save_formula2": "=ISREF(@Inputs!A1:A4)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A1:A4))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_column-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A:A))",
+      "parameters": {
+        "kind": "single_column",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A:A)",
+      "actual_formula2": "=ISREF(@Inputs!A:A)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A:A)",
+      "after_save_formula2": "=ISREF(@Inputs!A:A)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A:A))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_named_range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(RangeName))",
+      "parameters": {
+        "kind": "single_named_range",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@RangeName)",
+      "actual_formula2": "=ISREF(@RangeName)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(@RangeName)",
+      "after_save_formula2": "=ISREF(@RangeName)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(RangeName))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_scalar-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A1))",
+      "parameters": {
+        "kind": "single_scalar",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A1)",
+      "actual_formula2": "=ISREF(@Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A1)",
+      "after_save_formula2": "=ISREF(@Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A1))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A1:A4))",
+      "parameters": {
+        "kind": "single_range",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A1:A4)",
+      "actual_formula2": "=ISREF(@Inputs!A1:A4)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A1:A4)",
+      "after_save_formula2": "=ISREF(@Inputs!A1:A4)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A1:A4))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_column-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(Inputs!A:A))",
+      "parameters": {
+        "kind": "single_column",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@Inputs!A:A)",
+      "actual_formula2": "=ISREF(@Inputs!A:A)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(@Inputs!A:A)",
+      "after_save_formula2": "=ISREF(@Inputs!A:A)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(Inputs!A:A))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-single-single_named_range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "function": "ISREF",
+      "wire_formula": "ISREF(_xlfn.SINGLE(RangeName))",
+      "parameters": {
+        "kind": "single_named_range",
+        "syntax_family": "single"
+      },
+      "actual_formula": "=ISREF(@RangeName)",
+      "actual_formula2": "=ISREF(@RangeName)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(@RangeName)",
+      "after_save_formula2": "=ISREF(@RangeName)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(_xlfn.SINGLE(RangeName))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ]
+}

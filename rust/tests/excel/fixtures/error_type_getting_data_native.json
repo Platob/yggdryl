@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "kind": "error_type_getting_data",
+  "source_report": "rust/target/excel-desktop/p5-error-type-getting-data-observed/results.json",
+  "source_report_sha256": "045f6b4e76e172e35857d1252e9a6c91bd2e3b2b98e438eaff14e6b720c8be67",
+  "manifest_sha256": "a0442237fb2c7d0651d743b93af317868901f6c653ebc134abdab88bc95635f5",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "3ef172965acb02519235051c92574be13883d45078d0317581269f19e401db41",
+      "cases": 1,
+      "physical_formula_cells": 1
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "d8b7e1f074d47153e943fda113231b54a2289f14778ee5c3cbb4396a4a51ccc4",
+      "cases": 1,
+      "physical_formula_cells": 1
+    }
+  ],
+  "saved_workbooks": {
+    "1900": {
+      "file": "functions-cached-1900.xlsx",
+      "sha256": "11d49c27a194d63312092efb5bd99349dc0e9d4edfd6783c8bdeab46b4afd3e9",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "e",
+          "formula": null,
+          "value_text": "#N/A"
+        }
+      ]
+    },
+    "1904": {
+      "file": "functions-cached-1904.xlsx",
+      "sha256": "3d5a6a3c8a598fae4d6c58d6792adfcbc6f0ddb1e5edcaac592c59ce0b9ac449",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "e",
+          "formula": null,
+          "value_text": "#N/A"
+        }
+      ]
+    }
+  },
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": true,
+  "source_cells": [
+    {
+      "cell": "A1",
+      "value": "#GETTING_DATA",
+      "type": "e",
+      "formula": null
+    }
+  ],
+  "case_count": 2,
+  "cache_type_counts": {
+    "n": 2
+  },
+  "cases": [
+    {
+      "id": "error-type-getting-data-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "ERROR.TYPE(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#GETTING_DATA",
+        "source_cell": "A1",
+        "source_cell_type": "e"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A1)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "8",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-getting-data-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "ERROR.TYPE(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#GETTING_DATA",
+        "source_cell": "A1",
+        "source_cell_type": "e"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A1)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "8",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ],
+  "rust_equivalence": {
+    "test": "workbook::error_type_getting_data_typed_source_matches_native_code_8",
+    "harness": "rust/tests/excel.rs",
+    "result": "passed",
+    "scope": "calculation-time typed source only; Excel SaveAs changes source #GETTING_DATA to #N/A",
+    "log": "handoff/local-p5-information-followup-green.log",
+    "log_sha256": "d9d01f182da1ea37c0479a4807ffe39234ca5db4b0c901a23067aa25ddab2936"
+  },
+  "source_save_transformation": {
+    "input_type": "e",
+    "input_value_text": "#GETTING_DATA",
+    "saved_type": "e",
+    "saved_value_text": "#N/A",
+    "meaning": "native result 8 does not prove source-error persistence after reopen"
+  }
+}

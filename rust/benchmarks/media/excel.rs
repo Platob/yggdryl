@@ -22,7 +22,7 @@ use yggdryl::{DataType, Field, IOBase, IOMedia, MimeType, Scalar, Serie, StructT
 use yggdryl::{
     RecordHeader,
     excel::{
-        Cell, CellRange, CellRef, DateSystem, Edit, FormatCode, Formula, Landing, Paste, Sheet,
+        Cell, CellRange, CellRef, Clock, DateSystem, Edit, FormatCode, Formula, Landing, Paste, Sheet,
         StylePatch, Workbook,
     },
 };
@@ -190,6 +190,7 @@ fn xlsx() -> Buffer {
 }
 
 pub(crate) fn excel_benchmarks(criterion: &mut Criterion) {
+    pivot_benchmarks(criterion);
     let rows = corpus(10_000, 64);
     let field = field();
     let serie = batch(&field, rows);
@@ -306,9 +307,35 @@ pub(crate) fn excel_benchmarks(criterion: &mut Criterion) {
 
     editing_benchmarks(criterion);
     formula_parser_benchmarks(criterion);
+    function_catalog_benchmarks(criterion);
+    literal_array_benchmarks(criterion);
+    mapped_array_benchmarks(criterion);
     constant_formula_recalculation_benchmarks(criterion);
     dependency_recalculation_benchmarks(criterion);
     range_recalculation_benchmarks(criterion);
+    lazy_selector_benchmarks(criterion);
+    multi_selector_benchmarks(criterion);
+    geometry_benchmarks(criterion);
+    indexed_reference_benchmarks(criterion);
+    reference_algebra_benchmarks(criterion);
+    lookup_axis_benchmarks(criterion);
+    text_function_benchmarks(criterion);
+    criteria_subtotal_benchmarks(criterion);
+    typed_text_write_benchmarks(criterion);
+    variance_exact_benchmarks(criterion);
+    financial_payment_benchmarks(criterion);
+    financial_npv_benchmarks(criterion);
+    financial_annuity_benchmarks(criterion);
+    text_value_format_benchmarks(criterion);
+    text_character_benchmarks(criterion);
+    text_search_benchmarks(criterion);
+    text_casing_benchmarks(criterion);
+    text_index_benchmarks(criterion);
+    text_conversion_benchmarks(criterion);
+    logical_reducer_benchmarks(criterion);
+    comparison_recalculation_benchmarks(criterion);
+    named_recalculation_benchmarks(criterion);
+    clock_recalculation_benchmarks(criterion);
     named_table_benchmarks(criterion);
     named_table_write_scaling(criterion);
     named_totals_resize_benchmarks(criterion);
@@ -319,6 +346,64 @@ pub(crate) fn excel_benchmarks(criterion: &mut Criterion) {
     worksheet_filter_benchmarks(criterion);
     partial_carried_benchmarks(criterion);
     carried_formula_rule_benchmarks(criterion);
+    temporal_fill_benchmarks(criterion);
+}
+
+
+/// Date-format serials 59/60 and a sub-millisecond source, parsed before timing.
+fn temporal_fill_benchmarks(criterion: &mut Criterion) {
+    let data = "<row r=\"1\"><c r=\"A1\" s=\"1\"><v>59</v></c>\
+                <c r=\"B1\" s=\"1\"><v>45292.000000001</v></c></row>";
+    let types = excel_package::content_types(1, false, true);
+    let root = excel_package::root_relationships();
+    let book = excel_package::workbook(&["Data"], false);
+    let rels = excel_package::workbook_relationships(1, false, true);
+    let sheet = excel_package::worksheet(data);
+    let styles = excel_package::styles(&[], &[0, 14]);
+    let bytes = excel_package::package(&[
+        ("[Content_Types].xml", types.as_str()),
+        ("_rels/.rels", root.as_str()),
+        ("xl/workbook.xml", book.as_str()),
+        ("xl/_rels/workbook.xml.rels", rels.as_str()),
+        ("xl/worksheets/sheet1.xml", sheet.as_str()),
+        ("xl/styles.xml", styles.as_str()),
+    ]);
+    let fresh = || {
+        let workbook = Workbook::from_bytes(bytes.clone()).expect("the date package");
+        workbook.parse_all().expect("the source date parses");
+        workbook
+    };
+    let mut group = criterion.benchmark_group("media/excel/fill_temporal");
+    for rows in [corpus(64, 16) as u32, corpus(4_096, 64) as u32] {
+        let target = CellRange::new(CellRef::new(0, 0), CellRef::new(rows - 1, 0));
+        let source = CellRange::new(CellRef::new(0, 0), CellRef::new(0, 0));
+        let mut proven = fresh();
+        proven.fill("Data", source, target, yggdryl::excel::FillMode::Series)
+            .expect("the daily serial series");
+        assert!(proven.sheet("Data").unwrap().cell(CellRef::new(rows - 1, 0)).is_some());
+        group.throughput(Throughput::Elements(u64::from(rows - 1)));
+        group.bench_function(format!("daily/{rows}"), |bencher| {
+            bencher.iter_batched(&fresh, |mut workbook| {
+                workbook.fill("Data", source, target, yggdryl::excel::FillMode::Series)
+                    .expect("the daily serial series");
+                black_box(workbook)
+            }, BatchSize::LargeInput);
+        });
+        let target = CellRange::new(CellRef::new(0, 1), CellRef::new(rows - 1, 1));
+        let source = CellRange::new(CellRef::new(0, 1), CellRef::new(0, 1));
+        let mut proven = fresh();
+        proven.fill("Data", source, target, yggdryl::excel::FillMode::Copy)
+            .expect("the exact serial copies");
+        assert!(proven.sheet("Data").unwrap().cell(CellRef::new(rows - 1, 1)).is_some());
+        group.bench_function(format!("copy_submillisecond/{rows}"), |bencher| {
+            bencher.iter_batched(&fresh, |mut workbook| {
+                workbook.fill("Data", source, target, yggdryl::excel::FillMode::Copy)
+                    .expect("the exact serial copies");
+                black_box(workbook)
+            }, BatchSize::LargeInput);
+        });
+    }
+    group.finish();
 }
 
 /// The edits the workbook service applies per request.
@@ -1616,10 +1701,69 @@ fn constant_formula_recalculation_benchmarks(criterion: &mut Criterion) {
     for (name, expression) in [
         ("arithmetic", "1+2"),
         ("abs", "ABS(-7.25)"),
+        ("year_serial", "YEAR(60)"),
+        ("day_phantom", "DAY(60)"),
+        ("weekday_phantom", "WEEKDAY(60,1)"),
+        ("days", "_xlfn.DAYS(61,60)"),
+        ("date_phantom", "DATE(1900,2,29)"),
+        ("hour", "HOUR(60.5)"),
+        ("second", "SECOND(1/86400)"),
+        ("time", "TIME(12,34,56)"),
+        ("edate_phantom", "EDATE(60,1)"),
+        ("eomonth_phantom", "EOMONTH(61,-1)"),
+        ("datevalue_iso", "DATEVALUE(\"2024-02-29\")"),
+        ("timevalue", "TIMEVALUE(\"12:34:56\")"),
         ("sum", "SUM(1,2,3)"),
+        ("count", r#"COUNT(1,"text",2)"#),
+        ("counta", r#"COUNTA(1,"text",2)"#),
+        ("min", "MIN(3,1,2)"),
+        ("max", "MAX(3,1,2)"),
+        ("average", "AVERAGE(1,2,3)"),
+        ("averagea", "AVERAGEA(1,TRUE,2)"),
+        ("mina", "MINA(2,FALSE)"),
+        ("maxa", "MAXA(2,TRUE)"),
+        ("product", "PRODUCT(2,3,4)"),
         ("round", "ROUND(2.15,1)"),
+        ("roundup", "ROUNDUP(2.15,1)"),
+        ("rounddown", "ROUNDDOWN(2.15,1)"),
+        ("quotient", "QUOTIENT(0.3,0.1)"),
+        ("even", "EVEN(2.5)"),
+        ("odd", "ODD(-2.5)"),
+        ("ceiling", "CEILING(0.3,0.1)"),
+        ("floor", "FLOOR(0.3,0.1)"),
+        ("mround", "MROUND(1.005,0.01)"),
+        ("ceiling_math", "_xlfn.CEILING.MATH(-3.2,2,1)"),
+        ("floor_math", "_xlfn.FLOOR.MATH(-3.2,2,1)"),
         ("sqrt", "SQRT(2)"),
+        ("exp", "EXP(1)"),
+        ("ln", "LN(2.5)"),
+        ("log10", "LOG10(2.5)"),
+        ("degrees", "DEGREES(1)"),
+        ("radians", "RADIANS(1)"),
+        ("cos", "COS(1)"),
+        ("asin", "ASIN(0.5)"),
+        ("sin", "SIN(0.5)"),
+        ("tan", "TAN(0.5)"),
+        ("acos", "ACOS(0.5)"),
+        ("atan", "ATAN(0.5)"),
+        ("atan2", "ATAN2(1,0.5)"),
+        ("log", "LOG(3,2)"),
         ("mod", "MOD(-7,3)"),
+        ("gcd", "GCD(12,18)"),
+        ("lcm", "LCM(12,18)"),
+        ("fact", "FACT(12)"),
+        ("sign", "SIGN(-0.001)"),
+        ("int", "INT(-3.2)"),
+        ("trunc", "TRUNC(-3.14159,3)"),
+        ("pi", "PI()"),
+        ("not", "NOT(0)"),
+        ("isnumber", "ISNUMBER(2)"),
+        ("iserror", "ISERROR(NA())"),
+        ("iseven", "ISEVEN(-3.7)"),
+        ("n", "N(TRUE)"),
+        ("na", "NA()"),
+        ("isref_self", "ISREF(A1)"),
+        ("isref_column", "ISREF(B:B)"),
     ] {
         for rows in [corpus(64, 16), corpus(4_096, 64)] {
             let mut warm = workbook(rows, expression);
@@ -1695,6 +1839,36 @@ fn dependency_recalculation_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// A warm volatile pass visits every formula, with the workbook graph and
+/// parsed shape already held. `RAND` exercises host-seeded draws; TODAY uses
+/// the same once-per-pass clock sample without per-cell system calls.
+fn clock_recalculation_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/clock");
+    for (name, expression) in [("rand", "RAND()"), ("today", "TODAY()"),
+        ("between", "RANDBETWEEN(-5,7)")] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = Workbook::new().with_clock(Clock::fixed(
+                -2_203_977_600_000_000_000, yggdryl::Timezone::UTC, 73,
+            ));
+            let sheet = book.add_sheet("Cases").unwrap();
+            let shape = Formula::from_file(expression, CellRef::new(0, 0));
+            for row in 0..rows as u32 {
+                let at = CellRef::new(row, 0);
+                sheet.insert_cell(
+                    Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900)
+                        .unwrap().with_formula(shape.clone()),
+                ).unwrap();
+            }
+            assert_eq!(book.calculate_all().unwrap().evaluated, rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{name}/warm/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.recalculate().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
 /// The range iterator lends physical cells directly to the calculation context.
 /// Force a warm pass so every iteration executes SUM over the complete range.
 fn range_recalculation_benchmarks(criterion: &mut Criterion) {
@@ -1719,6 +1893,553 @@ fn range_recalculation_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("numeric/{rows}"), |bencher| {
             bencher.iter(|| black_box(book.calculate_all().unwrap()));
         });
+    }
+    for function in ["MEDIAN", "MODE"] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows as u32 {
+                sheet.set_cell(CellRef::new(row, 0), f64::from(row % 8)).unwrap();
+            }
+            let at = CellRef::new(0, 1);
+            book.set_entry("Data", at, &format!("={function}(A1:A{rows})")).unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+            assert_eq!(book.sheet("Data").unwrap().scalar(at),
+                Scalar::from(if function == "MEDIAN" { 3.5 } else { 0.0 }));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("rank/{function}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    for (formula, expected_at_rows) in [
+        ("LARGE(A1:A{rows},1)", None),
+        ("SMALL(A1:A{rows},1)", Some(0.0)),
+        ("PERCENTILE(A1:A{rows},0.5)", Some(3.5)),
+        ("_xlfn.PERCENTILE.INC(A1:A{rows},0.5)", Some(3.5)),
+        ("QUARTILE(A1:A{rows},2)", Some(3.5)),
+        ("_xlfn.QUARTILE.INC(A1:A{rows},2)", Some(3.5)),
+        ("RANK(2,A1:A{rows})", None),
+        ("_xlfn.RANK.EQ(2,A1:A{rows})", None),
+    ] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows as u32 {
+                sheet.set_cell(CellRef::new(row, 0), f64::from(row % 8)).unwrap();
+            }
+            let at = CellRef::new(0, 1);
+            book.set_entry("Data", at, &format!("={}", formula.replace("{rows}", &rows.to_string()))).unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+            let expected = expected_at_rows.unwrap_or_else(|| {
+                if formula.starts_with("LARGE") { 7.0 } else { (1 + 5 * rows / 8) as f64 }
+            });
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("order_statistic/{formula}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    for function in ["COUNTBLANK", "_xlfn.MAXIFS", "_xlfn.MINIFS"] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows as u32 {
+                if function == "COUNTBLANK" {
+                    if row % 2 == 1 {
+                        sheet.set_cell(CellRef::new(row, 0), "occupied").unwrap();
+                    }
+                } else {
+                    sheet.set_cell(CellRef::new(row, 0), f64::from(row % 8)).unwrap();
+                    sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+                }
+            }
+            let at = CellRef::new(0, 2);
+            let formula = if function == "COUNTBLANK" {
+                format!("=COUNTBLANK(A1:A{rows})")
+            } else {
+                format!("={function}(A1:A{rows},B1:B{rows},1)")
+            };
+            book.set_entry("Data", at, &formula).unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+            let expected = match function {
+                "COUNTBLANK" => (rows / 2) as f64,
+                "_xlfn.MAXIFS" => 7.0,
+                _ => 0.0,
+            };
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("blank_extrema/{function}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    let typed_factor = Scalar::from_sequence([
+        Scalar::from("long text factor ".repeat(32)), Scalar::from(17_i64),
+    ]);
+    for (kind, text_source) in [("numeric", false), ("typed_text", true)] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows as u32 {
+                let source = if text_source { typed_factor.clone() }
+                    else { Scalar::from(f64::from(row % 8)) };
+                sheet.set_cell(CellRef::new(row, 0), source).unwrap();
+                sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+            }
+            let at = CellRef::new(0, 2);
+            book.set_entry("Data", at,
+                &format!("=SUMPRODUCT(A1:A{rows},B1:B{rows})")).unwrap();
+            assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+            let expected = if text_source { 0.0 } else { (rows / 8 * 28) as f64 };
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("sumproduct/{kind}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    // The borrowed Presence path must scale with source count, not text size.
+    let long = "not a numeric value ".repeat(512);
+    let typed = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value) in [("native_text", Scalar::from(long)), ("typed_text", typed)] {
+        for function in ["COUNT", "COUNTA", "MIN", "MAX", "AVERAGE", "AVERAGEA", "MINA", "MAXA", "PRODUCT", "MEDIAN"] {
+            for rows in [corpus(64, 16), corpus(4_096, 64)] {
+                let mut book = Workbook::new();
+                let sheet = book.add_sheet("Data").unwrap();
+                for row in 0..rows as u32 {
+                    sheet.set_cell(CellRef::new(row, 0), value.clone()).unwrap();
+                }
+                let at = CellRef::new(0, 1);
+                book.set_entry("Data", at, &format!("={function}(A1:A{rows},2)")).unwrap();
+                assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+                let expected = match function {
+                    "COUNT" => 1.0,
+                    "COUNTA" => (rows + 1) as f64,
+                    "AVERAGEA" => 2.0 / (rows + 1) as f64,
+                    "MINA" => 0.0,
+                    "MEDIAN" => 2.0,
+                    _ => 2.0,
+                };
+                assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+                group.throughput(Throughput::Elements(rows as u64));
+                group.bench_function(format!("{kind}/{function}/{rows}"), |bencher| {
+                    bencher.iter(|| black_box(book.calculate_all().unwrap()));
+                });
+            }
+        }
+    }
+    group.finish();
+}
+
+/// Names execute through the same evaluator and sparse source reader; these
+/// force actual work after arena compilation and dependency intake are warm.
+fn named_recalculation_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/names");
+    for (label, formula) in [("constant", "Constant"), ("aliases", "SecondAlias+SecondAlias"), ("range", "SUM(NamedColumn)")] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = excel_package::defined_name_calculation_cost_book(rows as u32, 64, formula);
+            assert_eq!(book.calculate_all().unwrap().evaluated, rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{label}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn comparison_recalculation_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/comparisons");
+    let text = "AbC123".repeat(512);
+    for (label, left, right) in [
+        ("numeric", Scalar::from(1.0), Scalar::from(2.0)),
+        ("long_ascii", Scalar::from(format!("{text}x")), Scalar::from(format!("{text}Y"))),
+    ] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = excel_package::comparison_calculation_cost_book(rows as u32, left.clone(), right.clone());
+            assert_eq!(book.calculate_all().unwrap().evaluated, rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{label}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn logical_reducer_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/logical_reducers");
+    for rows in [corpus(64, 16), corpus(4_096, 64)] {
+        let mut book = excel_package::logical_scalar_cost_book(rows as u32);
+        assert_eq!(book.calculate_all().unwrap().evaluated, rows as u64);
+        group.throughput(Throughput::Elements(rows as u64));
+        group.bench_function(format!("scalar/{rows}"), |bencher| {
+            bencher.iter(|| black_box(book.calculate_all().unwrap()));
+        });
+    }
+    let long = "not a logical value ".repeat(512);
+    for (label, value) in [("Boolean", Scalar::from(true)), ("long_text", Scalar::from(long))] {
+        for rows in [corpus(64, 16), corpus(4_096, 64)] {
+            let mut book = excel_package::logical_reducer_cost_book(rows as u32, value.clone());
+            assert_eq!(book.calculate_all().unwrap().evaluated, 3);
+            group.throughput(Throughput::Elements(3 * rows as u64));
+            group.bench_function(format!("{label}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn lazy_selector_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/lazy_selectors");
+    for rows in [corpus(64, 16), corpus(4096, 64)] {
+        for (label, mut book, evaluated) in [
+            ("scalar", excel_package::lazy_scalar_cost_book(rows as u32), rows as u64),
+            ("range", excel_package::lazy_range_cost_book(rows as u32), 1),
+            ("suspended", excel_package::lazy_chain_cost_book(rows as u32), rows as u64),
+        ] {
+            assert_eq!(book.calculate_all().unwrap().evaluated, evaluated);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{label}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn multi_selector_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/multi_selectors");
+    for rows in [corpus(64, 16), corpus(4096, 64)] {
+        for (label, base, text, column, formulas) in [
+            ("ifs_scalar", excel_package::lazy_scalar_cost_book(rows as u32), "IFS(A1,C1,FALSE,D1)", 1, rows as u32),
+            ("switch_scalar", excel_package::lazy_scalar_cost_book(rows as u32), "SWITCH(A1,TRUE,C1,FALSE,D1,0)", 1, rows as u32),
+            ("ifs_range", excel_package::lazy_range_cost_book(rows as u32), "IFS(C1,SUM(B:B),TRUE,0)", 0, 1),
+            ("switch_range", excel_package::lazy_range_cost_book(rows as u32), "SWITCH(C1,TRUE,SUM(B:B),FALSE,0,-1)", 0, 1),
+            ("ifs_suspended", excel_package::lazy_chain_cost_book(rows as u32), "IFS(TRUE,A2,FALSE,0)", 0, rows as u32),
+            ("switch_suspended", excel_package::lazy_chain_cost_book(rows as u32), "SWITCH(1,1,A2,2,0,-1)", 0, rows as u32),
+        ] {
+            let mut book = excel_package::selector_formula_cost_book(base, text, column, formulas);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{label}/{rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn geometry_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/geometry");
+    for formulas in [corpus(64,16),corpus(4096,64)] {
+        for source_rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book = excel_package::geometry_cost_book(formulas as u32, source_rows as u32);
+            assert_eq!(book.calculate_all().unwrap().evaluated, formulas as u64);
+            group.throughput(Throughput::Elements(formulas as u64));
+            group.bench_function(format!("{formulas}/{source_rows}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn text_function_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/text");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book = excel_package::text_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn indexed_reference_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/indexed_reference");
+    for offset in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book = excel_package::indexed_reference_cost_book(rows as u32,rows as u32,offset);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/offset-{offset}"),|bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn text_conversion_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/text_conversion");
+    for joins in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book = excel_package::text_conversion_cost_book(rows as u32,joins);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/joins-{joins}"),|bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn text_index_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/text_index");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::text_index_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn text_casing_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/text_casing");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::text_casing_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn text_search_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/text_search");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::text_search_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn text_character_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/text_character");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::text_character_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn text_value_format_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/text_value_format");
+    for kind in 0..6 {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::text_value_format_cost_book(rows as u32,kind);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/kind-{kind}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+
+/// Exact early-key and paused-late-key lookup over source axes of two sizes.
+fn lookup_axis_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/lookup_axis");
+    for rows in [corpus(64, 16), corpus(4096, 64)] {
+        for late in [false, true] {
+            let mut book = Workbook::new();
+            book.add_sheet("Cases").unwrap();
+            book.add_sheet("Data").unwrap();
+            let target = if late { rows } else { 1 };
+            book.set_entry("Cases", CellRef::new(0, 1),
+                &format!("=MATCH({target},Data!A1:A{rows},0)")).unwrap();
+            for row in 0..rows {
+                let at = CellRef::new(row as u32, 0);
+                let input = if late {
+                    format!("={}", row + 1) // every key suspends before its first read
+                } else {
+                    (row + 1).to_string()
+                };
+                book.set_entry("Data", at, &input).unwrap();
+            }
+            book.calculate_all().unwrap();
+            assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(0, 1)).as_f64(),
+                Some(target as f64));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/late-{late}"), |bencher| {
+                bencher.iter(|| black_box(book.calculate_all().unwrap()));
+            });
+        }
+    }
+    group.finish();
+}
+
+fn financial_annuity_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/financial_annuity");
+    for long in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::financial_annuity_cost_book(rows as u32,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,rows as u64);
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn financial_npv_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/financial_npv");
+    for range in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::financial_npv_cost_book(rows as u32,range);
+            assert_eq!(book.calculate_all().unwrap().evaluated,if range {1}else{rows as u64});
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/range-{range}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn financial_payment_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/financial_payment");
+    for rows in [corpus(64,16),corpus(4096,64)] {
+        let mut book=excel_package::financial_payment_cost_book(rows as u32);
+        assert_eq!(book.calculate_all().unwrap().evaluated,(rows/4*3) as u64);
+        group.throughput(Throughput::Elements(rows as u64));
+        group.bench_function(format!("{rows}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+    }
+    group.finish();
+}
+
+fn variance_exact_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/variance_exact");
+    for range in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=excel_package::variance_exact_cost_book(rows as u32,range);
+            assert_eq!(book.calculate_all().unwrap().evaluated,if range {8}else{rows as u64});
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/range-{range}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn typed_text_write_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_write/typed_text");
+    for rows in [corpus(64,16),corpus(4096,64)] {
+        let book=excel_package::typed_text_write_cost_book(rows as u32,true);
+        group.throughput(Throughput::Elements(rows as u64));
+        group.bench_function(format!("{rows}"),|bencher|bencher.iter(||black_box(book.into_bytes().unwrap())));
+    }
+    group.finish();
+}
+
+fn criteria_subtotal_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/criteria_subtotal");
+    for subtotal in [false,true] {
+        for rows in [corpus(64,16),corpus(4096,64)] {
+            let mut book=if subtotal {excel_package::subtotal_cost_book(rows as u32)}else{excel_package::criteria_six_cost_book(rows as u32)};
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(if subtotal {23}else{6},0));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/subtotal-{subtotal}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn function_catalog_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_formula/catalog");
+    for scans in [corpus(64, 16), corpus(4096, 64)] {
+        group.throughput(Throughput::Elements((scans * 159) as u64));
+        group.bench_function(format!("{scans}"), |bencher| bencher.iter(|| {
+            let mut names = 0;
+            for _ in 0..scans {
+                for entry in Formula::functions() { names += black_box(entry.name.len()); }
+            }
+            black_box(names)
+        }));
+    }
+    group.finish();
+}
+
+fn literal_array_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/literal_arrays");
+    for rows in [corpus(64,16),corpus(4096,64)] {
+        for long in [false,true] {
+            let mut book=excel_package::literal_array_cost_book(rows as u32,long);
+            let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(rows as u64,0));
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("{rows}/long-{long}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+        }
+    }
+    group.finish();
+}
+
+fn reference_algebra_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("media/excel_recalc/reference_algebra");
+    for (formulas, source_rows) in [
+        (corpus(64, 16), corpus(64, 16)),
+        (corpus(4096, 64), corpus(64, 16)),
+        (corpus(64, 16), corpus(4096, 64)),
+    ] {
+        let mut book = excel_package::reference_algebra_cost_book(
+            formulas as u32, source_rows as u32);
+        assert_eq!(book.calculate_all().unwrap().evaluated, formulas as u64);
+        group.throughput(Throughput::Elements(formulas as u64));
+        group.bench_function(format!("{formulas}/{source_rows}"), |bencher| {
+            bencher.iter(|| black_box(book.calculate_all().unwrap()));
+        });
+    }
+    group.finish();
+}
+
+fn mapped_array_benchmarks(criterion:&mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_recalc/mapped_arrays");
+    for rows in [corpus(64,16),corpus(4096,64)] {
+        let mut book=excel_package::mapped_array_cost_book(rows as u32);
+        let report=book.calculate_all().unwrap();assert_eq!((report.evaluated,report.uncomputed),(rows as u64,0));
+        group.throughput(Throughput::Elements(rows as u64));
+        group.bench_function(format!("cells/{rows}"),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+    }
+    for rows in [1,64] {
+        let mut book=excel_package::mapped_array_broadcast_book(rows,64);
+        assert_eq!(book.calculate_all().unwrap().uncomputed,0);
+        group.throughput(Throughput::Elements((rows*64) as u64));
+        group.bench_function(format!("broadcast/{}",rows*64),|bencher|bencher.iter(||black_box(book.calculate_all().unwrap())));
+    }
+    group.finish();
+}
+
+fn pivot_benchmarks(criterion: &mut Criterion) {
+    let mut group=criterion.benchmark_group("media/excel_pivot");
+    for rows in [corpus(1_000,64),corpus(100_000,256)] {
+        for formatted in [false,true] {
+            let (mut book,mut spec)=excel_package::pivot_cost_book(rows as u32);
+            if formatted { spec.values[0].number_format=Some("#,##0.0000".into()); }
+            book.add_pivot(spec,"Report",CellRef::new(2,0)).unwrap();
+            book.refresh_pivot("Report","CostPivot").unwrap();
+            group.throughput(Throughput::Elements(rows as u64));
+            group.bench_function(format!("refresh/{rows}/formatted-{formatted}"),|bencher| {
+                bencher.iter(||black_box(book.refresh_pivot("Report","CostPivot").unwrap()));
+            });
+        }
     }
     group.finish();
 }

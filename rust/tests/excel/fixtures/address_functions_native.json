@@ -1,0 +1,2880 @@
+{
+  "schema_version": 1,
+  "scope": "62 native address observations; Rust replay is tested separately",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 124,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "48c6516f244cc3eb618587716d4ce3a2831186eacfdadabd057d5cfe1f803f78",
+      "cases": 31,
+      "physical_formula_cells": 31
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "e8490bb7c937b1c47402de2000f4142ae6c1958ef61fdc3c47868ebd4660fa9d",
+      "cases": 31,
+      "physical_formula_cells": 31
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "D3": 0,
+      "A1": 1,
+      "A2": 3,
+      "A3": 5,
+      "A4": 7,
+      "B1": 10,
+      "B2": 30,
+      "B3": 50,
+      "B4": 70,
+      "C1": "one",
+      "C2": "three",
+      "C3": "five",
+      "C4": "seven",
+      "F1": 7,
+      "F2": 5,
+      "F3": 3,
+      "F4": 1,
+      "H1": "alpha",
+      "H2": "beta",
+      "H3": "BETA",
+      "H4": "*",
+      "N1": 3,
+      "N2": 3,
+      "N3": 5,
+      "N4": 7,
+      "J1": 1,
+      "K1": 3,
+      "L1": 5,
+      "M1": 7,
+      "J2": 10,
+      "K2": 30,
+      "L2": 50,
+      "M2": 70,
+      "J3": "one",
+      "K3": "three",
+      "L3": "five",
+      "M3": "seven"
+    }
+  },
+  "manifest_sha256": "25ecf8731c1d1f68be5fd9c2955a0e87f78bb5de1a1aeaabb1cb3158737e4bc4",
+  "source_report": "rust/target/excel-desktop/p5-address-functions-native/results.json",
+  "source_report_sha256": "98e744f041b37d14e346dc79d82739a1925f6aa94f17c8a145cd87d57fd12961",
+  "cases": [
+    {
+      "id": "error-source-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-mode-1-TRUE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "ADDRESS(12,28,1,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-1-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE)",
+        "formula2": "=ADDRESS(12,28,1,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE)",
+        "formula2": "=ADDRESS(12,28,1,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-1-FALSE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "ADDRESS(12,28,1,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-1-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,FALSE)",
+        "formula2": "=ADDRESS(12,28,1,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C28"
+        },
+        "display": "L12C28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,FALSE)",
+        "formula2": "=ADDRESS(12,28,1,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C28"
+        },
+        "display": "L12C28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L12C28",
+        "formula_text": "ADDRESS(12,28,1,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-2-TRUE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "ADDRESS(12,28,2,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-2-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,2,TRUE)",
+        "formula2": "=ADDRESS(12,28,2,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB$12"
+        },
+        "display": "AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,2,TRUE)",
+        "formula2": "=ADDRESS(12,28,2,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB$12"
+        },
+        "display": "AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "AB$12",
+        "formula_text": "ADDRESS(12,28,2,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-2-FALSE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "ADDRESS(12,28,2,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-2-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,2,FALSE)",
+        "formula2": "=ADDRESS(12,28,2,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C(28)"
+        },
+        "display": "L12C(28)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,2,FALSE)",
+        "formula2": "=ADDRESS(12,28,2,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C(28)"
+        },
+        "display": "L12C(28)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L12C(28)",
+        "formula_text": "ADDRESS(12,28,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-3-TRUE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "ADDRESS(12,28,3,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-3-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,3,TRUE)",
+        "formula2": "=ADDRESS(12,28,3,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB12"
+        },
+        "display": "$AB12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,3,TRUE)",
+        "formula2": "=ADDRESS(12,28,3,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB12"
+        },
+        "display": "$AB12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB12",
+        "formula_text": "ADDRESS(12,28,3,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-3-FALSE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "ADDRESS(12,28,3,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-3-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,3,FALSE)",
+        "formula2": "=ADDRESS(12,28,3,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C28"
+        },
+        "display": "L(12)C28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,3,FALSE)",
+        "formula2": "=ADDRESS(12,28,3,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C28"
+        },
+        "display": "L(12)C28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(12)C28",
+        "formula_text": "ADDRESS(12,28,3,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-4-TRUE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "ADDRESS(12,28,4,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-4-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,4,TRUE)",
+        "formula2": "=ADDRESS(12,28,4,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB12"
+        },
+        "display": "AB12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,4,TRUE)",
+        "formula2": "=ADDRESS(12,28,4,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB12"
+        },
+        "display": "AB12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "AB12",
+        "formula_text": "ADDRESS(12,28,4,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-4-FALSE-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "ADDRESS(12,28,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-4-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,4,FALSE)",
+        "formula2": "=ADDRESS(12,28,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C(28)"
+        },
+        "display": "L(12)C(28)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,4,FALSE)",
+        "formula2": "=ADDRESS(12,28,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C(28)"
+        },
+        "display": "L(12)C(28)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(12)C(28)",
+        "formula_text": "ADDRESS(12,28,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-default-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "ADDRESS(1,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "default"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1)",
+        "formula2": "=ADDRESS(1,1)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1)",
+        "formula2": "=ADDRESS(1,1)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$A$1",
+        "formula_text": "ADDRESS(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-last-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "ADDRESS(1048576,16384)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "last"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1048576,16384)",
+        "formula2": "=ADDRESS(1048576,16384)",
+        "value2": {
+          "variant": "str",
+          "value": "$XFD$1048576"
+        },
+        "display": "$XFD$1048576",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1048576,16384)",
+        "formula2": "=ADDRESS(1048576,16384)",
+        "value2": {
+          "variant": "str",
+          "value": "$XFD$1048576"
+        },
+        "display": "$XFD$1048576",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$XFD$1048576",
+        "formula_text": "ADDRESS(1048576,16384)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-row-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "ADDRESS(0,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(0,1)",
+        "formula2": "=ADDRESS(0,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(0,1)",
+        "formula2": "=ADDRESS(0,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(0,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-column-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "ADDRESS(1,0)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "column-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,0)",
+        "formula2": "=ADDRESS(1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,0)",
+        "formula2": "=ADDRESS(1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-row-big-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "ADDRESS(1048577,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-big"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1048577,1)",
+        "formula2": "=ADDRESS(1048577,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1048577,1)",
+        "formula2": "=ADDRESS(1048577,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1048577,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-column-big-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "ADDRESS(1,16385)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "column-big"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,16385)",
+        "formula2": "=ADDRESS(1,16385)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,16385)",
+        "formula2": "=ADDRESS(1,16385)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,16385)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-row-negative-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "ADDRESS(-1,2)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-negative"
+      },
+      "actual": {
+        "formula": "=ADDRESS(-1,2)",
+        "formula2": "=ADDRESS(-1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(-1,2)",
+        "formula2": "=ADDRESS(-1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(-1,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-fraction-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "ADDRESS(1.9,2.9,2.9)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "fraction"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1.9,2.9,2.9)",
+        "formula2": "=ADDRESS(1.9,2.9,2.9)",
+        "value2": {
+          "variant": "str",
+          "value": "B$1"
+        },
+        "display": "B$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1.9,2.9,2.9)",
+        "formula2": "=ADDRESS(1.9,2.9,2.9)",
+        "value2": {
+          "variant": "str",
+          "value": "B$1"
+        },
+        "display": "B$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "B$1",
+        "formula_text": "ADDRESS(1.9,2.9,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "ADDRESS(1,1,0)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1,0)",
+        "formula2": "=ADDRESS(1,1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1,0)",
+        "formula2": "=ADDRESS(1,1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-mode-five-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "ADDRESS(1,1,5)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-five"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1,5)",
+        "formula2": "=ADDRESS(1,1,5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1,5)",
+        "formula2": "=ADDRESS(1,1,5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,1,5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-text-numbers-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "ADDRESS(\"12\",\"28\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "text-numbers"
+      },
+      "actual": {
+        "formula": "=ADDRESS(\"12\",\"28\")",
+        "formula2": "=ADDRESS(\"12\",\"28\")",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(\"12\",\"28\")",
+        "formula2": "=ADDRESS(\"12\",\"28\")",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB$12",
+        "formula_text": "ADDRESS(\"12\",\"28\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-text-bad-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "ADDRESS(\"x\",1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "text-bad"
+      },
+      "actual": {
+        "formula": "=ADDRESS(\"x\",1)",
+        "formula2": "=ADDRESS(\"x\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(\"x\",1)",
+        "formula2": "=ADDRESS(\"x\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(\"x\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-boolean-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "ADDRESS(TRUE,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "boolean"
+      },
+      "actual": {
+        "formula": "=ADDRESS(TRUE,TRUE)",
+        "formula2": "=ADDRESS(TRUE,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(TRUE,TRUE)",
+        "formula2": "=ADDRESS(TRUE,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$A$1",
+        "formula_text": "ADDRESS(TRUE,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-blank-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "ADDRESS(Values!Z1,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "blank"
+      },
+      "actual": {
+        "formula": "=ADDRESS(Values!Z1,1)",
+        "formula2": "=ADDRESS(Values!Z1,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(Values!Z1,1)",
+        "formula2": "=ADDRESS(Values!Z1,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(Values!Z1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "ADDRESS(Values!D2,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "error"
+      },
+      "actual": {
+        "formula": "=ADDRESS(Values!D2,1)",
+        "formula2": "=ADDRESS(Values!D2,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(Values!D2,1)",
+        "formula2": "=ADDRESS(Values!D2,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "ADDRESS(Values!D2,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"Data\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "value2": {
+          "variant": "str",
+          "value": "Data!$AB$12"
+        },
+        "display": "Data!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "value2": {
+          "variant": "str",
+          "value": "Data!$AB$12"
+        },
+        "display": "Data!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "Data!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-space-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-space"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "value2": {
+          "variant": "str",
+          "value": "'Data Sheet'!$AB$12"
+        },
+        "display": "'Data Sheet'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "value2": {
+          "variant": "str",
+          "value": "'Data Sheet'!$AB$12"
+        },
+        "display": "'Data Sheet'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'Data Sheet'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-quote-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-quote"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "value2": {
+          "variant": "str",
+          "value": "'O''Brien'!$AB$12"
+        },
+        "display": "'O''Brien'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "value2": {
+          "variant": "str",
+          "value": "'O''Brien'!$AB$12"
+        },
+        "display": "'O''Brien'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'O''Brien'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-numeric-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,123)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-numeric"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,123)",
+        "formula2": "=ADDRESS(12,28,1,TRUE,123)",
+        "value2": {
+          "variant": "str",
+          "value": "'123'!$AB$12"
+        },
+        "display": "'123'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,123)",
+        "formula2": "=ADDRESS(12,28,1,TRUE,123)",
+        "value2": {
+          "variant": "str",
+          "value": "'123'!$AB$12"
+        },
+        "display": "'123'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'123'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,123)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-empty"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "value2": {
+          "variant": "str",
+          "value": "!$AB$12"
+        },
+        "display": "!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "value2": {
+          "variant": "str",
+          "value": "!$AB$12"
+        },
+        "display": "!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-relative-negative-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "ADDRESS(-1,-2,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "relative-negative"
+      },
+      "actual": {
+        "formula": "=ADDRESS(-1,-2,4,FALSE)",
+        "formula2": "=ADDRESS(-1,-2,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(-1)C(-2)"
+        },
+        "display": "L(-1)C(-2)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(-1,-2,4,FALSE)",
+        "formula2": "=ADDRESS(-1,-2,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(-1)C(-2)"
+        },
+        "display": "L(-1)C(-2)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(-1)C(-2)",
+        "formula_text": "ADDRESS(-1,-2,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-relative-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "ADDRESS(0,0,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "relative-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(0,0,4,FALSE)",
+        "formula2": "=ADDRESS(0,0,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "LC"
+        },
+        "display": "LC",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(0,0,4,FALSE)",
+        "formula2": "=ADDRESS(0,0,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "LC"
+        },
+        "display": "LC",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "LC",
+        "formula_text": "ADDRESS(0,0,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "error-source-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-mode-1-TRUE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "ADDRESS(12,28,1,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-1-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE)",
+        "formula2": "=ADDRESS(12,28,1,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE)",
+        "formula2": "=ADDRESS(12,28,1,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-1-FALSE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "ADDRESS(12,28,1,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-1-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,FALSE)",
+        "formula2": "=ADDRESS(12,28,1,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C28"
+        },
+        "display": "L12C28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,FALSE)",
+        "formula2": "=ADDRESS(12,28,1,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C28"
+        },
+        "display": "L12C28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L12C28",
+        "formula_text": "ADDRESS(12,28,1,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-2-TRUE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "ADDRESS(12,28,2,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-2-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,2,TRUE)",
+        "formula2": "=ADDRESS(12,28,2,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB$12"
+        },
+        "display": "AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,2,TRUE)",
+        "formula2": "=ADDRESS(12,28,2,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB$12"
+        },
+        "display": "AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "AB$12",
+        "formula_text": "ADDRESS(12,28,2,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-2-FALSE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "ADDRESS(12,28,2,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-2-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,2,FALSE)",
+        "formula2": "=ADDRESS(12,28,2,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C(28)"
+        },
+        "display": "L12C(28)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,2,FALSE)",
+        "formula2": "=ADDRESS(12,28,2,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L12C(28)"
+        },
+        "display": "L12C(28)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L12C(28)",
+        "formula_text": "ADDRESS(12,28,2,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-3-TRUE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "ADDRESS(12,28,3,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-3-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,3,TRUE)",
+        "formula2": "=ADDRESS(12,28,3,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB12"
+        },
+        "display": "$AB12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,3,TRUE)",
+        "formula2": "=ADDRESS(12,28,3,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$AB12"
+        },
+        "display": "$AB12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB12",
+        "formula_text": "ADDRESS(12,28,3,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-3-FALSE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "ADDRESS(12,28,3,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-3-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,3,FALSE)",
+        "formula2": "=ADDRESS(12,28,3,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C28"
+        },
+        "display": "L(12)C28",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,3,FALSE)",
+        "formula2": "=ADDRESS(12,28,3,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C28"
+        },
+        "display": "L(12)C28",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(12)C28",
+        "formula_text": "ADDRESS(12,28,3,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-4-TRUE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "ADDRESS(12,28,4,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-4-TRUE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,4,TRUE)",
+        "formula2": "=ADDRESS(12,28,4,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB12"
+        },
+        "display": "AB12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,4,TRUE)",
+        "formula2": "=ADDRESS(12,28,4,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "AB12"
+        },
+        "display": "AB12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "AB12",
+        "formula_text": "ADDRESS(12,28,4,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-4-FALSE-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "ADDRESS(12,28,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-4-FALSE"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,4,FALSE)",
+        "formula2": "=ADDRESS(12,28,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C(28)"
+        },
+        "display": "L(12)C(28)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,4,FALSE)",
+        "formula2": "=ADDRESS(12,28,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(12)C(28)"
+        },
+        "display": "L(12)C(28)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(12)C(28)",
+        "formula_text": "ADDRESS(12,28,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-default-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "ADDRESS(1,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "default"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1)",
+        "formula2": "=ADDRESS(1,1)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1)",
+        "formula2": "=ADDRESS(1,1)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$A$1",
+        "formula_text": "ADDRESS(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-last-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "ADDRESS(1048576,16384)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "last"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1048576,16384)",
+        "formula2": "=ADDRESS(1048576,16384)",
+        "value2": {
+          "variant": "str",
+          "value": "$XFD$1048576"
+        },
+        "display": "$XFD$1048576",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1048576,16384)",
+        "formula2": "=ADDRESS(1048576,16384)",
+        "value2": {
+          "variant": "str",
+          "value": "$XFD$1048576"
+        },
+        "display": "$XFD$1048576",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$XFD$1048576",
+        "formula_text": "ADDRESS(1048576,16384)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-row-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "ADDRESS(0,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(0,1)",
+        "formula2": "=ADDRESS(0,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(0,1)",
+        "formula2": "=ADDRESS(0,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(0,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-column-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "ADDRESS(1,0)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "column-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,0)",
+        "formula2": "=ADDRESS(1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,0)",
+        "formula2": "=ADDRESS(1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-row-big-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "ADDRESS(1048577,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-big"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1048577,1)",
+        "formula2": "=ADDRESS(1048577,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1048577,1)",
+        "formula2": "=ADDRESS(1048577,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1048577,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-column-big-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "ADDRESS(1,16385)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "column-big"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,16385)",
+        "formula2": "=ADDRESS(1,16385)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,16385)",
+        "formula2": "=ADDRESS(1,16385)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,16385)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-row-negative-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "ADDRESS(-1,2)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "row-negative"
+      },
+      "actual": {
+        "formula": "=ADDRESS(-1,2)",
+        "formula2": "=ADDRESS(-1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(-1,2)",
+        "formula2": "=ADDRESS(-1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(-1,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-fraction-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "ADDRESS(1.9,2.9,2.9)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "fraction"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1.9,2.9,2.9)",
+        "formula2": "=ADDRESS(1.9,2.9,2.9)",
+        "value2": {
+          "variant": "str",
+          "value": "B$1"
+        },
+        "display": "B$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1.9,2.9,2.9)",
+        "formula2": "=ADDRESS(1.9,2.9,2.9)",
+        "value2": {
+          "variant": "str",
+          "value": "B$1"
+        },
+        "display": "B$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "B$1",
+        "formula_text": "ADDRESS(1.9,2.9,2.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-mode-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "ADDRESS(1,1,0)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1,0)",
+        "formula2": "=ADDRESS(1,1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1,0)",
+        "formula2": "=ADDRESS(1,1,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-mode-five-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "ADDRESS(1,1,5)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "mode-five"
+      },
+      "actual": {
+        "formula": "=ADDRESS(1,1,5)",
+        "formula2": "=ADDRESS(1,1,5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(1,1,5)",
+        "formula2": "=ADDRESS(1,1,5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(1,1,5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-text-numbers-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "ADDRESS(\"12\",\"28\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "text-numbers"
+      },
+      "actual": {
+        "formula": "=ADDRESS(\"12\",\"28\")",
+        "formula2": "=ADDRESS(\"12\",\"28\")",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(\"12\",\"28\")",
+        "formula2": "=ADDRESS(\"12\",\"28\")",
+        "value2": {
+          "variant": "str",
+          "value": "$AB$12"
+        },
+        "display": "$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$AB$12",
+        "formula_text": "ADDRESS(\"12\",\"28\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-text-bad-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "ADDRESS(\"x\",1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "text-bad"
+      },
+      "actual": {
+        "formula": "=ADDRESS(\"x\",1)",
+        "formula2": "=ADDRESS(\"x\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(\"x\",1)",
+        "formula2": "=ADDRESS(\"x\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(\"x\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-boolean-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "ADDRESS(TRUE,TRUE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "boolean"
+      },
+      "actual": {
+        "formula": "=ADDRESS(TRUE,TRUE)",
+        "formula2": "=ADDRESS(TRUE,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(TRUE,TRUE)",
+        "formula2": "=ADDRESS(TRUE,TRUE)",
+        "value2": {
+          "variant": "str",
+          "value": "$A$1"
+        },
+        "display": "$A$1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "$A$1",
+        "formula_text": "ADDRESS(TRUE,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-blank-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "ADDRESS(Values!Z1,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "blank"
+      },
+      "actual": {
+        "formula": "=ADDRESS(Values!Z1,1)",
+        "formula2": "=ADDRESS(Values!Z1,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(Values!Z1,1)",
+        "formula2": "=ADDRESS(Values!Z1,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "ADDRESS(Values!Z1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "ADDRESS(Values!D2,1)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "error"
+      },
+      "actual": {
+        "formula": "=ADDRESS(Values!D2,1)",
+        "formula2": "=ADDRESS(Values!D2,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=ADDRESS(Values!D2,1)",
+        "formula2": "=ADDRESS(Values!D2,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "ADDRESS(Values!D2,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"Data\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "value2": {
+          "variant": "str",
+          "value": "Data!$AB$12"
+        },
+        "display": "Data!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data\")",
+        "value2": {
+          "variant": "str",
+          "value": "Data!$AB$12"
+        },
+        "display": "Data!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "Data!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"Data\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-space-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-space"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "value2": {
+          "variant": "str",
+          "value": "'Data Sheet'!$AB$12"
+        },
+        "display": "'Data Sheet'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "value2": {
+          "variant": "str",
+          "value": "'Data Sheet'!$AB$12"
+        },
+        "display": "'Data Sheet'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'Data Sheet'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"Data Sheet\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-quote-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-quote"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "value2": {
+          "variant": "str",
+          "value": "'O''Brien'!$AB$12"
+        },
+        "display": "'O''Brien'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "value2": {
+          "variant": "str",
+          "value": "'O''Brien'!$AB$12"
+        },
+        "display": "'O''Brien'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'O''Brien'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"O'Brien\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-numeric-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,123)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-numeric"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,123)",
+        "formula2": "=ADDRESS(12,28,1,TRUE,123)",
+        "value2": {
+          "variant": "str",
+          "value": "'123'!$AB$12"
+        },
+        "display": "'123'!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,123)",
+        "formula2": "=ADDRESS(12,28,1,TRUE,123)",
+        "value2": {
+          "variant": "str",
+          "value": "'123'!$AB$12"
+        },
+        "display": "'123'!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "'123'!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,123)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-sheet-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "ADDRESS(12,28,1,TRUE,\"\")",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "sheet-empty"
+      },
+      "actual": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "value2": {
+          "variant": "str",
+          "value": "!$AB$12"
+        },
+        "display": "!$AB$12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "formula2": "=ADDRESS(12,28,1,TRUE,\"\")",
+        "value2": {
+          "variant": "str",
+          "value": "!$AB$12"
+        },
+        "display": "!$AB$12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "!$AB$12",
+        "formula_text": "ADDRESS(12,28,1,TRUE,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-relative-negative-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "ADDRESS(-1,-2,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "relative-negative"
+      },
+      "actual": {
+        "formula": "=ADDRESS(-1,-2,4,FALSE)",
+        "formula2": "=ADDRESS(-1,-2,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(-1)C(-2)"
+        },
+        "display": "L(-1)C(-2)",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(-1,-2,4,FALSE)",
+        "formula2": "=ADDRESS(-1,-2,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "L(-1)C(-2)"
+        },
+        "display": "L(-1)C(-2)",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "L(-1)C(-2)",
+        "formula_text": "ADDRESS(-1,-2,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "address-relative-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "ADDRESS(0,0,4,FALSE)",
+      "shape": {
+        "function": "ADDRESS",
+        "label": "relative-zero"
+      },
+      "actual": {
+        "formula": "=ADDRESS(0,0,4,FALSE)",
+        "formula2": "=ADDRESS(0,0,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "LC"
+        },
+        "display": "LC",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ADDRESS(0,0,4,FALSE)",
+        "formula2": "=ADDRESS(0,0,4,FALSE)",
+        "value2": {
+          "variant": "str",
+          "value": "LC"
+        },
+        "display": "LC",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "LC",
+        "formula_text": "ADDRESS(0,0,4,FALSE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31",
+          "t": "str"
+        }
+      }
+    }
+  ]
+}

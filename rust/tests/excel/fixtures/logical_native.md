@@ -21,14 +21,16 @@ the empty string from a source formula. These observations establish the
 current French-host behavior for those spellings only. They do not establish
 an en-US workbook formula rule, nor a rule for untested text.
 
-The planned Rust slice must therefore hold `Operand::Text` at the logical
-intake, retaining the previous cache with `Unevaluated::Coercion`.
-`Operand::logical` can compute Blank=false, Number `!=0`, Boolean identity,
-and propagate Error. The 72-case `logical_native.json` run separately records the
+The Rust logical intake holds `Operand::Text`, retaining the previous cache
+with `Unevaluated::Coercion`. The public test checks all 68 text cases remain
+held. `Operand::logical` computes Blank=false, Number `!=0`, Boolean identity,
+and propagates Error. The 72-case `logical_native.json` run separately records the
 numeric/Boolean/blank/reference/error subset as 40 native caches;
 18 text cases need locale context, and 14 IF/AND/OR controls belong to later
-implementation. No logical function implementation or Rust equivalence test
-is included in this checkpoint. Generic expression `Term::Not` remains unchanged.
+implementation. The Rust TRUE/FALSE/NOT fixture test now matches all 40
+numeric/Boolean/blank/reference/error cases and proves the 18 locale-dependent
+text cases retain their caches. Two additional controls prove incremental
+updates and wrong-arity refusal. Generic expression `Term::Not` remains unchanged.
 
 ## Narrow secondary oracle
 

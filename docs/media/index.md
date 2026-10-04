@@ -2267,7 +2267,7 @@ The provider writes the million rows in 0.82 s; the rest is the client reading t
 
 ## Excel
 
-An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. The whole workbook is the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
+An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. Rust and Python expose the whole workbook as the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
 
 Three facts about the file decide what a read answers. A number cell is a `float64`, because the file stores every number as a double: `1` reads as `1.0`, and a declared `int64` column reads it back as the integer it was written as. A cell's number format is its datatype - a serial under a date format is a `date32`, under a clock a `time32(ms)`, under a date and a clock a `datetime64(ms)`, under `[h]:mm:ss` a `duration64(ms)` - in the workbook's date system, 1900 or 1904. Text is escaped as ECMA-376 spells it: a control character, a carriage return and a literal `_x0041_` are written `_xHHHH_` and read back as themselves, which Excel does and openpyxl leaves unread.
 
@@ -2373,7 +2373,7 @@ Three facts about the file decide what a read answers. A number cell is a `float
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { DataType, IOBase, Serie, Sheet, Workbook } = require('yggdryl')
+    const { IOBase, Serie } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-excel-'))
     const file = path.join(root, 'trades.xlsx')
@@ -2390,20 +2390,6 @@ Three facts about the file decide what a read answers. A number cell is a `float
     assert.deepEqual([...handle.readArrowReader().intoTable().getChild('id')], [1, 2])
     handle.overwriteArrowTable(new arrow.Table({ note: arrow.vectorFromArray(['a'], new arrow.Utf8()) }), handle.recordOptions().withSheet('Notes'))
 
-    // The random-access path: any cell of any sheet, and a sheet as a Serie.
-    const workbook = Workbook.open(file)
-    assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
-    const sheet = workbook.sheet('Sheet1')
-    assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
-    assert.equal(sheet.cell('B3'), null)
-    sheet.setCell('D1', 'note')
-    sheet.setCell('D2', new DataType('date32').scalar('2024-01-02'))
-    assert.equal(sheet.cell('D2').format, 'date')
-    assert.equal(sheet.intoSerie(field).asJs().length, 2)
-    workbook.insertSheet(Sheet.fromSerie('Copy', table))
-    workbook.writeInto(file)
-    assert.equal(Workbook.open(file).sheet('Sheet1').cell('D1').value.asJs(), 'note')
-    assert.equal(new IOBase(file).readArrowReader(handle.recordOptions().withSheet('Copy')).intoTable().numRows, 2)
     fs.rmSync(root, { recursive: true, force: true })
     ```
 

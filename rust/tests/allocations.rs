@@ -8541,10 +8541,59 @@ fn excel_calculate_all_warm_noop_allocations_have_no_per_formula_slope() {
     for expression in [
         "1+2",
         "ABS(-7.25)",
+        "YEAR(60)",
+        "DAY(60)",
+        "WEEKDAY(60,1)",
+        "WEEKDAY(61,17)",
+        "_xlfn.DAYS(61,60)",
+        "DATE(1900,2,29)",
+        "HOUR(60.5)",
+        "MINUTE(1/24)",
+        "SECOND(1/86400)",
+        "TIME(12,34,56)",
+        "EDATE(60,1)",
+        "EOMONTH(61,-1)",
+        "DATEVALUE(\"2024-02-29\")",
+        "TIMEVALUE(\"12:34:56\")",
         "SUM(1,2,3)",
         "ROUND(2.15,1)",
+        "ROUNDUP(2.15,1)",
+        "ROUNDDOWN(2.15,1)",
+        "QUOTIENT(0.3,0.1)",
+        "EVEN(2.5)",
+        "ODD(-2.5)",
+        "CEILING(0.3,0.1)",
+        "FLOOR(0.3,0.1)",
+        "MROUND(1.005,0.01)",
+        "_xlfn.CEILING.MATH(-3.2,2,1)",
+        "_xlfn.FLOOR.MATH(-3.2,2,1)",
         "SQRT(2)",
+        "EXP(1)",
+        "LN(2.5)",
+        "LOG10(2.5)",
+        "DEGREES(1)",
+        "RADIANS(1)",
+        "COS(1)",
+        "ASIN(0.5)",
+        "LOG(3,2)",
         "MOD(-7,3)",
+        "GCD(12,18)",
+        "LCM(12,18)",
+        "FACT(12)",
+        "SIGN(-0.001)",
+        "INT(-3.2)",
+        "TRUNC(-3.14159,3)",
+        "PI()",
+        "TRUE()",
+        "FALSE()",
+        "NOT(0)",
+        "ISNUMBER(2)",
+        "ISERROR(NA())",
+        "ISEVEN(-3.7)",
+        "N(TRUE)",
+        "NA()",
+        "ISREF(A1)",
+        "ISREF(B:B)",
     ] {
         let (small, large) = (cost(64, expression), cost(4_096, expression));
         assert_eq!(
@@ -8647,6 +8696,26 @@ fn excel_dependency_unchanged_schedule_allocates_nothing() {
         // The force-all operation remains a different contract even when
         // every cached result is already settled.
         assert_eq!(graph.prepare(true).unwrap().ordered().len(), nodes);
+    }
+}
+
+#[test]
+fn expression_power_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([
+        DataType::Float32.required_field("base"),
+        DataType::Int64.required_field("exponent"),
+    ]).map(DataType::from).unwrap().required_field("row");
+    let bound = "pow(base, exponent)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let row = Scalar::from_sequence([Scalar::from(2.0_f32), Scalar::from(3_i64)]);
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from(8.0_f64));
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound power rows");
     }
 }
 
@@ -9021,4 +9090,1138 @@ fn excel_calculation_sum_reference_text_has_zero_warm_allocations() {
             );
         }
     }
+}
+
+/// COUNT/COUNTA/MIN/MAX visit borrowed reference values. In particular,
+/// COUNTA tests presence without rendering long native or typed text.
+#[test]
+fn excel_basic_aggregate_reference_text_has_zero_warm_allocations() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let long = "not a numeric value ".repeat(512);
+    let typed = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value) in [("native string", Scalar::from(long)), ("typed text", typed)] {
+        for rows in [64_u32, 4096] {
+            for function in ["COUNT", "COUNTA", "MIN", "MAX", "AVERAGE", "AVERAGEA", "MINA", "MAXA", "PRODUCT"] {
+                let mut book = Workbook::new();
+                let sheet = book.add_sheet("Data").unwrap();
+                for row in 0..rows {
+                    sheet.set_cell(CellRef::new(row, 0), value.clone()).unwrap();
+                }
+                let at = CellRef::new(0, 1);
+                let expression = format!("{function}(A1:A{rows},2)");
+                sheet.insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                        .unwrap().with_formula(Formula::from_file(&expression, at)),
+                ).unwrap();
+                let first = book.calculate_all().unwrap();
+                assert_eq!((first.evaluated, first.uncomputed), (1, 0), "{expression}");
+                let expected = match function {
+                    "COUNT" => 1.0,
+                    "COUNTA" => f64::from(rows + 1),
+                    "AVERAGEA" => 2.0 / f64::from(rows + 1),
+                    "MINA" => 0.0,
+                    _ => 2.0,
+                };
+                assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+                let revision = book.sheet("Data").unwrap().revision();
+                let (cost, report) = counted(|| book.calculate_all().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+                assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+                assert_eq!(cost, 0, "{kind}, {rows} rows, {function}");
+            }
+        }
+    }
+}
+
+/// The exceptional numeric sidecar is sparse and its formula read uses the
+/// cached typed operand. Once the graph is warm, source serial precision must
+/// not introduce a per-formula allocation.
+#[test]
+fn excel_temporal_serial_warm_recalculation_allocates_nothing() {
+    use yggdryl::excel::Workbook;
+
+    let cost = |rows: u32, raw: &str| {
+        let data = (1..=rows).map(|row| format!(
+            "<row r=\"{row}\"><c r=\"A{row}\" s=\"1\"><v>{raw}</v></c>\
+             <c r=\"B{row}\" s=\"1\"><f>A{row}</f><v>0</v></c></row>"
+        )).collect::<String>();
+        let bytes = excel_package::one_sheet(&data, &[], &[], &[0, 22]);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        assert_eq!(workbook.calculate_all().unwrap().evaluated, u64::from(rows));
+        let revision = workbook.sheet("Sheet1").unwrap().revision();
+        let (allocations, report) = counted(|| workbook.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        assert_eq!(workbook.sheet("Sheet1").unwrap().revision(), revision);
+        allocations
+    };
+    for raw in ["60", "45292.000000001"] {
+        let (small, large) = (cost(64, raw), cost(4096, raw));
+        assert_eq!((small, large), (0, 0), "raw={raw}: 64={small}, 4096={large}");
+    }
+}
+
+
+/// Held AutoFill landing excludes workbook intake and ZIP output. Daily series
+/// uses stack-backed digit rounding, so its allocation slope matches Copy;
+/// exceptional raw serial ownership adds only the measured sparse sidecars.
+#[test]
+fn excel_temporal_fill_landing_allocations() {
+    use yggdryl::excel::{CellRange, CellRef, FillMode, Workbook};
+
+    let data = "<row r=\"1\">\
+        <c r=\"A1\" s=\"1\"><v>59</v></c>\
+        <c r=\"B1\" s=\"1\"><v>60</v></c>\
+        <c r=\"C1\" s=\"1\"><v>45292.000000001</v></c></row>";
+    let bytes = excel_package::one_sheet(data, &[], &[], &[0, 14]);
+    for (name, column, mode, small, large) in [
+        ("daily canonical", 0, FillMode::Series, 82, 4_791),
+        ("daily exceptional", 1, FillMode::Series, 82, 4_791),
+        ("copy canonical", 0, FillMode::Copy, 80, 4_789),
+        ("copy exceptional", 2, FillMode::Copy, 89, 5_469),
+    ] {
+        let source = CellRange::new(CellRef::new(0, column), CellRef::new(0, column));
+        for (rows, expected) in [(64_u32, small), (4_096, large)] {
+            let target = CellRange::new(source.start(), CellRef::new(rows - 1, column));
+            let mut warm = Workbook::from_bytes(bytes.clone()).unwrap();
+            warm.parse_all().unwrap();
+            warm.fill("Sheet1", source, CellRange::new(source.start(), CellRef::new(1, column)), mode).unwrap();
+            let mut workbook = Workbook::from_bytes(bytes.clone()).unwrap();
+            workbook.parse_all().unwrap();
+            let (allocations, ()) = counted(|| {
+                workbook.fill("Sheet1", source, target, mode).unwrap();
+            });
+            assert!(workbook.sheet("Sheet1").unwrap().cell(CellRef::new(rows - 1, column)).is_some());
+            assert_eq!(allocations, expected, "{name}: {rows} rows");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_fill_round15_has_no_per_value_allocation() {
+    use yggdryl::internals::excel_fill::round15_for_test;
+    for rows in [64_usize, 4_096] {
+        let (allocations, sum) = counted(|| {
+            let mut sum = 0.0;
+            for index in 0..rows {
+                let value = std::hint::black_box(45_292.123_456_789_f64 + index as f64 * 0.125);
+                sum += std::hint::black_box(round15_for_test(value));
+            }
+            sum
+        });
+        assert!(sum.is_finite());
+        assert_eq!(allocations, 0, "{rows} values");
+    }
+}
+
+/// Name definitions lend their existing arenas. Hash membership, evaluator
+/// continuations, graph walk and results reuse retained capacity after warmup;
+/// irrelevant registry size must not become a per-pass or per-cell allocation.
+#[test]
+fn excel_calculation_defined_names_have_zero_warm_allocations() {
+    for formula in ["Constant", "SecondAlias+SecondAlias", "SUM(NamedColumn)"] {
+        for rows in [64, 4096] {
+            for names in [64, 4096] {
+                let mut book = excel_package::defined_name_calculation_cost_book(rows, names, formula);
+                let first = book.calculate_all().unwrap();
+                assert_eq!((first.evaluated, first.uncomputed), (u64::from(rows), 0));
+                let revision = book.sheet("Data").unwrap().revision();
+                let (forced, report) = counted(|| book.calculate_all().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+                let (idle, report) = counted(|| book.recalculate().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+                assert_eq!((forced, idle), (0, 0), "{formula}: {rows} formulas, {names} unused names");
+                assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+            }
+        }
+    }
+}
+
+/// Comparison borrows shared strings and folds ASCII bytes without building
+/// lowercase Strings. Warm graph/evaluator capacities are retained, including
+/// held collation results; no source value is rendered or decimal-reparsed.
+#[test]
+fn excel_ordered_comparisons_have_zero_warm_allocations() {
+    let ascii = "AbC123".repeat(512);
+    let unicode = "same\u{e9} ".repeat(512);
+    for (kind, left, right, computed, first) in [
+        ("numeric", Scalar::from(1.0), Scalar::from(2.0), true, false),
+        ("blank", Scalar::Null, Scalar::from(false), true, true),
+        ("mixed", Scalar::from(2.0), Scalar::from("2"), true, false),
+        ("long ASCII", Scalar::from(format!("{ascii}x")), Scalar::from(format!("{ascii}Y")), true, false),
+        ("identical Unicode", Scalar::from(unicode.clone()), Scalar::from(unicode), true, true),
+        ("held collation", Scalar::from("\u{e9}"), Scalar::from("e"), false, false),
+    ] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::comparison_calculation_cost_book(rows, left.clone(), right.clone());
+            let expected = if computed { (u64::from(rows), 0) } else { (0, u64::from(rows)) };
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed), expected);
+            let revision = book.sheet("Data").unwrap().revision();
+            if computed {
+                assert_eq!(book.sheet("Data").unwrap().scalar(yggdryl::excel::CellRef::new(0, 2)).as_bool(), Some(first));
+            }
+            let (forced, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), expected);
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (0, expected.1));
+            assert_eq!((forced, idle), (0, 0), "{kind}: {rows} comparison consumers");
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+/// The warmed graph, evaluator and replacement storage retain capacity;
+/// per-host hashing and random draws use stack state. Construction and the
+/// first pass are outside this exact zero-allocation pin at both corpus sizes.
+#[test]
+fn excel_clock_volatile_warm_pass_allocates_nothing() {
+    use yggdryl::excel::{Cell, CellRef, Clock, DateSystem, Formula, Workbook};
+    use yggdryl::{Scalar, Timezone};
+
+    for rows in [64_u32, 4_096] {
+        let mut book = Workbook::new().with_clock(Clock::fixed(
+            -2_203_977_600_000_000_000, Timezone::UTC, 73,
+        ));
+        let sheet = book.add_sheet("Cases").unwrap();
+        let shape = Formula::from_file("RAND()", CellRef::new(0, 0));
+        for row in 0..rows {
+            let at = CellRef::new(row, 0);
+            sheet.insert_cell(
+                Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(shape.clone()),
+            ).unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (allocations, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        assert_eq!(allocations, 0, "warm volatile RAND {rows} rows");
+    }
+}
+
+/// Sparse logical intake retains Boolean values but skips text before rendering.
+/// Three accumulator bit sets and reused graph/evaluator buffers add no per-row
+/// storage or warmed allocation, including typed text with an allocated display.
+#[test]
+fn excel_logical_reducers_have_zero_warm_range_allocations() {
+    use yggdryl::excel::CellRef;
+    let long = "not a logical value ".repeat(512);
+    let rendered = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value, and) in [
+        ("Boolean", Scalar::from(true), true),
+        ("numeric zero", Scalar::from(0.0), false),
+        ("long native text", Scalar::from(long), true),
+        ("rendered typed text", rendered, true),
+    ] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::logical_reducer_cost_book(rows, value.clone());
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (3, 0));
+            for (row, expected) in [and, true, true].into_iter().enumerate() {
+                assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(row as u32, 1)).as_bool(), Some(expected), "{kind}");
+            }
+            let revision = book.sheet("Data").unwrap().revision();
+            let (forced, result) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((result.evaluated, result.uncomputed), (3, 0));
+            let (idle, result) = counted(|| book.recalculate().unwrap());
+            assert_eq!((result.evaluated, result.uncomputed), (0, 0));
+            assert_eq!((forced, idle), (0, 0), "{kind}: {rows} sparse source cells");
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+#[test]
+fn excel_logical_reducers_have_zero_warm_scalar_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::logical_scalar_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert!(book.sheet("Data").unwrap().cells().all(|cell| cell.value().as_bool() == Some(true)));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        assert_eq!((forced, idle), (0, 0), "{rows} direct logical consumers");
+    }
+}
+
+/// Dynamic registrations retain their peak ordinal suffix. An unchanged
+/// selection reactivates its existing memberships; it does not rebuild them.
+#[test]
+fn excel_lazy_selectors_have_zero_warm_scalar_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_scalar_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let revision = book.sheet("Data").unwrap().revision();
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        eprintln!("lazy scalar {rows}: forced={forced}, idle={idle}");
+        assert_eq!((forced, idle), (0, 0), "{rows} scalar selectors");
+        assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+    }
+}
+
+#[test]
+fn excel_lazy_selectors_have_zero_warm_sparse_range_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_range_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        assert_eq!(book.sheet("Data").unwrap().scalar(yggdryl::excel::CellRef::new(0, 0)).as_f64(), Some(f64::from(rows)));
+        eprintln!("lazy range {rows}: forced={forced}");
+        assert_eq!(forced, 0, "{rows} sparse source cells");
+    }
+}
+
+/// Pool capacity is bounded by peak simultaneous suspensions, with one same-
+/// evaluator arena per held root. The second identical pass reuses that peak.
+#[test]
+fn excel_lazy_selectors_reuse_peak_suspended_arenas_without_warm_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_chain_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (u64::from(rows), 0, 0));
+        eprintln!("lazy chain {rows}: forced={forced}");
+        assert_eq!(forced, 0, "{rows} suspended roots");
+    }
+}
+
+/// Additional initial keys use the same retained evaluator/graph buffers as
+/// IF; selected registrations and peak suspended arenas are reused on warm passes.
+#[test]
+fn excel_multi_selectors_reuse_scalar_range_and_suspended_storage() {
+    use yggdryl::excel::CellRef;
+    for rows in [64, 4096] {
+        for (label, base, text, column, formulas, expected) in [
+            ("ifs scalar", excel_package::lazy_scalar_cost_book(rows), "IFS(A1,C1,FALSE,D1)", 1, rows, 7.0),
+            ("switch scalar", excel_package::lazy_scalar_cost_book(rows), "SWITCH(A1,TRUE,C1,FALSE,D1,0)", 1, rows, 7.0),
+            ("ifs range", excel_package::lazy_range_cost_book(rows), "IFS(C1,SUM(B:B),TRUE,0)", 0, 1, f64::from(rows)),
+            ("switch range", excel_package::lazy_range_cost_book(rows), "SWITCH(C1,TRUE,SUM(B:B),FALSE,0,-1)", 0, 1, f64::from(rows)),
+            ("ifs suspended", excel_package::lazy_chain_cost_book(rows), "IFS(TRUE,A2,FALSE,0)", 0, rows, 7.0),
+            ("switch suspended", excel_package::lazy_chain_cost_book(rows), "SWITCH(1,1,A2,2,0,-1)", 0, rows, 7.0),
+        ] {
+            let mut book = excel_package::selector_formula_cost_book(base, text, column, formulas);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+            let revision = book.sheet("Data").unwrap().revision();
+            let (forced, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (u64::from(formulas), 0, 0), "{label}/{rows}");
+            assert_eq!(book.sheet("Data").unwrap().scalar(CellRef::new(0, column)).as_f64(), Some(expected), "{label}/{rows}");
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+            eprintln!("multi selector {label}/{rows}: forced={forced}, idle={idle}");
+            assert_eq!((forced, idle), (0, 0), "{label}/{rows}");
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_rounding_family_primitive_has_zero_per_item_allocation() {
+    use yggdryl::internals::excel_formula_number::{parity_round, quotient, round_direction};
+    for count in [64, 4_096] {
+        let (allocations, checksum) = counted(|| {
+            let mut checksum = 0_u64;
+            for _ in 0..count {
+                checksum ^= black_box(round_direction(black_box(3.2), -2.0, true).unwrap().unwrap()).to_bits();
+                checksum ^= black_box(parity_round(black_box(-2.5), true).unwrap().unwrap()).to_bits();
+                checksum ^= black_box(quotient(black_box(0.3), 0.1).unwrap().unwrap()).to_bits();
+            }
+            checksum
+        });
+        black_box(checksum);
+        assert_eq!(allocations, 0, "{count} directed numeric operands");
+    }
+}
+
+#[test]
+fn excel_trig_warm_formula_rows_allocate_nothing() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+
+    for rows in [64_u32, 4_096] {
+        let mut book = Workbook::new();
+        book.add_sheet("Cases").unwrap();
+        for row in 0..rows {
+            let at = CellRef::new(row, 0);
+            let expression = ["SIN(0.5)", "TAN(0.5)", "ACOS(0.5)", "ATAN(0.5)", "ATAN2(1,0.5)"]
+                [row as usize % 5];
+            book.sheet_mut("Cases").unwrap().insert_cell(
+                Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900).unwrap()
+                    .with_formula(Formula::from_file(expression, at)),
+            ).unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!(report.evaluated, 0);
+        assert_eq!((forced, idle), (0, 0), "{rows} warm trig formula cells");
+    }
+}
+
+#[test]
+fn expression_pure_math_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([DataType::Float32.required_field("x")])
+        .map(DataType::from).unwrap().required_field("row");
+    let bound: Vec<_> = [
+        "exp(x)", "ln(x)", "log10(x)", "degrees(x)", "radians(x)",
+        "cos(x)", "asin(x)", "sin(x)", "tan(x)", "acos(x)", "atan(x)",
+        "atan2(x,1)",
+    ]
+        .into_iter().map(|text| text.parse::<Term>().unwrap().bind(&schema).unwrap()).collect();
+    let row = Scalar::from_sequence([Scalar::from(1.0_f32)]);
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                for expression in &bound {
+                    black_box(expression.eval(black_box(&row)).unwrap());
+                }
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound rows across twelve functions");
+    }
+}
+
+#[test]
+fn excel_geometry_functions_reuse_warm_reference_and_array_handles() {
+    for (formulas, source_rows) in [(64,64),(4096,4096),(64,4096)] {
+        let mut book = excel_package::geometry_cost_book(formulas, source_rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+        let revision = book.sheet("Cases").unwrap().revision();
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (u64::from(formulas),0,0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0,0));
+        eprintln!("geometry {formulas}/{source_rows}: forced={forced}, idle={idle}");
+        // Existing evaluator/descriptor capacity is retained. Array outcomes
+        // borrow AST identity; no source-cell values or dimension arrays copy.
+        assert_eq!((forced,idle), (0,0), "{formulas} formulas/{source_rows} source cells");
+        assert_eq!(book.sheet("Cases").unwrap().revision(), revision);
+    }
+}
+
+#[test]
+fn excel_text_functions_reuse_unchanged_storage_and_keep_small_outputs_inline() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book = excel_package::text_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed), (u64::from(rows),0));
+            let (idle,report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            eprintln!("text functions {rows} long={long}: forced={allocations} idle={idle}");
+            // Short transformed strings use SmolStrBuilder's inline storage;
+            // unchanged long results move the source Str handle, never copy.
+            assert_eq!((allocations,idle),(0,0),"{rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_indexed_references_reuse_handles_without_copying_source_ranges() {
+    for offset in [false,true] {
+        for (formulas,source_rows) in [(64,64),(4096,4096),(64,4096)] {
+            let mut book = excel_package::indexed_reference_cost_book(formulas,source_rows,offset);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(formulas));
+            assert_eq!(book.sheet("Cases").unwrap().scalar(yggdryl::excel::CellRef::new(formulas-1,0)).as_f64(),Some(1.0));
+            let (forced,report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed,report.circular_count),(u64::from(formulas),0,0));
+            let (idle,report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated,if offset {u64::from(formulas)} else {0});
+            eprintln!("indexed references {formulas}/{source_rows} offset={offset}: forced={forced} idle={idle}");
+            // Geometry and the selected reference share retained descriptor
+            // capacity; neither the source size nor volatility allocates.
+            assert_eq!((forced,idle),(0,0),"{formulas}/{source_rows} offset={offset}");
+        }
+    }
+}
+
+#[test]
+fn excel_text_conversion_and_compact_joins_keep_warm_allocations_zero() {
+    for joins in [false,true] {
+        for rows in [64,4096] {
+            let mut book = excel_package::text_conversion_cost_book(rows,joins);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            eprintln!("text conversion {rows} joins={joins}: forced={allocations} idle={idle}");
+            // Digits/Out and short joins remain inline; whole-column blanks
+            // contribute a multiplicity rather than rows or retained values.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} joins={joins}");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_order_statistics_allocate_by_source_capacity() {
+    use yggdryl::internals::excel_formula_aggregate::Accumulator;
+    for rows in [64, 4_096] {
+        for kind in 0..3 {
+            let (allocations, answer) = counted(|| {
+                let mut source = Accumulator::ranked();
+                for row in 0..rows {
+                    source.push_number(black_box((row % 8) as f64)).unwrap();
+                }
+                match kind {
+                    0 => source.finish_kth(1.0, true).unwrap().unwrap(),
+                    1 => source.finish_percentile(0.5).unwrap().unwrap(),
+                    _ => source.finish_rank(2.0, false).unwrap().unwrap(),
+                }
+            });
+            let expected = match kind {
+                0 => 7.0,
+                1 => 3.5,
+                _ => (1 + 5 * rows / 8) as f64,
+            };
+            assert_eq!(answer, expected);
+            // The one ranked vector grows logarithmically, independent of
+            // per-row text conversion, formula nodes, or a second sort copy.
+            assert!(allocations <= if rows == 64 { 12 } else { 24 },
+                "{rows} rows, kind {kind}: {allocations} allocations");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_rank_accumulator_allocates_only_for_bounded_growth() {
+    use yggdryl::internals::excel_formula_aggregate::Accumulator;
+    for (rows, upper_bound) in [(64, 12), (4_096, 24)] {
+        let (allocations, (median, mode)) = counted(|| {
+            let mut median = Accumulator::ranked();
+            let mut mode = Accumulator::ranked();
+            for row in 0..rows {
+                let value = (row % 8) as f64;
+                median.push_number(black_box(value)).unwrap();
+                mode.push_number(black_box(value)).unwrap();
+            }
+            (median.finish_median().unwrap().unwrap(),
+             mode.finish_mode().unwrap().unwrap())
+        });
+        assert_eq!((median, mode), (3.5, 0.0));
+        assert!(allocations <= upper_bound, "{rows} ranks allocated {allocations} times");
+    }
+}
+
+
+/// The criterion must inspect each text source without rebuilding a text
+/// spelling per cell on a warm recalculation. A formula may allocate fixed
+/// matcher state; corpus growth must add no per-row allocations.
+#[test]
+fn excel_countif_typed_text_range_has_no_per_row_allocation() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long nonmatching text ".repeat(32)), Scalar::from(17_i64),
+    ]);
+    let mut measured = Vec::new();
+    for rows in [64_u32, 4_096] {
+        let mut book = Workbook::new();
+        let sheet = book.add_sheet("Data").unwrap();
+        for row in 0..rows {
+            sheet.set_cell(CellRef::new(row, 0), typed.clone()).unwrap();
+        }
+        let at = CellRef::new(0, 1);
+        let expression = format!("COUNTIF(A1:A{rows},\"nomatch\")");
+        sheet.insert_cell(
+            Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                .unwrap().with_formula(Formula::from_file(&expression, at)),
+        ).unwrap();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+        assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(0.0));
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        measured.push(cost);
+    }
+    assert!(measured[1] <= measured[0] + 4,
+        "typed text read allocated by row: 64={}, 4096={}", measured[0], measured[1]);
+}
+
+#[test]
+fn excel_blank_and_conditional_extrema_have_bounded_text_read_cost() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long nonempty text ".repeat(32)), Scalar::from(17_i64),
+    ]);
+    for function in ["COUNTBLANK", "_xlfn.MAXIFS", "_xlfn.MINIFS"] {
+        let mut costs = Vec::new();
+        for rows in [64_u32, 4_096] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows {
+                if function == "COUNTBLANK" && row % 2 == 0 { continue; }
+                sheet.set_cell(CellRef::new(row, 0), typed.clone()).unwrap();
+                if function != "COUNTBLANK" {
+                    sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+                }
+            }
+            let at = CellRef::new(0, 2);
+            let expression = if function == "COUNTBLANK" {
+                format!("COUNTBLANK(A1:A{rows})")
+            } else {
+                format!("{function}(A1:A{rows},B1:B{rows},1)")
+            };
+            sheet.insert_cell(Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                .unwrap().with_formula(Formula::from_file(&expression, at))).unwrap();
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+            let expected = if function == "COUNTBLANK" { (rows / 2) as f64 } else { 0.0 };
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+            costs.push(cost);
+        }
+        assert!(costs[1] <= costs[0] + 4,
+            "{function} typed text read allocated by row: 64={}, 4096={}", costs[0], costs[1]);
+    }
+}
+
+#[test]
+fn excel_sumproduct_aligned_ranges_have_no_per_row_allocation() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long text factor ".repeat(32)), Scalar::from(17_i64),
+    ]);
+    for text_source in [false, true] {
+        let mut costs = Vec::new();
+        for rows in [64_u32, 4_096] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows {
+                sheet.set_cell(CellRef::new(row, 0),
+                    if text_source { typed.clone() } else { Scalar::from((row % 8) as f64) }).unwrap();
+                sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+            }
+            let at = CellRef::new(0, 2);
+            let expression = format!("SUMPRODUCT(A1:A{rows},B1:B{rows})");
+            sheet.insert_cell(Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                .unwrap().with_formula(Formula::from_file(&expression, at))).unwrap();
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+            let expected = if text_source { 0.0 } else { f64::from(rows / 8 * 28) };
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(expected));
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+            costs.push(cost);
+        }
+        assert!(costs[1] <= costs[0] + 4,
+            "SUMPRODUCT text_source={text_source} allocated by row: 64={}, 4096={}",
+            costs[0], costs[1]);
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_compiled_criteria_wildcard_has_no_per_row_allocation() {
+    use yggdryl::internals::excel_formula_criteria::count_whole_matches;
+    let long = format!("e{}t", "a".repeat(511));
+    for rows in [64, 4_096] {
+        let texts = vec![long.as_str(); rows];
+        let (allocations, matched) = counted(|| count_whole_matches("e*t", &texts));
+        assert_eq!(matched, rows);
+        assert!(allocations <= 3, "{rows} matched rows allocated {allocations} times");
+    }
+}
+
+#[test]
+fn expression_casing_uses_inline_output_or_unchanged_shared_storage() {
+    let schema=StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from).unwrap().required_field("row");
+    for (expression,input) in [("lower(s)","AbC".to_owned()),("upper(s)","aBc".to_owned()),
+                              ("lower(s)","unchanged long lowercase ".repeat(32)),
+                              ("upper(s)","UNCHANGED LONG UPPERCASE ".repeat(32)),
+                              ("lower(s)","\u{4e2d}\u{1f600}".repeat(32))] {
+        let bound=expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        let row=Scalar::from_sequence([Scalar::from(input.as_str())]);
+        black_box(bound.eval(&row).unwrap());
+        for rows in [64,4096] {
+            let (allocations,())=counted(|| {
+                for _ in 0..rows { black_box(bound.eval(black_box(&row)).unwrap()); }
+            });
+            // A short ASCII rewrite stays inline. An unchanged long result
+            // shares its Str handle instead of allocating String + SmolStr.
+            assert_eq!(allocations,0,"{expression}, input bytes={}, rows={rows}",input.len());
+        }
+    }
+}
+
+#[test]
+fn excel_text_find_replace_reuses_text_and_does_not_allocate_position_maps() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::text_index_cost_book(rows,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            // UTF16 positions are counted over borrowed UTF8, never retained
+            // in a per-character Vec; unchanged replacement keeps Str storage.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_text_casing_uses_inline_or_shared_text_storage() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::text_casing_cost_book(rows,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            // Short case conversion stays inline; long unchanged strings
+            // retain the same Str handle through reference intake and publication.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_text_search_reuses_compiled_pattern_and_transition_capacity() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::text_search_cost_book(rows,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());assert_eq!(report.evaluated,0);
+            // One cached compiled pattern and peak NFA state capacity belong
+            // to the evaluator; text positions are streamed, never collected.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} long={long}");
+            for pattern in ["Z*C","A*C"] {
+                book.sheet_mut("Values").unwrap().set_cell(yggdryl::excel::CellRef::new(0,1),pattern).unwrap();
+                assert_eq!(book.recalculate().unwrap().evaluated,u64::from(rows));
+                let (allocations,report)=counted(||book.calculate_all().unwrap());
+                assert_eq!(report.evaluated,u64::from(rows));
+                assert_eq!(allocations,0,"changed pattern={pattern} rows={rows}");
+            }
+        }
+    }
+}
+
+#[test]
+fn excel_text_character_uses_inline_or_shared_text_storage() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::text_character_cost_book(rows,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            // Short character conversion stays inline; long unchanged strings
+            // retain the same Str handle through reference intake and publication.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} long={long}");
+        }
+    }
+}
+
+
+#[test]
+fn expression_exact_integer_math_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([
+        DataType::Int64.required_field("left"),
+        DataType::UInt64.required_field("right"),
+    ]).map(DataType::from).unwrap().required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(12_i64), Scalar::from(18_u64)]);
+    for (formula, expected) in [
+        ("gcd(left,right)", Scalar::from(6_u64)),
+        ("lcm(left,right)", Scalar::from(36_u64)),
+        ("factorial(left)", Scalar::from(479_001_600.0_f64)),
+    ] {
+        let bound = formula.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.eval(&row).unwrap(), expected);
+        for size in [64, 4_096] {
+            let (allocations, ()) = counted(|| {
+                for _ in 0..size {
+                    black_box(bound.eval(black_box(&row)).unwrap());
+                }
+            });
+            assert_eq!(allocations, 0, "{formula}: {size} bound rows");
+        }
+    }
+}
+
+#[test]
+fn excel_text_value_format_reuses_decimal_temporal_and_format_owners() {
+    for kind in 0..6 {
+        for rows in [64,4096] {
+            let mut book=excel_package::text_value_format_cost_book(rows,kind);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            // Decimal/date intake is stack-only; one cached parsed/refused
+            // format is reused. Formula General creates no shorter variants.
+            assert_eq!((allocations,idle),(0,0),"kind={kind} rows={rows}");
+        }
+    }
+}
+
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_lookup_axis_warm_scans_allocate_nothing() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula_eval::ContextEvaluator;
+
+    for length in [64_u64, 4_096] {
+        let formula = Formula::from_entry(
+            &format!("MATCH(1,A1:A{length},0)"), CellRef::new(0, 1)).unwrap();
+        let mut evaluator = ContextEvaluator::default();
+        for (match_at, pause_at, visited) in [
+            (0, None, 1_usize),
+            (length - 1, Some(length / 2), length as usize),
+        ] {
+            // First pass reserves the evaluator's peak active slots.
+            black_box(evaluator.evaluate_lookup(&formula, length, match_at, pause_at).unwrap());
+            let (allocations, answer) = counted(|| {
+                black_box(evaluator.evaluate_lookup(
+                    black_box(&formula), length, match_at, pause_at).unwrap())
+            });
+            assert_eq!(answer.unwrap().as_f64(), Some((match_at + 1) as f64));
+            assert_eq!(evaluator.calls()[2], visited,
+                "lookup callback count over {length} physical keys");
+            assert_eq!(allocations, 0,
+                "warm lookup over {length} keys, match={match_at}, pause={pause_at:?}");
+        }
+    }
+}
+
+#[test]
+fn excel_financial_annuities_reuse_scalar_and_native_factor_storage() {
+    for long in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::financial_annuity_cost_book(rows,long);
+            assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows));
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let (idle,report)=counted(||book.recalculate().unwrap());
+            assert_eq!(report.evaluated,0);
+            // Five numeric arguments and logarithmic exponent work stay on
+            // the stack; graph/evaluator buffers retain their warm capacity.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} long={long}");
+        }
+    }
+}
+
+#[cfg(feature="internals")]
+#[test]
+fn shared_annuity_factors_do_not_allocate_per_call_or_payment_period() {
+    use yggdryl::internals::arithmetic::annuity_factors;
+    for rows in [64,4096] {
+        let (allocations,total)=counted(|| {
+            let mut total=0.0;
+            for index in 0..rows {
+                let (growth,payments)=annuity_factors(std::hint::black_box(0.005),
+                    std::hint::black_box(if index%2==0 {12.0}else{360.0}),index%2==0);
+                total+=growth+payments;
+            }
+            std::hint::black_box(total)
+        });
+        assert!(total.is_finite());assert_eq!(allocations,0,"{rows}");
+    }
+}
+
+#[test]
+fn excel_financial_npv_keeps_discount_state_independent_of_cash_flow_count() {
+    for range in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::financial_npv_cost_book(rows,range);
+            let count=if range {1}else{u64::from(rows)};
+            assert_eq!(book.calculate_all().unwrap().evaluated,count);
+            let (allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(count,0));
+            let (idle,report)=counted(||book.recalculate().unwrap());assert_eq!(report.evaluated,0);
+            // NPV reuses the accumulator prefix and uncertainty flag with two
+            // discount scalars; a streamed range retains no cash-flow vector.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} range={range}");
+        }
+    }
+}
+
+#[test]
+fn excel_financial_payment_reuses_storage_for_computed_and_held_domains() {
+    for rows in [64,4096] {
+        let mut book=excel_package::financial_payment_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated,u64::from(rows/4*3));
+        let(allocations,report)=counted(||book.calculate_all().unwrap());
+        assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows/4*3),u64::from(rows/4)));
+        let(idle,report)=counted(||book.recalculate().unwrap());assert_eq!(report.evaluated,0);
+        assert_eq!((allocations,idle),(0,0),"{rows}");
+    }
+}
+
+#[test]
+fn excel_variance_exact_reuses_scalar_moments_without_retaining_source_rows() {
+    for range in [false,true] {
+        for rows in [64,4096] {
+            let mut book=excel_package::variance_exact_cost_book(rows,range);
+            let count=if range {8}else{u64::from(rows)};
+            assert_eq!(book.calculate_all().unwrap().evaluated,count);
+            let(allocations,report)=counted(||book.calculate_all().unwrap());
+            assert_eq!((report.evaluated,report.uncomputed),(count,0));
+            let(idle,report)=counted(||book.recalculate().unwrap());assert_eq!(report.evaluated,0);
+            // One optional square sum plus the existing prefix/count suffice;
+            // exact-domain guards do not allocate or make a second range pass.
+            assert_eq!((allocations,idle),(0,0),"rows={rows} range={range}");
+        }
+    }
+}
+
+/// Rendering was paid once at typed-cell intake. Saving the same text must
+/// have exactly the native-string save allocation cost at both row counts.
+#[test]
+fn excel_typed_text_write_reuses_intake_spelling() {
+    for rows in [64,4096] {
+        let mut costs=Vec::new();
+        for typed in [false,true] {
+            let book=excel_package::typed_text_write_cost_book(rows,typed);
+            black_box(book.into_bytes().unwrap());
+            let (cost,bytes)=counted(||book.into_bytes().unwrap());
+            assert!(!bytes.is_empty());costs.push(cost);
+        }
+        assert_eq!(costs[0],costs[1],"{rows} rows: native versus typed write allocations {costs:?}");
+    }
+}
+
+#[test]
+fn excel_criteria_six_range_cost_is_independent_of_source_rows() {
+    use yggdryl::excel::CellRef;
+    let mut measured=Vec::new();
+    for rows in [64_u32,4096] {
+        let mut book=excel_package::criteria_six_cost_book(rows);
+        assert_eq!((book.calculate_all().unwrap().evaluated,book.recalculate().unwrap().uncomputed),(6,0));
+        let(expected,average)=(f64::from(rows/4),1.0);
+        for (row,value) in [expected,expected*2.0,average,expected,expected*2.0,average].into_iter().enumerate() {
+            assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(row as u32,0)).as_f64(),Some(value));
+        }
+        let(cost,report)=counted(||book.calculate_all().unwrap());
+        assert_eq!((report.evaluated,report.uncomputed),(6,0));
+        let(idle,report)=counted(||book.recalculate().unwrap());
+        assert_eq!((idle,report.evaluated),(0,0));
+        measured.push(cost);
+    }
+    // Per-call range/criterion vectors and each wildcard's state are fixed;
+    // the source walker must not allocate for any additional matched row.
+    assert_eq!(measured[0],measured[1],"64/4096 source rows: {measured:?}");
+    eprintln!("criteria6 warm allocations at64/4096={measured:?}");
+}
+
+#[test]
+fn excel_subtotal_all_variants_keep_constant_space_over_source_rows() {
+    use yggdryl::excel::CellRef;
+    let mut measured=Vec::new();
+    for rows in [64_u32,4096] {
+        let mut book=excel_package::subtotal_cost_book(rows);
+        let first=book.calculate_all().unwrap();assert_eq!((first.evaluated,first.uncomputed),(23,0));
+        for row in [8_u32,19] {
+            let count=rows-if row==8 {1}else{2};
+            assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(row,0)).as_f64(),Some(f64::from(count)));
+        }
+        let(cost,report)=counted(||book.calculate_all().unwrap());assert_eq!((report.evaluated,report.uncomputed),(23,0));
+        let(idle,report)=counted(||book.recalculate().unwrap());assert_eq!((idle,report.evaluated),(0,0));
+        measured.push(cost);
+    }
+    // The selected row set is streamed; nested/hidden exclusion must not
+    // build source-sized scratch. Graph/accumulator storage is already warm.
+    assert_eq!(measured[0],measured[1],"64/4096 source rows: {measured:?}");
+    eprintln!("subtotal22 warm allocations at64/4096={measured:?}");
+}
+
+// The public Excel function catalog projects the existing static registry.
+#[test]
+fn excel_function_catalog_scans_without_allocation() {
+    for scans in [64, 4_096] {
+        let (allocations, bytes) = counted(|| {
+            let mut bytes = 0;
+            for _ in 0..scans {
+                for function in yggdryl::excel::Formula::functions() {
+                    bytes += black_box(function.name.len());
+                }
+            }
+            bytes
+        });
+        black_box(bytes);
+        assert_eq!(allocations, 0, "{scans} registry scans allocated");
+    }
+}
+
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_criteria_tilde_mode_retains_one_matcher_allocation() {
+    use yggdryl::internals::excel_formula_criteria::count_text_criterion_matches;
+    for rows in [64, 4_096] {
+        let texts = vec!["~~tail"; rows];
+        let (allocations, matched) = counted(|| count_text_criterion_matches("~~*", &texts));
+        assert_eq!(matched, rows);
+        assert!(allocations <= 3, "{rows} criterion rows allocated {allocations} times");
+    }
+}
+
+#[test]
+fn excel_literal_arrays_borrow_constants_without_value_grids() {
+    for rows in [64,4096] {
+        for long in [false,true] {
+            let mut book=excel_package::literal_array_cost_book(rows,long);
+            let warm=book.calculate_all().unwrap();assert_eq!((warm.evaluated,warm.uncomputed),(u64::from(rows),0));
+            let(cost,report)=counted(||book.calculate_all().unwrap());assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+            let(idle,report)=counted(||book.recalculate().unwrap());assert_eq!(report.evaluated,0);
+            // Formula arenas and evaluator/graph buffers are already retained;
+            // row-major array visits borrow every literal and never build a grid.
+            assert_eq!((cost,idle),(0,0),"rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_reference_algebra_reuses_warm_handles_and_sparse_source_rows() {
+    for (formulas, source_rows) in [(64, 64), (4096, 64), (64, 4096)] {
+        let mut book = excel_package::reference_algebra_cost_book(formulas, source_rows);
+        let report = book.calculate_all().unwrap();
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(formulas), 0));
+        let cases = book.sheet("Cases").unwrap();
+        assert_eq!(cases.scalar(yggdryl::excel::CellRef::new(1, 0)).as_f64(), Some(2.0));
+        assert_eq!(cases.scalar(yggdryl::excel::CellRef::new(2, 0)).as_f64(), Some(3.0));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(formulas), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        assert_eq!((forced, idle), (0, 0), "{formulas}/{source_rows} reference algebra");
+    }
+}
+
+#[test]
+fn excel_mapped_arrays_reuse_plans_independently_of_cells_and_output_area() {
+    use yggdryl::excel::CellRef;
+    for rows in [64_u32,4096] {
+        let mut book=excel_package::mapped_array_cost_book(rows);
+        let first=book.calculate_all().unwrap();assert_eq!((first.evaluated,first.uncomputed),(u64::from(rows),0));
+        for (row,expected) in [40.0,24.0,5.0,5.0].into_iter().enumerate() {
+            assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(row as u32,0)).as_f64(),Some(expected));
+        }
+        let(cost,report)=counted(||book.calculate_all().unwrap());assert_eq!((report.evaluated,report.uncomputed),(u64::from(rows),0));
+        let(idle,report)=counted(||book.recalculate().unwrap());assert_eq!((idle,report.evaluated),(0,0));
+        assert_eq!(cost,0,"mapped formula cells={rows}");
+    }
+    for rows in [1,64] {
+        let mut book=excel_package::mapped_array_broadcast_book(rows,64);
+        assert_eq!(book.calculate_all().unwrap().uncomputed,0);
+        let(cost,report)=counted(||book.calculate_all().unwrap());assert_eq!((report.evaluated,report.uncomputed),(1,0));
+        assert_eq!(book.sheet("Cases").unwrap().scalar(CellRef::new(0,0)).as_f64(),Some((rows*128) as f64));
+        // Neither literal inputs nor the output product need a fresh value grid.
+        assert_eq!(cost,0,"broadcast output elements={}",rows*64);
+    }
+}
+
+/// Design12.2's literal corpus complements, rather than replaces, the existing
+/// 64/4096 pins. Force a full warm pass so all source rows reach the same SUM
+/// accumulator; graph/parser/output capacity was established before counting.
+#[test]
+fn excel_sum_contract_one_thousand_and_one_hundred_thousand_rows_allocate_equally() {
+    use yggdryl::excel::CellRef;
+
+    let result = CellRef::new(0, 0);
+    let mut observed = Vec::new();
+    for rows in [1_000_u32, 100_000] {
+        let mut book = excel_package::reference_algebra_cost_book(1, rows);
+        book.set_entry("Cases", result, "=SUM(Values!A:A)").unwrap();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed, first.circular_count), (1, 0, 0));
+        let expected = f64::from(rows) * f64::from(rows + 1) / 2.0;
+        assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(expected));
+        let revision = book.sheet("Cases").unwrap().revision();
+        let (allocations, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed, report.circular_count), (1, 0, 0));
+        assert_eq!(book.sheet("Cases").unwrap().scalar(result), Scalar::from(expected));
+        assert_eq!(book.sheet("Cases").unwrap().revision(), revision);
+        observed.push((rows, allocations));
+    }
+    assert_eq!(observed[0].1, observed[1].1, "source-row slope: {observed:?}");
+    assert_eq!(observed[0].1, 0, "shared warm SUM scratch: {observed:?}");
+}
+
+#[test]
+fn excel_pivot_source_rows_do_not_allocate_per_record() {
+    use yggdryl::excel::CellRef;
+    // Registration::select initializes one process-wide 88-byte MarkupContext
+    // Arc. Warm it on a separate tiny workbook, as the carried-edit pins do;
+    // neither source corpus should pay that one-time package-parser cost.
+    let (mut warm, spec) = excel_package::pivot_cost_book(8);
+    warm.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, spec) = excel_package::pivot_cost_book(rows);
+        // Parse every fixed package owner and initialize shared format caches
+        // before comparing source sizes; repeated strings remain borrowed.
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (allocations, location) = counted(|| book.add_pivot(spec, "Report", CellRef::new(2,0)).unwrap());
+        assert_eq!(book.sheet("Report").unwrap().scalar(location.end()), Scalar::from(f64::from(rows)));
+        observed.push((rows, allocations));
+    }
+    assert_eq!(observed[0].1, observed[1].1, "pivot allocation source-row slope: {observed:?}");
+}
+
+
+#[test]
+fn excel_pivot_parent_subtotals_do_not_allocate_per_record() {
+    use yggdryl::excel::CellRef;
+    // Initialize the package/XML owner's lazy immutable context outside the
+    // measured closures, as the existing pivot cost test does for schemas.
+    let (mut warm, warm_spec) = excel_package::pivot_parent_cost_book(8);
+    warm.add_pivot(warm_spec, "Report", CellRef::new(2, 0)).unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, spec) = excel_package::pivot_parent_cost_book(rows);
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (allocations, location) = counted(|| {
+            book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap()
+        });
+        assert_eq!(book.sheet("Report").unwrap().scalar(location.end()), Scalar::from(1.0));
+        observed.push((rows, allocations));
+    }
+    assert_eq!(observed[0].1, observed[1].1, "pivot parent source-row slope: {observed:?}");
+}
+
+#[test]
+fn excel_pivot_number_format_has_no_source_row_allocation_slope() {
+    use yggdryl::excel::CellRef;
+    // The same process-wide MarkupContext Arc must be warm when this pin runs
+    // alone, independent of another test's initialization order.
+    let (mut warm, spec) = excel_package::pivot_cost_book(8);
+    warm.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, mut spec) = excel_package::pivot_cost_book(rows);
+        spec.values[0].number_format = Some("#,##0.0000".into());
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (create, range) = counted(|| book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap());
+        assert_eq!(book.sheet("Report").unwrap().scalar(range.end()), Scalar::from(f64::from(rows)));
+        book.refresh_pivot("Report", "CostPivot").unwrap();
+        let styles = book.style_sheet().unwrap().len();
+        let (refresh, _) = counted(|| book.refresh_pivot("Report", "CostPivot").unwrap());
+        assert_eq!(book.style_sheet().unwrap().len(), styles);
+        observed.push((rows, create, refresh));
+    }
+    assert_eq!(observed[0].1, observed[1].1, "formatted pivot create slope: {observed:?}");
+    assert_eq!(observed[0].2, observed[1].2, "formatted pivot refresh slope: {observed:?}");
 }

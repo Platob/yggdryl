@@ -274,6 +274,15 @@ impl Rendered {
     }
 }
 
+/// An actual rendering overflow, distinct from a legitimate hash fill token.
+struct RenderFailure { color: Option<u32> }
+
+impl RenderFailure {
+    fn display(self) -> Rendered {
+        Rendered { color: self.color, fill: Some(('#', 0)), ..Rendered::default() }
+    }
+}
+
 /// One section of a code.
 #[derive(Clone, Debug, PartialEq)]
 struct Section {
@@ -755,45 +764,59 @@ impl FormatCode {
         self.render_in(value, system, None)
     }
 
-    /// [`Self::render`], a section's `[ColorN]` read from `palette` - the
-    /// ARGB values a styles part's `indexedColors` states - where it has
-    /// the entry.
+    /// Cell display retains overflow colour and fill; formula TEXT receives
+    /// the same render failure as an error instead of confusing it with *#.
     pub(crate) fn render_in(
         &self,
         value: &Scalar,
         system: DateSystem,
         palette: Option<&[u32]>,
     ) -> Rendered {
-        match value {
+        self.render_value(value, system, palette, true).unwrap_or_else(RenderFailure::display)
+    }
+
+    /// TEXT shares section selection and rendering, without allocating the
+    /// shorter General spellings used only by a cell's width-dependent display.
+    pub(crate) fn render_formula(&self, value: &Scalar, system: DateSystem) -> std::result::Result<SmolStr, super::cell::ExcelError> {
+        if self.code().is_empty() { return Ok(SmolStr::default()); }
+        self.render_value(value, system, None, false)
+            .map(|rendered| rendered.text).map_err(|_| super::cell::ExcelError::Value)
+    }
+
+    fn render_value(
+        &self,
+        value: &Scalar,
+        system: DateSystem,
+        palette: Option<&[u32]>,
+        alternatives: bool,
+    ) -> std::result::Result<Rendered, RenderFailure> {
+        Ok(match value {
             Scalar::Null => Rendered::default(),
             Scalar::Boolean(flag) => Rendered::plain(SmolStr::new_static(if flag.get() {
                 "TRUE"
             } else {
                 "FALSE"
             })),
-            crate::string_scalars!(text) => self.render_text(text.as_str(), palette),
+            crate::string_scalars!(text) => return self.render_text(text.as_str(), palette, !alternatives),
             _ => match number_of(value, system) {
-                Some(number) => self.render_number(number, system, palette),
-                None => self.render_text(&super::cell::cell_text(value), palette),
+                Some(number) => return self.render_number(number, system, palette, alternatives),
+                None => return self.render_text(&super::cell::cell_text(value), palette, !alternatives),
             },
-        }
+        })
     }
 
-    /// Render a number.
-    fn render_number(&self, value: f64, system: DateSystem, palette: Option<&[u32]>) -> Rendered {
+    /// Render a number. A failure retains the display's section colour.
+    fn render_number(&self, value: f64, system: DateSystem, palette: Option<&[u32]>, alternatives: bool) -> std::result::Result<Rendered, RenderFailure> {
         if self.localized || !value.is_finite() {
-            return general_rendered(value);
+            return Ok(general_rendered(value, alternatives));
         }
         let Some((section, signed)) = self.choose(value) else {
             // A text-only format displays numeric values as General; a valid
             // conditional format with no matching numeric section overflows.
             return if self.sections.iter().take(2).any(|s| s.condition.is_some()) {
-                Rendered {
-                    fill: Some(('#', 0)),
-                    ..Rendered::default()
-                }
+                Err(RenderFailure { color: None })
             } else {
-                general_rendered(value)
+                Ok(general_rendered(value, alternatives))
             };
         };
         let color = section.color.and_then(|paint| paint.rgb(palette));
@@ -802,50 +825,57 @@ impl FormatCode {
         let negative = signed && value < 0.0;
         let valid = match section.shape {
             Shape::General if is_bare_general(section) => {
-                return Rendered {
+                return Ok(Rendered {
                     color,
-                    ..general_rendered(if signed { value } else { value.abs() })
-                };
+                    ..general_rendered(if signed { value } else { value.abs() }, alternatives)
+                });
             }
-            Shape::Text => return general_rendered(value),
+            Shape::Text => return Ok(general_rendered(value, alternatives)),
             Shape::Date { .. } => {
                 render_date(section, value, system, negative, &mut out, &mut fill)
             }
             _ => render_numeric(section, value.abs(), negative, &mut out, &mut fill),
         };
-        if !valid {
-            return Rendered {
-                color,
-                fill: Some(('#', 0)),
-                ..Rendered::default()
-            };
-        }
-        out.rendered(color, fill)
+        if !valid { return Err(RenderFailure { color }); }
+        Ok(out.rendered(color, fill))
     }
-
-    /// Render text: through the text section, or as itself.
-    fn render_text(&self, text: &str, palette: Option<&[u32]>) -> Rendered {
+    /// Text uses the existing section tokens; TEXT alone enforces the formula
+    /// cell limit before copying a repeated @ source. Display stays unbounded.
+    fn render_text(&self, text: &str, palette: Option<&[u32]>, bounded: bool) -> std::result::Result<Rendered, RenderFailure> {
         let section = match self.sections.len() {
             4 => self.sections.get(3),
-            _ => self
-                .sections
-                .last()
-                .filter(|section| section.shape == Shape::Text),
+            _ => self.sections.last().filter(|section| section.shape == Shape::Text),
         };
         let Some(section) = section else {
-            return Rendered::plain(SmolStr::new(text));
+            return Ok(Rendered::plain(SmolStr::new(text)));
         };
+        let color = section.color.and_then(|paint| paint.rgb(palette));
         let mut out = Out::new();
         let mut fill = None;
+        let source_units = if bounded { text.encode_utf16().count() } else { 0 };
+        let mut units = 0;
         for token in section.tokens.iter() {
+            let before = out.len();
             match token {
-                Token::Text => out.push_str(text),
+                Token::Text => {
+                    if bounded && source_units > super::cell::MAX_CELL_TEXT - units {
+                        return Err(RenderFailure { color });
+                    }
+                    out.push_str(text);
+                    units += source_units;
+                }
                 Token::Space => out.push(' '),
                 Token::Fill(character) => set_fill(&mut fill, *character, &out),
                 other => write_literal(other, &mut out),
             }
+            if bounded && !matches!(token, Token::Text) {
+                // A literal is bounded by the 255-character format code. It
+                // uses the sole token writer before its units are counted.
+                units += out.as_str()[before..].encode_utf16().count();
+                if units > super::cell::MAX_CELL_TEXT { return Err(RenderFailure { color }); }
+            }
         }
-        out.rendered(section.color.and_then(|paint| paint.rgb(palette)), fill)
+        Ok(out.rendered(color, fill))
     }
 
     /// The section a number takes, and whether it shows the number's sign.
@@ -966,8 +996,17 @@ pub(crate) fn entry_number(value: f64, percent: bool) -> SmolStr {
     out.finish()
 }
 
+/// Formula numeric-to-text uses General's twenty-character budget, excluding
+/// the sign. It shares the fifteen-digit decimal and notation rules with
+/// display formatting, without constructing shorter display alternatives.
+pub(crate) fn formula_number(value: f64) -> SmolStr {
+    let mut out = Out::new();
+    let _ = general(value, 20, &mut out);
+    out.finish()
+}
+
 /// A number under General, with its narrower spellings.
-fn general_rendered(value: f64) -> Rendered {
+fn general_rendered(value: f64, alternatives: bool) -> Rendered {
     if !value.is_finite() {
         return Rendered::plain(SmolStr::new_static("#NUM!"));
     }
@@ -976,6 +1015,7 @@ fn general_rendered(value: f64) -> Rendered {
         return Rendered::plain(SmolStr::default());
     }
     let text = out.finish();
+    if !alternatives { return Rendered::plain(text); }
     let mut shorter = Vec::new();
     let sign = usize::from(value < 0.0);
     let mut last = text.len() - sign;
@@ -1551,7 +1591,9 @@ fn render_date(
         (seconds_of_day / 60) % 60,
         seconds_of_day % 60,
     );
-    let (year, month, day_of_month, weekday) = civil(day, system);
+    let calendar = system.civil_day(day);
+    let (year, month, day_of_month, weekday) =
+        (calendar.year, calendar.month, calendar.day, calendar.weekday);
     for token in section.tokens.iter() {
         match token {
             Token::Date(part) => match *part {
@@ -1655,32 +1697,6 @@ fn pad(out: &mut Out, value: i64, width: u8) {
     } else {
         let _ = write!(out, "{value}");
     }
-}
-
-/// The year, month, day and weekday (0 for Sunday) of serial day `day` in
-/// `system`, as Excel displays them: the 1900 system has a 29 February
-/// 1900 at serial 60, and serial 0 is 0 January 1900.
-fn civil(day: i64, system: DateSystem) -> (i64, i64, i64, i64) {
-    let (days_from_epoch, weekday) = match system {
-        DateSystem::Year1900 => {
-            let weekday = (day + 6).rem_euclid(7);
-            match day {
-                0 => return (1900, 1, 0, weekday),
-                60 => return (1900, 2, 29, weekday),
-                // Days before the phantom one count from 31 December 1899.
-                1..=59 => (day - 25_568, weekday),
-                _ => (day - 25_569, weekday),
-            }
-        }
-        DateSystem::Year1904 => (day - 24_107, (day + 5).rem_euclid(7)),
-    };
-    let (year, month, day_of_month) = crate::timezone::civil_from_days(days_from_epoch);
-    (
-        i64::from(year),
-        i64::from(month),
-        i64::from(day_of_month),
-        weekday,
-    )
 }
 
 /// Write a token that shows as written.
@@ -1915,6 +1931,45 @@ impl Digits {
                 }
             }
         }
+        self.trim();
+    }
+
+    /// Advance to the next nonzero decimal quantum, away from zero.
+    /// The caller owns sign; this value holds only the magnitude.
+    pub(crate) fn round_away(&mut self, decimals: i32) {
+        if self.is_zero() { return; }
+        let keep = self.point.saturating_add(decimals);
+        if keep >= i32::from(self.len) { return; }
+        if keep <= 0 {
+            self.digits[0] = 1;
+            self.len = 1;
+            self.point = 1_i32.saturating_sub(decimals);
+            return;
+        }
+        let keep = keep as usize;
+        self.len = keep as u8;
+        let mut at = keep;
+        loop {
+            if at == 0 {
+                self.digits[0] = 1;
+                self.len = 1;
+                self.point += 1;
+                break;
+            }
+            at -= 1;
+            if self.digits[at] == 9 { self.digits[at] = 0; }
+            else { self.digits[at] += 1; break; }
+        }
+        self.trim();
+    }
+
+    /// Discard decimal places toward zero without a binary multiply/divide.
+    pub(crate) fn truncate(&mut self, decimals: i32) {
+        if self.is_zero() { return; }
+        let keep = self.point.saturating_add(decimals);
+        if keep >= i32::from(self.len) { return; }
+        if keep <= 0 { *self = Self::ZERO; return; }
+        self.len = keep as u8;
         self.trim();
     }
 
@@ -2664,4 +2719,24 @@ impl SectionBuilder {
 fn is_space_literal(token: &Token) -> bool {
     matches!(token, Token::Literal(text) if !text.is_empty() && text.chars().all(|c| c == ' '))
         || *token == Token::Space
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! Primitive decimal truncation, kept beside the shared Digits owner.
+
+    /// Round a nonnegative binary64 input's fifteen-digit decimal away from zero.
+    pub fn rounded_away_magnitude(value: f64, decimals: i32) -> Option<f64> {
+        let mut digits = super::Digits::from_f64(value);
+        digits.round_away(decimals);
+        digits.as_f64()
+    }
+
+    /// Truncate a nonnegative binary64 input's fifteen-digit decimal form.
+    pub fn truncated_magnitude(value: f64, decimals: i32) -> Option<f64> {
+        let mut digits = super::Digits::from_f64(value);
+        digits.truncate(decimals);
+        digits.as_f64()
+    }
 }

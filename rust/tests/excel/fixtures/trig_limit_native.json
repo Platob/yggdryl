@@ -1,0 +1,3526 @@
+{
+  "schema_version": 1,
+  "scope": "Native COS/SIN/TAN boundary observations. Rust COS tests calculate NUM refusals; in-domain large angles remain held because generic argument reduction differs from Excel. SIN/TAN replay pending.",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 108,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_cells": {
+    "Values": {}
+  },
+  "source_report": "rust\\target\\excel-desktop\\p5-trig-limit-native\\results.json",
+  "source_report_sha256": "a2a60c9197523c7c0428a1dd58f76cf8461242006413d145951ddffec276340f",
+  "manifest_sha256": "09ac82529551eb9893a80e7e2b80165d74cc043a80b721bed0a33b814f754c98",
+  "cases": [
+    {
+      "id": "cos-limit-0-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "COS(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=COS(134217727)",
+        "formula2": "=COS(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217727)",
+        "formula2": "=COS(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.29338840355772161",
+        "formula_text": "COS(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-1-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "COS(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=COS(134217727.5)",
+        "formula2": "=COS(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.20085506972575065,
+          "hex": "0x1.9b59e71da9c6dp-3",
+          "ieee754_hex": "3fc9b59e71da9c6d",
+          "classification": "finite"
+        },
+        "display": "0.200855",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217727.5)",
+        "formula2": "=COS(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.20085506972575065,
+          "hex": "0x1.9b59e71da9c6dp-3",
+          "ieee754_hex": "3fc9b59e71da9c6d",
+          "classification": "finite"
+        },
+        "display": "0.200855",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.20085506972575065",
+        "formula_text": "COS(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-2-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "COS(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=COS(134217728)",
+        "formula2": "=COS(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217728)",
+        "formula2": "=COS(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-3-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COS(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=COS(134217729)",
+        "formula2": "=COS(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217729)",
+        "formula2": "=COS(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-4-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COS(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=COS(-134217727)",
+        "formula2": "=COS(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(-134217727)",
+        "formula2": "=COS(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.29338840355772161",
+        "formula_text": "COS(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-5-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COS(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=COS(-134217728)",
+        "formula2": "=COS(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(-134217728)",
+        "formula2": "=COS(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-6-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COS(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=COS(100000000)",
+        "formula2": "=COS(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -0.3633850893542029,
+          "hex": "-0x1.741b388a8577ap-2",
+          "ieee754_hex": "bfd741b388a8577a",
+          "classification": "finite"
+        },
+        "display": "-0.36339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(100000000)",
+        "formula2": "=COS(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -0.3633850893542029,
+          "hex": "-0x1.741b388a8577ap-2",
+          "ieee754_hex": "bfd741b388a8577a",
+          "classification": "finite"
+        },
+        "display": "-0.36339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36338508935420288",
+        "formula_text": "COS(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-7-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COS(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=COS(1000000000)",
+        "formula2": "=COS(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(1000000000)",
+        "formula2": "=COS(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-8-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COS(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=COS(9E+307)",
+        "formula2": "=COS(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(9E+307)",
+        "formula2": "=COS(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-0-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SIN(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=SIN(134217727)",
+        "formula2": "=SIN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9559933287726706,
+          "hex": "-0x1.e977f5248babfp-1",
+          "ieee754_hex": "bfee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "-0.95599",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217727)",
+        "formula2": "=SIN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9559933287726706,
+          "hex": "-0x1.e977f5248babfp-1",
+          "ieee754_hex": "bfee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "-0.95599",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.95599332877267063",
+        "formula_text": "SIN(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-1-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SIN(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=SIN(134217727.5)",
+        "formula2": "=SIN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9796209680103136,
+          "hex": "-0x1.f590e128290aap-1",
+          "ieee754_hex": "bfef590e128290aa",
+          "classification": "finite"
+        },
+        "display": "-0.97962",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217727.5)",
+        "formula2": "=SIN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9796209680103136,
+          "hex": "-0x1.f590e128290aap-1",
+          "ieee754_hex": "bfef590e128290aa",
+          "classification": "finite"
+        },
+        "display": "-0.97962",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.97962096801031362",
+        "formula_text": "SIN(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-2-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SIN(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=SIN(134217728)",
+        "formula2": "=SIN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217728)",
+        "formula2": "=SIN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-3-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SIN(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=SIN(134217729)",
+        "formula2": "=SIN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217729)",
+        "formula2": "=SIN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-4-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SIN(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=SIN(-134217727)",
+        "formula2": "=SIN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9559933287726706,
+          "hex": "0x1.e977f5248babfp-1",
+          "ieee754_hex": "3fee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "0.955993",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(-134217727)",
+        "formula2": "=SIN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9559933287726706,
+          "hex": "0x1.e977f5248babfp-1",
+          "ieee754_hex": "3fee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "0.955993",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.95599332877267063",
+        "formula_text": "SIN(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-5-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SIN(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=SIN(-134217728)",
+        "formula2": "=SIN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(-134217728)",
+        "formula2": "=SIN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-6-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SIN(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=SIN(100000000)",
+        "formula2": "=SIN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9316390271103062,
+          "hex": "0x1.dcffca623b675p-1",
+          "ieee754_hex": "3fedcffca623b675",
+          "classification": "finite"
+        },
+        "display": "0.931639",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(100000000)",
+        "formula2": "=SIN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9316390271103062,
+          "hex": "0x1.dcffca623b675p-1",
+          "ieee754_hex": "3fedcffca623b675",
+          "classification": "finite"
+        },
+        "display": "0.931639",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.93163902711030622",
+        "formula_text": "SIN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-7-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SIN(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=SIN(1000000000)",
+        "formula2": "=SIN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(1000000000)",
+        "formula2": "=SIN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-8-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SIN(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=SIN(9E+307)",
+        "formula2": "=SIN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(9E+307)",
+        "formula2": "=SIN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-0-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "TAN(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=TAN(134217727)",
+        "formula2": "=TAN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 3.258456425611884,
+          "hex": "0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "400a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "3.258456",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217727)",
+        "formula2": "=TAN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 3.258456425611884,
+          "hex": "0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "400a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "3.258456",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.2584564256118842",
+        "formula_text": "TAN(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-1-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "TAN(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=TAN(134217727.5)",
+        "formula2": "=TAN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -4.877252883623486,
+          "hex": "-0x1.3824e9475f032p+2",
+          "ieee754_hex": "c013824e9475f032",
+          "classification": "finite"
+        },
+        "display": "-4.87725",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217727.5)",
+        "formula2": "=TAN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -4.877252883623486,
+          "hex": "-0x1.3824e9475f032p+2",
+          "ieee754_hex": "c013824e9475f032",
+          "classification": "finite"
+        },
+        "display": "-4.87725",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-4.8772528836234859",
+        "formula_text": "TAN(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-2-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "TAN(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=TAN(134217728)",
+        "formula2": "=TAN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217728)",
+        "formula2": "=TAN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-3-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "TAN(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=TAN(134217729)",
+        "formula2": "=TAN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217729)",
+        "formula2": "=TAN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-4-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "TAN(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=TAN(-134217727)",
+        "formula2": "=TAN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -3.258456425611884,
+          "hex": "-0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "c00a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "-3.25846",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(-134217727)",
+        "formula2": "=TAN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -3.258456425611884,
+          "hex": "-0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "c00a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "-3.25846",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3.2584564256118842",
+        "formula_text": "TAN(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-5-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "TAN(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=TAN(-134217728)",
+        "formula2": "=TAN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(-134217728)",
+        "formula2": "=TAN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-6-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "TAN(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=TAN(100000000)",
+        "formula2": "=TAN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -2.56377890674047,
+          "hex": "-0x1.4829e83f4ffe7p+1",
+          "ieee754_hex": "c004829e83f4ffe7",
+          "classification": "finite"
+        },
+        "display": "-2.56378",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(100000000)",
+        "formula2": "=TAN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -2.56377890674047,
+          "hex": "-0x1.4829e83f4ffe7p+1",
+          "ieee754_hex": "c004829e83f4ffe7",
+          "classification": "finite"
+        },
+        "display": "-2.56378",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.5637789067404699",
+        "formula_text": "TAN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-7-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "TAN(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=TAN(1000000000)",
+        "formula2": "=TAN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(1000000000)",
+        "formula2": "=TAN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-8-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "TAN(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=TAN(9E+307)",
+        "formula2": "=TAN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(9E+307)",
+        "formula2": "=TAN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-0-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "COS(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=COS(134217727)",
+        "formula2": "=COS(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217727)",
+        "formula2": "=COS(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.29338840355772161",
+        "formula_text": "COS(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-1-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "COS(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=COS(134217727.5)",
+        "formula2": "=COS(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.20085506972575065,
+          "hex": "0x1.9b59e71da9c6dp-3",
+          "ieee754_hex": "3fc9b59e71da9c6d",
+          "classification": "finite"
+        },
+        "display": "0.200855",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217727.5)",
+        "formula2": "=COS(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.20085506972575065,
+          "hex": "0x1.9b59e71da9c6dp-3",
+          "ieee754_hex": "3fc9b59e71da9c6d",
+          "classification": "finite"
+        },
+        "display": "0.200855",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.20085506972575065",
+        "formula_text": "COS(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-2-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "COS(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=COS(134217728)",
+        "formula2": "=COS(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217728)",
+        "formula2": "=COS(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-3-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COS(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=COS(134217729)",
+        "formula2": "=COS(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(134217729)",
+        "formula2": "=COS(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-4-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COS(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=COS(-134217727)",
+        "formula2": "=COS(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(-134217727)",
+        "formula2": "=COS(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.2933884035577216,
+          "hex": "-0x1.2c6e02793968fp-2",
+          "ieee754_hex": "bfd2c6e02793968f",
+          "classification": "finite"
+        },
+        "display": "-0.29339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.29338840355772161",
+        "formula_text": "COS(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-5-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COS(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=COS(-134217728)",
+        "formula2": "=COS(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(-134217728)",
+        "formula2": "=COS(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-6-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COS(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=COS(100000000)",
+        "formula2": "=COS(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -0.3633850893542029,
+          "hex": "-0x1.741b388a8577ap-2",
+          "ieee754_hex": "bfd741b388a8577a",
+          "classification": "finite"
+        },
+        "display": "-0.36339",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(100000000)",
+        "formula2": "=COS(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -0.3633850893542029,
+          "hex": "-0x1.741b388a8577ap-2",
+          "ieee754_hex": "bfd741b388a8577a",
+          "classification": "finite"
+        },
+        "display": "-0.36339",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36338508935420288",
+        "formula_text": "COS(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-7-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COS(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=COS(1000000000)",
+        "formula2": "=COS(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(1000000000)",
+        "formula2": "=COS(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "cos-limit-8-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COS(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "COS",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=COS(9E+307)",
+        "formula2": "=COS(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=COS(9E+307)",
+        "formula2": "=COS(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "COS(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-0-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SIN(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=SIN(134217727)",
+        "formula2": "=SIN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9559933287726706,
+          "hex": "-0x1.e977f5248babfp-1",
+          "ieee754_hex": "bfee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "-0.95599",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217727)",
+        "formula2": "=SIN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9559933287726706,
+          "hex": "-0x1.e977f5248babfp-1",
+          "ieee754_hex": "bfee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "-0.95599",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.95599332877267063",
+        "formula_text": "SIN(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-1-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SIN(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=SIN(134217727.5)",
+        "formula2": "=SIN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9796209680103136,
+          "hex": "-0x1.f590e128290aap-1",
+          "ieee754_hex": "bfef590e128290aa",
+          "classification": "finite"
+        },
+        "display": "-0.97962",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217727.5)",
+        "formula2": "=SIN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9796209680103136,
+          "hex": "-0x1.f590e128290aap-1",
+          "ieee754_hex": "bfef590e128290aa",
+          "classification": "finite"
+        },
+        "display": "-0.97962",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.97962096801031362",
+        "formula_text": "SIN(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-2-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SIN(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=SIN(134217728)",
+        "formula2": "=SIN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217728)",
+        "formula2": "=SIN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-3-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SIN(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=SIN(134217729)",
+        "formula2": "=SIN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(134217729)",
+        "formula2": "=SIN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-4-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SIN(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=SIN(-134217727)",
+        "formula2": "=SIN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9559933287726706,
+          "hex": "0x1.e977f5248babfp-1",
+          "ieee754_hex": "3fee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "0.955993",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(-134217727)",
+        "formula2": "=SIN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9559933287726706,
+          "hex": "0x1.e977f5248babfp-1",
+          "ieee754_hex": "3fee977f5248babf",
+          "classification": "finite"
+        },
+        "display": "0.955993",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.95599332877267063",
+        "formula_text": "SIN(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-5-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SIN(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=SIN(-134217728)",
+        "formula2": "=SIN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(-134217728)",
+        "formula2": "=SIN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-6-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SIN(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=SIN(100000000)",
+        "formula2": "=SIN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9316390271103062,
+          "hex": "0x1.dcffca623b675p-1",
+          "ieee754_hex": "3fedcffca623b675",
+          "classification": "finite"
+        },
+        "display": "0.931639",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(100000000)",
+        "formula2": "=SIN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": 0.9316390271103062,
+          "hex": "0x1.dcffca623b675p-1",
+          "ieee754_hex": "3fedcffca623b675",
+          "classification": "finite"
+        },
+        "display": "0.931639",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.93163902711030622",
+        "formula_text": "SIN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-7-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SIN(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=SIN(1000000000)",
+        "formula2": "=SIN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(1000000000)",
+        "formula2": "=SIN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "sin-limit-8-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SIN(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "SIN",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=SIN(9E+307)",
+        "formula2": "=SIN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SIN(9E+307)",
+        "formula2": "=SIN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "SIN(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-0-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "TAN(134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217727"
+      },
+      "actual": {
+        "formula": "=TAN(134217727)",
+        "formula2": "=TAN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 3.258456425611884,
+          "hex": "0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "400a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "3.258456",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217727)",
+        "formula2": "=TAN(134217727)",
+        "value2": {
+          "variant": "float",
+          "value": 3.258456425611884,
+          "hex": "0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "400a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "3.258456",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.2584564256118842",
+        "formula_text": "TAN(134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-1-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "TAN(134217727.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217727.5"
+      },
+      "actual": {
+        "formula": "=TAN(134217727.5)",
+        "formula2": "=TAN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -4.877252883623486,
+          "hex": "-0x1.3824e9475f032p+2",
+          "ieee754_hex": "c013824e9475f032",
+          "classification": "finite"
+        },
+        "display": "-4.87725",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217727.5)",
+        "formula2": "=TAN(134217727.5)",
+        "value2": {
+          "variant": "float",
+          "value": -4.877252883623486,
+          "hex": "-0x1.3824e9475f032p+2",
+          "ieee754_hex": "c013824e9475f032",
+          "classification": "finite"
+        },
+        "display": "-4.87725",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-4.8772528836234859",
+        "formula_text": "TAN(134217727.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-2-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "TAN(134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217728"
+      },
+      "actual": {
+        "formula": "=TAN(134217728)",
+        "formula2": "=TAN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217728)",
+        "formula2": "=TAN(134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-3-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "TAN(134217729)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "134217729"
+      },
+      "actual": {
+        "formula": "=TAN(134217729)",
+        "formula2": "=TAN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(134217729)",
+        "formula2": "=TAN(134217729)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(134217729)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-4-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "TAN(-134217727)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "-134217727"
+      },
+      "actual": {
+        "formula": "=TAN(-134217727)",
+        "formula2": "=TAN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -3.258456425611884,
+          "hex": "-0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "c00a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "-3.25846",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(-134217727)",
+        "formula2": "=TAN(-134217727)",
+        "value2": {
+          "variant": "float",
+          "value": -3.258456425611884,
+          "hex": "-0x1.a11519a3b8d84p+1",
+          "ieee754_hex": "c00a11519a3b8d84",
+          "classification": "finite"
+        },
+        "display": "-3.25846",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3.2584564256118842",
+        "formula_text": "TAN(-134217727)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-5-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "TAN(-134217728)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "-134217728"
+      },
+      "actual": {
+        "formula": "=TAN(-134217728)",
+        "formula2": "=TAN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(-134217728)",
+        "formula2": "=TAN(-134217728)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(-134217728)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-6-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "TAN(1E8)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "1E8"
+      },
+      "actual": {
+        "formula": "=TAN(100000000)",
+        "formula2": "=TAN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -2.56377890674047,
+          "hex": "-0x1.4829e83f4ffe7p+1",
+          "ieee754_hex": "c004829e83f4ffe7",
+          "classification": "finite"
+        },
+        "display": "-2.56378",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(100000000)",
+        "formula2": "=TAN(100000000)",
+        "value2": {
+          "variant": "float",
+          "value": -2.56377890674047,
+          "hex": "-0x1.4829e83f4ffe7p+1",
+          "ieee754_hex": "c004829e83f4ffe7",
+          "classification": "finite"
+        },
+        "display": "-2.56378",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.5637789067404699",
+        "formula_text": "TAN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-7-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "TAN(1E9)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "1E9"
+      },
+      "actual": {
+        "formula": "=TAN(1000000000)",
+        "formula2": "=TAN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(1000000000)",
+        "formula2": "=TAN(1000000000)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(1000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "tan-limit-8-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "TAN(9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "TAN",
+        "argument": "9E307"
+      },
+      "actual": {
+        "formula": "=TAN(9E+307)",
+        "formula2": "=TAN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=TAN(9E+307)",
+        "formula2": "=TAN(9E+307)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "TAN(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    }
+  ]
+}

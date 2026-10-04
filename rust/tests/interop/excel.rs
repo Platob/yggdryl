@@ -106,6 +106,59 @@ fn rows() -> RecordBatch {
     .expect("a batch")
 }
 
+/// P6 exchange: openpyxl reads a Rust-authored pivot with a built-in data-field
+/// format; Rust reads an openpyxl-edited Excel pivot and publishes its refresh.
+#[test]
+fn p6_openpyxl_pivot_exchange() {
+    use yggdryl::excel::{Aggregate, AxisField, CellRange, ItemOrder, PivotSource, PivotSpec, ValueField};
+
+    let _exchange = EXCHANGE.lock().expect("exclusive Excel exchange fixtures");
+    let dir = exchange_dir();
+    std::fs::create_dir_all(&dir).expect("the exchange directory");
+    let rust_path = dir.join("from-rust-pivot.xlsx");
+    let _ = std::fs::remove_file(&rust_path);
+    let mut workbook = Workbook::new();
+    workbook.add_sheet("Data").unwrap();
+    workbook.add_sheet("RustPivot").unwrap();
+    for (at, value) in [("A1", "Group"), ("B1", "Value"), ("A2", "East"), ("A3", "West")] {
+        workbook.set_entry("Data", at.parse().unwrap(), value).unwrap();
+    }
+    workbook.set_entry("Data", "B2".parse().unwrap(), "1.25").unwrap();
+    workbook.set_entry("Data", "B3".parse().unwrap(), "2.5").unwrap();
+    let spec = PivotSpec {
+        name: "P6_interop".into(),
+        source: PivotSource { sheet: "Data".into(), range: "A1:B3".parse::<CellRange>().unwrap() },
+        rows: vec![AxisField { field: "Group".into(), order: ItemOrder::Ascending }],
+        columns: vec![],
+        values: vec![ValueField {
+            field: "Value".into(), aggregate: Aggregate::Sum,
+            caption: Some("Value Sum".into()), number_format: Some("0.00".into()),
+        }],
+        subtotals: false, row_grand_totals: false, column_grand_totals: true,
+    };
+    assert_eq!(workbook.add_pivot(spec, "RustPivot", "A3".parse().unwrap()).unwrap().to_string(), "A3:B6");
+    std::fs::write(&rust_path, workbook.into_bytes().unwrap()).unwrap();
+    println!("excel-interop: wrote pivot");
+
+    let external = dir.join("from-openpyxl-pivot.xlsx");
+    if !external.exists() {
+        println!("excel-interop: SKIPPED (no {})", external.display());
+        return;
+    }
+    let mut imported = Workbook::from_bytes(std::fs::read(&external).unwrap()).unwrap();
+    let pivot = imported.pivots().unwrap().iter()
+        .find(|pivot| pivot.name() == "P6_source_order_grand").unwrap();
+    assert!(pivot.editable());
+    let spec = pivot.spec().unwrap();
+    assert_eq!(spec.values.len(), 1);
+    assert_eq!(spec.values[0].aggregate, Aggregate::Sum);
+    assert_eq!(spec.values[0].number_format.as_deref(), Some("0.00"));
+    imported.refresh_pivot("CaseOrder", "P6_source_order_grand").unwrap();
+    let edited = dir.join("from-rust-pivot-edited.xlsx");
+    std::fs::write(edited, imported.into_bytes().unwrap()).unwrap();
+    println!("excel-interop: read pivot");
+}
+
 #[test]
 fn writes_a_workbook_for_the_external_reader() {
     let _exchange = EXCHANGE.lock().expect("exclusive Excel exchange fixtures");

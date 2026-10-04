@@ -1,0 +1,697 @@
+{
+  "schema_version": 1,
+  "kind": "p6_parent_subtotal_native_observations",
+  "native": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "before_save_after_save_reopen_equal": true,
+  "rust_equivalence_checked": false,
+  "cases": [
+    {
+      "id": "weighted_parent_average",
+      "input_sha256": "581b0cd09cb1673e14a65ab5d5a4849ce43e3e5fcb5b1829730d8bcd97a7f1e9",
+      "manifest_sha256": "c64e861100f08f6d5db09cfb538cf6d4861d15736b8e49ad1c66c4723f799c82",
+      "saved_sha256": "840b81029eb30fc3a79dbc554e01a31e3c1ca50a2753bca6720ce262cdce7133",
+      "source_tables": [
+        {
+          "sheet": "Data",
+          "range": "A1:E9",
+          "rows": [
+            [
+              "Region",
+              "Product",
+              "Year",
+              "Quarter",
+              "Sales"
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q1",
+              1
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q1",
+              3
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q2",
+              4
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q2",
+              4
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q2",
+              4
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q2",
+              4
+            ]
+          ]
+        }
+      ],
+      "request": {
+        "id": "weighted_parent_average",
+        "sheet": "CaseAverage",
+        "anchor": "A3",
+        "source": {
+          "sheet": "Data",
+          "range": "A1:E9"
+        },
+        "rows": [
+          "Region",
+          "Product"
+        ],
+        "columns": [
+          "Year",
+          "Quarter"
+        ],
+        "values": [
+          {
+            "field": "Sales",
+            "aggregate": "average",
+            "caption": "Sales Average"
+          }
+        ],
+        "subtotals": true,
+        "row_grand_totals": true,
+        "column_grand_totals": true,
+        "purpose": "source-order weighted parent intersection, not sum of leaf averages"
+      },
+      "table_range2": "$A$3:$F$9",
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Sales Average"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Year"
+          },
+          {
+            "variant": "str",
+            "value": "Quarter"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2024.0,
+            "hex": "0x1.fa00000000000p+10",
+            "ieee754_hex": "409fa00000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Total 2024"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Product"
+          },
+          {
+            "variant": "str",
+            "value": "Q1"
+          },
+          {
+            "variant": "str",
+            "value": "Q2"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total East"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.5,
+            "hex": "0x1.2000000000000p+2",
+            "ieee754_hex": "4012000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.5,
+            "hex": "0x1.2000000000000p+2",
+            "ieee754_hex": "4012000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.5,
+            "hex": "0x1.2000000000000p+2",
+            "ieee754_hex": "4012000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.5,
+            "hex": "0x1.2000000000000p+2",
+            "ieee754_hex": "4012000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "saved_pivot_xml_sha256": "b98a380985fdda06d149ed10356f61e444d06db6a443fcbeaf20428ba0368839",
+      "saved_cache_xml_sha256": "4cd0a626029bf0727aad1aab521e62049b9e125e6649199075fd6e11b9354af8"
+    },
+    {
+      "id": "unequal_weighted_parent_average",
+      "input_sha256": "d176a5c5fbd2968aa4a2942a19582f0031cd10692404c4ff998f236e06504d7a",
+      "manifest_sha256": "d99cf0728ad10235afb70ba973018a722652e11cec135ef02c786e7e1758843c",
+      "saved_sha256": "28f122d52b3965ab67fdeac5f79828606be69d6e0509cc2ec4add879496817a9",
+      "source_tables": [
+        {
+          "sheet": "Data",
+          "range": "A1:E9",
+          "rows": [
+            [
+              "Region",
+              "Product",
+              "Year",
+              "Quarter",
+              "Sales"
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q1",
+              1
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q1",
+              3
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "B",
+              2024,
+              "Q1",
+              8
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q2",
+              6
+            ],
+            [
+              "East",
+              "A",
+              2024,
+              "Q2",
+              6
+            ]
+          ]
+        }
+      ],
+      "request": {
+        "id": "unequal_weighted_parent_average",
+        "sheet": "CaseAverage",
+        "anchor": "A3",
+        "source": {
+          "sheet": "Data",
+          "range": "A1:E9"
+        },
+        "rows": [
+          "Region",
+          "Product"
+        ],
+        "columns": [
+          "Year",
+          "Quarter"
+        ],
+        "values": [
+          {
+            "field": "Sales",
+            "aggregate": "average",
+            "caption": "Sales Average"
+          }
+        ],
+        "subtotals": true,
+        "row_grand_totals": true,
+        "column_grand_totals": true,
+        "purpose": "unequal leaf membership disproves mean-of-leaf-means subtotal"
+      },
+      "table_range2": "$A$3:$F$9",
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Sales Average"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Year"
+          },
+          {
+            "variant": "str",
+            "value": "Quarter"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 2024.0,
+            "hex": "0x1.fa00000000000p+10",
+            "ieee754_hex": "409fa00000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "Total 2024"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Region"
+          },
+          {
+            "variant": "str",
+            "value": "Product"
+          },
+          {
+            "variant": "str",
+            "value": "Q1"
+          },
+          {
+            "variant": "str",
+            "value": "Q2"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total East"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "saved_pivot_xml_sha256": "e0e6e6f22dacd95c4d9f0a60ff9a62213d8bdd3122e19716206068fa1fd383d4",
+      "saved_cache_xml_sha256": "fdce4eff371c857eb5c74cd466761ff6adc0ebcdb9858c297da25333baae5dfb"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 #[cfg(feature = "internals")]
 mod internal {
-    use yggdryl::internals::excel_formula_criteria::{find, replace};
+    use yggdryl::internals::excel_formula_criteria::{count_whole_matches, find, replace};
 
     #[test]
     fn a_pattern_finds_the_leftmost_match_and_the_longest_from_it() {
@@ -62,6 +62,15 @@ mod internal {
         );
     }
 
+
+
+    #[test]
+    fn compiled_whole_wildcards_match_without_per_row_allocations() {
+        assert_eq!(count_whole_matches("e*", &["east", "East", "west", "EAST"]), 3);
+        assert_eq!(count_whole_matches("~*", &["*", "east", "**"]), 1);
+        assert_eq!(count_whole_matches("a?c", &["abc", "aéc", "ac"]), 2);
+        assert_eq!(count_whole_matches("*", &[""]), 1);
+    }
     #[test]
     fn a_long_text_costs_its_length_per_match() {
         // Every start of 32,767 characters fails late: a restart per start
@@ -73,5 +82,34 @@ mod internal {
             replace("a?", false, false, &text, "b").map(|text| text.len()),
             Some(16_384)
         );
+    }
+}
+
+#[cfg(feature="internals")]
+#[test]
+fn search_and_find_share_transitions_without_sharing_position_units() {
+    use yggdryl::internals::excel_formula_criteria::{find,search_utf16};
+    let text="A\u{1f600}Z";
+    assert_eq!(find("?Z",false,false,text,0),Some((1,3)));
+    assert_eq!(search_utf16("?Z",text,0,false),Some((2,4)));
+    assert_eq!(search_utf16("?Z",text,0,true),None);
+    assert_eq!(search_utf16("??Z",text,0,true),Some((1,4)));
+    assert_eq!(find("~",false,false,"a~b",0),Some((1,2)));
+    assert_eq!(search_utf16("~","a~b",0,false),Some((0,0)));
+}
+
+
+#[cfg(feature = "internals")]
+#[test]
+fn text_criterion_tildes_match_native_literal_and_wildcard_modes() {
+    use yggdryl::internals::excel_formula_criteria::count_text_criterion_matches;
+    let texts = ["~", "~~", "~~~", "*", "?", "a~", "a~~", "~a"];
+    for (pattern, expected) in [
+        ("~", 1), ("~~", 1), ("~~~", 1), ("~~~~", 0),
+        ("~a", 1), ("a~", 1), ("a~~", 1),
+        ("~*", 1), ("~?", 1), ("~~*", 4), ("*~~", 5),
+        ("*~", 8), ("?~", 3), ("~~?", 2),
+    ] {
+        assert_eq!(count_text_criterion_matches(pattern, &texts), expected, "{pattern}");
     }
 }

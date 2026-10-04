@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "source_report_sha256": "fa918904e758008f2e0ce4907dfe6999998fd4de83d377bc4ed4e225ac614029",
+  "input_sha256": "0f4f31e1226a52b89f5a148eebc6730271464186cc649ca003a9ecb0470f11df",
+  "saved_workbook_sha256": "6002eb42cc94293457fe6ac843b9ee5a0f9dbc22b4d7212bdf8c674d5129ffd3",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "scope": "15 owned Excel Power/POWER Value2 and cached XML observations; no Rust equivalence implied",
+  "cases": [
+    {
+      "id": "power-function",
+      "formula": "POWER(2.5,3)",
+      "cell": "B2",
+      "cache_type": "n",
+      "cache_text": "15.625",
+      "value2_ieee754_hex": "402f400000000000"
+    },
+    {
+      "id": "power-operator",
+      "formula": "2.5^3",
+      "cell": "B3",
+      "cache_type": "n",
+      "cache_text": "15.625",
+      "value2_ieee754_hex": "402f400000000000"
+    },
+    {
+      "id": "power-left-associative",
+      "formula": "2^3^2",
+      "cell": "B4",
+      "cache_type": "n",
+      "cache_text": "64",
+      "value2_ieee754_hex": "4050000000000000"
+    },
+    {
+      "id": "power-unary",
+      "formula": "-2^2",
+      "cell": "B5",
+      "cache_type": "n",
+      "cache_text": "4",
+      "value2_ieee754_hex": "4010000000000000"
+    },
+    {
+      "id": "power-zero-zero",
+      "formula": "0^0",
+      "cell": "B6",
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "value2_error_code": -2146826252
+    },
+    {
+      "id": "power-function-zero-zero",
+      "formula": "POWER(0,0)",
+      "cell": "B7",
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "value2_error_code": -2146826252
+    },
+    {
+      "id": "power-zero-negative",
+      "formula": "0^-1",
+      "cell": "B8",
+      "cache_type": "e",
+      "cache_text": "#DIV/0!",
+      "value2_error_code": -2146826281
+    },
+    {
+      "id": "power-negative-fraction",
+      "formula": "(-8)^0.5",
+      "cell": "B9",
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "value2_error_code": -2146826252
+    },
+    {
+      "id": "power-negative-third",
+      "formula": "(-8)^(1/3)",
+      "cell": "B10",
+      "cache_type": "n",
+      "cache_text": "-1.9999999999999998",
+      "value2_ieee754_hex": "bfffffffffffffff"
+    },
+    {
+      "id": "power-function-negative-third",
+      "formula": "POWER(-8,1/3)",
+      "cell": "B11",
+      "cache_type": "n",
+      "cache_text": "-1.9999999999999998",
+      "value2_ieee754_hex": "bfffffffffffffff"
+    },
+    {
+      "id": "power-root-overflow",
+      "formula": "2^1024",
+      "cell": "B12",
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "value2_error_code": -2146826252
+    },
+    {
+      "id": "power-root-underflow",
+      "formula": "2^-1074",
+      "cell": "B13",
+      "cache_type": "n",
+      "cache_text": "0",
+      "value2_ieee754_hex": "0000000000000000"
+    },
+    {
+      "id": "power-one-div0",
+      "formula": "1^(1/0)",
+      "cell": "B14",
+      "cache_type": "e",
+      "cache_text": "#DIV/0!",
+      "value2_error_code": -2146826281
+    },
+    {
+      "id": "power-zero-one",
+      "formula": "0^1",
+      "cell": "B15",
+      "cache_type": "n",
+      "cache_text": "0",
+      "value2_ieee754_hex": "0000000000000000"
+    },
+    {
+      "id": "power-negative-integer",
+      "formula": "(-8)^3",
+      "cell": "B16",
+      "cache_type": "n",
+      "cache_text": "-512",
+      "value2_ieee754_hex": "c080000000000000"
+    }
+  ]
+}

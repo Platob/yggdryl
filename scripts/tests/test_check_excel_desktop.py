@@ -1549,6 +1549,25 @@ class FunctionNativeCache(unittest.TestCase):
         self.assertEqual(observed["formula"], "=A1:A5")
         self.assertEqual(observed["formula2"], "=@A1:A5")
 
+    def test_function_cell_accepts_only_a_single_boolean_array_transport(self):
+        cell = SimpleNamespace(Value2="a" * 32767, Formula='=REPT("a",32767)',
+                               Formula2='=REPT("a",32767)', Text="a")
+        functions = SimpleNamespace(IsError=mock.Mock(return_value=(False,)))
+        app = SimpleNamespace(WorksheetFunction=functions)
+        evaluate = mock.Mock(side_effect=AssertionError("do not re-evaluate a proved Boolean"))
+        observed = ORACLE.function_cell(app, cell, "B240", evaluate)
+        self.assertIs(observed["is_error"], False)
+        self.assertEqual(observed["value2"]["value"], "a" * 32767)
+        self.assertEqual(observed["is_error_transport"], {"variant": "tuple", "value": [False]})
+        functions.IsError.assert_called_once_with(cell)
+        evaluate.assert_not_called()
+        for invalid in ((), (False, True), (0,), ((False,),), [False], 0, None):
+            with self.subTest(transport=invalid):
+                functions.IsError.return_value = invalid
+                with self.assertRaisesRegex(TypeError, "ISERROR"):
+                    ORACLE.function_cell(app, cell, "B240", evaluate)
+        evaluate.assert_not_called()
+
     def test_error_identity_comes_from_owned_cell_functions_not_nan_bits(self):
         import struct
         cell = SimpleNamespace(Value2=struct.unpack(">d", bytes.fromhex("7ff000000000000a"))[0], Formula="=ROUND(1,1)", Formula2="=ROUND(1,1)", Text="#NOMBRE!")
@@ -1729,5 +1748,683 @@ class FunctionFixtureCoverage(unittest.TestCase):
 
 
 
+
+
+class PivotOracle(unittest.TestCase):
+
+    def test_verify_authored_pivots_requires_hash_and_unique_owned_sheets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            source = folder / "authored.xlsx"
+            source.write_bytes(b"owned input")
+            payload = {"schema_version": 1, "kind": "p6_pivot_oracle_inputs", "native_answers": False,
+                       "verify_existing": {"file": source.name,
+                                           "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                                           "pivots": [{"id": "one", "sheet": "Report", "name": "P6_one"}]}}
+            path = folder / "cases.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(ORACLE.read_pivot_manifest(path), payload)
+            payload["verify_existing"]["pivots"].append({"id": "two", "sheet": "Report", "name": "P6_two"})
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unique"):
+                ORACLE.read_pivot_manifest(path)
+            payload["verify_existing"]["pivots"].pop()
+            payload["verify_existing"]["sha256"] = "0" * 64
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "sha256"):
+                ORACLE.read_pivot_manifest(path)
+
+    def test_pivot_item_order_refuses_unrepresented_sort_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            authored = json.loads(path.read_text(encoding="utf-8"))
+            for order in ("manual", "ASC", "", None, True, []):
+                authored["cases"][0]["item_order"] = order
+                path.write_text(json.dumps(authored), encoding="utf-8")
+                with self.subTest(order=order), self.assertRaisesRegex(ValueError, "item_order"):
+                    ORACLE.read_pivot_manifest(path)
+
+    def test_pivot_order_uses_source_name_and_checks_native_readback(self) -> None:
+        calls = []
+        class Field:
+            SourceName = "Original source"
+            AutoSortOrder = 0
+            def AutoSort(self, order, source):
+                calls.append((order, source))
+                self.AutoSortOrder = order
+        field = Field()
+        pivot = SimpleNamespace(PivotFields=lambda name: field)
+        case = {"id": "one", "rows": ["Caption"], "columns": [], "item_order": "descending"}
+        self.assertEqual(ORACLE.apply_pivot_order(pivot, case), [{"field": "Original source", "order": 2}])
+        self.assertEqual(calls, [(2, "Original source")])
+        field.AutoSort = lambda order, source: None
+        case["item_order"] = "ascending"
+        with self.assertRaisesRegex(AssertionError, "readback"):
+            ORACLE.apply_pivot_order(pivot, case)
+        del case["item_order"]
+        self.assertEqual(ORACLE.apply_pivot_order(pivot, case), [])
+
+    def test_explicit_native_pivot_captions_validate_and_read_back(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            authored = json.loads(path.read_text(encoding="utf-8"))
+            authored["cases"][0].update(data_caption="Values", grand_total_caption="Grand Total")
+            path.write_text(json.dumps(authored), encoding="utf-8")
+            self.assertEqual(ORACLE.read_pivot_manifest(path)["cases"][0]["data_caption"], "Values")
+            authored["cases"][0]["data_caption"] = ""
+            path.write_text(json.dumps(authored), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "caption"):
+                ORACLE.read_pivot_manifest(path)
+        field = SimpleNamespace(Caption="Valeurs")
+        pivot = SimpleNamespace(DataPivotField=field, GrandTotalName="Total général")
+        observed = ORACLE.apply_pivot_captions(
+            pivot, {"id": "one", "data_caption": "Values", "grand_total_caption": "Grand Total"})
+        self.assertEqual(observed, {"data_caption": "Values", "grand_total_caption": "Grand Total"})
+    def manifest(self, directory: Path) -> Path:
+        source = directory / "pivot-input.xlsx"
+        source.write_bytes(b"owned pivot source")
+        payload = {"schema_version": 1, "kind": "p6_pivot_oracle_inputs",
+                   "native_answers": False,
+                   "workbook": {"file": source.name, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()},
+                   "source_tables": [{"sheet": "Data", "range": "A1:B3",
+                                      "rows": [["Group", "Value"], ["East", 1], ["West", 2]]}],
+                   "cases": [{"id": "one", "sheet": "Output", "anchor": "A3",
+                              "source": {"sheet": "Data", "range": "A1:B3"},
+                              "rows": ["Group"], "columns": [],
+                              "values": [{"field": "Value", "aggregate": "sum", "caption": "Value Sum"}],
+                              "subtotals": True, "row_grand_totals": True,
+                              "column_grand_totals": True}]}
+        manifest = directory / "cases.json"
+        manifest.write_text(json.dumps(payload), encoding="utf-8")
+        return manifest
+
+    def test_manifest_proves_input_hash_and_refuses_unproven_answers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            self.assertEqual(ORACLE.read_pivot_manifest(path)["cases"][0]["id"], "one")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            for edit, reason in [
+                (lambda data: data["workbook"].update(sha256="0" * 64), "sha256"),
+                (lambda data: data["cases"][0].update(expected=3), "native answers"),
+                (lambda data: data["cases"][0].update(rows=["Missing"]), "axes"),
+                (lambda data: data["cases"].append(dict(data["cases"][0])), "duplicate"),
+            ]:
+                changed = json.loads(json.dumps(payload))
+                edit(changed)
+                path.write_text(json.dumps(changed), encoding="utf-8")
+                with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                    ORACLE.read_pivot_manifest(path)
+
+    def test_manifest_admits_all_eleven_typed_pivot_aggregates(self) -> None:
+        names = ("sum", "count", "average", "max", "min", "product",
+                 "countNumbers", "stdDev", "stdDevP", "var", "varP")
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            original = json.loads(path.read_text(encoding="utf-8"))
+            for name in names:
+                payload = json.loads(json.dumps(original))
+                payload["cases"][0]["values"][0]["aggregate"] = name
+                path.write_text(json.dumps(payload), encoding="utf-8", newline="\n")
+                try:
+                    observed = ORACLE.read_pivot_manifest(path)
+                except ValueError as error:
+                    with self.subTest(aggregate=name):
+                        self.fail(f"native oracle refused registered aggregate {name}: {error}")
+                else:
+                    with self.subTest(aggregate=name):
+                        self.assertEqual(observed["cases"][0]["values"][0]["aggregate"], name)
+
+    def test_snapshot_captures_ordered_fields_and_typed_grid(self) -> None:
+        cells = [["Group", "Value Sum"], ["East", 1.5]]
+        area = SimpleNamespace(Address="$A$3:$B$4", Rows=SimpleNamespace(Count=2),
+                               Columns=SimpleNamespace(Count=2),
+                               Cells=lambda row, column: SimpleNamespace(Value2=cells[row - 1][column - 1]))
+        field = lambda name, position, function=-4157: SimpleNamespace(
+            Name=name, Caption=name, Position=position, Function=function,
+            NumberFormat="#,##0.0000")
+        pivot = SimpleNamespace(Name="P6_one", TableRange2=area,
+                                RowFields=Collection([field("Group", 1)]), ColumnFields=Collection(),
+                                DataFields=Collection([field("Value Sum", 1)]),
+                                RowGrand=True, ColumnGrand=False)
+        sheet = SimpleNamespace(Name="Output", PivotTables=lambda: Collection([pivot]))
+        book = SimpleNamespace(
+            Worksheets=SimpleNamespace(Item=lambda name: sheet),
+            Application=SimpleNamespace(WorksheetFunction=SimpleNamespace(IsError=lambda cell: False)))
+        observed = ORACLE.pivot_snapshot(book, [{"id": "one", "sheet": "Output"}])
+        self.assertEqual(observed[0]["is_error"], [[False, False], [False, False]])
+        self.assertEqual(observed[0]["table_range2"], "$A$3:$B$4")
+        self.assertEqual(observed[0]["row_fields"],
+                         [{"name": "Group", "caption": "Group", "position": 1}])
+        self.assertEqual(observed[0]["value2"][1][1]["ieee754_hex"], "3ff8000000000000")
+        self.assertEqual(observed[0]["data_fields"][0]["number_format"], "#,##0.0000")
+
+    def test_candidate_is_published_only_after_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            pending = output / "pivot-native.pending.xlsx"
+            pending.write_bytes(b"fixture")
+            result = {"pivot_fixture_candidate": str(pending), "pivots": {}}
+            ORACLE.finish_pivot_fixture(result, output, False)
+            self.assertFalse(pending.exists())
+            self.assertFalse((output / "pivot-native.xlsx").exists())
+            pending.write_bytes(b"fixture")
+            result["pivot_fixture_candidate"] = str(pending)
+            ORACLE.finish_pivot_fixture(result, output, True)
+            self.assertEqual((output / "pivot-native.xlsx").read_bytes(), b"fixture")
+
+    def test_changed_refresh_or_save_snapshot_fails_the_oracle(self) -> None:
+        expected = [{"id": "one", "table_range2": "$A$3:$B$4",
+                     "row_fields": [{"name": "Group", "position": 1}],
+                     "value2": [[{"variant": "float", "value": 2.0}]]}]
+        ORACLE.assert_pivot_snapshots(expected, json.loads(json.dumps(expected)), "SaveAs")
+        for changed in (
+            [{**expected[0], "table_range2": "$A$3:$C$4"}],
+            [{**expected[0], "value2": [[{"variant": "float", "value": 3.0}]]}],
+            [{**expected[0], "row_fields": [{"name": "Other", "position": 1}]}],
+            [],
+        ):
+            with self.subTest(changed=changed), self.assertRaisesRegex(AssertionError, "changed"):
+                ORACLE.assert_pivot_snapshots(expected, changed, "RefreshTable")
+
+    def test_mode_refuses_non_attached_execution_before_com(self) -> None:
+        with self.assertRaisesRegex(ValueError, "active attachment required"):
+            ORACLE.run_pivots(None, SimpleNamespace(active=False), {})
+
+
+class ExistingPivotOracle(unittest.TestCase):
+
+    def test_independent_candidate_records_raw_and_control_differences(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.manifest(root)
+            output = root / "out"
+            output.mkdir()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["compare_existing"] = payload.pop("check_existing")
+            payload.pop("modified_members")
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            class Book:
+                def __init__(self, path):
+                    pivot = SimpleNamespace(Name="P6_source_order_grand", RefreshTable=lambda: True)
+                    self.Worksheets = SimpleNamespace(Item=lambda name: SimpleNamespace(PivotTables=lambda: Collection([pivot])))
+                def SaveAs(self, target, **kwargs):
+                    Path(target).write_bytes(b"owned")
+            @contextlib.contextmanager
+            def opened(_app, file):
+                yield Book(file)
+            snapshot = [{"id": "selected", "table_range2": "$A$3:$B$6", "value2": []}]
+            args = SimpleNamespace(active=True, cases=path, output_dir=output)
+            def compare(_before, _after, phase):
+                if phase == "control/candidate RefreshTable":
+                    raise AssertionError("native mismatch")
+            with mock.patch.object(ORACLE, "open_checked", side_effect=opened), \
+                 mock.patch.object(ORACLE, "pivot_snapshot", return_value=snapshot), \
+                 mock.patch.object(ORACLE, "pivot_xml", return_value={}), \
+                 mock.patch.object(ORACLE, "assert_pivot_cached", side_effect=AssertionError("raw mismatch")) as raw, \
+                 mock.patch.object(ORACLE, "assert_pivot_snapshots", side_effect=compare) as cross:
+                result = {}
+                with self.assertRaisesRegex(AssertionError, "raw mismatch; native mismatch"):
+                    ORACLE.run_pivots(None, args, result)
+            self.assertEqual(raw.call_count, 1)
+            self.assertEqual([call.args[2] for call in cross.call_args_list].count("control/candidate RefreshTable"), 1)
+            self.assertIs(result["candidate_raw_cache_equal"], False)
+            self.assertIs(result["control_candidate_equal"], False)
+
+    def test_independent_rust_pivot_manifest_allows_distinct_owned_packages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            paths = [folder / "pivot-control.xlsx", folder / "pivot-candidate.xlsx"]
+            with ORACLE.zipfile.ZipFile(paths[0], "w") as archive:
+                archive.writestr("xl/pivotTables/pivotTable1.xml", "<pivotTableDefinition/>")
+            with ORACLE.zipfile.ZipFile(paths[1], "w") as archive:
+                archive.writestr("xl/pivotTables/pivotTable2.xml", "<pivotTableDefinition/>")
+            pair = [{"id": role, "file": source.name,
+                     "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                     "sheet": "CaseOrder", "name": "P6_source_order_grand"}
+                    for role, source in zip(("control", "candidate"), paths)]
+            manifest = folder / "cases.json"
+            manifest.write_text(json.dumps({"schema_version": 1, "kind": "p6_pivot_oracle_inputs",
+                                            "native_answers": False, "compare_existing": pair}),
+                                encoding="utf-8")
+            self.assertEqual(ORACLE.read_pivot_manifest(manifest)["compare_existing"], pair)
+            pair[1]["sha256"] = "0" * 64
+            manifest.write_text(json.dumps({"schema_version": 1, "kind": "p6_pivot_oracle_inputs",
+                                            "native_answers": False, "compare_existing": pair}),
+                                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "sha256 mismatch"):
+                ORACLE.read_pivot_manifest(manifest)
+    def test_label_observation_requires_explicit_true(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            original = json.loads(path.read_text(encoding="utf-8"))
+            for flag in (False, "true", 1, None):
+                payload = dict(original, observe_labels=flag)
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "observe_labels"):
+                    ORACLE.read_pivot_manifest(path)
+            path.write_text(json.dumps(dict(original, observe_labels=True)), encoding="utf-8")
+            self.assertIs(ORACLE.read_pivot_manifest(path)["observe_labels"], True)
+
+    def manifest(self, directory: Path) -> Path:
+        full = directory / "pivot-full-native.xlsx"
+        empty = directory / "pivot-empty-records.xlsx"
+        parts = {
+            "xl/pivotCache/pivotCacheDefinition5.xml": b'<pivotCacheDefinition recordCount="4"/>',
+            "xl/pivotCache/pivotCacheRecords5.xml": b'<pivotCacheRecords count="4"/>',
+            "xl/pivotTables/pivotTable5.xml": b'<pivotTableDefinition name="P6_source_order_grand"/>',
+        }
+        with ORACLE.zipfile.ZipFile(full, "w") as archive:
+            for name, contents in parts.items():
+                archive.writestr(name, contents)
+        with ORACLE.zipfile.ZipFile(empty, "w") as archive:
+            for name, contents in parts.items():
+                if name.endswith("pivotCacheDefinition5.xml"):
+                    contents = b'<pivotCacheDefinition recordCount="0" saveData="0" refreshOnLoad="1"/>'
+                elif name.endswith("pivotCacheRecords5.xml"):
+                    contents = b'<pivotCacheRecords count="0"/>'
+                archive.writestr(name, contents)
+        payload = {"schema_version": 1, "kind": "p6_pivot_oracle_inputs", "native_answers": False,
+                   "check_existing": [
+                       {"id": "control", "file": full.name,
+                        "sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
+                        "sheet": "CaseOrder", "name": "P6_source_order_grand"},
+                       {"id": "candidate", "file": empty.name,
+                        "sha256": hashlib.sha256(empty.read_bytes()).hexdigest(),
+                        "sheet": "CaseOrder", "name": "P6_source_order_grand"}],
+                   "modified_members": ["xl/pivotCache/pivotCacheDefinition5.xml",
+                                        "xl/pivotCache/pivotCacheRecords5.xml"]}
+        path = directory / "cases.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def test_existing_manifest_proves_hashes_pair_and_exact_member_delta(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.manifest(Path(directory))
+            self.assertEqual([item["id"] for item in ORACLE.read_pivot_manifest(path)["check_existing"]],
+                             ["control", "candidate"])
+            original = json.loads(path.read_text(encoding="utf-8"))
+            for edit, reason in (
+                (lambda data: data["check_existing"][1].update(sha256="0" * 64), "sha256"),
+                (lambda data: data["check_existing"][1].update(id="control"), "roles"),
+                (lambda data: data["check_existing"][1].update(name="Other"), "same pivot"),
+                (lambda data: data.update(modified_members=["xl/workbook.xml"]), "modified members"),
+                (lambda data: data["check_existing"][1].update(expected=3), "native answers"),
+            ):
+                changed = json.loads(json.dumps(original))
+                edit(changed)
+                path.write_text(json.dumps(changed), encoding="utf-8")
+                with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                    ORACLE.read_pivot_manifest(path)
+
+    def test_existing_run_refreshes_only_selected_owned_pivots(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.manifest(root)
+            output = root / "out"
+            output.mkdir()
+            refreshed = []
+            saved = []
+
+            class Book:
+                def __init__(self, path):
+                    pivot = SimpleNamespace(Name="P6_source_order_grand",
+                                            RefreshTable=lambda: refreshed.append(path.name) or True)
+                    sheet = SimpleNamespace(PivotTables=lambda: Collection([pivot]))
+                    self.Worksheets = SimpleNamespace(Item=lambda name: sheet)
+
+                def SaveAs(self, target, **kwargs):
+                    saved.append(Path(target).name)
+                    Path(target).write_bytes(b"owned saved workbook")
+
+            @contextlib.contextmanager
+            def opened(_app, file):
+                yield Book(file)
+
+            snapshot = [{"id": "selected", "table_range2": "$A$3:$B$6", "value2": []}]
+            args = SimpleNamespace(active=True, cases=path, output_dir=output)
+            with mock.patch.object(ORACLE, "open_checked", side_effect=opened), \
+                 mock.patch.object(ORACLE, "pivot_snapshot", return_value=snapshot), \
+                 mock.patch.object(ORACLE, "pivot_xml", return_value={}), \
+                 mock.patch.object(ORACLE, "assert_pivot_cached", return_value=[]) as cached:
+                result = {}
+                ORACLE.run_pivots(None, args, result)
+            self.assertEqual(refreshed, ["pivot-full-native.xlsx", "pivot-empty-records.xlsx"])
+            self.assertEqual(saved, ["pivot-existing-control.pending.xlsx",
+                                     "pivot-existing-candidate.pending.xlsx"])
+            self.assertEqual(cached.call_count, 1)
+            self.assertEqual(len(result["pivot_existing"]), 2)
+
+    def test_existing_candidates_publish_only_after_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            pending = [output / f"pivot-existing-{role}.pending.xlsx"
+                       for role in ("control", "candidate")]
+            for path in pending:
+                path.write_bytes(b"owned")
+            result = {"pivot_existing_candidates": [str(path) for path in pending],
+                      "pivot_existing": []}
+            ORACLE.finish_pivot_fixture(result, output, False)
+            self.assertTrue(all(not path.exists() for path in pending))
+            self.assertFalse(list(output.glob("pivot-existing-*.xlsx")))
+            for path in pending:
+                path.write_bytes(b"owned")
+            result["pivot_existing_candidates"] = [str(path) for path in pending]
+            ORACLE.finish_pivot_fixture(result, output, True)
+            self.assertEqual(result["pivot_existing_published"],
+                             ["pivot-existing-control.xlsx", "pivot-existing-candidate.xlsx"])
+            self.assertTrue(all((output / name).read_bytes() == b"owned"
+                                for name in result["pivot_existing_published"]))
+
+    def test_failed_first_refresh_registers_both_candidates_for_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = self.manifest(root)
+            output = root / "out"
+            output.mkdir()
+            pivot = SimpleNamespace(Name="P6_source_order_grand", RefreshTable=lambda: False)
+            sheet = SimpleNamespace(PivotTables=lambda: Collection([pivot]))
+            book = SimpleNamespace(Worksheets=SimpleNamespace(Item=lambda name: sheet))
+
+            @contextlib.contextmanager
+            def opened(_app, _file):
+                yield book
+
+            result = {}
+            with mock.patch.object(ORACLE, "open_checked", side_effect=opened), \
+                 mock.patch.object(ORACLE, "pivot_snapshot", return_value=[]):
+                with self.assertRaisesRegex(AssertionError, "RefreshTable returned false"):
+                    ORACLE.run_pivots(None, SimpleNamespace(active=True, cases=path, output_dir=output), result)
+            self.assertEqual(result["pivot_existing_candidates"],
+                             [str(output / f"pivot-existing-{role}.pending.xlsx")
+                              for role in ("control", "candidate")])
+            ORACLE.finish_pivot_fixture(result, output, False)
+
+
+
+class FunctionTextOriginalLocale(unittest.TestCase):
+    def test_original_text_plan_is_explicit_and_never_localizes_currency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest, _, payload = FunctionTextFormatLocale().manifest(Path(directory))
+            case = payload['cases'][0]
+            case['wire_formula'] = case['formula'] = 'TEXT(-1234.5,"$#,##0.00;($#,##0.00)")'
+            case['control']['value'] = '($1,234.50)'
+            case['text_format_oracle'] = {'value_expression': '-1234.5', 'code': '$#,##0.00;($#,##0.00)'}
+            manifest.write_text(json.dumps(payload), encoding='utf-8')
+            ORACLE.read_function_manifest(manifest)
+            sheet = mock.Mock()
+            evaluate = mock.Mock(return_value='($1,234.50)')
+            with mock.patch.object(ORACLE, 'local_number_format') as convert:
+                answer = ORACLE.prepare_function_text_oracle(sheet, case, evaluate)
+            self.assertEqual(answer['cell'], case['cell'])
+            self.assertEqual(answer['kind'], 'original_native_cache')
+            self.assertEqual(answer['en_us_original'], {'variant': 'str', 'value': '($1,234.50)'})
+            evaluate.assert_called_once_with(case['wire_formula'])
+            sheet.Range.assert_not_called(); convert.assert_not_called()
+            # One omitted coordinate is not an implicit original-cell mode.
+            case['text_format_oracle']['cell'] = 'C1'
+            manifest.write_text(json.dumps(payload), encoding='utf-8')
+            with self.assertRaises(ValueError): ORACLE.read_function_manifest(manifest)
+
+    def test_original_text_mode_keeps_value_and_saved_cache_proofs(self):
+        for fault in (None, 'en-us', 'after-save', 'original-cache'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                manifest, files, payload=FunctionTextFormatLocale().manifest(root)
+                case=payload['cases'][0]
+                english='($1,234.50)'
+                case['wire_formula']=case['formula']='TEXT(-1234.5,"$#,##0.00;($#,##0.00)")'
+                case['control']['value']=english
+                case['text_format_oracle']={'value_expression':'-1234.5','code':'$#,##0.00;($#,##0.00)'}
+                manifest.write_text(json.dumps(payload),encoding='utf-8')
+                output=root/'output';output.mkdir()
+                app=mock.Mock();app.WorksheetFunction.IsError.return_value=False
+                books={}
+                for path,year in zip(files,('1900','1904')):
+                    cells={}
+                    for item in payload['cases']:
+                        if item['file']==path.name:
+                            value={'calibrate-utf16':english,'gated':4.0,'random':.25,'date1904':45291.0}[item['id']]
+                            cells[item['cell']]=mock.Mock(HasFormula=True,Formula='='+item['wire_formula'],Value2=value,Text=str(value))
+                    sheet=mock.Mock(Name='Cases');sheet.Range.side_effect=cells.__getitem__
+                    book=mock.Mock(Date1904=year=='1904');book.Worksheets.Count=1
+                    book.Worksheets.Item.side_effect=lambda key,sheet=sheet:sheet if key in (1,'Cases') else None
+                    def save(target,cells=cells,year=year,**kwargs):
+                        Path(target).write_bytes(b'candidate')
+                        if fault=='after-save' and year=='1900':cells['B1'].Value2='changed'
+                    book.SaveAs.side_effect=save;books[path.resolve()]=(book,sheet,cells,year)
+                @contextlib.contextmanager
+                def opened(_app,path):
+                    book=books[path.resolve()][0]
+                    try:yield book
+                    finally:book.Close(SaveChanges=False)
+                def caches(path,selected):
+                    answer={}
+                    for item in selected:
+                        cell=item['cell'];year=item['date_system']
+                        if year=='1900' and cell=='B1':value='lost' if fault=='original-cache' else ('changed' if fault=='after-save' else english);kind='str'
+                        else:value=str({'B1':45291.0,'B2':4.0,'B3':.25}[cell]);kind='n'
+                        answer[(item['sheet'],cell)]={'type':kind,'value_text':value}
+                    return answer
+                result={'failures':[],'excel':{'version':'16.0'}}
+                with mock.patch.object(ORACLE,'open_checked',side_effect=opened), \
+                        mock.patch.object(ORACLE,'saved_function_cache',side_effect=caches), \
+                        mock.patch.object(ORACLE,'evaluate_function',return_value=lambda text:'wrong' if fault=='en-us' else english), \
+                        mock.patch.object(ORACLE,'local_number_format') as convert:
+                    ORACLE.run_functions(app,SimpleNamespace(cases=manifest,output_dir=output),result)
+                self.assertEqual(bool(result['failures']),fault is not None,result['failures'])
+                convert.assert_not_called();app.CalculateFull.assert_not_called();app.Quit.assert_not_called()
+                self.assertTrue(all(book.Close.call_count==1 for book,_,_,_ in books.values()))
+                self.assertEqual(books[files[0].resolve()][2]['B1'].Formula,'=TEXT(-1234.5,"$#,##0.00;($#,##0.00)")')
+                if fault is None:
+                    record=result['functions']['cases'][0]
+                    self.assertEqual(record['text_oracle']['kind'],'original_native_cache')
+                    self.assertEqual(record['text_oracle']['saved_cache'],record['saved_cache'])
+                    self.assertEqual(result['functions']['calibrations']['en_us_formula_text']['scope'],'original_native_cache')
+                else:
+                    ORACLE.finish_function_fixtures(result,output,False)
+                    self.assertFalse(list(output.glob('*.xlsx')))
+
 if __name__ == "__main__":
     unittest.main()
+
+class FunctionTextFormatLocale(unittest.TestCase):
+    def test_native_format_conversion_dispatches_invariant_and_local_owners(self):
+        dispatch = mock.Mock()
+        dispatch.GetIDsOfNames.side_effect = lambda name: {"NumberFormat": 1, "NumberFormatLocal": 2}[name]
+        dispatch.InvokeTypes.side_effect = [None, '[$-409]yyyy-mm-dd', '[$-409]aaaa-mm-jj']
+        com = SimpleNamespace(DISPATCH_PROPERTYPUT=4, DISPATCH_PROPERTYGET=2, VT_EMPTY=0, VT_VARIANT=12)
+        with mock.patch.dict(sys.modules, pythoncom=com):
+            converted = ORACLE.local_number_format(SimpleNamespace(_oleobj_=dispatch), '[$-409]yyyy-mm-dd')
+        self.assertEqual(converted['number_format_local'], '[$-409]aaaa-mm-jj')
+        self.assertEqual(dispatch.InvokeTypes.call_args_list, [
+            mock.call(1, 1033, 4, (0, 0), ((12, 1),), '[$-409]yyyy-mm-dd'),
+            mock.call(1, 1033, 2, (12, 0), ()), mock.call(2, 1033, 2, (12, 0), ())])
+
+    def manifest(self, root):
+        path, files = FunctionOracle().manifest(root)
+        value = json.loads(path.read_text(encoding='utf-8'))
+        case = value['cases'][0]
+        case.update(formula='TEXT(DATE(2024,1,1),"dddd, mmmm d, yyyy")',
+                    wire_formula='TEXT(DATE(2024,1,1),"dddd, mmmm d, yyyy")',
+                    control={'kind': 'equals', 'value': 'Monday, January 1, 2024', 'gate': 'en_us_formula_text'},
+                    text_format_oracle={'value_expression': 'DATE(2024,1,1)', 'code': 'dddd, mmmm d, yyyy',
+                                        'cell': 'C1', 'format_cell': 'D1'})
+        value['cases'][1]['gates'] = ['en_us_formula_text']
+        path.write_text(json.dumps(value), encoding='utf-8')
+        return path, files, value
+
+    def test_manifest_refuses_ambiguous_or_conflicting_companion_before_excel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path, _, payload = self.manifest(Path(directory))
+            ORACLE.read_function_manifest(path)
+            original = json.loads(json.dumps(payload))
+            payload['cases'][0]['wire_formula']='TEXT(A:A,"dddd, mmmm d, yyyy")'
+            payload['cases'][0]['text_format_oracle']['value_expression']='A:A'
+            path.write_text(json.dumps(payload),encoding='utf-8')
+            with self.assertRaises(ValueError):ORACLE.read_function_manifest(path)
+            for key, value in [('code', 'yyyy'), ('cell', 'B2'), ('format_cell', 'C1')]:
+                with self.subTest(key=key):
+                    payload = json.loads(json.dumps(original))
+                    payload['cases'][0]['text_format_oracle'][key] = value
+                    path.write_text(json.dumps(payload), encoding='utf-8')
+                    with self.assertRaises(ValueError):
+                        ORACLE.read_function_manifest(path)
+
+    def test_adapted_gate_keeps_original_cache_checks_and_provenance(self):
+        for fault in (None, 'original-cache', 'companion-cache', 'en-us', 'after-save', 'occupied'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest, files, payload = self.manifest(root)
+                output = root / 'output'; output.mkdir()
+                app = mock.Mock(); app.WorksheetFunction.IsError.return_value = False
+                original_text, english = 'dddd, janvier d, yyyy', 'Monday, January 1, 2024'
+                books = {}
+                for path, year in zip(files, ('1900', '1904')):
+                    cells = {}
+                    for case in payload['cases']:
+                        if case['file'] == path.name:
+                            value = {'calibrate-utf16': original_text, 'gated': 4.0, 'random': .25, 'date1904': 45291.0}[case['id']]
+                            cells[case['cell']] = mock.Mock(HasFormula=True, Formula='='+case['wire_formula'], Value2=value, Text=str(value))
+                    if year == '1900':
+                        cells['C1'] = mock.Mock(HasFormula=False, Value2='owned data' if fault == 'occupied' else None, MergeCells=False, Text=english)
+                        cells['D1'] = mock.Mock(HasFormula=False, Value2=None, MergeCells=False)
+                        cells['C1'].Calculate.side_effect = lambda cells=cells: setattr(cells['C1'], 'Value2', english)
+                    sheet = mock.Mock(Name='Cases'); sheet.Range.side_effect = cells.__getitem__
+                    book = mock.Mock(Date1904=year=='1904'); book.Worksheets.Count=1
+                    book.Worksheets.Item.side_effect=lambda key,sheet=sheet: sheet if key in (1,'Cases') else None
+                    def save(target, book=book, cells=cells, year=year, **kwargs):
+                        Path(target).write_bytes(b'candidate')
+                        if fault=='after-save' and year=='1900': cells['C1'].Value2='changed'
+                    book.SaveAs.side_effect=save;books[path.resolve()]=(book,sheet,cells,year)
+                @contextlib.contextmanager
+                def opened(_app,path):
+                    book=books[path.resolve()][0]
+                    try: yield book
+                    finally: book.Close(SaveChanges=False)
+                def caches(path,selected):
+                    answer={}
+                    for case in selected:
+                        cell=case['cell']; year=case['date_system']
+                        if year=='1900' and cell=='B1': value='lost' if fault=='original-cache' else original_text; kind='str'
+                        elif cell=='C1': value='lost' if fault=='companion-cache' else ('changed' if fault=='after-save' else english); kind='str'
+                        else: value=str({'B1':45291.0,'B2':4.0,'B3':.25}[cell]);kind='n'
+                        answer[(case['sheet'],cell)]={'type':kind,'value_text':value}
+                    return answer
+                conversion={'input_code':'[$-409]dddd, mmmm d, yyyy','input_lcid':1033,
+                            'invariant_readback':'[$-409]dddd, mmmm d, yyyy','number_format_local':'[$-409]jjjj, mmmm j, aaaa'}
+                result={'failures':[],'excel':{'version':'16.0'}}
+                with mock.patch.object(ORACLE,'open_checked',side_effect=opened), \
+                        mock.patch.object(ORACLE,'saved_function_cache',side_effect=caches), \
+                        mock.patch.object(ORACLE,'evaluate_function',return_value=lambda text:'wrong' if fault=='en-us' else english), \
+                        mock.patch.object(ORACLE,'local_number_format',return_value=conversion,create=True):
+                    ORACLE.run_functions(app,SimpleNamespace(cases=manifest,output_dir=output),result)
+                self.assertEqual(bool(result['failures']),fault is not None,result['failures'])
+                self.assertTrue(all(book.Close.call_count==1 for book,_,_,_ in books.values()))
+                self.assertEqual(books[files[0].resolve()][2]['B1'].Formula,'=TEXT(DATE(2024,1,1),"dddd, mmmm d, yyyy")')
+                app.CalculateFull.assert_not_called();app.Quit.assert_not_called()
+                if fault is None:
+                    case=result['functions']['cases'][0]
+                    self.assertFalse(case['original_control_passed']);self.assertTrue(case['control_passed'])
+                    self.assertEqual(case['saved_cache']['value_text'],original_text)
+                    self.assertEqual(case['text_oracle']['saved_cache']['value_text'],english)
+                    self.assertEqual(result['functions']['calibrations']['en_us_formula_text']['scope'],'native_number_format_local_companion')
+                    ORACLE.finish_function_fixtures(result,output,True)
+                    coverage=json.loads((output/'functions-cached-1900.json').read_text())['coverage']
+                    self.assertEqual(coverage['text_oracle_case_ids'],['calibrate-utf16'])
+                    self.assertIn('original caches retain native locale',coverage['english_cache_scope'])
+                else:
+                    ORACLE.finish_function_fixtures(result,output,False)
+                    self.assertFalse(list(output.glob('*.xlsx')))
+
+
+class PivotRawCacheComparison(unittest.TestCase):
+
+    def test_native_saved_error_literal_is_authoritative_over_com_transport(self) -> None:
+        import zipfile
+        from openpyxl import Workbook
+        main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "candidate.xlsx"
+            native = root / "native-saved.xlsx"
+            book = Workbook()
+            book.active.title = "Result"
+            book.save(source)
+            with zipfile.ZipFile(source) as archive:
+                members = {name: archive.read(name) for name in archive.namelist()}
+            def owned_error(path: Path, literal: str) -> None:
+                changed = dict(members)
+                changed["xl/worksheets/sheet1.xml"] = (
+                    f'<worksheet xmlns="{main}"><sheetData><row r="1">'
+                    f'<c r="A1" t="e"><v>{literal}</v></c>'
+                    '</row></sheetData></worksheet>').encode()
+                with zipfile.ZipFile(path, "w") as archive:
+                    for name, content in changed.items():
+                        archive.writestr(name, content)
+            owned_error(source, "#NUM!")
+            owned_error(native, "#NUM!")
+            # The native function oracle has observed NaN-like COM error
+            # transports. ISERROR + saved t=e/#NUM! carry its identity.
+            transport = ORACLE.function_value(float("nan"))
+            refreshed = {"table_range2": "$A$1", "value2": [[transport]],
+                         "is_error": [[True]]}
+            observed = ORACLE.assert_pivot_cached(source, "Result", refreshed, native)
+            self.assertEqual(observed[0][0], {"variant": "error", "value": "#NUM!"})
+            owned_error(native, "#N/A")
+            with self.assertRaisesRegex(AssertionError, "cached error literal"):
+                ORACLE.assert_pivot_cached(source, "Result", refreshed, native)
+
+    def test_typed_raw_cache_distinguishes_text_error_date_serial_and_numeric(self) -> None:
+        import zipfile
+        from openpyxl import Workbook
+        main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "typed.xlsx"
+            book = Workbook()
+            book.active.title = "Result"
+            book.save(path)
+            with zipfile.ZipFile(path) as archive:
+                members = {name: archive.read(name) for name in archive.namelist()}
+            members["xl/worksheets/sheet1.xml"] = (
+                f'<worksheet xmlns="{main}"><sheetData><row r="1">'
+                '<c r="A1"><v>60</v></c><c r="B1" t="inlineStr"><is><t>#N/A</t></is></c>'
+                '<c r="C1" t="e"><v>#N/A</v></c><c r="D1"><v>2.25</v></c>'
+                '</row></sheetData></worksheet>').encode()
+            with zipfile.ZipFile(path, "w") as archive:
+                for name, content in members.items():
+                    archive.writestr(name, content)
+            refreshed = {"table_range2": "$A$1:$D$1", "is_error": [[False, False, True, False]], "value2": [
+                [ORACLE.function_value(60.0), ORACLE.function_value("#N/A"),
+                 ORACLE.function_value(-2146826246), ORACLE.function_value(2.25)]]}
+            observed = ORACLE.assert_pivot_cached(path, "Result", refreshed)
+            self.assertEqual(observed[0][0]["ieee754_hex"], ORACLE.function_value(60.0)["ieee754_hex"])
+            changed = {**refreshed, "value2": [[ORACLE.function_value(60.0),
+                       ORACLE.function_value(-2146826246), ORACLE.function_value(-2146826246),
+                       ORACLE.function_value(2.25)]]}
+            with self.assertRaisesRegex(AssertionError, "cached"):
+                ORACLE.assert_pivot_cached(path, "Result", changed)
+            wrong_kind = {**refreshed, "is_error": [[True, False, True, False]],
+                          "value2": [[ORACLE.function_value(60.0), ORACLE.function_value("#N/A"),
+                                      ORACLE.function_value(-2146826246), ORACLE.function_value(2.25)]]}
+            with self.assertRaisesRegex(AssertionError, "error kind"):
+                ORACLE.assert_pivot_cached(path, "Result", wrong_kind)
+
+    def test_wrong_rust_cache_fails_before_excel_open_refresh(self) -> None:
+        import openpyxl
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "rust-candidate.xlsx"
+            book = openpyxl.Workbook()
+            sheet = book.active
+            sheet.title = "Result"
+            sheet["A1"] = "Group"
+            sheet["B1"] = "sum Metric"
+            sheet["A2"] = "East"
+            sheet["B2"] = 7.0
+            book.save(path)
+            refreshed = {"table_range2": "$A$1:$B$2", "value2": [
+                [ORACLE.function_value("Group"), ORACLE.function_value("sum Metric")],
+                [ORACLE.function_value("East"), ORACLE.function_value(8.0)],
+            ]}
+            refreshed["is_error"] = [[False, False], [False, False]]
+            with self.assertRaisesRegex(AssertionError, "cached"):
+                ORACLE.assert_pivot_cached(path, "Result", refreshed)

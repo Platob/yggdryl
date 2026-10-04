@@ -1,0 +1,3184 @@
+{
+  "schema_version": 1,
+  "scope": "LOG and required sources selected from the complete native scalar math run; Rust replay required.",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 124,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "8f7cc6b6f894f5d899d07d7dd783ee934c6ae09b29b713dcf908cdd5f6abe57a",
+      "cases": 296,
+      "physical_formula_cells": 296
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "65bdba18c93f7aa83bac6da82617ad7f4fc25dfb57a02281c8dca6d283084729",
+      "cases": 296,
+      "physical_formula_cells": 296
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "A1": 0,
+      "A2": 2.5,
+      "A3": -2.5,
+      "A4": 1,
+      "A5": -1,
+      "A7": true,
+      "A8": false,
+      "A9": "2.5",
+      "A10": "abc",
+      "B1": 2,
+      "B2": 3,
+      "B3": 4,
+      "B4": 5
+    }
+  },
+  "manifest_sha256": "317bd56ab7d23f827c249fdae7e81369e5062d2000cf073c7a543fa7032d8185",
+  "source_report": "rust/target/excel-desktop/p5-pure-math-observed/results.json",
+  "source_report_sha256": "040caf9c385690fecf15a1a30a3754fdc9f17b1bf731248dcef096c56c303876",
+  "cases": [
+    {
+      "id": "empty-text-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D1",
+      "wire_formula": "\"\"",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "\"\"",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D1",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "third-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D3",
+      "wire_formula": "1/3",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/3",
+        "formula2": "=1/3",
+        "value2": {
+          "variant": "float",
+          "value": 0.3333333333333333,
+          "hex": "0x1.5555555555555p-2",
+          "ieee754_hex": "3fd5555555555555",
+          "classification": "finite"
+        },
+        "display": "0.333333",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=1/3",
+        "formula2": "=1/3",
+        "value2": {
+          "variant": "float",
+          "value": 0.3333333333333333,
+          "hex": "0x1.5555555555555p-2",
+          "ieee754_hex": "3fd5555555555555",
+          "classification": "finite"
+        },
+        "display": "0.333333",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.33333333333333331",
+        "formula_text": "1/3",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D3"
+        }
+      }
+    },
+    {
+      "id": "tenths-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D4",
+      "wire_formula": "0.1+0.2",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=0.1+0.2",
+        "formula2": "=0.1+0.2",
+        "value2": {
+          "variant": "float",
+          "value": 0.30000000000000004,
+          "hex": "0x1.3333333333334p-2",
+          "ieee754_hex": "3fd3333333333334",
+          "classification": "finite"
+        },
+        "display": "0.3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=0.1+0.2",
+        "formula2": "=0.1+0.2",
+        "value2": {
+          "variant": "float",
+          "value": 0.30000000000000004,
+          "hex": "0x1.3333333333334p-2",
+          "ieee754_hex": "3fd3333333333334",
+          "classification": "finite"
+        },
+        "display": "0.3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.30000000000000004",
+        "formula_text": "0.1+0.2",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D4"
+        }
+      }
+    },
+    {
+      "id": "pi-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D5",
+      "wire_formula": "PI()",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=PI()",
+        "formula2": "=PI()",
+        "value2": {
+          "variant": "float",
+          "value": 3.141592653589793,
+          "hex": "0x1.921fb54442d18p+1",
+          "ieee754_hex": "400921fb54442d18",
+          "classification": "finite"
+        },
+        "display": "3.141593",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PI()",
+        "formula2": "=PI()",
+        "value2": {
+          "variant": "float",
+          "value": 3.141592653589793,
+          "hex": "0x1.921fb54442d18p+1",
+          "ieee754_hex": "400921fb54442d18",
+          "classification": "finite"
+        },
+        "display": "3.141593",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "PI()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D5"
+        }
+      }
+    },
+    {
+      "id": "log-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B148",
+      "wire_formula": "LOG(0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "zero"
+      },
+      "actual": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B148",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-negative-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B149",
+      "wire_formula": "LOG(-0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-zero"
+      },
+      "actual": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B149",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-one-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B150",
+      "wire_formula": "LOG(1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "one"
+      },
+      "actual": {
+        "formula": "=LOG(1)",
+        "formula2": "=LOG(1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(1)",
+        "formula2": "=LOG(1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B150"
+        }
+      }
+    },
+    {
+      "id": "log-negative-one-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B151",
+      "wire_formula": "LOG(-1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-one"
+      },
+      "actual": {
+        "formula": "=LOG(-1)",
+        "formula2": "=LOG(-1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(-1)",
+        "formula2": "=LOG(-1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B151",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-tenth-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B152",
+      "wire_formula": "LOG(0.1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "tenth"
+      },
+      "actual": {
+        "formula": "=LOG(0.1)",
+        "formula2": "=LOG(0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        "display": "-1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(0.1)",
+        "formula2": "=LOG(0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        "display": "-1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1",
+        "formula_text": "LOG(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B152"
+        }
+      }
+    },
+    {
+      "id": "log-negative-tenth-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B153",
+      "wire_formula": "LOG(-0.1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-tenth"
+      },
+      "actual": {
+        "formula": "=LOG(-0.1)",
+        "formula2": "=LOG(-0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(-0.1)",
+        "formula2": "=LOG(-0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B153",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-two-half-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B154",
+      "wire_formula": "LOG(2.5)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "two-half"
+      },
+      "actual": {
+        "formula": "=LOG(2.5)",
+        "formula2": "=LOG(2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(2.5)",
+        "formula2": "=LOG(2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B154"
+        }
+      }
+    },
+    {
+      "id": "log-tiny-normal-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B155",
+      "wire_formula": "LOG(3E-308)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "tiny-normal"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308)",
+        "formula2": "=LOG(3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -307.52287874528037,
+          "hex": "-0x1.3385db61a6c0bp+8",
+          "ieee754_hex": "c073385db61a6c0b",
+          "classification": "finite"
+        },
+        "display": "-307.523",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(3E-308)",
+        "formula2": "=LOG(3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -307.52287874528037,
+          "hex": "-0x1.3385db61a6c0bp+8",
+          "ieee754_hex": "c073385db61a6c0b",
+          "classification": "finite"
+        },
+        "display": "-307.523",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-307.52287874528037",
+        "formula_text": "LOG(3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B155"
+        }
+      }
+    },
+    {
+      "id": "log-large-finite-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B156",
+      "wire_formula": "LOG(9E307)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "large-finite"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307)",
+        "formula2": "=LOG(9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 307.9542425094393,
+          "hex": "0x1.33f4493cb27ebp+8",
+          "ieee754_hex": "40733f4493cb27eb",
+          "classification": "finite"
+        },
+        "display": "307.9542",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(9E+307)",
+        "formula2": "=LOG(9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 307.9542425094393,
+          "hex": "0x1.33f4493cb27ebp+8",
+          "ieee754_hex": "40733f4493cb27eb",
+          "classification": "finite"
+        },
+        "display": "307.9542",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "307.95424250943933",
+        "formula_text": "LOG(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B156"
+        }
+      }
+    },
+    {
+      "id": "log-near-overflow-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B157",
+      "wire_formula": "LOG(709)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "near-overflow"
+      },
+      "actual": {
+        "formula": "=LOG(709)",
+        "formula2": "=LOG(709)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8506462351830666,
+          "hex": "0x1.6ce1f9d049d47p+1",
+          "ieee754_hex": "4006ce1f9d049d47",
+          "classification": "finite"
+        },
+        "display": "2.850646",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(709)",
+        "formula2": "=LOG(709)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8506462351830666,
+          "hex": "0x1.6ce1f9d049d47p+1",
+          "ieee754_hex": "4006ce1f9d049d47",
+          "classification": "finite"
+        },
+        "display": "2.850646",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.8506462351830666",
+        "formula_text": "LOG(709)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B157"
+        }
+      }
+    },
+    {
+      "id": "log-overflow-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B158",
+      "wire_formula": "LOG(710)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "overflow"
+      },
+      "actual": {
+        "formula": "=LOG(710)",
+        "formula2": "=LOG(710)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8512583487190755,
+          "hex": "0x1.6cf608981902ap+1",
+          "ieee754_hex": "4006cf608981902a",
+          "classification": "finite"
+        },
+        "display": "2.851258",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(710)",
+        "formula2": "=LOG(710)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8512583487190755,
+          "hex": "0x1.6cf608981902ap+1",
+          "ieee754_hex": "4006cf608981902a",
+          "classification": "finite"
+        },
+        "display": "2.851258",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.8512583487190755",
+        "formula_text": "LOG(710)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B158"
+        }
+      }
+    },
+    {
+      "id": "log-true-direct-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B159",
+      "wire_formula": "LOG(TRUE)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "true-direct"
+      },
+      "actual": {
+        "formula": "=LOG(TRUE)",
+        "formula2": "=LOG(TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(TRUE)",
+        "formula2": "=LOG(TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B159"
+        }
+      }
+    },
+    {
+      "id": "log-text-number-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B160",
+      "wire_formula": "LOG(\"2.5\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "text-number"
+      },
+      "actual": {
+        "formula": "=LOG(\"2.5\")",
+        "formula2": "=LOG(\"2.5\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(\"2.5\")",
+        "formula2": "=LOG(\"2.5\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(\"2.5\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B160"
+        }
+      }
+    },
+    {
+      "id": "log-text-invalid-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B161",
+      "wire_formula": "LOG(\"abc\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "text-invalid"
+      },
+      "actual": {
+        "formula": "=LOG(\"abc\")",
+        "formula2": "=LOG(\"abc\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(\"abc\")",
+        "formula2": "=LOG(\"abc\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "LOG(\"abc\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B161",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-number-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B162",
+      "wire_formula": "LOG(Values!A2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "number-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!A2)",
+        "formula2": "=LOG(Values!A2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(Values!A2)",
+        "formula2": "=LOG(Values!A2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(Values!A2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B162"
+        }
+      }
+    },
+    {
+      "id": "log-blank-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B163",
+      "wire_formula": "LOG(Values!A6)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "blank-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!A6)",
+        "formula2": "=LOG(Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(Values!A6)",
+        "formula2": "=LOG(Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(Values!A6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B163",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-error-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B164",
+      "wire_formula": "LOG(Values!D2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "error-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!D2)",
+        "formula2": "=LOG(Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(Values!D2)",
+        "formula2": "=LOG(Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(Values!D2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B164",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-base-two-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B288",
+      "wire_formula": "LOG(8,2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "base-two"
+      },
+      "actual": {
+        "formula": "=LOG(8,2)",
+        "formula2": "=LOG(8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,2)",
+        "formula2": "=LOG(8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "LOG(8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B288"
+        }
+      }
+    },
+    {
+      "id": "log-base-one-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B289",
+      "wire_formula": "LOG(8,1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "base-one"
+      },
+      "actual": {
+        "formula": "=LOG(8,1)",
+        "formula2": "=LOG(8,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,1)",
+        "formula2": "=LOG(8,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B289",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-negative-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B290",
+      "wire_formula": "LOG(8,-2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "negative-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,-2)",
+        "formula2": "=LOG(8,-2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,-2)",
+        "formula2": "=LOG(8,-2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,-2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B290",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-zero-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B291",
+      "wire_formula": "LOG(8,0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "zero-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,0)",
+        "formula2": "=LOG(8,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,0)",
+        "formula2": "=LOG(8,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B291",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-fractional-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B292",
+      "wire_formula": "LOG(8,0.5)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "fractional-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,0.5)",
+        "formula2": "=LOG(8,0.5)",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,0.5)",
+        "formula2": "=LOG(8,0.5)",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "LOG(8,0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B292"
+        }
+      }
+    },
+    {
+      "id": "log-text-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B293",
+      "wire_formula": "LOG(8,\"2\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "text-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,\"2\")",
+        "formula2": "=LOG(8,\"2\")",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,\"2\")",
+        "formula2": "=LOG(8,\"2\")",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "LOG(8,\"2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B293"
+        }
+      }
+    },
+    {
+      "id": "log-boolean-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B294",
+      "wire_formula": "LOG(8,TRUE)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "boolean-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,TRUE)",
+        "formula2": "=LOG(8,TRUE)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,TRUE)",
+        "formula2": "=LOG(8,TRUE)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B294",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-blank-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B295",
+      "wire_formula": "LOG(8,Values!A6)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "blank-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,Values!A6)",
+        "formula2": "=LOG(8,Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,Values!A6)",
+        "formula2": "=LOG(8,Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,Values!A6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B295",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-error-base-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B296",
+      "wire_formula": "LOG(8,Values!D2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "error-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,Values!D2)",
+        "formula2": "=LOG(8,Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,Values!D2)",
+        "formula2": "=LOG(8,Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,Values!D2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B296",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "empty-text-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D1",
+      "wire_formula": "\"\"",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "\"\"",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D1",
+          "t": "str"
+        }
+      }
+    },
+    {
+      "id": "error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "third-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D3",
+      "wire_formula": "1/3",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/3",
+        "formula2": "=1/3",
+        "value2": {
+          "variant": "float",
+          "value": 0.3333333333333333,
+          "hex": "0x1.5555555555555p-2",
+          "ieee754_hex": "3fd5555555555555",
+          "classification": "finite"
+        },
+        "display": "0.333333",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=1/3",
+        "formula2": "=1/3",
+        "value2": {
+          "variant": "float",
+          "value": 0.3333333333333333,
+          "hex": "0x1.5555555555555p-2",
+          "ieee754_hex": "3fd5555555555555",
+          "classification": "finite"
+        },
+        "display": "0.333333",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.33333333333333331",
+        "formula_text": "1/3",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D3"
+        }
+      }
+    },
+    {
+      "id": "tenths-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D4",
+      "wire_formula": "0.1+0.2",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=0.1+0.2",
+        "formula2": "=0.1+0.2",
+        "value2": {
+          "variant": "float",
+          "value": 0.30000000000000004,
+          "hex": "0x1.3333333333334p-2",
+          "ieee754_hex": "3fd3333333333334",
+          "classification": "finite"
+        },
+        "display": "0.3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=0.1+0.2",
+        "formula2": "=0.1+0.2",
+        "value2": {
+          "variant": "float",
+          "value": 0.30000000000000004,
+          "hex": "0x1.3333333333334p-2",
+          "ieee754_hex": "3fd3333333333334",
+          "classification": "finite"
+        },
+        "display": "0.3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.30000000000000004",
+        "formula_text": "0.1+0.2",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D4"
+        }
+      }
+    },
+    {
+      "id": "pi-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D5",
+      "wire_formula": "PI()",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=PI()",
+        "formula2": "=PI()",
+        "value2": {
+          "variant": "float",
+          "value": 3.141592653589793,
+          "hex": "0x1.921fb54442d18p+1",
+          "ieee754_hex": "400921fb54442d18",
+          "classification": "finite"
+        },
+        "display": "3.141593",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=PI()",
+        "formula2": "=PI()",
+        "value2": {
+          "variant": "float",
+          "value": 3.141592653589793,
+          "hex": "0x1.921fb54442d18p+1",
+          "ieee754_hex": "400921fb54442d18",
+          "classification": "finite"
+        },
+        "display": "3.141593",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "PI()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D5"
+        }
+      }
+    },
+    {
+      "id": "log-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B148",
+      "wire_formula": "LOG(0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "zero"
+      },
+      "actual": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B148",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-negative-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B149",
+      "wire_formula": "LOG(-0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-zero"
+      },
+      "actual": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(0)",
+        "formula2": "=LOG(0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B149",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-one-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B150",
+      "wire_formula": "LOG(1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "one"
+      },
+      "actual": {
+        "formula": "=LOG(1)",
+        "formula2": "=LOG(1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(1)",
+        "formula2": "=LOG(1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B150"
+        }
+      }
+    },
+    {
+      "id": "log-negative-one-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B151",
+      "wire_formula": "LOG(-1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-one"
+      },
+      "actual": {
+        "formula": "=LOG(-1)",
+        "formula2": "=LOG(-1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(-1)",
+        "formula2": "=LOG(-1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B151",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-tenth-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B152",
+      "wire_formula": "LOG(0.1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "tenth"
+      },
+      "actual": {
+        "formula": "=LOG(0.1)",
+        "formula2": "=LOG(0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        "display": "-1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(0.1)",
+        "formula2": "=LOG(0.1)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        "display": "-1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1",
+        "formula_text": "LOG(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B152"
+        }
+      }
+    },
+    {
+      "id": "log-negative-tenth-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B153",
+      "wire_formula": "LOG(-0.1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "negative-tenth"
+      },
+      "actual": {
+        "formula": "=LOG(-0.1)",
+        "formula2": "=LOG(-0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(-0.1)",
+        "formula2": "=LOG(-0.1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B153",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-two-half-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B154",
+      "wire_formula": "LOG(2.5)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "two-half"
+      },
+      "actual": {
+        "formula": "=LOG(2.5)",
+        "formula2": "=LOG(2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(2.5)",
+        "formula2": "=LOG(2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B154"
+        }
+      }
+    },
+    {
+      "id": "log-tiny-normal-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B155",
+      "wire_formula": "LOG(3E-308)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "tiny-normal"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308)",
+        "formula2": "=LOG(3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -307.52287874528037,
+          "hex": "-0x1.3385db61a6c0bp+8",
+          "ieee754_hex": "c073385db61a6c0b",
+          "classification": "finite"
+        },
+        "display": "-307.523",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(3E-308)",
+        "formula2": "=LOG(3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -307.52287874528037,
+          "hex": "-0x1.3385db61a6c0bp+8",
+          "ieee754_hex": "c073385db61a6c0b",
+          "classification": "finite"
+        },
+        "display": "-307.523",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-307.52287874528037",
+        "formula_text": "LOG(3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B155"
+        }
+      }
+    },
+    {
+      "id": "log-large-finite-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B156",
+      "wire_formula": "LOG(9E307)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "large-finite"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307)",
+        "formula2": "=LOG(9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 307.9542425094393,
+          "hex": "0x1.33f4493cb27ebp+8",
+          "ieee754_hex": "40733f4493cb27eb",
+          "classification": "finite"
+        },
+        "display": "307.9542",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(9E+307)",
+        "formula2": "=LOG(9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 307.9542425094393,
+          "hex": "0x1.33f4493cb27ebp+8",
+          "ieee754_hex": "40733f4493cb27eb",
+          "classification": "finite"
+        },
+        "display": "307.9542",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "307.95424250943933",
+        "formula_text": "LOG(9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B156"
+        }
+      }
+    },
+    {
+      "id": "log-near-overflow-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B157",
+      "wire_formula": "LOG(709)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "near-overflow"
+      },
+      "actual": {
+        "formula": "=LOG(709)",
+        "formula2": "=LOG(709)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8506462351830666,
+          "hex": "0x1.6ce1f9d049d47p+1",
+          "ieee754_hex": "4006ce1f9d049d47",
+          "classification": "finite"
+        },
+        "display": "2.850646",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(709)",
+        "formula2": "=LOG(709)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8506462351830666,
+          "hex": "0x1.6ce1f9d049d47p+1",
+          "ieee754_hex": "4006ce1f9d049d47",
+          "classification": "finite"
+        },
+        "display": "2.850646",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.8506462351830666",
+        "formula_text": "LOG(709)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B157"
+        }
+      }
+    },
+    {
+      "id": "log-overflow-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B158",
+      "wire_formula": "LOG(710)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "overflow"
+      },
+      "actual": {
+        "formula": "=LOG(710)",
+        "formula2": "=LOG(710)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8512583487190755,
+          "hex": "0x1.6cf608981902ap+1",
+          "ieee754_hex": "4006cf608981902a",
+          "classification": "finite"
+        },
+        "display": "2.851258",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(710)",
+        "formula2": "=LOG(710)",
+        "value2": {
+          "variant": "float",
+          "value": 2.8512583487190755,
+          "hex": "0x1.6cf608981902ap+1",
+          "ieee754_hex": "4006cf608981902a",
+          "classification": "finite"
+        },
+        "display": "2.851258",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.8512583487190755",
+        "formula_text": "LOG(710)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B158"
+        }
+      }
+    },
+    {
+      "id": "log-true-direct-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B159",
+      "wire_formula": "LOG(TRUE)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "true-direct"
+      },
+      "actual": {
+        "formula": "=LOG(TRUE)",
+        "formula2": "=LOG(TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(TRUE)",
+        "formula2": "=LOG(TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B159"
+        }
+      }
+    },
+    {
+      "id": "log-text-number-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B160",
+      "wire_formula": "LOG(\"2.5\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "text-number"
+      },
+      "actual": {
+        "formula": "=LOG(\"2.5\")",
+        "formula2": "=LOG(\"2.5\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(\"2.5\")",
+        "formula2": "=LOG(\"2.5\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(\"2.5\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B160"
+        }
+      }
+    },
+    {
+      "id": "log-text-invalid-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B161",
+      "wire_formula": "LOG(\"abc\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "direct",
+        "operand_shape": "text-invalid"
+      },
+      "actual": {
+        "formula": "=LOG(\"abc\")",
+        "formula2": "=LOG(\"abc\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(\"abc\")",
+        "formula2": "=LOG(\"abc\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "LOG(\"abc\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B161",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-number-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B162",
+      "wire_formula": "LOG(Values!A2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "number-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!A2)",
+        "formula2": "=LOG(Values!A2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(Values!A2)",
+        "formula2": "=LOG(Values!A2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.3979400086720376,
+          "hex": "0x1.977d95ec10c02p-2",
+          "ieee754_hex": "3fd977d95ec10c02",
+          "classification": "finite"
+        },
+        "display": "0.39794",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.3979400086720376",
+        "formula_text": "LOG(Values!A2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B162"
+        }
+      }
+    },
+    {
+      "id": "log-blank-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B163",
+      "wire_formula": "LOG(Values!A6)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "blank-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!A6)",
+        "formula2": "=LOG(Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(Values!A6)",
+        "formula2": "=LOG(Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(Values!A6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B163",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-error-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B164",
+      "wire_formula": "LOG(Values!D2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "reference",
+        "operand_shape": "error-reference"
+      },
+      "actual": {
+        "formula": "=LOG(Values!D2)",
+        "formula2": "=LOG(Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(Values!D2)",
+        "formula2": "=LOG(Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(Values!D2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B164",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-base-two-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B288",
+      "wire_formula": "LOG(8,2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "base-two"
+      },
+      "actual": {
+        "formula": "=LOG(8,2)",
+        "formula2": "=LOG(8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,2)",
+        "formula2": "=LOG(8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "LOG(8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B288"
+        }
+      }
+    },
+    {
+      "id": "log-base-one-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B289",
+      "wire_formula": "LOG(8,1)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "base-one"
+      },
+      "actual": {
+        "formula": "=LOG(8,1)",
+        "formula2": "=LOG(8,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,1)",
+        "formula2": "=LOG(8,1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B289",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-negative-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B290",
+      "wire_formula": "LOG(8,-2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "negative-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,-2)",
+        "formula2": "=LOG(8,-2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,-2)",
+        "formula2": "=LOG(8,-2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,-2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B290",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-zero-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B291",
+      "wire_formula": "LOG(8,0)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "zero-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,0)",
+        "formula2": "=LOG(8,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,0)",
+        "formula2": "=LOG(8,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B291",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-fractional-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B292",
+      "wire_formula": "LOG(8,0.5)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "fractional-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,0.5)",
+        "formula2": "=LOG(8,0.5)",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,0.5)",
+        "formula2": "=LOG(8,0.5)",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "LOG(8,0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B292"
+        }
+      }
+    },
+    {
+      "id": "log-text-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B293",
+      "wire_formula": "LOG(8,\"2\")",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "text-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,\"2\")",
+        "formula2": "=LOG(8,\"2\")",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=LOG(8,\"2\")",
+        "formula2": "=LOG(8,\"2\")",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "LOG(8,\"2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B293"
+        }
+      }
+    },
+    {
+      "id": "log-boolean-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B294",
+      "wire_formula": "LOG(8,TRUE)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "boolean-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,TRUE)",
+        "formula2": "=LOG(8,TRUE)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,TRUE)",
+        "formula2": "=LOG(8,TRUE)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B294",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-blank-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B295",
+      "wire_formula": "LOG(8,Values!A6)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "blank-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,Values!A6)",
+        "formula2": "=LOG(8,Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,Values!A6)",
+        "formula2": "=LOG(8,Values!A6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "LOG(8,Values!A6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B295",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "log-error-base-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B296",
+      "wire_formula": "LOG(8,Values!D2)",
+      "shape": {
+        "kind": "pure_math",
+        "function": "LOG",
+        "origin": "second-argument",
+        "operand_shape": "error-base"
+      },
+      "actual": {
+        "formula": "=LOG(8,Values!D2)",
+        "formula2": "=LOG(8,Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=LOG(8,Values!D2)",
+        "formula2": "=LOG(8,Values!D2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "LOG(8,Values!D2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B296",
+          "t": "e"
+        }
+      }
+    }
+  ]
+}

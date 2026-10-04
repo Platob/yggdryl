@@ -905,6 +905,14 @@ fn a_part_cut_short_inside_an_element_is_refused_where_a_save_rewrites_it() {
                 .map(|(name, text)| (*name, text.as_str()))
                 .collect::<Vec<_>>(),
         );
+        if cut_part == WORKBOOK_RELATIONSHIPS_PART {
+            // OPC namespace/depth intake must see the complete root before
+            // any relationship can resolve a sheet or style dependency.
+            let refusal = Workbook::from_bytes(bytes).unwrap_err();
+            assert!(matches!(refusal, Error::Codec { .. }), "{cut_part}: {refusal:?}");
+            assert!(refusal.to_string().ends_with("expected a complete OPC Relationships document"), "{cut_part}: {refusal}");
+            continue;
+        }
         let mut opened = Workbook::from_bytes(bytes).unwrap();
         // A sheet added and a date written: every document is rewritten.
         opened
@@ -1386,4 +1394,50 @@ mod internal {
             );
         }
     }
+}
+
+#[test]
+fn relationships_intake_uses_exact_opc_namespace_depth_and_attributes() {
+    let actual = format!("<p:Relationship Id=\"rId1\" Type=\"{OFFICE_DOCUMENT_RELATIONSHIP}\" Target=\"xl/workbook.xml\"/>");
+    let fake = format!("<Relationship Id=\"rId0\" Type=\"{OFFICE_DOCUMENT_RELATIONSHIP}\" Target=\"missing.xml\"/>");
+    for extra in [
+        fake.replace("<Relationship", "<Relationship xmlns=\"urn:foreign\""),
+        format!("<v:wrapper>{fake}</v:wrapper>"),
+        fake.replace("<Relationship", "<Relationship xmlns=\"\""),
+    ] {
+        let rels = format!("<p:Relationships xmlns:p=\"{PACKAGE_RELATIONSHIPS_NAMESPACE}\" xmlns=\"{PACKAGE_RELATIONSHIPS_NAMESPACE}\" xmlns:v=\"urn:foreign\">{extra}{actual}</p:Relationships>");
+        let bytes = package(&[
+            (CONTENT_TYPES_PART, content_types(1, false, false)),
+            (ROOT_RELATIONSHIPS_PART, rels),
+            (WORKBOOK_PART, workbook(&["Data"], false)),
+            (WORKBOOK_RELATIONSHIPS_PART, workbook_relationships(1, false, false)),
+            ("xl/worksheets/sheet1.xml", worksheet("")),
+        ]);
+        assert!(Workbook::from_bytes(bytes).is_ok(), "opaque relationship interpreted: {extra}");
+    }
+    // Attribute names remain unqualified; lexical namespace URI escaping
+    // does not turn a genuine OPC element into a foreign one.
+    let namespace = PACKAGE_RELATIONSHIPS_NAMESPACE.replace("relationships", "relationship&#115;");
+    let rels = format!("<p:Relationships xmlns:p=\"{namespace}\" xmlns:v=\"urn:foreign\"><p:Relationship v:Id=\"fake\" Id=\"rId1\" v:Type=\"urn:foreign\" Type=\"{OFFICE_DOCUMENT_RELATIONSHIP}\" v:Target=\"missing.xml\" Target=\"xl/workbook.xml\"/></p:Relationships>");
+    let bytes = package(&[
+        (CONTENT_TYPES_PART, content_types(1, false, false)),
+        (ROOT_RELATIONSHIPS_PART, rels),
+        (WORKBOOK_PART, workbook(&["Data"], false)),
+        (WORKBOOK_RELATIONSHIPS_PART, workbook_relationships(1, false, false)),
+        ("xl/worksheets/sheet1.xml", worksheet("")),
+    ]);
+    assert!(Workbook::from_bytes(bytes).is_ok());
+}
+
+#[test]
+fn relationships_intake_refuses_a_foreign_container_despite_real_child_names() {
+    let rels = format!("<Relationships xmlns=\"urn:foreign\"><Relationship xmlns=\"{PACKAGE_RELATIONSHIPS_NAMESPACE}\" Id=\"rId1\" Type=\"{OFFICE_DOCUMENT_RELATIONSHIP}\" Target=\"xl/workbook.xml\"/></Relationships>");
+    let bytes = package(&[
+        (CONTENT_TYPES_PART, content_types(1, false, false)),
+        (ROOT_RELATIONSHIPS_PART, rels),
+        (WORKBOOK_PART, workbook(&["Data"], false)),
+        (WORKBOOK_RELATIONSHIPS_PART, workbook_relationships(1, false, false)),
+        ("xl/worksheets/sheet1.xml", worksheet("")),
+    ]);
+    assert!(matches!(Workbook::from_bytes(bytes), Err(Error::Codec { format: "xlsx", .. })));
 }

@@ -1,0 +1,4607 @@
+{
+  "schema_version": 1,
+  "kind": "atan_atan2_native_exact_replay",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 316,
+  "report_sha256": "0c4521bc5ae1cd1c78d75629c8accff9c186290af98bf76539a72fb0d4761365",
+  "manifest_sha256": "29be46131546bb5dce754ebb50d55404d8bffa71ed18bf90f110b01ab59a4564",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "8d1ccdb485b2f12136749aa3ee1b1b40ada057c872f8621b40efb7d4df2f813a",
+      "cases": 148,
+      "physical_formula_cells": 148
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "d1fafba0406f697a7507f8f4931e29b25607fd8fb8d62b56f5a104fedf022fef",
+      "cases": 148,
+      "physical_formula_cells": 148
+    }
+  ],
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_cells": {
+    "Values": {
+      "A1": 0.999999999999999,
+      "A2": -0.999999999999999
+    }
+  },
+  "incremental_evaluated_per_epoch": 0,
+  "cases": [
+    {
+      "id": "source-pi-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "B1",
+      "wire_formula": "PI()",
+      "shape": {
+        "kind": "source",
+        "value": "pi"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "PI()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      }
+    },
+    {
+      "id": "source-third-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "B2",
+      "wire_formula": "1/3",
+      "shape": {
+        "kind": "source",
+        "value": "third"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3333333333333333,
+        "hex": "0x1.5555555555555p-2",
+        "ieee754_hex": "3fd5555555555555",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.33333333333333331",
+        "formula_text": "1/3",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "source-sum-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "B3",
+      "wire_formula": "0.1+0.2",
+      "shape": {
+        "kind": "source",
+        "value": "sum"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.30000000000000004,
+        "hex": "0x1.3333333333334p-2",
+        "ieee754_hex": "3fd3333333333334",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.30000000000000004",
+        "formula_text": "0.1+0.2",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "ATAN(-1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E16",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963267948966,
+        "hex": "-0x1.921fb54442d18p+0",
+        "ieee754_hex": "bff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963267948966",
+        "formula_text": "ATAN(-10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "ATAN(-1E8)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E8",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963167948966,
+        "hex": "-0x1.921fb5194fb3cp+0",
+        "ieee754_hex": "bff921fb5194fb3c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963167948966",
+        "formula_text": "ATAN(-100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "ATAN(-2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-2.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.1902899496825317,
+        "hex": "-0x1.30b6d796a4da8p+0",
+        "ieee754_hex": "bff30b6d796a4da8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.1902899496825317",
+        "formula_text": "ATAN(-2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "ATAN(-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7853981633974483,
+        "hex": "-0x1.921fb54442d18p-1",
+        "ieee754_hex": "bfe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.78539816339744828",
+        "formula_text": "ATAN(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "ATAN(-0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.4636476090008061,
+        "hex": "-0x1.dac670561bb4fp-2",
+        "ieee754_hex": "bfddac670561bb4f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.46364760900080609",
+        "formula_text": "ATAN(-0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-5-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "ATAN(-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09966865249116204,
+        "hex": "-0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "bfb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.9668652491162038E-2",
+        "formula_text": "ATAN(-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-6-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "ATAN(-1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E-300",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1e-300,
+        "hex": "-0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "81a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1E-300",
+        "formula_text": "ATAN(-1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "ATAN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-8-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "ATAN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "ATAN(1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E-300",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-300,
+        "hex": "0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "01a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1E-300",
+        "formula_text": "ATAN(1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-10-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "ATAN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09966865249116204,
+        "hex": "0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "3fb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9668652491162038E-2",
+        "formula_text": "ATAN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-11-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "ATAN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.4636476090008061,
+        "hex": "0x1.dac670561bb4fp-2",
+        "ieee754_hex": "3fddac670561bb4f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.46364760900080609",
+        "formula_text": "ATAN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-12-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "ATAN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.7853981633974483,
+        "hex": "0x1.921fb54442d18p-1",
+        "ieee754_hex": "3fe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.78539816339744828",
+        "formula_text": "ATAN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-13-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "ATAN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "2.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.1902899496825317,
+        "hex": "0x1.30b6d796a4da8p+0",
+        "ieee754_hex": "3ff30b6d796a4da8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.1902899496825317",
+        "formula_text": "ATAN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-14-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "ATAN(1E8)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E8",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963167948966,
+        "hex": "0x1.921fb5194fb3cp+0",
+        "ieee754_hex": "3ff921fb5194fb3c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963167948966",
+        "formula_text": "ATAN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-15-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "ATAN(1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E16",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN(10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-16-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "ATAN(Values!B1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "Values!B1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.2626272556789118,
+        "hex": "0x1.433b8a322ddd3p+0",
+        "ieee754_hex": "3ff433b8a322ddd3",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2626272556789118",
+        "formula_text": "ATAN(Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-17-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "ATAN(Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "Values!B2",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3217505543966422,
+        "hex": "0x1.4978fa3269ee1p-2",
+        "ieee754_hex": "3fd4978fa3269ee1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.32175055439664219",
+        "formula_text": "ATAN(Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-18-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "ATAN(-Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-Values!B2",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.3217505543966422,
+        "hex": "-0x1.4978fa3269ee1p-2",
+        "ieee754_hex": "bfd4978fa3269ee1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.32175055439664219",
+        "formula_text": "ATAN(-Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "ATAN2(0,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826281
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "ATAN2(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "ATAN2(0,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(0,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "ATAN2(0,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963267948966,
+        "hex": "-0x1.921fb54442d18p+0",
+        "ieee754_hex": "bff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963267948966",
+        "formula_text": "ATAN2(0,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "ATAN2(1,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN2(1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B52",
+      "wire_formula": "ATAN2(-1,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B52"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-5-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B53",
+      "wire_formula": "ATAN2(1,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.7853981633974483,
+        "hex": "0x1.921fb54442d18p-1",
+        "ieee754_hex": "3fe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.78539816339744828",
+        "formula_text": "ATAN2(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B53"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-6-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B54",
+      "wire_formula": "ATAN2(1,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7853981633974483,
+        "hex": "-0x1.921fb54442d18p-1",
+        "ieee754_hex": "bfe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.78539816339744828",
+        "formula_text": "ATAN2(1,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B54"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B55",
+      "wire_formula": "ATAN2(-1,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.356194490192345,
+        "hex": "0x1.2d97c7f3321d2p+1",
+        "ieee754_hex": "4002d97c7f3321d2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.3561944901923448",
+        "formula_text": "ATAN2(-1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B55"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-8-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B56",
+      "wire_formula": "ATAN2(-1,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.356194490192345,
+        "hex": "-0x1.2d97c7f3321d2p+1",
+        "ieee754_hex": "c002d97c7f3321d2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.3561944901923448",
+        "formula_text": "ATAN2(-1,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B56"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B57",
+      "wire_formula": "ATAN2(1,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09966865249116204,
+        "hex": "0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "3fb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9668652491162038E-2",
+        "formula_text": "ATAN2(1,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B57"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-10-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B58",
+      "wire_formula": "ATAN2(1,-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,-0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09966865249116204,
+        "hex": "-0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "bfb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.9668652491162038E-2",
+        "formula_text": "ATAN2(1,-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B58"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-11-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B59",
+      "wire_formula": "ATAN2(-1,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0419240010986313,
+        "hex": "0x1.855dc402d16b6p+1",
+        "ieee754_hex": "400855dc402d16b6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0419240010986313",
+        "formula_text": "ATAN2(-1,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B59"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-12-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B60",
+      "wire_formula": "ATAN2(-1,-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,-0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -3.0419240010986313,
+        "hex": "-0x1.855dc402d16b6p+1",
+        "ieee754_hex": "c00855dc402d16b6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3.0419240010986313",
+        "formula_text": "ATAN2(-1,-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B60"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-13-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B61",
+      "wire_formula": "ATAN2(Values!B2,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!B2,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.29145679447786715,
+        "hex": "0x1.2a73a661eaf07p-2",
+        "ieee754_hex": "3fd2a73a661eaf07",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.29145679447786715",
+        "formula_text": "ATAN2(Values!B2,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B61"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-14-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B62",
+      "wire_formula": "ATAN2(Values!A1,Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!A1,Values!B2",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.32175055439664246,
+        "hex": "0x1.4978fa3269ee6p-2",
+        "ieee754_hex": "3fd4978fa3269ee6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.32175055439664246",
+        "formula_text": "ATAN2(Values!A1,Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B62"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-15-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B63",
+      "wire_formula": "ATAN2(1E-300,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1E-300,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(1E-300,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B63"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-16-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B64",
+      "wire_formula": "ATAN2(1,1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1E-300",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-300,
+        "hex": "0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "01a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1E-300",
+        "formula_text": "ATAN2(1,1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B64"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-17-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B65",
+      "wire_formula": "ATAN2(-1E-300,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1E-300,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(-1E-300,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B65"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-18-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B66",
+      "wire_formula": "ATAN2(-1,1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1E-300",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-1,1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B66"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-19-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B67",
+      "wire_formula": "ATAN2(1E16,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1E16,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-16,
+        "hex": "0x1.cd2b297d889bcp-54",
+        "ieee754_hex": "3c9cd2b297d889bc",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9999999999999998E-17",
+        "formula_text": "ATAN2(10000000000000000,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B67"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-20-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B68",
+      "wire_formula": "ATAN2(1,1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1E16",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(1,10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B68"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-21-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B69",
+      "wire_formula": "ATAN2(-1E16,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1E16,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-10000000000000000,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B69"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-22-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B70",
+      "wire_formula": "ATAN2(-1,1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1E16",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(-1,10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B70"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-23-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B71",
+      "wire_formula": "ATAN2(Values!B1,Values!B3)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!B1,Values!B3",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09520427990688007,
+        "hex": "0x1.85f4ec4a3a7d8p-4",
+        "ieee754_hex": "3fb85f4ec4a3a7d8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.5204279906880074E-2",
+        "formula_text": "ATAN2(Values!B1,Values!B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B71"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-24-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B72",
+      "wire_formula": "ATAN2(-Values!B1,Values!B3)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-Values!B1,Values!B3",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.046388373682913,
+        "hex": "0x1.85f00de1f0fd9p+1",
+        "ieee754_hex": "40085f00de1f0fd9",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0463883736829129",
+        "formula_text": "ATAN2(-Values!B1,Values!B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B72"
+        }
+      }
+    },
+    {
+      "id": "atan-random-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B117",
+      "wire_formula": "ATAN(6.44629753289263)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "6.44629753289263",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.4168952205454937,
+        "hex": "0x1.6ab9a52a1a02ap+0",
+        "ieee754_hex": "3ff6ab9a52a1a02a",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.4168952205454937",
+        "formula_text": "ATAN(6.44629753289263)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B117"
+        }
+      }
+    },
+    {
+      "id": "atan-random-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B118",
+      "wire_formula": "ATAN(-4.21783740273651)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-4.21783740273651",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3380062571392597,
+        "hex": "-0x1.568793fc41a92p+0",
+        "ieee754_hex": "bff568793fc41a92",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3380062571392597",
+        "formula_text": "ATAN(-4.21783740273651)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B118"
+        }
+      }
+    },
+    {
+      "id": "atan-random-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B119",
+      "wire_formula": "ATAN(-2.26250245013356)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-2.26250245013356",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.1546247292844931,
+        "hex": "-0x1.27957c7b6e043p+0",
+        "ieee754_hex": "bff27957c7b6e043",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.1546247292844931",
+        "formula_text": "ATAN(-2.26250245013356)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B119"
+        }
+      }
+    },
+    {
+      "id": "atan-random-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B120",
+      "wire_formula": "ATAN(0.404081005763121)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.404081005763121",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3840195271979227,
+        "hex": "0x1.893c6a395ca1bp-2",
+        "ieee754_hex": "3fd893c6a395ca1b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.38401952719792271",
+        "formula_text": "ATAN(0.404081005763121)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B120"
+        }
+      }
+    },
+    {
+      "id": "atan-random-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B121",
+      "wire_formula": "ATAN(-5.36650934430225)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-5.36650934430225",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3865683784178606,
+        "hex": "-0x1.62f6252ef8f36p+0",
+        "ieee754_hex": "bff62f6252ef8f36",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3865683784178606",
+        "formula_text": "ATAN(-5.36650934430225)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B121"
+        }
+      }
+    },
+    {
+      "id": "atan-random-5-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B122",
+      "wire_formula": "ATAN(-0.382629618669901)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.382629618669901",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.3654428155687185,
+        "hex": "-0x1.7636a435b4066p-2",
+        "ieee754_hex": "bfd7636a435b4066",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36544281556871849",
+        "formula_text": "ATAN(-0.382629618669901)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B122"
+        }
+      }
+    },
+    {
+      "id": "atan-random-6-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B123",
+      "wire_formula": "ATAN(-3.98070768856284)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-3.98070768856284",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3246776473575435,
+        "hex": "-0x1.531e130524932p+0",
+        "ieee754_hex": "bff531e130524932",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3246776473575435",
+        "formula_text": "ATAN(-3.98070768856284)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B123"
+        }
+      }
+    },
+    {
+      "id": "atan-random-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B124",
+      "wire_formula": "ATAN(3.0019676443833)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "3.0019676443833",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.2492424207538384,
+        "hex": "0x1.3fce59ede9e23p+0",
+        "ieee754_hex": "3ff3fce59ede9e23",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2492424207538384",
+        "formula_text": "ATAN(3.0019676443833)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B124"
+        }
+      }
+    },
+    {
+      "id": "atan-random-8-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B125",
+      "wire_formula": "ATAN(5.23646248867615)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "5.23646248867615",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.3820996782198778,
+        "hex": "0x1.61d148d5c4394p+0",
+        "ieee754_hex": "3ff61d148d5c4394",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.3820996782198778",
+        "formula_text": "ATAN(5.23646248867615)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B125"
+        }
+      }
+    },
+    {
+      "id": "atan-random-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B126",
+      "wire_formula": "ATAN(-7.77934546463026)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-7.77934546463026",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.4429518965829478,
+        "hex": "-0x1.71654ba586622p+0",
+        "ieee754_hex": "bff71654ba586622",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4429518965829478",
+        "formula_text": "ATAN(-7.77934546463026)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B126"
+        }
+      }
+    },
+    {
+      "id": "atan-random-10-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B127",
+      "wire_formula": "ATAN(-5.92323115979339)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-5.92323115979339",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.403546663741483,
+        "hex": "-0x1.674ed58b2df8ep+0",
+        "ieee754_hex": "bff674ed58b2df8e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4035466637414831",
+        "formula_text": "ATAN(-5.92323115979339)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B127"
+        }
+      }
+    },
+    {
+      "id": "atan-random-11-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B128",
+      "wire_formula": "ATAN(-3.76610557732669)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-3.76610557732669",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3112589143563045,
+        "hex": "-0x1.4faeaa09bfb0ep+0",
+        "ieee754_hex": "bff4faeaa09bfb0e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3112589143563045",
+        "formula_text": "ATAN(-3.76610557732669)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B128"
+        }
+      }
+    },
+    {
+      "id": "atan-random-12-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B129",
+      "wire_formula": "ATAN(-1.63858620153516)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1.63858620153516",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.0228506651671117,
+        "hex": "-0x1.05d98a8b95a7cp+0",
+        "ieee754_hex": "bff05d98a8b95a7c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0228506651671117",
+        "formula_text": "ATAN(-1.63858620153516)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B129"
+        }
+      }
+    },
+    {
+      "id": "atan-random-13-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B130",
+      "wire_formula": "ATAN(-1.04268048560577)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1.04268048560577",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.8062894758029442,
+        "hex": "-0x1.9cd1f9635d818p-1",
+        "ieee754_hex": "bfe9cd1f9635d818",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.80628947580294419",
+        "formula_text": "ATAN(-1.04268048560577)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B130"
+        }
+      }
+    },
+    {
+      "id": "atan-random-14-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B131",
+      "wire_formula": "ATAN(-6.33925709626847)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-6.33925709626847",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.4143384099676264,
+        "hex": "-0x1.6a121500499fep+0",
+        "ieee754_hex": "bff6a121500499fe",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4143384099676264",
+        "formula_text": "ATAN(-6.33925709626847)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B131"
+        }
+      }
+    },
+    {
+      "id": "atan-random-15-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B132",
+      "wire_formula": "ATAN(-0.379512237260961)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.379512237260961",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.36272072392595645,
+        "hex": "-0x1.736d0fbb5fab8p-2",
+        "ieee754_hex": "bfd736d0fbb5fab8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36272072392595645",
+        "formula_text": "ATAN(-0.379512237260961)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B132"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B133",
+      "wire_formula": "ATAN2(-1.42040062942481,3.77559088027612)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1.42040062942481,3.77559088027612",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.9306240520218045,
+        "hex": "0x1.ee3d60bc4dfdcp+0",
+        "ieee754_hex": "3ffee3d60bc4dfdc",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.9306240520218045",
+        "formula_text": "ATAN2(-1.42040062942481,3.77559088027612)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B133"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B134",
+      "wire_formula": "ATAN2(5.08610645708516,-4.55688263833109)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "5.08610645708516,-4.55688263833109",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7305714462412518,
+        "hex": "-0x1.760d75e9fec54p-1",
+        "ieee754_hex": "bfe760d75e9fec54",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.73057144624125181",
+        "formula_text": "ATAN2(5.08610645708516,-4.55688263833109)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B134"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B135",
+      "wire_formula": "ATAN2(-5.31298421565039,-3.94964408649237)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-5.31298421565039,-3.94964408649237",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.502332383879021,
+        "hex": "-0x1.404c6d743db5ep+1",
+        "ieee754_hex": "c00404c6d743db5e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.502332383879021",
+        "formula_text": "ATAN2(-5.31298421565039,-3.94964408649237)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B135"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B136",
+      "wire_formula": "ATAN2(2.27336968489949,-6.88557701623273)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.27336968489949,-6.88557701623273",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.2519008747113678,
+        "hex": "-0x1.407c9362b8182p+0",
+        "ieee754_hex": "bff407c9362b8182",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.2519008747113678",
+        "formula_text": "ATAN2(2.27336968489949,-6.88557701623273)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B136"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B137",
+      "wire_formula": "ATAN2(-6.29705236713251,-4.65838945281706)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-6.29705236713251,-4.65838945281706",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.50466900541337,
+        "hex": "-0x1.4098fe74c7132p+1",
+        "ieee754_hex": "c004098fe74c7132",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.50466900541337",
+        "formula_text": "ATAN2(-6.29705236713251,-4.65838945281706)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B137"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-5-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B138",
+      "wire_formula": "ATAN2(2.3468475955889,-4.28275357294606)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.3468475955889,-4.28275357294606",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.069508122924289,
+        "hex": "-0x1.11cb48cac423bp+0",
+        "ieee754_hex": "bff11cb48cac423b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0695081229242891",
+        "formula_text": "ATAN2(2.3468475955889,-4.28275357294606)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B138"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-6-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B139",
+      "wire_formula": "ATAN2(5.94050122462438,-3.59764343545469)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "5.94050122462438,-3.59764343545469",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.5445363237021903,
+        "hex": "-0x1.16cd770b91e88p-1",
+        "ieee754_hex": "bfe16cd770b91e88",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.54453632370219029",
+        "formula_text": "ATAN2(5.94050122462438,-3.59764343545469)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B139"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B140",
+      "wire_formula": "ATAN2(-5.59044203521443,6.53506308897108)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-5.59044203521443,6.53506308897108",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.2784478717080185,
+        "hex": "0x1.23a42e0b50392p+1",
+        "ieee754_hex": "40023a42e0b50392",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.2784478717080185",
+        "formula_text": "ATAN2(-5.59044203521443,6.53506308897108)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B140"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-8-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B141",
+      "wire_formula": "ATAN2(3.01944927789853,4.53213327191997)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "3.01944927789853,4.53213327191997",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.9830951553851602,
+        "hex": "0x1.f7583f8a78797p-1",
+        "ieee754_hex": "3fef7583f8a78797",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.98309515538516024",
+        "formula_text": "ATAN2(3.01944927789853,4.53213327191997)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B141"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B142",
+      "wire_formula": "ATAN2(-7.93578343422973,-1.76021000621646)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-7.93578343422973,-1.76021000621646",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.923319702278021,
+        "hex": "-0x1.762f570a84adep+1",
+        "ieee754_hex": "c00762f570a84ade",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.9233197022780208",
+        "formula_text": "ATAN2(-7.93578343422973,-1.76021000621646)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B142"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-10-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B143",
+      "wire_formula": "ATAN2(-4.02079839919488,3.63033542687158)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-4.02079839919488,3.63033542687158",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.407183603132676,
+        "hex": "0x1.341e97a1760d8p+1",
+        "ieee754_hex": "400341e97a1760d8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.4071836031326761",
+        "formula_text": "ATAN2(-4.02079839919488,3.63033542687158)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B143"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-11-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B144",
+      "wire_formula": "ATAN2(6.91744354772922,4.19555846598037)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "6.91744354772922,4.19555846598037",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5451988380578696,
+        "hex": "0x1.17244d568d2f2p-1",
+        "ieee754_hex": "3fe17244d568d2f2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.54519883805786962",
+        "formula_text": "ATAN2(6.91744354772922,4.19555846598037)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B144"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-12-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B145",
+      "wire_formula": "ATAN2(-1.17433604571949,0.288821879492115)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1.17433604571949,0.288821879492115",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.900434247318724,
+        "hex": "0x1.73416dee37557p+1",
+        "ieee754_hex": "40073416dee37557",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.9004342473187239",
+        "formula_text": "ATAN2(-1.17433604571949,0.288821879492115)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B145"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-13-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B146",
+      "wire_formula": "ATAN2(6.9709047281399,-0.651744346184506)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "6.9709047281399,-0.651744346184506",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09322394120065236,
+        "hex": "-0x1.7dd8632a93930p-4",
+        "ieee754_hex": "bfb7dd8632a93930",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.322394120065236E-2",
+        "formula_text": "ATAN2(6.9709047281399,-0.651744346184506)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B146"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-14-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B147",
+      "wire_formula": "ATAN2(2.71258610739552,-7.40014453875601)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.71258610739552,-7.40014453875601",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.2194468569616825,
+        "hex": "-0x1.382dab51dc444p+0",
+        "ieee754_hex": "bff382dab51dc444",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.2194468569616825",
+        "formula_text": "ATAN2(2.71258610739552,-7.40014453875601)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B147"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-15-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B148",
+      "wire_formula": "ATAN2(3.0390154944635,-1.30281481554483)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "3.0390154944635,-1.30281481554483",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.40499730898351144,
+        "hex": "-0x1.9eb79d543570fp-2",
+        "ieee754_hex": "bfd9eb79d543570f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.40499730898351144",
+        "formula_text": "ATAN2(3.0390154944635,-1.30281481554483)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B148"
+        }
+      }
+    },
+    {
+      "id": "source-pi-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "B1",
+      "wire_formula": "PI()",
+      "shape": {
+        "kind": "source",
+        "value": "pi"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "PI()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      }
+    },
+    {
+      "id": "source-third-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "B2",
+      "wire_formula": "1/3",
+      "shape": {
+        "kind": "source",
+        "value": "third"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3333333333333333,
+        "hex": "0x1.5555555555555p-2",
+        "ieee754_hex": "3fd5555555555555",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.33333333333333331",
+        "formula_text": "1/3",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "source-sum-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "B3",
+      "wire_formula": "0.1+0.2",
+      "shape": {
+        "kind": "source",
+        "value": "sum"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.30000000000000004,
+        "hex": "0x1.3333333333334p-2",
+        "ieee754_hex": "3fd3333333333334",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.30000000000000004",
+        "formula_text": "0.1+0.2",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "ATAN(-1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E16",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963267948966,
+        "hex": "-0x1.921fb54442d18p+0",
+        "ieee754_hex": "bff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963267948966",
+        "formula_text": "ATAN(-10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "ATAN(-1E8)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E8",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963167948966,
+        "hex": "-0x1.921fb5194fb3cp+0",
+        "ieee754_hex": "bff921fb5194fb3c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963167948966",
+        "formula_text": "ATAN(-100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "ATAN(-2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-2.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.1902899496825317,
+        "hex": "-0x1.30b6d796a4da8p+0",
+        "ieee754_hex": "bff30b6d796a4da8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.1902899496825317",
+        "formula_text": "ATAN(-2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "ATAN(-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7853981633974483,
+        "hex": "-0x1.921fb54442d18p-1",
+        "ieee754_hex": "bfe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.78539816339744828",
+        "formula_text": "ATAN(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "ATAN(-0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.4636476090008061,
+        "hex": "-0x1.dac670561bb4fp-2",
+        "ieee754_hex": "bfddac670561bb4f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.46364760900080609",
+        "formula_text": "ATAN(-0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-5-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "ATAN(-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09966865249116204,
+        "hex": "-0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "bfb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.9668652491162038E-2",
+        "formula_text": "ATAN(-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-6-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "ATAN(-1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1E-300",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1e-300,
+        "hex": "-0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "81a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1E-300",
+        "formula_text": "ATAN(-1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "ATAN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-8-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "ATAN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "ATAN(1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E-300",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-300,
+        "hex": "0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "01a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1E-300",
+        "formula_text": "ATAN(1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-10-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "ATAN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09966865249116204,
+        "hex": "0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "3fb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9668652491162038E-2",
+        "formula_text": "ATAN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-11-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "ATAN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.4636476090008061,
+        "hex": "0x1.dac670561bb4fp-2",
+        "ieee754_hex": "3fddac670561bb4f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.46364760900080609",
+        "formula_text": "ATAN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-12-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "ATAN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.7853981633974483,
+        "hex": "0x1.921fb54442d18p-1",
+        "ieee754_hex": "3fe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.78539816339744828",
+        "formula_text": "ATAN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-13-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "ATAN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "2.5",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.1902899496825317,
+        "hex": "0x1.30b6d796a4da8p+0",
+        "ieee754_hex": "3ff30b6d796a4da8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.1902899496825317",
+        "formula_text": "ATAN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-14-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "ATAN(1E8)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E8",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963167948966,
+        "hex": "0x1.921fb5194fb3cp+0",
+        "ieee754_hex": "3ff921fb5194fb3c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963167948966",
+        "formula_text": "ATAN(100000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-15-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "ATAN(1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "1E16",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN(10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-16-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "ATAN(Values!B1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "Values!B1",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.2626272556789118,
+        "hex": "0x1.433b8a322ddd3p+0",
+        "ieee754_hex": "3ff433b8a322ddd3",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2626272556789118",
+        "formula_text": "ATAN(Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-17-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "ATAN(Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "Values!B2",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3217505543966422,
+        "hex": "0x1.4978fa3269ee1p-2",
+        "ieee754_hex": "3fd4978fa3269ee1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.32175055439664219",
+        "formula_text": "ATAN(Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      }
+    },
+    {
+      "id": "atan-bound-18-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "ATAN(-Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-Values!B2",
+        "category": "range"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.3217505543966422,
+        "hex": "-0x1.4978fa3269ee1p-2",
+        "ieee754_hex": "bfd4978fa3269ee1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.32175055439664219",
+        "formula_text": "ATAN(-Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "ATAN2(0,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826281
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "ATAN2(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "ATAN2(0,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(0,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "ATAN2(0,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "0,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.5707963267948966,
+        "hex": "-0x1.921fb54442d18p+0",
+        "ieee754_hex": "bff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.5707963267948966",
+        "formula_text": "ATAN2(0,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "ATAN2(1,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ATAN2(1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B52",
+      "wire_formula": "ATAN2(-1,0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,0",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-1,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B52"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-5-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B53",
+      "wire_formula": "ATAN2(1,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.7853981633974483,
+        "hex": "0x1.921fb54442d18p-1",
+        "ieee754_hex": "3fe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.78539816339744828",
+        "formula_text": "ATAN2(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B53"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-6-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B54",
+      "wire_formula": "ATAN2(1,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7853981633974483,
+        "hex": "-0x1.921fb54442d18p-1",
+        "ieee754_hex": "bfe921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.78539816339744828",
+        "formula_text": "ATAN2(1,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B54"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B55",
+      "wire_formula": "ATAN2(-1,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.356194490192345,
+        "hex": "0x1.2d97c7f3321d2p+1",
+        "ieee754_hex": "4002d97c7f3321d2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.3561944901923448",
+        "formula_text": "ATAN2(-1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B55"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-8-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B56",
+      "wire_formula": "ATAN2(-1,-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,-1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.356194490192345,
+        "hex": "-0x1.2d97c7f3321d2p+1",
+        "ieee754_hex": "c002d97c7f3321d2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.3561944901923448",
+        "formula_text": "ATAN2(-1,-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B56"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B57",
+      "wire_formula": "ATAN2(1,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09966865249116204,
+        "hex": "0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "3fb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9668652491162038E-2",
+        "formula_text": "ATAN2(1,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B57"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-10-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B58",
+      "wire_formula": "ATAN2(1,-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,-0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09966865249116204,
+        "hex": "-0x1.983e282e2cc4dp-4",
+        "ieee754_hex": "bfb983e282e2cc4d",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.9668652491162038E-2",
+        "formula_text": "ATAN2(1,-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B58"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-11-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B59",
+      "wire_formula": "ATAN2(-1,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0419240010986313,
+        "hex": "0x1.855dc402d16b6p+1",
+        "ieee754_hex": "400855dc402d16b6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0419240010986313",
+        "formula_text": "ATAN2(-1,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B59"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-12-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B60",
+      "wire_formula": "ATAN2(-1,-0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,-0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -3.0419240010986313,
+        "hex": "-0x1.855dc402d16b6p+1",
+        "ieee754_hex": "c00855dc402d16b6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3.0419240010986313",
+        "formula_text": "ATAN2(-1,-0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B60"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-13-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B61",
+      "wire_formula": "ATAN2(Values!B2,0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!B2,0.1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.29145679447786715,
+        "hex": "0x1.2a73a661eaf07p-2",
+        "ieee754_hex": "3fd2a73a661eaf07",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.29145679447786715",
+        "formula_text": "ATAN2(Values!B2,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B61"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-14-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B62",
+      "wire_formula": "ATAN2(Values!A1,Values!B2)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!A1,Values!B2",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.32175055439664246,
+        "hex": "0x1.4978fa3269ee6p-2",
+        "ieee754_hex": "3fd4978fa3269ee6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.32175055439664246",
+        "formula_text": "ATAN2(Values!A1,Values!B2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B62"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-15-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B63",
+      "wire_formula": "ATAN2(1E-300,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1E-300,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(1E-300,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B63"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-16-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B64",
+      "wire_formula": "ATAN2(1,1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1E-300",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-300,
+        "hex": "0x1.56e1fc2f8f359p-997",
+        "ieee754_hex": "01a56e1fc2f8f359",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1E-300",
+        "formula_text": "ATAN2(1,1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B64"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-17-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B65",
+      "wire_formula": "ATAN2(-1E-300,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1E-300,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(-1E-300,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B65"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-18-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B66",
+      "wire_formula": "ATAN2(-1,1E-300)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1E-300",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-1,1E-300)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B66"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-19-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B67",
+      "wire_formula": "ATAN2(1E16,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1E16,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1e-16,
+        "hex": "0x1.cd2b297d889bcp-54",
+        "ieee754_hex": "3c9cd2b297d889bc",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9999999999999998E-17",
+        "formula_text": "ATAN2(10000000000000000,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B67"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-20-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B68",
+      "wire_formula": "ATAN2(1,1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "1,1E16",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(1,10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B68"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-21-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B69",
+      "wire_formula": "ATAN2(-1E16,1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1E16,1",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ATAN2(-10000000000000000,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B69"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-22-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B70",
+      "wire_formula": "ATAN2(-1,1E16)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1,1E16",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ATAN2(-1,10000000000000000)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B70"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-23-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B71",
+      "wire_formula": "ATAN2(Values!B1,Values!B3)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "Values!B1,Values!B3",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09520427990688007,
+        "hex": "0x1.85f4ec4a3a7d8p-4",
+        "ieee754_hex": "3fb85f4ec4a3a7d8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.5204279906880074E-2",
+        "formula_text": "ATAN2(Values!B1,Values!B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B71"
+        }
+      }
+    },
+    {
+      "id": "atan2-bound-24-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B72",
+      "wire_formula": "ATAN2(-Values!B1,Values!B3)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-Values!B1,Values!B3",
+        "category": "quadrant-ratio"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.046388373682913,
+        "hex": "0x1.85f00de1f0fd9p+1",
+        "ieee754_hex": "40085f00de1f0fd9",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0463883736829129",
+        "formula_text": "ATAN2(-Values!B1,Values!B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B72"
+        }
+      }
+    },
+    {
+      "id": "atan-random-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B117",
+      "wire_formula": "ATAN(6.44629753289263)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "6.44629753289263",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.4168952205454937,
+        "hex": "0x1.6ab9a52a1a02ap+0",
+        "ieee754_hex": "3ff6ab9a52a1a02a",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.4168952205454937",
+        "formula_text": "ATAN(6.44629753289263)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B117"
+        }
+      }
+    },
+    {
+      "id": "atan-random-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B118",
+      "wire_formula": "ATAN(-4.21783740273651)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-4.21783740273651",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3380062571392597,
+        "hex": "-0x1.568793fc41a92p+0",
+        "ieee754_hex": "bff568793fc41a92",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3380062571392597",
+        "formula_text": "ATAN(-4.21783740273651)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B118"
+        }
+      }
+    },
+    {
+      "id": "atan-random-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B119",
+      "wire_formula": "ATAN(-2.26250245013356)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-2.26250245013356",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.1546247292844931,
+        "hex": "-0x1.27957c7b6e043p+0",
+        "ieee754_hex": "bff27957c7b6e043",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.1546247292844931",
+        "formula_text": "ATAN(-2.26250245013356)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B119"
+        }
+      }
+    },
+    {
+      "id": "atan-random-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B120",
+      "wire_formula": "ATAN(0.404081005763121)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "0.404081005763121",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.3840195271979227,
+        "hex": "0x1.893c6a395ca1bp-2",
+        "ieee754_hex": "3fd893c6a395ca1b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.38401952719792271",
+        "formula_text": "ATAN(0.404081005763121)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B120"
+        }
+      }
+    },
+    {
+      "id": "atan-random-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B121",
+      "wire_formula": "ATAN(-5.36650934430225)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-5.36650934430225",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3865683784178606,
+        "hex": "-0x1.62f6252ef8f36p+0",
+        "ieee754_hex": "bff62f6252ef8f36",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3865683784178606",
+        "formula_text": "ATAN(-5.36650934430225)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B121"
+        }
+      }
+    },
+    {
+      "id": "atan-random-5-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B122",
+      "wire_formula": "ATAN(-0.382629618669901)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.382629618669901",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.3654428155687185,
+        "hex": "-0x1.7636a435b4066p-2",
+        "ieee754_hex": "bfd7636a435b4066",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36544281556871849",
+        "formula_text": "ATAN(-0.382629618669901)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B122"
+        }
+      }
+    },
+    {
+      "id": "atan-random-6-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B123",
+      "wire_formula": "ATAN(-3.98070768856284)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-3.98070768856284",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3246776473575435,
+        "hex": "-0x1.531e130524932p+0",
+        "ieee754_hex": "bff531e130524932",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3246776473575435",
+        "formula_text": "ATAN(-3.98070768856284)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B123"
+        }
+      }
+    },
+    {
+      "id": "atan-random-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B124",
+      "wire_formula": "ATAN(3.0019676443833)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "3.0019676443833",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.2492424207538384,
+        "hex": "0x1.3fce59ede9e23p+0",
+        "ieee754_hex": "3ff3fce59ede9e23",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2492424207538384",
+        "formula_text": "ATAN(3.0019676443833)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B124"
+        }
+      }
+    },
+    {
+      "id": "atan-random-8-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B125",
+      "wire_formula": "ATAN(5.23646248867615)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "5.23646248867615",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.3820996782198778,
+        "hex": "0x1.61d148d5c4394p+0",
+        "ieee754_hex": "3ff61d148d5c4394",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.3820996782198778",
+        "formula_text": "ATAN(5.23646248867615)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B125"
+        }
+      }
+    },
+    {
+      "id": "atan-random-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B126",
+      "wire_formula": "ATAN(-7.77934546463026)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-7.77934546463026",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.4429518965829478,
+        "hex": "-0x1.71654ba586622p+0",
+        "ieee754_hex": "bff71654ba586622",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4429518965829478",
+        "formula_text": "ATAN(-7.77934546463026)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B126"
+        }
+      }
+    },
+    {
+      "id": "atan-random-10-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B127",
+      "wire_formula": "ATAN(-5.92323115979339)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-5.92323115979339",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.403546663741483,
+        "hex": "-0x1.674ed58b2df8ep+0",
+        "ieee754_hex": "bff674ed58b2df8e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4035466637414831",
+        "formula_text": "ATAN(-5.92323115979339)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B127"
+        }
+      }
+    },
+    {
+      "id": "atan-random-11-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B128",
+      "wire_formula": "ATAN(-3.76610557732669)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-3.76610557732669",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.3112589143563045,
+        "hex": "-0x1.4faeaa09bfb0ep+0",
+        "ieee754_hex": "bff4faeaa09bfb0e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.3112589143563045",
+        "formula_text": "ATAN(-3.76610557732669)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B128"
+        }
+      }
+    },
+    {
+      "id": "atan-random-12-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B129",
+      "wire_formula": "ATAN(-1.63858620153516)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1.63858620153516",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.0228506651671117,
+        "hex": "-0x1.05d98a8b95a7cp+0",
+        "ieee754_hex": "bff05d98a8b95a7c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0228506651671117",
+        "formula_text": "ATAN(-1.63858620153516)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B129"
+        }
+      }
+    },
+    {
+      "id": "atan-random-13-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B130",
+      "wire_formula": "ATAN(-1.04268048560577)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-1.04268048560577",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.8062894758029442,
+        "hex": "-0x1.9cd1f9635d818p-1",
+        "ieee754_hex": "bfe9cd1f9635d818",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.80628947580294419",
+        "formula_text": "ATAN(-1.04268048560577)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B130"
+        }
+      }
+    },
+    {
+      "id": "atan-random-14-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B131",
+      "wire_formula": "ATAN(-6.33925709626847)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-6.33925709626847",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.4143384099676264,
+        "hex": "-0x1.6a121500499fep+0",
+        "ieee754_hex": "bff6a121500499fe",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4143384099676264",
+        "formula_text": "ATAN(-6.33925709626847)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B131"
+        }
+      }
+    },
+    {
+      "id": "atan-random-15-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B132",
+      "wire_formula": "ATAN(-0.379512237260961)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN",
+        "arguments": "-0.379512237260961",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.36272072392595645,
+        "hex": "-0x1.736d0fbb5fab8p-2",
+        "ieee754_hex": "bfd736d0fbb5fab8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.36272072392595645",
+        "formula_text": "ATAN(-0.379512237260961)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B132"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B133",
+      "wire_formula": "ATAN2(-1.42040062942481,3.77559088027612)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1.42040062942481,3.77559088027612",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.9306240520218045,
+        "hex": "0x1.ee3d60bc4dfdcp+0",
+        "ieee754_hex": "3ffee3d60bc4dfdc",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.9306240520218045",
+        "formula_text": "ATAN2(-1.42040062942481,3.77559088027612)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B133"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B134",
+      "wire_formula": "ATAN2(5.08610645708516,-4.55688263833109)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "5.08610645708516,-4.55688263833109",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7305714462412518,
+        "hex": "-0x1.760d75e9fec54p-1",
+        "ieee754_hex": "bfe760d75e9fec54",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.73057144624125181",
+        "formula_text": "ATAN2(5.08610645708516,-4.55688263833109)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B134"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B135",
+      "wire_formula": "ATAN2(-5.31298421565039,-3.94964408649237)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-5.31298421565039,-3.94964408649237",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.502332383879021,
+        "hex": "-0x1.404c6d743db5ep+1",
+        "ieee754_hex": "c00404c6d743db5e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.502332383879021",
+        "formula_text": "ATAN2(-5.31298421565039,-3.94964408649237)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B135"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B136",
+      "wire_formula": "ATAN2(2.27336968489949,-6.88557701623273)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.27336968489949,-6.88557701623273",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.2519008747113678,
+        "hex": "-0x1.407c9362b8182p+0",
+        "ieee754_hex": "bff407c9362b8182",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.2519008747113678",
+        "formula_text": "ATAN2(2.27336968489949,-6.88557701623273)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B136"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B137",
+      "wire_formula": "ATAN2(-6.29705236713251,-4.65838945281706)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-6.29705236713251,-4.65838945281706",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.50466900541337,
+        "hex": "-0x1.4098fe74c7132p+1",
+        "ieee754_hex": "c004098fe74c7132",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.50466900541337",
+        "formula_text": "ATAN2(-6.29705236713251,-4.65838945281706)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B137"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-5-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B138",
+      "wire_formula": "ATAN2(2.3468475955889,-4.28275357294606)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.3468475955889,-4.28275357294606",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.069508122924289,
+        "hex": "-0x1.11cb48cac423bp+0",
+        "ieee754_hex": "bff11cb48cac423b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0695081229242891",
+        "formula_text": "ATAN2(2.3468475955889,-4.28275357294606)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B138"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-6-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B139",
+      "wire_formula": "ATAN2(5.94050122462438,-3.59764343545469)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "5.94050122462438,-3.59764343545469",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.5445363237021903,
+        "hex": "-0x1.16cd770b91e88p-1",
+        "ieee754_hex": "bfe16cd770b91e88",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.54453632370219029",
+        "formula_text": "ATAN2(5.94050122462438,-3.59764343545469)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B139"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B140",
+      "wire_formula": "ATAN2(-5.59044203521443,6.53506308897108)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-5.59044203521443,6.53506308897108",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.2784478717080185,
+        "hex": "0x1.23a42e0b50392p+1",
+        "ieee754_hex": "40023a42e0b50392",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.2784478717080185",
+        "formula_text": "ATAN2(-5.59044203521443,6.53506308897108)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B140"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-8-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B141",
+      "wire_formula": "ATAN2(3.01944927789853,4.53213327191997)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "3.01944927789853,4.53213327191997",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.9830951553851602,
+        "hex": "0x1.f7583f8a78797p-1",
+        "ieee754_hex": "3fef7583f8a78797",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.98309515538516024",
+        "formula_text": "ATAN2(3.01944927789853,4.53213327191997)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B141"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B142",
+      "wire_formula": "ATAN2(-7.93578343422973,-1.76021000621646)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-7.93578343422973,-1.76021000621646",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -2.923319702278021,
+        "hex": "-0x1.762f570a84adep+1",
+        "ieee754_hex": "c00762f570a84ade",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-2.9233197022780208",
+        "formula_text": "ATAN2(-7.93578343422973,-1.76021000621646)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B142"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-10-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B143",
+      "wire_formula": "ATAN2(-4.02079839919488,3.63033542687158)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-4.02079839919488,3.63033542687158",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.407183603132676,
+        "hex": "0x1.341e97a1760d8p+1",
+        "ieee754_hex": "400341e97a1760d8",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.4071836031326761",
+        "formula_text": "ATAN2(-4.02079839919488,3.63033542687158)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B143"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-11-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B144",
+      "wire_formula": "ATAN2(6.91744354772922,4.19555846598037)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "6.91744354772922,4.19555846598037",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5451988380578696,
+        "hex": "0x1.17244d568d2f2p-1",
+        "ieee754_hex": "3fe17244d568d2f2",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.54519883805786962",
+        "formula_text": "ATAN2(6.91744354772922,4.19555846598037)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B144"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-12-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B145",
+      "wire_formula": "ATAN2(-1.17433604571949,0.288821879492115)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "-1.17433604571949,0.288821879492115",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.900434247318724,
+        "hex": "0x1.73416dee37557p+1",
+        "ieee754_hex": "40073416dee37557",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.9004342473187239",
+        "formula_text": "ATAN2(-1.17433604571949,0.288821879492115)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B145"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-13-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B146",
+      "wire_formula": "ATAN2(6.9709047281399,-0.651744346184506)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "6.9709047281399,-0.651744346184506",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.09322394120065236,
+        "hex": "-0x1.7dd8632a93930p-4",
+        "ieee754_hex": "bfb7dd8632a93930",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-9.322394120065236E-2",
+        "formula_text": "ATAN2(6.9709047281399,-0.651744346184506)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B146"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-14-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B147",
+      "wire_formula": "ATAN2(2.71258610739552,-7.40014453875601)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "2.71258610739552,-7.40014453875601",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.2194468569616825,
+        "hex": "-0x1.382dab51dc444p+0",
+        "ieee754_hex": "bff382dab51dc444",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.2194468569616825",
+        "formula_text": "ATAN2(2.71258610739552,-7.40014453875601)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B147"
+        }
+      }
+    },
+    {
+      "id": "atan2-random-15-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B148",
+      "wire_formula": "ATAN2(3.0390154944635,-1.30281481554483)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ATAN2",
+        "arguments": "3.0390154944635,-1.30281481554483",
+        "category": "random-seed-22949"
+      },
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.40499730898351144,
+        "hex": "-0x1.9eb79d543570fp-2",
+        "ieee754_hex": "bfd9eb79d543570f",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.40499730898351144",
+        "formula_text": "ATAN2(3.0390154944635,-1.30281481554483)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B148"
+        }
+      }
+    }
+  ]
+}

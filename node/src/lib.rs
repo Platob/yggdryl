@@ -22,7 +22,6 @@ mod datatype;
 // ordinary Rust call sites, like `uri` below.
 #[allow(dead_code)]
 mod enums;
-mod excel;
 mod expression;
 mod field;
 mod fix;

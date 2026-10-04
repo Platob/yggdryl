@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "scope": "Excel 16.0 LCM intermediate domain, zero and late error; individual observations",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "source_report_sha256": "292176238dd1efc3be32b76c607bd6ce544004341e940d5ec578601130683c9d",
+  "manifest_sha256": "357117dcac8ea58549ede006716e592197c8ee6904086ef74a9782db62120056",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "intermediate_overflow-1900",
+      "date_system": "1900",
+      "cell": "A1",
+      "formula": "=LCM(POWER(2,52),3,1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "overflow_then_zero-1900",
+      "date_system": "1900",
+      "cell": "A2",
+      "formula": "=LCM(POWER(2,52),3,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "overflow_then_zero_twice-1900",
+      "date_system": "1900",
+      "cell": "A3",
+      "formula": "=LCM(POWER(2,52),3,0,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "overflow_then_div0-1900",
+      "date_system": "1900",
+      "cell": "A4",
+      "formula": "=LCM(POWER(2,52),3,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "overflow_then_value-1900",
+      "date_system": "1900",
+      "cell": "A5",
+      "formula": "=LCM(POWER(2,52),3,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "overflow_zero_then_div0-1900",
+      "date_system": "1900",
+      "cell": "A6",
+      "formula": "=LCM(POWER(2,52),3,0,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "overflow_zero_then_value-1900",
+      "date_system": "1900",
+      "cell": "A7",
+      "formula": "=LCM(POWER(2,52),3,0,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "at_boundary_then_zero-1900",
+      "date_system": "1900",
+      "cell": "A8",
+      "formula": "=LCM(POWER(2,53),0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "intermediate_overflow-1904",
+      "date_system": "1904",
+      "cell": "A1",
+      "formula": "=LCM(POWER(2,52),3,1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "overflow_then_zero-1904",
+      "date_system": "1904",
+      "cell": "A2",
+      "formula": "=LCM(POWER(2,52),3,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "overflow_then_zero_twice-1904",
+      "date_system": "1904",
+      "cell": "A3",
+      "formula": "=LCM(POWER(2,52),3,0,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "overflow_then_div0-1904",
+      "date_system": "1904",
+      "cell": "A4",
+      "formula": "=LCM(POWER(2,52),3,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "overflow_then_value-1904",
+      "date_system": "1904",
+      "cell": "A5",
+      "formula": "=LCM(POWER(2,52),3,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "overflow_zero_then_div0-1904",
+      "date_system": "1904",
+      "cell": "A6",
+      "formula": "=LCM(POWER(2,52),3,0,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "overflow_zero_then_value-1904",
+      "date_system": "1904",
+      "cell": "A7",
+      "formula": "=LCM(POWER(2,52),3,0,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "at_boundary_then_zero-1904",
+      "date_system": "1904",
+      "cell": "A8",
+      "formula": "=LCM(POWER(2,53),0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    }
+  ]
+}

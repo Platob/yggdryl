@@ -5,7 +5,7 @@
 //! P is the peak number of live precedents and A is the indexed axis.
 //! No rectangle is expanded into cells or duplicated across columns.
 
-use std::collections::{BTreeSet, HashMap, btree_set};
+use std::collections::{BTreeSet, HashMap, VecDeque, btree_set};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use smol_str::format_smolstr;
@@ -30,6 +30,8 @@ struct Registration {
     sheet: SheetKey,
     range: CellRange,
     dependent: usize,
+    active: bool,
+    strict: bool,
 }
 
 #[derive(Debug)]
@@ -86,6 +88,7 @@ impl DependencyIndex {
 
     /// Add a resolved precedent. Both grid coordinates are checked before
     /// any slot or bucket changes; callers keep the returned removal handle.
+    #[cfg(feature = "internals")]
     pub(crate) fn insert(
         &mut self,
         sheet: SheetKey,
@@ -93,7 +96,7 @@ impl DependencyIndex {
         dependent: usize,
     ) -> Result<RegistrationId> {
         Self::check(sheet, range)?;
-        Ok(self.insert_checked(sheet, range, dependent))
+        Ok(self.insert_checked(sheet, range, dependent, true))
     }
 
     fn check(sheet: SheetKey, range: CellRange) -> Result<()> {
@@ -119,11 +122,14 @@ impl DependencyIndex {
         sheet: SheetKey,
         range: CellRange,
         dependent: usize,
+        strict: bool,
     ) -> RegistrationId {
         let registration = Registration {
             sheet,
             range,
             dependent,
+            active: true,
+            strict,
         };
         let id = match self.free {
             Some(id) => {
@@ -207,14 +213,43 @@ impl DependencyIndex {
         Ok(())
     }
 
+    /// A node retains its peak dynamic suffix. Disabled memberships remain
+    /// owned but never seed dirty closure, contribute degrees, or form SCCs.
+    fn deactivate(&mut self, id: &RegistrationId) {
+        debug_assert_eq!(id.owner, self.owner);
+        let Slot::Live(registration) = &mut self.slots[id.slot] else {
+            unreachable!("the node owns this retained registration")
+        };
+        registration.active = false;
+    }
+
+    fn reactivate(&mut self, id: &RegistrationId, sheet: SheetKey, range: CellRange, strict: bool) -> bool {
+        debug_assert_eq!(id.owner, self.owner);
+        let Slot::Live(registration) = &mut self.slots[id.slot] else {
+            unreachable!("the node owns this retained registration")
+        };
+        if registration.sheet != sheet || registration.range != range || registration.strict != strict { return false; }
+        registration.active = true;
+        true
+    }
+
     /// Borrow a restartable-neighbor cursor. Independent cursors can coexist;
     /// querying allocates no result list, stack or per-node deduplication set.
     pub(crate) fn dependents(&self, sheet: SheetKey, at: CellRef) -> Dependents<'_> {
+        self.neighbors(sheet, at, true)
+    }
+
+    fn watched_dependents(&self, sheet: SheetKey, at: CellRef) -> Dependents<'_> {
+        self.neighbors(sheet, at, false)
+    }
+
+    fn neighbors(&self, sheet: SheetKey, at: CellRef, strict_only: bool) -> Dependents<'_> {
         let valid = at.is_in_grid();
         Dependents {
             index: self,
             sheet,
             at,
+            strict_only,
             bucket: if valid {
                 self.points.get(&(sheet, at)).map(BTreeSet::iter)
             } else {
@@ -283,6 +318,7 @@ pub(crate) struct Dependents<'a> {
     index: &'a DependencyIndex,
     sheet: SheetKey,
     at: CellRef,
+    strict_only: bool,
     bucket: Option<btree_set::Iter<'a, usize>>,
     rows: u32,
     columns: u32,
@@ -305,7 +341,8 @@ impl Iterator for Dependents<'_> {
                 let Slot::Live(registration) = &self.index.slots[*id] else {
                     unreachable!("buckets contain only live registrations")
                 };
-                if registration.range.contains(self.at) {
+                if registration.active && (!self.strict_only || registration.strict)
+                    && registration.range.contains(self.at) {
                     return Some(registration.dependent);
                 }
                 continue;
@@ -356,6 +393,9 @@ pub(crate) enum PassKind {
 struct Node {
     address: Address,
     precedents: Vec<RegistrationId>,
+    fixed: usize,
+    used: usize,
+    selective: bool,
     status: Status,
 }
 
@@ -368,6 +408,9 @@ enum NodeSlot {
 /// Resolved formula dependencies only: no formula text, AST, value, name
 /// resolver or duplicate evaluator. Source rectangles are owned by index
 /// registrations; nodes retain only their exclusive removal handles.
+/// Dynamic suffixes retain peak reached-read capacity, including disabled
+/// memberships. Retained memory is O(P_peak log axis); query candidate bounds
+/// include those disabled memberships, but semantic results never do.
 ///
 /// Updates seed node IDs immediately, including dependents of a removed
 /// formula's old address. Pending IDs and volatile IDs are bounded by live
@@ -385,7 +428,8 @@ pub(crate) struct Graph {
     circular_count: u64,
 }
 
-/// A prepared pass owns O(D) addresses, with no O(E) adjacency. It does not
+/// A prepared pass owns O(D) addresses, with no O(E) adjacency. The ready
+/// queue retains at most one live entry per dirty node across suspensions. It does not
 /// change retained status or consume pending changes until acknowledgment.
 /// Ordered nodes are candidates for one evaluator visit, not a promise that
 /// they are computable. Their reference reads use the pass overlay first and
@@ -395,19 +439,22 @@ pub(crate) struct Schedule {
     owner: u64,
     revision: u64,
     work: Work,
-    ready: Vec<usize>,
+    ready: VecDeque<usize>,
     ordered: Vec<Address>,
     circular: Vec<Address>,
     blocked: Vec<Address>,
 }
 
 impl Schedule {
+    #[cfg(feature = "internals")]
     pub(crate) fn ordered(&self) -> &[Address] {
         &self.ordered
     }
+    #[cfg(feature = "internals")]
     pub(crate) fn circular(&self) -> &[Address] {
         &self.circular
     }
+    #[cfg(feature = "internals")]
     pub(crate) fn blocked(&self) -> &[Address] {
         &self.blocked
     }
@@ -445,7 +492,7 @@ impl Graph {
             self.pending.insert(*id);
         }
         self.pending
-            .extend(self.index.dependents(address.0, address.1));
+            .extend(self.index.watched_dependents(address.0, address.1));
     }
 
     /// Replace a formula's already-resolved, active precedents atomically.
@@ -456,6 +503,7 @@ impl Graph {
         address: Address,
         precedents: &[(SheetKey, CellRange)],
         volatile: bool,
+        selective: bool,
     ) -> Result<()> {
         DependencyIndex::check(address.0, CellRange::new(address.1, address.1))?;
         for &(sheet, range) in precedents {
@@ -471,6 +519,9 @@ impl Graph {
             self.nodes[id] = NodeSlot::Live(Node {
                 address,
                 precedents: Vec::new(),
+                fixed: 0,
+                used: 0,
+                selective: false,
                 status: Status::Held,
             });
             self.addresses.insert(address, id);
@@ -480,6 +531,9 @@ impl Graph {
             self.nodes.push(NodeSlot::Live(Node {
                 address,
                 precedents: Vec::new(),
+                fixed: 0,
+                used: 0,
+                selective: false,
                 status: Status::Held,
             }));
             self.addresses.insert(address, id);
@@ -502,9 +556,12 @@ impl Graph {
         registrations.extend(
             precedents
                 .iter()
-                .map(|&(sheet, range)| self.index.insert_checked(sheet, range, id)),
+                .map(|&(sheet, range)| self.index.insert_checked(sheet, range, id, true)),
         );
         self.node_mut(id).precedents = registrations;
+        self.node_mut(id).fixed = precedents.len();
+        self.node_mut(id).used = precedents.len();
+        self.node_mut(id).selective = selective;
         if fresh {
             self.uncomputed += 1;
         }
@@ -589,7 +646,7 @@ impl Graph {
     /// three cursors: closure, degree and Kahn OR SCC. No O(E) edge list is
     /// stored. Acyclic warm passes allocate no work buffers; borrowed Tarjan
     /// frames allocate once per cyclic pass at that pass's residue bound.
-    pub(crate) fn prepare(&self, kind: PassKind, pass: &mut Schedule) -> Result<()> {
+    fn collect(&self, kind: PassKind, pass: &mut Schedule) {
         // A refused partial preparation must not be acknowledged as a pass.
         pass.owner = 0;
         pass.revision = 0;
@@ -622,11 +679,15 @@ impl Graph {
         let mut cursor = 0;
         while cursor < work.nodes.len() {
             let address = self.node(work.nodes[cursor].id).address;
-            for next in self.index.dependents(address.0, address.1) {
+            for next in self.index.watched_dependents(address.0, address.1) {
                 work.add(next);
             }
             cursor += 1;
         }
+    }
+
+    fn degrees(&self, pass: &mut Schedule) -> Result<()> {
+        let Schedule { work, ready, ordered, .. } = pass;
         for at in 0..work.nodes.len() {
             let address = self.node(work.nodes[at].id).address;
             for next in self.index.dependents(address.0, address.1) {
@@ -651,23 +712,15 @@ impl Graph {
                 .enumerate()
                 .filter_map(|(at, node)| (node.remaining == 0).then_some(at)),
         );
-        ready.sort_unstable_by_key(|&at| self.node(work.nodes[at].id).address);
+        ready.make_contiguous().sort_unstable_by_key(|&at| self.node(work.nodes[at].id).address);
         ordered.reserve(work.nodes.len());
-        let mut next_ready = 0;
-        while next_ready < ready.len() {
-            let at = ready[next_ready];
-            next_ready += 1;
-            let address = self.node(work.nodes[at].id).address;
-            ordered.push(address);
-            for next in self.index.dependents(address.0, address.1) {
-                let following = work.positions[&next];
-                let degree = &mut work.nodes[following].remaining;
-                *degree -= 1;
-                if *degree == 0 {
-                    ready.push(following);
-                }
-            }
-        }
+        pass.owner = self.index.owner;
+        pass.revision = self.revision;
+        Ok(())
+    }
+
+    fn classify(&self, pass: &mut Schedule) {
+        let Schedule { work, circular, blocked, .. } = pass;
         work.classify(self);
         for node in &work.nodes {
             if node.remaining != 0 {
@@ -681,8 +734,155 @@ impl Graph {
         }
         circular.sort_unstable();
         blocked.sort_unstable();
-        pass.owner = self.index.owner;
-        pass.revision = self.revision;
+    }
+
+    #[cfg(feature = "internals")]
+    pub(crate) fn prepare(&self, kind: PassKind, pass: &mut Schedule) -> Result<()> {
+        self.collect(kind, pass);
+        self.degrees(pass)?;
+        while let Some(address) = self.next(pass) {
+            self.complete_edges(pass, address);
+        }
+        self.classify(pass);
+        Ok(())
+    }
+
+    /// Dirty closure uses the previous selected edges. Only afterward may
+    /// a dirty selector retire its dynamic suffix and choose new branches.
+    pub(crate) fn begin(&mut self, kind: PassKind, pass: &mut Schedule) -> Result<()> {
+        self.collect(kind, pass);
+        for visit in &pass.work.nodes {
+            let id = visit.id;
+            let NodeSlot::Live(node) = &mut self.nodes[id] else {
+                unreachable!("dirty work names live nodes")
+            };
+            for handle in &node.precedents[node.fixed..] { self.index.deactivate(handle); }
+            node.used = node.fixed;
+        }
+        self.degrees(pass)
+    }
+
+    /// Next runnable root, including a previously suspended continuation.
+    pub(crate) fn next(&self, pass: &mut Schedule) -> Option<Address> {
+        let at = pass.ready.pop_front()?;
+        debug_assert_eq!(pass.work.nodes[at].remaining, 0);
+        Some(self.node(pass.work.nodes[at].id).address)
+    }
+
+    pub(crate) fn selective(&self, address: Address) -> bool {
+        self.node(self.addresses[&address]).selective
+    }
+
+    pub(crate) fn ready(&self, pass: &Schedule, address: Address) -> bool {
+        self.scheduled_index(pass, address)
+            .is_some_and(|at| pass.work.nodes[at].remaining == 0)
+    }
+
+    /// Whether a source formula still needs this pass. Ordered consumers
+    /// admit only this point before suspending, then publish one visited
+    /// prefix rectangle after the scan completes.
+    pub(crate) fn pending(&self, pass: &Schedule, source: Address) -> bool {
+        self.scheduled_index(pass, source)
+            .is_some_and(|at| !pass.work.nodes[at].finished)
+    }
+
+    /// Admit one reached source rectangle and count unfinished dirty sources
+    /// with the caller's sparse cell cursor. Each descriptor/use is admitted
+    /// once; separate rectangles preserve reverse-query multiplicity.
+    pub(crate) fn admit(
+        &mut self,
+        pass: &mut Schedule,
+        address: Address,
+        sheet: SheetKey,
+        range: CellRange,
+        cells: impl Iterator<Item = CellRef>,
+    ) -> Result<()> {
+        self.admit_mode(pass, address, sheet, range, cells, true)
+    }
+
+    pub(crate) fn watch(&mut self, pass: &mut Schedule, address: Address,
+        sheet: SheetKey, range: CellRange) -> Result<()> {
+        self.admit_mode(pass, address, sheet, range, std::iter::empty(), false)
+    }
+
+    fn admit_mode(&mut self, pass: &mut Schedule, address: Address,
+        sheet: SheetKey, range: CellRange, cells: impl Iterator<Item = CellRef>,
+        strict: bool) -> Result<()> {
+        self.check_pass(pass)?;
+        DependencyIndex::check(sheet, range)?;
+        let at = self.scheduled_index(pass, address).expect("only scheduled roots admit reads");
+        let mut added = 0usize;
+        for cell in cells {
+            if let Some(source) = self.scheduled_index(pass, (sheet, cell))
+                && !pass.work.nodes[source].finished
+            {
+                added = added.checked_add(1).ok_or_else(|| Error::InvalidRecord {
+                    path: "$.formula.calculation.dependencies".into(),
+                    reason: "expected a usize dependency count, got overflow".into(),
+                })?;
+            }
+        }
+        let remaining = pass.work.nodes[at].remaining.checked_add(added).ok_or_else(|| Error::InvalidRecord {
+            path: "$.formula.calculation.dependencies".into(),
+            reason: "expected a usize dependency count, got overflow".into(),
+        })?;
+        let id = pass.work.nodes[at].id;
+        // Ordinal reuse is O(1), without a second rectangle lookup index.
+        // A changed branch replaces only the mismatching slot; an unused
+        // suffix stays disabled and bounds storage by peak reached reads.
+        let used = self.node(id).used;
+        let mut handles = std::mem::take(&mut self.node_mut(id).precedents);
+        if let Some(handle) = handles.get_mut(used) {
+            if !self.index.reactivate(handle, sheet, range, strict) {
+                let replacement = self.index.insert_checked(sheet, range, id, strict);
+                let old = std::mem::replace(handle, replacement);
+                self.index.remove(old).expect("exclusive node registration");
+            }
+        } else {
+            debug_assert_eq!(used, handles.len());
+            handles.push(self.index.insert_checked(sheet, range, id, strict));
+        }
+        self.node_mut(id).precedents = handles;
+        self.node_mut(id).used += 1;
+        pass.work.nodes[at].remaining = remaining;
+        Ok(())
+    }
+
+    fn complete_edges(&self, pass: &mut Schedule, address: Address) {
+        let at = self.scheduled_index(pass, address).expect("a runnable root belongs to its pass");
+        debug_assert!(!pass.work.nodes[at].finished);
+        pass.work.nodes[at].finished = true;
+        pass.ordered.push(address);
+        for next in self.index.dependents(address.0, address.1) {
+            let following = pass.work.positions[&next];
+            if pass.work.nodes[following].finished { continue; }
+            let degree = &mut pass.work.nodes[following].remaining;
+            debug_assert!(*degree != 0);
+            *degree -= 1;
+            if *degree == 0 { pass.ready.push_back(following); }
+        }
+    }
+
+    pub(crate) fn complete(&mut self, pass: &mut Schedule, address: Address, volatile: bool) {
+        self.complete_edges(pass, address);
+        let id = self.addresses[&address];
+        if volatile { self.volatile.insert(id); } else { self.volatile.remove(&id); }
+    }
+
+    /// Classify only the final active residue, never the old branch graph.
+    pub(crate) fn finish(&self, pass: &mut Schedule) {
+        debug_assert!(pass.ready.is_empty());
+        self.classify(pass);
+    }
+
+    fn check_pass(&self, pass: &Schedule) -> Result<()> {
+        if pass.owner != self.index.owner || pass.revision != self.revision {
+            return Err(Error::Conflict {
+                expected: "a schedule for the current dependency graph revision",
+                actual: "a schedule from another graph or an earlier revision",
+                path: "$.formula.calculation".into(),
+            });
+        }
         Ok(())
     }
 
@@ -703,13 +903,7 @@ impl Graph {
     /// consumers of clean Held/Circular predecessors. Cyclic residue is
     /// graph-owned. Failure leaves statuses and pending seeds unchanged.
     pub(crate) fn acknowledge(&mut self, pass: &Schedule, computed: &[bool]) -> Result<()> {
-        if pass.owner != self.index.owner || pass.revision != self.revision {
-            return Err(Error::Conflict {
-                expected: "a schedule for the current dependency graph revision",
-                actual: "a schedule from another graph or an earlier revision",
-                path: "$.formula.calculation".into(),
-            });
-        }
+        self.check_pass(pass)?;
         if computed.len() != pass.ordered.len() {
             return Err(Error::InvalidRecord {
                 path: "$.formula.calculation.outcomes".into(),
@@ -756,6 +950,7 @@ struct Work {
 struct Visit {
     id: usize,
     remaining: usize,
+    finished: bool,
     number: usize,
     low: usize,
     active: bool,
@@ -787,6 +982,7 @@ impl Work {
             self.nodes.push(Visit {
                 id,
                 remaining: 0,
+                finished: false,
                 number: usize::MAX,
                 low: 0,
                 active: false,
@@ -933,6 +1129,25 @@ pub mod internals {
     }
 
     impl Scheduler {
+        /// Start an incremental scheduling pass that admits selected reads.
+        pub fn begin(&mut self, full: bool) -> crate::Result<Pass> {
+            let mut pass = super::Schedule::default();
+            self.0.begin(if full { super::PassKind::Full } else { super::PassKind::Incremental }, &mut pass)?;
+            Ok(Pass(pass))
+        }
+        /// Take one ready formula or suspended continuation.
+        pub fn next(&self, pass: &mut Pass) -> Option<(SheetKey, CellRef)> { self.0.next(&mut pass.0) }
+        /// Admit a selected rectangle using its sparse source-cell coordinates.
+        pub fn admit(&mut self, pass: &mut Pass, address: (SheetKey, CellRef), sheet: SheetKey,
+            range: CellRange, cells: &[CellRef]) -> crate::Result<()> {
+            self.0.admit(&mut pass.0, address, sheet, range, cells.iter().copied())
+        }
+        /// Finish the root once after all of its reached reads are ready.
+        pub fn complete(&mut self, pass: &mut Pass, address: (SheetKey, CellRef)) {
+            self.0.complete(&mut pass.0, address, false);
+        }
+        /// Classify the final active residue without guessing old branches.
+        pub fn finish(&self, pass: &mut Pass) { self.0.finish(&mut pass.0); }
         /// Replace one node using already-resolved rectangles.
         pub fn set(
             &mut self,
@@ -941,7 +1156,7 @@ pub mod internals {
             precedents: &[(SheetKey, CellRange)],
             volatile: bool,
         ) -> crate::Result<()> {
-            self.0.set((sheet, at), precedents, volatile)
+            self.0.set((sheet, at), precedents, volatile, false)
         }
         /// Remove a formula and seed consumers at its former address.
         pub fn remove(&mut self, sheet: SheetKey, at: CellRef) -> bool {

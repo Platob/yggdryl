@@ -1,0 +1,386 @@
+{
+  "schema_version": 1,
+  "source_report_sha256": "786cbebaf97ef61d7e2ece75163f4d114d1e6418a73dd45dff8436a862f33265",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0"
+  },
+  "cleanup_completed": true,
+  "scope": "AutoFill Value2 and saved numeric OOXML observations only",
+  "cases": [
+    {
+      "date_system": "1900",
+      "input_sha256": "9cedfe0c0d3f2544ee2c227e648fcdac712f8bf43f70d196d735d09fc0415310",
+      "saved_sha256": "bf43727257378760f33e6372efd1157d0129cd89d258b23dd45fa265d7d13d68",
+      "cells": [
+        {
+          "cell": "A1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "A2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "A3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "A4",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "C1",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "C2",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "C3",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "E1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "E2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "E3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "E4",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "G1",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "G2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "G3",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "I1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "I2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "I3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "K1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "K2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "K3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "M1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "M2",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "M3",
+          "value2_ieee754_hex": "404f800000000000",
+          "saved_numeric_text": "63",
+          "saved_ieee754_hex": "404f800000000000"
+        },
+        {
+          "cell": "M4",
+          "value2_ieee754_hex": "4050400000000000",
+          "saved_numeric_text": "65",
+          "saved_ieee754_hex": "4050400000000000"
+        },
+        {
+          "cell": "O1",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "O2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "O3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "Q1",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "Q2",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "Q3",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        }
+      ]
+    },
+    {
+      "date_system": "1904",
+      "input_sha256": "a66ef557acfa43e807fb1e7c9160c1fe77c63c5bef91d36c1b8edaa0f344b769",
+      "saved_sha256": "c0d77522fd074addb8acc8ec0a314ee214b603cc5ba8e1870ea36319b6989dad",
+      "cells": [
+        {
+          "cell": "A1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "A2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "A3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "A4",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "C1",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "C2",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "C3",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "E1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "E2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "E3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "E4",
+          "value2_ieee754_hex": "404f000000000000",
+          "saved_numeric_text": "62",
+          "saved_ieee754_hex": "404f000000000000"
+        },
+        {
+          "cell": "G1",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "G2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "G3",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "I1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "I2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "I3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "K1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "K2",
+          "value2_ieee754_hex": "404e000000000000",
+          "saved_numeric_text": "60",
+          "saved_ieee754_hex": "404e000000000000"
+        },
+        {
+          "cell": "K3",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "M1",
+          "value2_ieee754_hex": "404d800000000000",
+          "saved_numeric_text": "59",
+          "saved_ieee754_hex": "404d800000000000"
+        },
+        {
+          "cell": "M2",
+          "value2_ieee754_hex": "404e800000000000",
+          "saved_numeric_text": "61",
+          "saved_ieee754_hex": "404e800000000000"
+        },
+        {
+          "cell": "M3",
+          "value2_ieee754_hex": "404f800000000000",
+          "saved_numeric_text": "63",
+          "saved_ieee754_hex": "404f800000000000"
+        },
+        {
+          "cell": "M4",
+          "value2_ieee754_hex": "4050400000000000",
+          "saved_numeric_text": "65",
+          "saved_ieee754_hex": "4050400000000000"
+        },
+        {
+          "cell": "O1",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "O2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "O3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "Q1",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "Q2",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        },
+        {
+          "cell": "Q3",
+          "value2_ieee754_hex": "40e61d8000000089",
+          "saved_numeric_text": "45292.000000000997",
+          "saved_ieee754_hex": "40e61d8000000089"
+        }
+      ]
+    }
+  ]
+}

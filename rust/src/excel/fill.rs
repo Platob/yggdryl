@@ -21,6 +21,7 @@ use crate::{Error, Result, Scalar};
 
 use super::cell::{Cell, CellKind, CellRange, CellRef, DateSystem};
 use super::edit::MAX_EDITED_CELLS;
+use super::format::Digits;
 use super::shift::materialized;
 use super::styles::NumberFormat;
 use super::workbook::Workbook;
@@ -169,7 +170,7 @@ impl Workbook {
             });
         }
         let forward = matches!(way, Way::Down | Way::Right);
-        let mut writes: Vec<(CellRef, Option<Cell>)> = Vec::new();
+        let mut writes: Vec<(CellRef, Option<Cell>, Option<u64>)> = Vec::new();
         for line in lines {
             let at = |index: u32| {
                 if vertical {
@@ -182,7 +183,9 @@ impl Workbook {
                 .map(|index| held.cell(at(index)).cloned())
                 .collect();
             let series = match mode {
-                FillMode::Series => Series::of(&cells, system),
+                FillMode::Series => Series::of(&cells, system, |index| {
+                    held.retained_serial(at(first + index as u32))
+                }),
                 FillMode::Copy => None,
             };
             for (step, index) in beyond.iter().enumerate() {
@@ -196,14 +199,14 @@ impl Workbook {
                 };
                 let pattern = position.rem_euclid(i64::from(span)) as usize;
                 let template = cells[pattern].as_ref();
-                let cell = match (&series, template) {
+                let (cell, raw) = match (&series, template) {
                     (Some(series), Some(template)) => {
-                        let value = series
+                        let (value, raw) = series
                             .at(position, system)
                             .map_err(|error| located(sheet, destination, error))?;
                         let cell = Cell::from_scalar(destination, value, system)
                             .map_err(|error| located(sheet, destination, error))?;
-                        Some(cell.with_style(template.style()))
+                        (Some(cell.with_style(template.style())), raw)
                     }
                     (_, Some(template)) => {
                         let mut cell = template.clone().at(destination);
@@ -213,18 +216,25 @@ impl Workbook {
                         {
                             cell.set_formula(Some(formula));
                         }
-                        Some(cell)
+                        let source = at(first + pattern as u32);
+                        (Some(cell), held.retained_serial(source))
                     }
-                    (_, None) => None,
+                    (_, None) => (None, None),
                 };
-                writes.push((destination, cell));
+                let bits = cell.as_ref().and_then(|cell| raw.and_then(|raw| {
+                    super::sheet::CellExtra::exceptional_serial(cell, raw, system)
+                }));
+                writes.push((destination, cell, bits));
             }
         }
         let sheet = self.sheet_mut(sheet)?;
-        for (at, cell) in writes {
+        for (at, cell, bits) in writes {
             match cell {
                 Some(cell) => {
                     sheet.insert_cell(cell)?;
+                    if let Some(bits) = bits {
+                        sheet.attach_serial_bits(at, bits);
+                    }
                 }
                 None => {
                     sheet.remove_cell(at);
@@ -312,8 +322,8 @@ impl Case {
 enum Series {
     /// `value(position) = start + step * position`.
     Linear { start: f64, step: f64 },
-    /// Days from the Unix epoch, stepping by `days`, `months` or `years`.
-    Dates { first: i64, days: i64, months: i64 },
+    /// Days from the Unix epoch, stepping by months or years.
+    Dates { first: i64, months: i64 },
     /// A time of day or a duration: `start + step * position`, as serials.
     Serials {
         start: f64,
@@ -347,7 +357,7 @@ enum Series {
 /// What one source cell of a line is to a series.
 enum Item {
     Number(f64),
-    Date(i64),
+    Date(i64, f64),
     Serial(f64, NumberFormat),
     Counted(SmolStr, i64, usize),
     Listed(usize, i64, Case),
@@ -355,15 +365,19 @@ enum Item {
 }
 
 impl Item {
-    fn of(cell: &Cell, system: DateSystem) -> Option<Self> {
+    fn of(cell: &Cell, system: DateSystem, raw: Option<f64>) -> Option<Self> {
         if cell.formula().is_some() || cell.error().is_some() {
             return None;
         }
         let value = cell.value();
         match cell.format() {
             NumberFormat::Date => {
+                let serial = raw.or_else(|| system.serial_of(value).ok().flatten().map(|(serial, _)| serial));
                 if let Scalar::Date32(days) = value {
-                    return Some(Self::Date(i64::from(days.count())));
+                    return Some(Self::Date(i64::from(days.count()), serial?));
+                }
+                if value.temporal_unit().is_some() {
+                    return Some(Self::Serial(serial?, NumberFormat::Date));
                 }
             }
             format @ (NumberFormat::Time | NumberFormat::Duration) => {
@@ -427,10 +441,17 @@ impl Series {
     /// The series a line of source cells spells, `None` when it spells
     /// none - a blank, a formula, cells of two kinds, one number alone -
     /// and the line repeats as copies.
-    fn of(cells: &[Option<Cell>], system: DateSystem) -> Option<Self> {
+    fn of(
+        cells: &[Option<Cell>],
+        system: DateSystem,
+        mut retained: impl FnMut(usize) -> Option<f64>,
+    ) -> Option<Self> {
         let items: Vec<Item> = cells
             .iter()
-            .map(|cell| cell.as_ref().and_then(|cell| Item::of(cell, system)))
+            .enumerate()
+            .map(|(index, cell)| {
+                cell.as_ref().and_then(|cell| Item::of(cell, system, retained(index)))
+            })
             .collect::<Option<Vec<_>>>()?;
         let first = items.first()?;
         match first {
@@ -448,41 +469,40 @@ impl Series {
                 }
                 Some(linear(&values))
             }
-            Item::Date(start) => {
-                let days: Vec<i64> = items
+            Item::Date(start, first_serial) => {
+                let dates: Vec<(i64, f64)> = items
                     .iter()
                     .map(|item| match item {
-                        Item::Date(days) => Some(*days),
+                        Item::Date(day, serial) => Some((*day, *serial)),
                         _ => None,
                     })
                     .collect::<Option<_>>()?;
-                if days.len() == 1 {
-                    return Some(Self::Dates {
-                        first: *start,
-                        days: 1,
-                        months: 0,
+                if dates.len() == 1 {
+                    return Some(Self::Serials {
+                        start: *first_serial,
+                        step: 1.0,
+                        format: NumberFormat::Date,
                     });
                 }
-                let (y0, m0, d0) = civil_from_days(days[0]);
-                let (y1, m1, d1) = civil_from_days(days[1]);
-                let series = if d0 == d1 && (y0, m0) != (y1, m1) {
-                    Self::Dates {
-                        first: days[0],
-                        days: 0,
+                let (y0, m0, d0) = civil_from_days(dates[0].0);
+                let (y1, m1, d1) = civil_from_days(dates[1].0);
+                if d0 == d1 && (y0, m0) != (y1, m1) {
+                    let series = Self::Dates {
+                        first: *start,
                         months: i64::from(y1 - y0) * 12 + i64::from(m1) - i64::from(m0),
-                    }
-                } else {
-                    Self::Dates {
-                        first: days[0],
-                        days: days[1] - days[0],
-                        months: 0,
-                    }
-                };
-                // Every source date lies on the series, or the line copies.
-                days.iter()
-                    .enumerate()
-                    .all(|(position, day)| series.day(position as i64) == Some(*day))
-                    .then_some(series)
+                    };
+                    return dates.iter().enumerate()
+                        .all(|(position, (day, _))| series.day(position as i64) == Some(*day))
+                        .then_some(series);
+                }
+                let step = dates[1].1 - dates[0].1;
+                dates.iter().enumerate().all(|(position, (_, serial))| {
+                    round15(first_serial + step * position as f64) == *serial
+                }).then_some(Self::Serials {
+                    start: *first_serial,
+                    step,
+                    format: NumberFormat::Date,
+                })
             }
             Item::Serial(_, format) => {
                 let format = *format;
@@ -579,17 +599,9 @@ impl Series {
 
     /// The day a date series holds at `position`.
     fn day(&self, position: i64) -> Option<i64> {
-        let Self::Dates {
-            first,
-            days,
-            months,
-        } = *self
-        else {
+        let Self::Dates { first, months } = *self else {
             return None;
         };
-        if months == 0 {
-            return first.checked_add(days.checked_mul(position)?);
-        }
         let (year, month, day) = civil_from_days(first);
         let total = i64::from(year) * 12 + i64::from(month) - 1 + months.checked_mul(position)?;
         let year = i32::try_from(total.div_euclid(12)).ok()?;
@@ -604,14 +616,15 @@ impl Series {
 
     /// The value the series holds at `position` of the line, `0` its first
     /// source cell.
-    fn at(&self, position: i64, system: DateSystem) -> Result<Scalar> {
+    fn at(&self, position: i64, system: DateSystem) -> Result<(Scalar, Option<f64>)> {
         let refused = || Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static(
                 "expected a series value the grid can hold, got one past it",
             ),
         };
-        Ok(match self {
+        let mut raw = None;
+        let value = match self {
             Self::Linear { start, step } => Scalar::from(round15(start + step * position as f64)),
             Self::Dates { .. } => {
                 let day = self.day(position).ok_or_else(refused)?;
@@ -623,11 +636,12 @@ impl Series {
                 format,
             } => {
                 let serial = round15(start + step * position as f64);
-                let serial = if *format == NumberFormat::Time {
-                    serial.rem_euclid(1.0)
-                } else {
-                    serial
+                let serial = match format {
+                    NumberFormat::Date => serial.floor(),
+                    NumberFormat::Time => serial.rem_euclid(1.0),
+                    _ => serial,
                 };
+                raw = Some(serial);
                 system.scalar_from_serial(serial, *format)?
             }
             Self::Counted {
@@ -663,7 +677,8 @@ impl Series {
                 let quarter = (start - 1 + step * position).rem_euclid(4) + 1;
                 Scalar::from(format!("{prefix}{quarter}"))
             }
-        })
+        };
+        Ok((value, raw))
     }
 }
 
@@ -711,6 +726,17 @@ fn round15(value: f64) -> f64 {
     if value == 0.0 || !value.is_finite() {
         return value;
     }
-    let text = format!("{value:.14e}");
-    text.parse().unwrap_or(value)
+    // The display/entry decimal owner already rounds into stack storage.
+    let magnitude = Digits::from_f64(value).as_f64().unwrap_or(value.abs());
+    magnitude.copysign(value)
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! The decimal boundary behind AutoFill, pinned without a public API.
+    /// Evaluate the series decimal boundary without constructing a workbook.
+    pub fn round15_for_test(value: f64) -> f64 {
+        super::round15(value)
+    }
 }

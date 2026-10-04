@@ -1,0 +1,2450 @@
+{
+  "schema_version": 1,
+  "kind": "parity_text",
+  "source_report": "rust/target/excel-desktop/p5-parity-text-native-observed/results.json",
+  "source_report_sha256": "7b1d39c00c2ff4666a21595fdb6900fca84d429dfc85cfa74ed4f5e005fedd6f",
+  "manifest_sha256": "af5981f1edb2735836299eb5964cd206a1043b1b5a2803119c23e38351fef618",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "a834d3d906a92e5ecb25ab34a1da07c0e2cba8e2083e0d86a836546e394d8461",
+      "cases": 36,
+      "physical_formula_cells": 36
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "16b2614ceddf6b04d1df27073333882c5813a94e29c3da990e168bc5101c7685",
+      "cases": 36,
+      "physical_formula_cells": 36
+    }
+  ],
+  "saved_workbooks": {
+    "1900": {
+      "file": "functions-cached-1900.xlsx",
+      "sha256": "ca0e95f07dfa5415e042efeb08d2d48ad74d9490aef4727eef10e42400a4aa3e",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "s",
+          "formula": null,
+          "value_text": "0"
+        },
+        {
+          "cell": "A2",
+          "type": "s",
+          "formula": null,
+          "value_text": "1"
+        },
+        {
+          "cell": "A3",
+          "type": "s",
+          "formula": null,
+          "value_text": "2"
+        },
+        {
+          "cell": "A4",
+          "type": "s",
+          "formula": null,
+          "value_text": "3"
+        },
+        {
+          "cell": "A5",
+          "type": "s",
+          "formula": null,
+          "value_text": "4"
+        },
+        {
+          "cell": "A6",
+          "type": "s",
+          "formula": null,
+          "value_text": "5"
+        },
+        {
+          "cell": "A7",
+          "type": "s",
+          "formula": null,
+          "value_text": "6"
+        },
+        {
+          "cell": "A8",
+          "type": "s",
+          "formula": null,
+          "value_text": "7"
+        },
+        {
+          "cell": "A9",
+          "type": "s",
+          "formula": null,
+          "value_text": "8"
+        }
+      ]
+    },
+    "1904": {
+      "file": "functions-cached-1904.xlsx",
+      "sha256": "5400e1599c262a5885ded3a9a6f29fc1111588d22ed663660e8f4f791433e2ef",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "s",
+          "formula": null,
+          "value_text": "0"
+        },
+        {
+          "cell": "A2",
+          "type": "s",
+          "formula": null,
+          "value_text": "1"
+        },
+        {
+          "cell": "A3",
+          "type": "s",
+          "formula": null,
+          "value_text": "2"
+        },
+        {
+          "cell": "A4",
+          "type": "s",
+          "formula": null,
+          "value_text": "3"
+        },
+        {
+          "cell": "A5",
+          "type": "s",
+          "formula": null,
+          "value_text": "4"
+        },
+        {
+          "cell": "A6",
+          "type": "s",
+          "formula": null,
+          "value_text": "5"
+        },
+        {
+          "cell": "A7",
+          "type": "s",
+          "formula": null,
+          "value_text": "6"
+        },
+        {
+          "cell": "A8",
+          "type": "s",
+          "formula": null,
+          "value_text": "7"
+        },
+        {
+          "cell": "A9",
+          "type": "s",
+          "formula": null,
+          "value_text": "8"
+        }
+      ]
+    }
+  },
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": true,
+  "source_cells": [
+    {
+      "cell": "A1",
+      "kind": "date_text",
+      "text": "1/1/2024"
+    },
+    {
+      "cell": "A2",
+      "kind": "clock_text",
+      "text": "12:00"
+    },
+    {
+      "cell": "A3",
+      "kind": "percent_text",
+      "text": "50%"
+    },
+    {
+      "cell": "A4",
+      "kind": "currency_text",
+      "text": "$2"
+    },
+    {
+      "cell": "A5",
+      "kind": "exponent_text",
+      "text": "2e2"
+    },
+    {
+      "cell": "A6",
+      "kind": "space_numeric_text",
+      "text": " 2 "
+    },
+    {
+      "cell": "A7",
+      "kind": "grouped_numeric_text",
+      "text": "1,000"
+    },
+    {
+      "cell": "A8",
+      "kind": "invalid_text",
+      "text": "abc"
+    },
+    {
+      "cell": "A9",
+      "kind": "plain_numeric_text",
+      "text": "2"
+    }
+  ],
+  "case_count": 72,
+  "cache_type_counts": {
+    "b": 56,
+    "e": 16
+  },
+  "cases": [
+    {
+      "id": "parity-text-iseven-direct-date_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "ISEVEN(\"1/1/2024\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISEVEN(\"1/1/2024\")",
+      "actual_formula2": "=ISEVEN(\"1/1/2024\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"1/1/2024\")",
+      "after_save_formula2": "=ISEVEN(\"1/1/2024\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"1/1/2024\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-date_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B3",
+      "wire_formula": "ISEVEN(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A1)",
+      "actual_formula2": "=ISEVEN(Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A1)",
+      "after_save_formula2": "=ISEVEN(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-clock_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "ISEVEN(\"12:00\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISEVEN(\"12:00\")",
+      "actual_formula2": "=ISEVEN(\"12:00\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"12:00\")",
+      "after_save_formula2": "=ISEVEN(\"12:00\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"12:00\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-clock_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "ISEVEN(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A2)",
+      "actual_formula2": "=ISEVEN(Inputs!A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A2)",
+      "after_save_formula2": "=ISEVEN(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-percent_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B6",
+      "wire_formula": "ISEVEN(\"50%\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISEVEN(\"50%\")",
+      "actual_formula2": "=ISEVEN(\"50%\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"50%\")",
+      "after_save_formula2": "=ISEVEN(\"50%\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"50%\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-percent_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B7",
+      "wire_formula": "ISEVEN(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A3)",
+      "actual_formula2": "=ISEVEN(Inputs!A3)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A3)",
+      "after_save_formula2": "=ISEVEN(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-currency_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "ISEVEN(\"$2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISEVEN(\"$2\")",
+      "actual_formula2": "=ISEVEN(\"$2\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(\"$2\")",
+      "after_save_formula2": "=ISEVEN(\"$2\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(\"$2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-currency_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B9",
+      "wire_formula": "ISEVEN(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A4)",
+      "actual_formula2": "=ISEVEN(Inputs!A4)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A4)",
+      "after_save_formula2": "=ISEVEN(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-exponent_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "ISEVEN(\"2e2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISEVEN(\"2e2\")",
+      "actual_formula2": "=ISEVEN(\"2e2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"2e2\")",
+      "after_save_formula2": "=ISEVEN(\"2e2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"2e2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-exponent_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B11",
+      "wire_formula": "ISEVEN(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A5)",
+      "actual_formula2": "=ISEVEN(Inputs!A5)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A5)",
+      "after_save_formula2": "=ISEVEN(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-space_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "ISEVEN(\" 2 \")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISEVEN(\" 2 \")",
+      "actual_formula2": "=ISEVEN(\" 2 \")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\" 2 \")",
+      "after_save_formula2": "=ISEVEN(\" 2 \")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\" 2 \")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-space_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B13",
+      "wire_formula": "ISEVEN(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A6)",
+      "actual_formula2": "=ISEVEN(Inputs!A6)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A6)",
+      "after_save_formula2": "=ISEVEN(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-grouped_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B14",
+      "wire_formula": "ISEVEN(\"1,000\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISEVEN(\"1,000\")",
+      "actual_formula2": "=ISEVEN(\"1,000\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"1,000\")",
+      "after_save_formula2": "=ISEVEN(\"1,000\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"1,000\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-grouped_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "ISEVEN(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A7)",
+      "actual_formula2": "=ISEVEN(Inputs!A7)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A7)",
+      "after_save_formula2": "=ISEVEN(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-invalid_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B16",
+      "wire_formula": "ISEVEN(\"abc\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISEVEN(\"abc\")",
+      "actual_formula2": "=ISEVEN(\"abc\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(\"abc\")",
+      "after_save_formula2": "=ISEVEN(\"abc\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(\"abc\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-invalid_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B17",
+      "wire_formula": "ISEVEN(Inputs!A8)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A8)",
+      "actual_formula2": "=ISEVEN(Inputs!A8)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A8)",
+      "after_save_formula2": "=ISEVEN(Inputs!A8)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(Inputs!A8)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-plain_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B18",
+      "wire_formula": "ISEVEN(\"2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISEVEN(\"2\")",
+      "actual_formula2": "=ISEVEN(\"2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"2\")",
+      "after_save_formula2": "=ISEVEN(\"2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-plain_numeric_text-1900",
+      "function": "ISEVEN",
+      "date_system": "1900",
+      "cell": "B19",
+      "wire_formula": "ISEVEN(Inputs!A9)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A9)",
+      "actual_formula2": "=ISEVEN(Inputs!A9)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A9)",
+      "after_save_formula2": "=ISEVEN(Inputs!A9)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A9)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-date_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B20",
+      "wire_formula": "ISODD(\"1/1/2024\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISODD(\"1/1/2024\")",
+      "actual_formula2": "=ISODD(\"1/1/2024\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"1/1/2024\")",
+      "after_save_formula2": "=ISODD(\"1/1/2024\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"1/1/2024\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-date_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B21",
+      "wire_formula": "ISODD(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISODD(Inputs!A1)",
+      "actual_formula2": "=ISODD(Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A1)",
+      "after_save_formula2": "=ISODD(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-clock_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B22",
+      "wire_formula": "ISODD(\"12:00\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISODD(\"12:00\")",
+      "actual_formula2": "=ISODD(\"12:00\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"12:00\")",
+      "after_save_formula2": "=ISODD(\"12:00\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"12:00\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-clock_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B23",
+      "wire_formula": "ISODD(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISODD(Inputs!A2)",
+      "actual_formula2": "=ISODD(Inputs!A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A2)",
+      "after_save_formula2": "=ISODD(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-percent_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B24",
+      "wire_formula": "ISODD(\"50%\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISODD(\"50%\")",
+      "actual_formula2": "=ISODD(\"50%\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"50%\")",
+      "after_save_formula2": "=ISODD(\"50%\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"50%\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-percent_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B25",
+      "wire_formula": "ISODD(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISODD(Inputs!A3)",
+      "actual_formula2": "=ISODD(Inputs!A3)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A3)",
+      "after_save_formula2": "=ISODD(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-currency_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B26",
+      "wire_formula": "ISODD(\"$2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISODD(\"$2\")",
+      "actual_formula2": "=ISODD(\"$2\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(\"$2\")",
+      "after_save_formula2": "=ISODD(\"$2\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(\"$2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-currency_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B27",
+      "wire_formula": "ISODD(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISODD(Inputs!A4)",
+      "actual_formula2": "=ISODD(Inputs!A4)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(Inputs!A4)",
+      "after_save_formula2": "=ISODD(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-exponent_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B28",
+      "wire_formula": "ISODD(\"2e2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISODD(\"2e2\")",
+      "actual_formula2": "=ISODD(\"2e2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"2e2\")",
+      "after_save_formula2": "=ISODD(\"2e2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"2e2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-exponent_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B29",
+      "wire_formula": "ISODD(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISODD(Inputs!A5)",
+      "actual_formula2": "=ISODD(Inputs!A5)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A5)",
+      "after_save_formula2": "=ISODD(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-space_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B30",
+      "wire_formula": "ISODD(\" 2 \")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISODD(\" 2 \")",
+      "actual_formula2": "=ISODD(\" 2 \")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\" 2 \")",
+      "after_save_formula2": "=ISODD(\" 2 \")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\" 2 \")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-space_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B31",
+      "wire_formula": "ISODD(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISODD(Inputs!A6)",
+      "actual_formula2": "=ISODD(Inputs!A6)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A6)",
+      "after_save_formula2": "=ISODD(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-grouped_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B32",
+      "wire_formula": "ISODD(\"1,000\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISODD(\"1,000\")",
+      "actual_formula2": "=ISODD(\"1,000\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"1,000\")",
+      "after_save_formula2": "=ISODD(\"1,000\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"1,000\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-grouped_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B33",
+      "wire_formula": "ISODD(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISODD(Inputs!A7)",
+      "actual_formula2": "=ISODD(Inputs!A7)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A7)",
+      "after_save_formula2": "=ISODD(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-invalid_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B34",
+      "wire_formula": "ISODD(\"abc\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISODD(\"abc\")",
+      "actual_formula2": "=ISODD(\"abc\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(\"abc\")",
+      "after_save_formula2": "=ISODD(\"abc\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(\"abc\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-invalid_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B35",
+      "wire_formula": "ISODD(Inputs!A8)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISODD(Inputs!A8)",
+      "actual_formula2": "=ISODD(Inputs!A8)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(Inputs!A8)",
+      "after_save_formula2": "=ISODD(Inputs!A8)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(Inputs!A8)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-plain_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B36",
+      "wire_formula": "ISODD(\"2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISODD(\"2\")",
+      "actual_formula2": "=ISODD(\"2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"2\")",
+      "after_save_formula2": "=ISODD(\"2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-plain_numeric_text-1900",
+      "function": "ISODD",
+      "date_system": "1900",
+      "cell": "B37",
+      "wire_formula": "ISODD(Inputs!A9)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISODD(Inputs!A9)",
+      "actual_formula2": "=ISODD(Inputs!A9)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A9)",
+      "after_save_formula2": "=ISODD(Inputs!A9)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A9)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-date_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "ISEVEN(\"1/1/2024\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISEVEN(\"1/1/2024\")",
+      "actual_formula2": "=ISEVEN(\"1/1/2024\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"1/1/2024\")",
+      "after_save_formula2": "=ISEVEN(\"1/1/2024\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"1/1/2024\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-date_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B3",
+      "wire_formula": "ISEVEN(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A1)",
+      "actual_formula2": "=ISEVEN(Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A1)",
+      "after_save_formula2": "=ISEVEN(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-clock_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "ISEVEN(\"12:00\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISEVEN(\"12:00\")",
+      "actual_formula2": "=ISEVEN(\"12:00\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"12:00\")",
+      "after_save_formula2": "=ISEVEN(\"12:00\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"12:00\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-clock_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "ISEVEN(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A2)",
+      "actual_formula2": "=ISEVEN(Inputs!A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A2)",
+      "after_save_formula2": "=ISEVEN(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-percent_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B6",
+      "wire_formula": "ISEVEN(\"50%\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISEVEN(\"50%\")",
+      "actual_formula2": "=ISEVEN(\"50%\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"50%\")",
+      "after_save_formula2": "=ISEVEN(\"50%\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"50%\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-percent_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B7",
+      "wire_formula": "ISEVEN(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A3)",
+      "actual_formula2": "=ISEVEN(Inputs!A3)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A3)",
+      "after_save_formula2": "=ISEVEN(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-currency_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "ISEVEN(\"$2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISEVEN(\"$2\")",
+      "actual_formula2": "=ISEVEN(\"$2\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(\"$2\")",
+      "after_save_formula2": "=ISEVEN(\"$2\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(\"$2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-currency_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B9",
+      "wire_formula": "ISEVEN(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A4)",
+      "actual_formula2": "=ISEVEN(Inputs!A4)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A4)",
+      "after_save_formula2": "=ISEVEN(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-exponent_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "ISEVEN(\"2e2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISEVEN(\"2e2\")",
+      "actual_formula2": "=ISEVEN(\"2e2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"2e2\")",
+      "after_save_formula2": "=ISEVEN(\"2e2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"2e2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-exponent_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B11",
+      "wire_formula": "ISEVEN(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A5)",
+      "actual_formula2": "=ISEVEN(Inputs!A5)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A5)",
+      "after_save_formula2": "=ISEVEN(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-space_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "ISEVEN(\" 2 \")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISEVEN(\" 2 \")",
+      "actual_formula2": "=ISEVEN(\" 2 \")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\" 2 \")",
+      "after_save_formula2": "=ISEVEN(\" 2 \")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\" 2 \")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-space_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B13",
+      "wire_formula": "ISEVEN(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A6)",
+      "actual_formula2": "=ISEVEN(Inputs!A6)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A6)",
+      "after_save_formula2": "=ISEVEN(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-grouped_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B14",
+      "wire_formula": "ISEVEN(\"1,000\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISEVEN(\"1,000\")",
+      "actual_formula2": "=ISEVEN(\"1,000\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"1,000\")",
+      "after_save_formula2": "=ISEVEN(\"1,000\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"1,000\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-grouped_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "ISEVEN(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A7)",
+      "actual_formula2": "=ISEVEN(Inputs!A7)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A7)",
+      "after_save_formula2": "=ISEVEN(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-invalid_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B16",
+      "wire_formula": "ISEVEN(\"abc\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISEVEN(\"abc\")",
+      "actual_formula2": "=ISEVEN(\"abc\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(\"abc\")",
+      "after_save_formula2": "=ISEVEN(\"abc\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(\"abc\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-invalid_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B17",
+      "wire_formula": "ISEVEN(Inputs!A8)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A8)",
+      "actual_formula2": "=ISEVEN(Inputs!A8)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A8)",
+      "after_save_formula2": "=ISEVEN(Inputs!A8)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISEVEN(Inputs!A8)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-direct-plain_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B18",
+      "wire_formula": "ISEVEN(\"2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISEVEN(\"2\")",
+      "actual_formula2": "=ISEVEN(\"2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(\"2\")",
+      "after_save_formula2": "=ISEVEN(\"2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(\"2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-iseven-reference-plain_numeric_text-1904",
+      "function": "ISEVEN",
+      "date_system": "1904",
+      "cell": "B19",
+      "wire_formula": "ISEVEN(Inputs!A9)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISEVEN(Inputs!A9)",
+      "actual_formula2": "=ISEVEN(Inputs!A9)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISEVEN(Inputs!A9)",
+      "after_save_formula2": "=ISEVEN(Inputs!A9)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISEVEN(Inputs!A9)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-date_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B20",
+      "wire_formula": "ISODD(\"1/1/2024\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISODD(\"1/1/2024\")",
+      "actual_formula2": "=ISODD(\"1/1/2024\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"1/1/2024\")",
+      "after_save_formula2": "=ISODD(\"1/1/2024\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"1/1/2024\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-date_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B21",
+      "wire_formula": "ISODD(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "date_text",
+        "source_text": "1/1/2024",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ISODD(Inputs!A1)",
+      "actual_formula2": "=ISODD(Inputs!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A1)",
+      "after_save_formula2": "=ISODD(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-clock_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B22",
+      "wire_formula": "ISODD(\"12:00\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISODD(\"12:00\")",
+      "actual_formula2": "=ISODD(\"12:00\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"12:00\")",
+      "after_save_formula2": "=ISODD(\"12:00\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"12:00\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-clock_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B23",
+      "wire_formula": "ISODD(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "clock_text",
+        "source_text": "12:00",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ISODD(Inputs!A2)",
+      "actual_formula2": "=ISODD(Inputs!A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A2)",
+      "after_save_formula2": "=ISODD(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-percent_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B24",
+      "wire_formula": "ISODD(\"50%\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISODD(\"50%\")",
+      "actual_formula2": "=ISODD(\"50%\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"50%\")",
+      "after_save_formula2": "=ISODD(\"50%\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"50%\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-percent_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B25",
+      "wire_formula": "ISODD(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "percent_text",
+        "source_text": "50%",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ISODD(Inputs!A3)",
+      "actual_formula2": "=ISODD(Inputs!A3)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A3)",
+      "after_save_formula2": "=ISODD(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-currency_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B26",
+      "wire_formula": "ISODD(\"$2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISODD(\"$2\")",
+      "actual_formula2": "=ISODD(\"$2\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(\"$2\")",
+      "after_save_formula2": "=ISODD(\"$2\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(\"$2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-currency_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B27",
+      "wire_formula": "ISODD(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "currency_text",
+        "source_text": "$2",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ISODD(Inputs!A4)",
+      "actual_formula2": "=ISODD(Inputs!A4)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(Inputs!A4)",
+      "after_save_formula2": "=ISODD(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-exponent_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B28",
+      "wire_formula": "ISODD(\"2e2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISODD(\"2e2\")",
+      "actual_formula2": "=ISODD(\"2e2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"2e2\")",
+      "after_save_formula2": "=ISODD(\"2e2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"2e2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-exponent_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B29",
+      "wire_formula": "ISODD(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "exponent_text",
+        "source_text": "2e2",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ISODD(Inputs!A5)",
+      "actual_formula2": "=ISODD(Inputs!A5)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A5)",
+      "after_save_formula2": "=ISODD(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-space_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B30",
+      "wire_formula": "ISODD(\" 2 \")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISODD(\" 2 \")",
+      "actual_formula2": "=ISODD(\" 2 \")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\" 2 \")",
+      "after_save_formula2": "=ISODD(\" 2 \")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\" 2 \")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-space_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B31",
+      "wire_formula": "ISODD(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "space_numeric_text",
+        "source_text": " 2 ",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ISODD(Inputs!A6)",
+      "actual_formula2": "=ISODD(Inputs!A6)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A6)",
+      "after_save_formula2": "=ISODD(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-grouped_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B32",
+      "wire_formula": "ISODD(\"1,000\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISODD(\"1,000\")",
+      "actual_formula2": "=ISODD(\"1,000\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"1,000\")",
+      "after_save_formula2": "=ISODD(\"1,000\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"1,000\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-grouped_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B33",
+      "wire_formula": "ISODD(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "grouped_numeric_text",
+        "source_text": "1,000",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ISODD(Inputs!A7)",
+      "actual_formula2": "=ISODD(Inputs!A7)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A7)",
+      "after_save_formula2": "=ISODD(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-invalid_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B34",
+      "wire_formula": "ISODD(\"abc\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISODD(\"abc\")",
+      "actual_formula2": "=ISODD(\"abc\")",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(\"abc\")",
+      "after_save_formula2": "=ISODD(\"abc\")",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(\"abc\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-invalid_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B35",
+      "wire_formula": "ISODD(Inputs!A8)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "invalid_text",
+        "source_text": "abc",
+        "source_cell": "A8"
+      },
+      "actual_formula": "=ISODD(Inputs!A8)",
+      "actual_formula2": "=ISODD(Inputs!A8)",
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "after_save_formula": "=ISODD(Inputs!A8)",
+      "after_save_formula2": "=ISODD(Inputs!A8)",
+      "after_save_value2": {
+        "variant": "int",
+        "value": -2146826273
+      },
+      "cache_type": "e",
+      "cache_value_text": "#VALUE!",
+      "cache_formula_text": "ISODD(Inputs!A8)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-direct-plain_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B36",
+      "wire_formula": "ISODD(\"2\")",
+      "parameters": {
+        "origin": "direct",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISODD(\"2\")",
+      "actual_formula2": "=ISODD(\"2\")",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(\"2\")",
+      "after_save_formula2": "=ISODD(\"2\")",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(\"2\")",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "parity-text-isodd-reference-plain_numeric_text-1904",
+      "function": "ISODD",
+      "date_system": "1904",
+      "cell": "B37",
+      "wire_formula": "ISODD(Inputs!A9)",
+      "parameters": {
+        "origin": "reference",
+        "kind": "plain_numeric_text",
+        "source_text": "2",
+        "source_cell": "A9"
+      },
+      "actual_formula": "=ISODD(Inputs!A9)",
+      "actual_formula2": "=ISODD(Inputs!A9)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISODD(Inputs!A9)",
+      "after_save_formula2": "=ISODD(Inputs!A9)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISODD(Inputs!A9)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ],
+  "rust_equivalence": {
+    "test": "workbook::parity_text_native_cache_matches_72_direct_and_reference_cases",
+    "harness": "rust/tests/excel.rs",
+    "result": "passed",
+    "scope": "all listed direct and referenced text cases in both date systems",
+    "log": "handoff/local-p5-information-followup-green.log",
+    "log_sha256": "d9d01f182da1ea37c0479a4807ffe39234ca5db4b0c901a23067aa25ddab2936"
+  }
+}

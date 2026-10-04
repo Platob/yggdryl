@@ -30,18 +30,20 @@ pub(crate) mod number;
 pub(crate) mod parser;
 pub(crate) mod reference;
 pub(crate) mod shape;
+pub(crate) mod text;
 pub(crate) mod value;
 
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result};
+use crate::{Error, Result, Timezone};
 
-use super::cell::CellRef;
+use super::cell::{CellRef, DateSystem};
 use lexer::{Kind, Lexeme, Prefix};
 use shape::Shape;
 
@@ -64,6 +66,156 @@ pub struct Recalculation {
     pub circular: Vec<(SmolStr, CellRef)>,
     /// Current circular cells throughout the workbook, including omitted entries.
     pub circular_count: u64,
+}
+
+/// The source, wall-clock zone and random seed of one formula pass.
+/// A system clock samples once per pass; a fixed clock makes tests and
+/// replays deterministic without changing workbook wire metadata.
+///
+/// ```
+/// use yggdryl::{Scalar, Timezone};
+/// use yggdryl::excel::{CellRef, Clock, Workbook};
+/// let mut book = Workbook::new().with_clock(Clock::fixed(
+///     -2_203_977_600_000_000_000, Timezone::UTC, 73,
+/// ));
+/// book.add_sheet("Cases")?;
+/// let at: CellRef = "A1".parse()?;
+/// book.set_entry("Cases", at, "=TODAY()")?;
+/// assert_eq!(book.calculate_all()?.evaluated, 1);
+/// assert_eq!(book.sheet("Cases")?.scalar(at), Scalar::from(59.0));
+/// # Ok::<(), yggdryl::Error>(())
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Clock {
+    source: ClockSource,
+    timezone: Timezone,
+    seed: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClockSource {
+    System,
+    Fixed(i64),
+}
+
+impl Clock {
+    /// Use the system UTC instant, interpreted in `timezone` once per pass.
+    #[must_use]
+    pub const fn system(timezone: Timezone) -> Self {
+        Self { source: ClockSource::System, timezone, seed: 0 }
+    }
+
+    /// Use one Unix nanosecond instant and a deterministic random seed.
+    #[must_use]
+    pub const fn fixed(unix_nanos: i64, timezone: Timezone, seed: u64) -> Self {
+        Self { source: ClockSource::Fixed(unix_nanos), timezone, seed }
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self { Self::system(Timezone::UTC) }
+}
+
+/// One instant and random seed for a successful-or-rolled-back calculation pass.
+/// The wall serial is resolved only when a temporal function is evaluated.
+pub(crate) struct PassClock {
+    nanos: i128,
+    timezone: Timezone,
+    seed: u64,
+    pass: u64,
+    serial: Option<f64>,
+}
+
+impl Clock {
+    pub(crate) fn sample(self, pass: u64) -> Result<PassClock> {
+        let nanos = match self.source {
+            ClockSource::Fixed(nanos) => i128::from(nanos),
+            ClockSource::System => {
+                let sampled = SystemTime::now().duration_since(UNIX_EPOCH);
+                let magnitude = sampled.as_ref().map_or_else(
+                    |early| early.duration().as_nanos(),
+                    |late| late.as_nanos(),
+                );
+                let magnitude = i128::try_from(magnitude).map_err(|_| Error::InvalidRecord {
+                    path: "$.clock".into(),
+                    reason: "expected a representable system instant, got an out-of-range clock".into(),
+                })?;
+                if sampled.is_ok() { magnitude } else { -magnitude }
+            }
+        };
+        let seed = match self.source {
+            ClockSource::System => self.seed ^ crate::xxhash::xxh3(&nanos.to_le_bytes()),
+            ClockSource::Fixed(_) => self.seed,
+        };
+        Ok(PassClock { nanos, timezone: self.timezone, seed, pass, serial: None })
+    }
+}
+
+impl PassClock {
+    pub(crate) fn serial(&mut self, system: DateSystem, today: bool) -> Result<f64> {
+        let now = match self.serial {
+            Some(now) => now,
+            None => {
+                let seconds = i64::try_from(self.nanos.div_euclid(1_000_000_000))
+                    .map_err(|_| Error::InvalidRecord {
+                        path: "$.clock".into(),
+                        reason: "expected an Excel date-system instant, got an out-of-range clock".into(),
+                    })?;
+                let local = if self.timezone.is_naive() {
+                    seconds
+                } else {
+                    self.timezone.into_local(seconds).map_err(|error| Error::InvalidRecord {
+                        path: "$.clock.timezone".into(),
+                        reason: format_smolstr!("expected a resolved wall-clock zone, got {error}"),
+                    })?
+                };
+                let millis = local.checked_mul(1_000)
+                    .and_then(|value| value.checked_add((self.nanos.rem_euclid(1_000_000_000) / 1_000_000) as i64))
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: "$.clock".into(),
+                        reason: "expected an Excel date-system instant, got an out-of-range clock".into(),
+                    })?;
+                let now = system.serial_from_millis(millis).map_err(|error| Error::InvalidRecord {
+                    path: "$.clock".into(),
+                    reason: format_smolstr!("expected an Excel date-system instant, got {error}"),
+                })?;
+                self.serial = Some(now);
+                now
+            }
+        };
+        Ok(if today { now.floor() } else { now })
+    }
+
+    pub(crate) fn draw(&self, state: &mut Option<u64>, sheet: u32, at: CellRef) -> u64 {
+        let current = state.get_or_insert_with(|| {
+            let mut input = [0_u8; 28];
+            input[..8].copy_from_slice(&self.seed.to_le_bytes());
+            input[8..16].copy_from_slice(&self.pass.to_le_bytes());
+            input[16..20].copy_from_slice(&sheet.to_le_bytes());
+            input[20..24].copy_from_slice(&at.row().to_le_bytes());
+            input[24..28].copy_from_slice(&at.column().to_le_bytes());
+            crate::xxhash::xxh3(&input).max(1)
+        });
+        let mut next = *current;
+        next ^= next >> 12;
+        next ^= next << 25;
+        next ^= next >> 27;
+        *current = next;
+        next.wrapping_mul(2_685_821_657_736_338_717)
+    }
+}
+
+/// One documented function projected directly from the parser's registry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FunctionDescriptor {
+    /// Canonical Excel function spelling.
+    pub name: &'static str,
+    /// Ribbon category displayed for this function.
+    pub category: &'static str,
+    /// Formula signature with optional arguments marked in brackets.
+    pub signature: &'static str,
+    /// Short description displayed beside the signature.
+    pub description: &'static str,
 }
 
 /// The formula a cell holds, whose cached result is the cell's value.
@@ -95,6 +247,27 @@ pub struct Recalculation {
 pub struct Formula(Arc<Shape>);
 
 impl Formula {
+    /// Documented functions in registry order; held wire-only names have no
+    /// signature and do not appear. The iterator borrows the one registry.
+    ///
+    /// ```
+    /// use yggdryl::excel::Formula;
+    /// let sum = Formula::functions().find(|item| item.name == "SUM").unwrap();
+    /// assert_eq!(sum.category, "Math and trigonometry");
+    /// assert_eq!(sum.signature, "SUM(number1, [number2], ...)");
+    /// ```
+    pub fn functions() -> impl Iterator<Item = FunctionDescriptor> {
+        functions::FUNCTIONS.iter().filter_map(|info| {
+            let signature = info.signature?;
+            Some(FunctionDescriptor {
+                name: info.name,
+                category: signature.category.label(),
+                signature: signature.text,
+                description: signature.description,
+            })
+        })
+    }
+
     /// The formula a `<f>` element spells for the cell at `host`, without
     /// the leading `=` the file never writes.
     ///
@@ -164,10 +337,13 @@ impl Formula {
         }
     }
 
-    /// Whether the formula can be computed here: false for one holding a
-    /// reference into another workbook, a structured or spilled reference,
-    /// a dynamic array's own function, or text the grammar does not read -
-    /// a formula carried with the value Excel cached for it.
+    /// Whether the whole formula shape has no known grammar or reference hold.
+    ///
+    /// This conservative structural check does not evaluate functions or
+    /// resolve workbook dependencies. Calculation may still hold a shape
+    /// that passes this check, or compute a selected branch that avoids an
+    /// unknown function reported by this check. Use the workbook's
+    /// recalculation report for actual computed and uncomputed results.
     #[must_use]
     pub fn is_computed(&self) -> bool {
         self.0.held_reason().is_none()
@@ -216,9 +392,13 @@ impl Formula {
 
     /// The one compiled arena, borrowed from this formula's shared shape.
     pub(crate) fn expression(&self) -> std::result::Result<&parser::Expr, shape::Held> {
-        if let Some(reason) = self.shape().held {
+        if let Some(reason) = self.shape().held
+            && reason != shape::Held::UnknownFunction
+        {
             return Err(reason);
         }
+        // An unknown call owns its held result only when reached. A lazy
+        // selected branch may avoid it, while entry/file syntax stays total.
         self.shape().compiled().as_ref().map_err(|reason| *reason)
     }
 
@@ -416,18 +596,18 @@ pub mod internals {
     /// The once-compiled arena, exposing topology to the mirrored parser test.
     #[must_use]
     pub fn arena(formula: &Formula) -> Option<(usize, Vec<String>)> {
-        let Expr { nodes, root } = formula.shape().compiled().as_ref().ok()?;
+        let Expr { nodes, root, .. } = formula.shape().compiled().as_ref().ok()?;
         Some((
             *root,
             nodes.iter().map(|node| format!("{node:?}")).collect(),
         ))
     }
 
-    /// References under strict ancestors, in evaluation order. Held/lazy
-    /// subtrees contribute no speculative graph edges.
+    /// Initial references in evaluation order: strict children and selector
+    /// inputs. Unselected branches contribute no speculative graph edges.
     #[must_use]
     pub fn strict_references(formula: &Formula) -> Option<Vec<String>> {
-        let Expr { nodes, root } = formula.shape().compiled().as_ref().ok()?;
+        let Expr { nodes, root, .. } = formula.shape().compiled().as_ref().ok()?;
         let mut stack = vec![*root];
         let mut references = Vec::new();
         while let Some(id) = stack.pop() {
@@ -440,6 +620,9 @@ pub mod internals {
                 EvaluationPolicy::Strict(children) => {
                     children.visit_reverse(|child| stack.push(child));
                 }
+                EvaluationPolicy::Select(selection) => {
+                    selection.visit_inputs_reverse(|input, _| stack.push(input));
+                }
                 EvaluationPolicy::Held => {}
             }
         }
@@ -449,14 +632,14 @@ pub mod internals {
     /// Number of strict root children, to pin allocation-free policy calls.
     #[must_use]
     pub fn strict_root_child_count(formula: &Formula) -> Option<usize> {
-        let Expr { nodes, root } = formula.shape().compiled().as_ref().ok()?;
+        let Expr { nodes, root, .. } = formula.shape().compiled().as_ref().ok()?;
         match nodes[*root].evaluation_children() {
             EvaluationPolicy::Strict(children) => {
                 let mut count = 0;
                 children.visit_reverse(|_| count += 1);
                 Some(count)
             }
-            EvaluationPolicy::Leaf | EvaluationPolicy::Held => None,
+            EvaluationPolicy::Leaf | EvaluationPolicy::Select(_) | EvaluationPolicy::Held => None,
         }
     }
 

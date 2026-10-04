@@ -636,8 +636,24 @@ fn call(
     Ok(match function {
         Function::Abs => first.checked_abs()?,
         Function::Sqrt => first.checked_sqrt()?,
-        Function::Lower => text_value(first, str::to_lowercase),
-        Function::Upper => text_value(first, str::to_uppercase),
+        Function::Factorial => first.checked_factorial()?,
+        Function::Gcd => first.checked_gcd(&values[1])?,
+        Function::Lcm => first.checked_lcm(&values[1])?,
+        Function::Exp => first.checked_exp()?,
+        Function::Ln => first.checked_ln()?,
+        Function::Log10 => first.checked_log10()?,
+        Function::Degrees => first.checked_degrees()?,
+        Function::Radians => first.checked_radians()?,
+        Function::Cos => first.checked_cos()?,
+        Function::Asin => first.checked_asin()?,
+        Function::Sin => first.checked_sin()?,
+        Function::Tan => first.checked_tan()?,
+        Function::Acos => first.checked_acos()?,
+        Function::Atan => first.checked_atan()?,
+        Function::Atan2 => first.checked_atan2(&values[1])?,
+        Function::Pow => first.checked_pow(&values[1])?,
+        Function::Lower => text_value(first, crate::Str::lowercase),
+        Function::Upper => text_value(first, crate::Str::uppercase),
         Function::Trim => scalar_text(first).map_or(Scalar::Null, |text| Scalar::from(text.trim())),
         Function::Length => match first {
             crate::bytes_scalars!(bytes) => {
@@ -748,9 +764,12 @@ fn call(
     })
 }
 
-fn text_value(value: &Scalar, rewrite: impl Fn(&str) -> String) -> Scalar {
+fn text_value(value: &Scalar, rewrite: impl Fn(&crate::Str) -> crate::Str) -> Scalar {
+    if let Some(text) = value.as_string() {
+        return Scalar::from(rewrite(text));
+    }
     scalar_text(value).map_or(Scalar::Null, |text| {
-        Scalar::from(SmolStr::new(rewrite(text.as_ref())))
+        Scalar::from(rewrite(&crate::Str::new(text.as_ref())))
     })
 }
 

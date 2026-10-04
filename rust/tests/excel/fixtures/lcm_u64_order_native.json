@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "scope": "Excel 16.0 LCM u64 intermediate overflow, zero and late errors; individual observations",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "source_report_sha256": "a7b7a9c5a80f72f2ea6efd006bae1e78ffe5dddec598df92c0f0946c3225ca32",
+  "manifest_sha256": "09379ccd5eb06b1e8b1262ef2dfa0294ffde0544bcc63da8e7670099c2912ce0",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "u64_overflow-1900",
+      "date_system": "1900",
+      "cell": "A1",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "u64_overflow_then_zero-1900",
+      "date_system": "1900",
+      "cell": "A2",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "zero_before_u64_overflow-1900",
+      "date_system": "1900",
+      "cell": "A3",
+      "formula": "=LCM(0,POWER(2,52),POWER(2,52)-1)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "u64_overflow_then_div0-1900",
+      "date_system": "1900",
+      "cell": "A4",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "u64_overflow_then_bool-1900",
+      "date_system": "1900",
+      "cell": "A5",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "u64_overflow_zero_then_div0-1900",
+      "date_system": "1900",
+      "cell": "A6",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,0,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "input_over_bound_then_zero-1900",
+      "date_system": "1900",
+      "cell": "A7",
+      "formula": "=LCM(POWER(2,54),0)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "zero_before_input_over_bound-1900",
+      "date_system": "1900",
+      "cell": "A8",
+      "formula": "=LCM(0,POWER(2,54))",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "u64_overflow-1904",
+      "date_system": "1904",
+      "cell": "A1",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,1)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "u64_overflow_then_zero-1904",
+      "date_system": "1904",
+      "cell": "A2",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,0)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "zero_before_u64_overflow-1904",
+      "date_system": "1904",
+      "cell": "A3",
+      "formula": "=LCM(0,POWER(2,52),POWER(2,52)-1)",
+      "cache_type": "n",
+      "cache_value": "0"
+    },
+    {
+      "id": "u64_overflow_then_div0-1904",
+      "date_system": "1904",
+      "cell": "A4",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "u64_overflow_then_bool-1904",
+      "date_system": "1904",
+      "cell": "A5",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,TRUE)",
+      "cache_type": "e",
+      "cache_value": "#VALUE!"
+    },
+    {
+      "id": "u64_overflow_zero_then_div0-1904",
+      "date_system": "1904",
+      "cell": "A6",
+      "formula": "=LCM(POWER(2,52),POWER(2,52)-1,0,1/0)",
+      "cache_type": "e",
+      "cache_value": "#DIV/0!"
+    },
+    {
+      "id": "input_over_bound_then_zero-1904",
+      "date_system": "1904",
+      "cell": "A7",
+      "formula": "=LCM(POWER(2,54),0)",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    },
+    {
+      "id": "zero_before_input_over_bound-1904",
+      "date_system": "1904",
+      "cell": "A8",
+      "formula": "=LCM(0,POWER(2,54))",
+      "cache_type": "e",
+      "cache_value": "#NUM!"
+    }
+  ]
+}

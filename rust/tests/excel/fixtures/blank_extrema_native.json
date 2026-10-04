@@ -1,0 +1,5937 @@
+{
+  "schema_version": 1,
+  "kind": "p5_blank_extrema_native_evidence",
+  "report": "rust/target/excel-desktop/p5-blank-extrema-native/results.json",
+  "report_sha256": "9fc2969a402fdb41383b9805225c40f4b8840c8e862782e40bc238d1eca073e7",
+  "manifest": ".scratch/p5-blank-extrema-inputs-v2/cases.json",
+  "manifest_sha256": "fe8e8664a34838774661e971c57ce5988680335b5d6fd4b6a9ea4073c16f313d",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_cache_equal": 204,
+  "source_cells": {
+    "Values": {
+      "A1": 0,
+      "A2": 2,
+      "A3": -3,
+      "A4": 10,
+      "A5": "5",
+      "A6": true,
+      "A8": 1.00000000000001,
+      "A12": false,
+      "B1": "x",
+      "B2": "x",
+      "B3": "y",
+      "B4": "y",
+      "B5": "x",
+      "B6": "x",
+      "B8": "x",
+      "B9": "x",
+      "B11": "x",
+      "B12": "x",
+      "C1": 1,
+      "C2": 1,
+      "C3": 2,
+      "C4": 2,
+      "C5": 1,
+      "C6": 1,
+      "C8": 2,
+      "C9": 1,
+      "C10": 1,
+      "E1": 1,
+      "E2": 1.00000000000001,
+      "E3": 1.00000000000002,
+      "F1": "x",
+      "F2": "x",
+      "F3": "y"
+    }
+  },
+  "source_formulas": {
+    "A9": "1/0",
+    "A10": "IF(TRUE,\"\",1)",
+    "B10": "IF(TRUE,\"\",1)"
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "d6450db4cafe49daa4ee72fb4a51e52d073b51c7e1a42b1c115032ffdad8f319",
+      "cases": 51,
+      "physical_formula_cells": 51
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "7f620a83101853005fe3a0a7842a91c97a4a5c520c28c63793d530e5afb22219",
+      "cases": 51,
+      "physical_formula_cells": 51
+    }
+  ],
+  "cases": [
+    {
+      "id": "source-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "A9",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-empty-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "A10",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A10",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "criterion-empty-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "B10",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-mixed-column-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COUNTBLANK(Values!A1:A12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "mixed-column"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1:A12)",
+        "formula2": "=COUNTBLANK(Values!A1:A12)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1:A12)",
+        "formula2": "=COUNTBLANK(Values!A1:A12)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "COUNTBLANK(Values!A1:A12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-mixed-rectangle-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COUNTBLANK(Values!A1:C12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "mixed-rectangle"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1:C12)",
+        "formula2": "=COUNTBLANK(Values!A1:C12)",
+        "value2": {
+          "variant": "float",
+          "value": 8.0,
+          "hex": "0x1.0000000000000p+3",
+          "ieee754_hex": "4020000000000000",
+          "classification": "finite"
+        },
+        "display": "8",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1:C12)",
+        "formula2": "=COUNTBLANK(Values!A1:C12)",
+        "value2": {
+          "variant": "float",
+          "value": 8.0,
+          "hex": "0x1.0000000000000p+3",
+          "ieee754_hex": "4020000000000000",
+          "classification": "finite"
+        },
+        "display": "8",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "8",
+        "formula_text": "COUNTBLANK(Values!A1:C12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-empty-run-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COUNTBLANK(Values!D1:D12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "empty-run"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!D1:D12)",
+        "formula2": "=COUNTBLANK(Values!D1:D12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!D1:D12)",
+        "formula2": "=COUNTBLANK(Values!D1:D12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "COUNTBLANK(Values!D1:D12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-absent-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COUNTBLANK(Values!A7)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-absent"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A7)",
+        "formula2": "=COUNTBLANK(Values!A7)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A7)",
+        "formula2": "=COUNTBLANK(Values!A7)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTBLANK(Values!A7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-formula-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COUNTBLANK(Values!A10)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-formula-empty"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A10)",
+        "formula2": "=COUNTBLANK(Values!A10)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A10)",
+        "formula2": "=COUNTBLANK(Values!A10)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTBLANK(Values!A10)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COUNTBLANK(Values!A1)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-zero"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1)",
+        "formula2": "=COUNTBLANK(Values!A1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1)",
+        "formula2": "=COUNTBLANK(Values!A1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-false-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "COUNTBLANK(Values!A12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-false"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A12)",
+        "formula2": "=COUNTBLANK(Values!A12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A12)",
+        "formula2": "=COUNTBLANK(Values!A12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "COUNTBLANK(Values!A9)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-error"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A9)",
+        "formula2": "=COUNTBLANK(Values!A9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A9)",
+        "formula2": "=COUNTBLANK(Values!A9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-grouped-range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "COUNTBLANK((Values!A1:A12))",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "grouped-range"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK((Values!A1:A12))",
+        "formula2": "=COUNTBLANK((Values!A1:A12))",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK((Values!A1:A12))",
+        "formula2": "=COUNTBLANK((Values!A1:A12))",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "COUNTBLANK((Values!A1:A12))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-full-column-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "COUNTBLANK(Values!D:D)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "full-column"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!D:D)",
+        "formula2": "=COUNTBLANK(Values!D:D)",
+        "value2": {
+          "variant": "float",
+          "value": 1048576.0,
+          "hex": "0x1.0000000000000p+20",
+          "ieee754_hex": "4130000000000000",
+          "classification": "finite"
+        },
+        "display": "1048576",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!D:D)",
+        "formula2": "=COUNTBLANK(Values!D:D)",
+        "value2": {
+          "variant": "float",
+          "value": 1048576.0,
+          "hex": "0x1.0000000000000p+20",
+          "ieee754_hex": "4130000000000000",
+          "classification": "finite"
+        },
+        "display": "1048576",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1048576",
+        "formula_text": "COUNTBLANK(Values!D:D)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-match-x-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "match-x"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-match-y-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "match-y"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-no-match-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "no-match"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-blank-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "blank-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-nonblank-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "nonblank-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-wildcard-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "wildcard"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-criterion-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "criterion-reference"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-numeric-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "numeric-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-two-criteria-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "two-criteria"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-two-criteria-reverse-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "two-criteria-reverse"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-error"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-unselected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "unselected-error"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-formula-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "_xlfn.MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-formula-empty"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-absent-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "_xlfn.MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-absent"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-boolean-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "_xlfn.MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-boolean"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-mismatched-height-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "mismatched-height"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-mismatched-width-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "mismatched-width"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-empty-extent-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "_xlfn.MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "empty-extent"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-close-values-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "close-values"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-match-x-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "match-x"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-match-y-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "match-y"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-no-match-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "no-match"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-blank-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "blank-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-nonblank-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "nonblank-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-wildcard-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "wildcard"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-criterion-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "criterion-reference"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-numeric-criterion-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "numeric-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-two-criteria-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "two-criteria"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-two-criteria-reverse-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "two-criteria-reverse"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-error"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-unselected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "unselected-error"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-formula-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "_xlfn.MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-formula-empty"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-absent-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "_xlfn.MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-absent"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-boolean-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "_xlfn.MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-boolean"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-mismatched-height-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "mismatched-height"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-mismatched-width-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "mismatched-width"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-empty-extent-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "_xlfn.MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "empty-extent"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-close-values-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "_xlfn.MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "close-values"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "A9",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-empty-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "A10",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A10",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "criterion-empty-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "B10",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-mixed-column-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COUNTBLANK(Values!A1:A12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "mixed-column"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1:A12)",
+        "formula2": "=COUNTBLANK(Values!A1:A12)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1:A12)",
+        "formula2": "=COUNTBLANK(Values!A1:A12)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "COUNTBLANK(Values!A1:A12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-mixed-rectangle-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COUNTBLANK(Values!A1:C12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "mixed-rectangle"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1:C12)",
+        "formula2": "=COUNTBLANK(Values!A1:C12)",
+        "value2": {
+          "variant": "float",
+          "value": 8.0,
+          "hex": "0x1.0000000000000p+3",
+          "ieee754_hex": "4020000000000000",
+          "classification": "finite"
+        },
+        "display": "8",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1:C12)",
+        "formula2": "=COUNTBLANK(Values!A1:C12)",
+        "value2": {
+          "variant": "float",
+          "value": 8.0,
+          "hex": "0x1.0000000000000p+3",
+          "ieee754_hex": "4020000000000000",
+          "classification": "finite"
+        },
+        "display": "8",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "8",
+        "formula_text": "COUNTBLANK(Values!A1:C12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-empty-run-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COUNTBLANK(Values!D1:D12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "empty-run"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!D1:D12)",
+        "formula2": "=COUNTBLANK(Values!D1:D12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!D1:D12)",
+        "formula2": "=COUNTBLANK(Values!D1:D12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "COUNTBLANK(Values!D1:D12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-absent-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COUNTBLANK(Values!A7)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-absent"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A7)",
+        "formula2": "=COUNTBLANK(Values!A7)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A7)",
+        "formula2": "=COUNTBLANK(Values!A7)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTBLANK(Values!A7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-formula-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COUNTBLANK(Values!A10)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-formula-empty"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A10)",
+        "formula2": "=COUNTBLANK(Values!A10)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A10)",
+        "formula2": "=COUNTBLANK(Values!A10)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTBLANK(Values!A10)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COUNTBLANK(Values!A1)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-zero"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A1)",
+        "formula2": "=COUNTBLANK(Values!A1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A1)",
+        "formula2": "=COUNTBLANK(Values!A1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-false-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "COUNTBLANK(Values!A12)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-false"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A12)",
+        "formula2": "=COUNTBLANK(Values!A12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A12)",
+        "formula2": "=COUNTBLANK(Values!A12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-single-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "COUNTBLANK(Values!A9)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "single-error"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!A9)",
+        "formula2": "=COUNTBLANK(Values!A9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!A9)",
+        "formula2": "=COUNTBLANK(Values!A9)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTBLANK(Values!A9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-grouped-range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "COUNTBLANK((Values!A1:A12))",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "grouped-range"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK((Values!A1:A12))",
+        "formula2": "=COUNTBLANK((Values!A1:A12))",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK((Values!A1:A12))",
+        "formula2": "=COUNTBLANK((Values!A1:A12))",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "COUNTBLANK((Values!A1:A12))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "countblank-full-column-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "COUNTBLANK(Values!D:D)",
+      "shape": {
+        "kind": "blank_count",
+        "operand_shape": "full-column"
+      },
+      "actual": {
+        "formula": "=COUNTBLANK(Values!D:D)",
+        "formula2": "=COUNTBLANK(Values!D:D)",
+        "value2": {
+          "variant": "float",
+          "value": 1048576.0,
+          "hex": "0x1.0000000000000p+20",
+          "ieee754_hex": "4130000000000000",
+          "classification": "finite"
+        },
+        "display": "1048576",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTBLANK(Values!D:D)",
+        "formula2": "=COUNTBLANK(Values!D:D)",
+        "value2": {
+          "variant": "float",
+          "value": 1048576.0,
+          "hex": "0x1.0000000000000p+20",
+          "ieee754_hex": "4130000000000000",
+          "classification": "finite"
+        },
+        "display": "1048576",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1048576",
+        "formula_text": "COUNTBLANK(Values!D:D)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-match-x-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "match-x"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-match-y-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "match-y"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-no-match-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "no-match"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-blank-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "blank-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-nonblank-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "nonblank-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-wildcard-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "wildcard"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-criterion-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "criterion-reference"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-numeric-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "numeric-criterion"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-two-criteria-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "two-criteria"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-two-criteria-reverse-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "two-criteria-reverse"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-error"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-unselected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "unselected-error"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": 10.0,
+          "hex": "0x1.4000000000000p+3",
+          "ieee754_hex": "4024000000000000",
+          "classification": "finite"
+        },
+        "display": "10",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "10",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-formula-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "_xlfn.MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-formula-empty"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-absent-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "_xlfn.MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-absent"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-selected-boolean-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "_xlfn.MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "selected-boolean"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-mismatched-height-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "mismatched-height"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-mismatched-width-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "mismatched-width"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MAXIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-empty-extent-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "_xlfn.MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "empty-extent"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MAXIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "maxifs-close-values-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MAXIFS",
+        "operand_shape": "close-values"
+      },
+      "actual": {
+        "formula": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MAXIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-match-x-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "match-x"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-match-y-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "match-y"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-no-match-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "no-match"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"z\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-blank-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "blank-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-nonblank-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "nonblank-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-wildcard-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "wildcard"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-criterion-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "criterion-reference"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-numeric-criterion-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,1)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "numeric-criterion"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-two-criteria-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "two-criteria"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B8,\"x\",Values!C1:C8,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-two-criteria-reverse-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "two-criteria-reverse"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.00000000000001,
+          "hex": "0x1.000000000002dp+0",
+          "ieee754_hex": "3ff000000000002d",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.00000000000001",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!C1:C8,2,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-error"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-unselected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "unselected-error"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula2": "=MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "value2": {
+          "variant": "float",
+          "value": -3.0,
+          "hex": "-0x1.8000000000000p+1",
+          "ieee754_hex": "c008000000000000",
+          "classification": "finite"
+        },
+        "display": "-3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-3",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A9,Values!B1:B9,\"y\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-formula-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "_xlfn.MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-formula-empty"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula2": "=MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A10:A10,Values!B10:B10,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-absent-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "_xlfn.MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-absent"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula2": "=MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A11:A11,Values!B11:B11,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-selected-boolean-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "_xlfn.MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "selected-boolean"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula2": "=MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!A12:A12,Values!B12:B12,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-mismatched-height-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "mismatched-height"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:B7,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-mismatched-width-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "_xlfn.MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "mismatched-width"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula2": "=MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.MINIFS(Values!A1:A8,Values!B1:C8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-empty-extent-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "_xlfn.MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "empty-extent"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula2": "=MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.MINIFS(Values!D1:D8,Values!B1:B8,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "minifs-close-values-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "_xlfn.MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+      "shape": {
+        "kind": "conditional_extrema",
+        "function": "_xlfn.MINIFS",
+        "operand_shape": "close-values"
+      },
+      "actual": {
+        "formula": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula2": "=MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.MINIFS(Values!E1:E3,Values!F1:F3,\"x\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    }
+  ]
+}

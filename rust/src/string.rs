@@ -2554,6 +2554,73 @@ mod scalars {
             self.text.as_str()
         }
 
+        /// Unicode lowercase, sharing unchanged text and keeping short ASCII
+        /// output inline. Non-ASCII changes retain Rust's context-aware mapping.
+        pub(crate) fn lowercase(&self) -> Self {
+            self.cased(false)
+        }
+
+        /// Unicode uppercase with the same compact ownership as lowercase.
+        pub(crate) fn uppercase(&self) -> Self {
+            self.cased(true)
+        }
+
+        fn cased(&self, upper: bool) -> Self {
+            let text = self.as_str();
+            let unchanged = if text.is_ascii() {
+                !text.bytes().any(|byte| if upper { byte.is_ascii_lowercase() } else { byte.is_ascii_uppercase() })
+            } else {
+                text.chars().all(|character| {
+                    if upper { character.to_uppercase().eq(std::iter::once(character)) }
+                    else { character.to_lowercase().eq(std::iter::once(character)) }
+                })
+            };
+            if unchanged { return self.clone(); }
+            if text.is_ascii() {
+                let mut output = smol_str::SmolStrBuilder::new();
+                for byte in text.bytes() {
+                    output.push(char::from(if upper { byte.to_ascii_uppercase() } else { byte.to_ascii_lowercase() }));
+                }
+                Self::from(output.finish())
+            } else {
+                // Per-character lowercase loses contextual final sigma. Keep
+                // the standard whole-string mapping for every Unicode change.
+                Self::from(if upper { text.to_uppercase() } else { text.to_lowercase() })
+            }
+        }
+
+        /// Whether a non-ASCII scalar has a Unicode case mapping. Callers
+        /// with a narrower case policy can refuse before invoking that mapping.
+        pub(crate) fn has_non_ascii_case(&self) -> bool {
+            self.as_str().chars().any(|character| !character.is_ascii()
+                && (!character.to_lowercase().eq(std::iter::once(character))
+                    || !character.to_uppercase().eq(std::iter::once(character))))
+        }
+
+        /// Map ASCII letters at Unicode letter boundaries, preserving other
+        /// scalars and sharing unchanged storage. Locale-sensitive mappings
+        /// are the caller's intake decision.
+        pub(crate) fn ascii_titlecase(&self) -> Self {
+            let text = self.as_str();
+            let mut initial = true;
+            let mut map = |character: char| {
+                let mapped = if initial { character.to_ascii_uppercase() }
+                    else { character.to_ascii_lowercase() };
+                initial = !character.is_alphabetic();
+                mapped
+            };
+            let mut characters = text.char_indices();
+            let Some((at, first)) = characters.find_map(|(at, character)| {
+                let mapped = map(character);
+                (mapped != character).then_some((at, mapped))
+            }) else { return self.clone(); };
+            let mut output = smol_str::SmolStrBuilder::new();
+            output.push_str(&text[..at]);
+            output.push(first);
+            for (_, character) in characters { output.push(map(character)); }
+            Self::from(output.finish())
+        }
+
         /// Borrow the UTF-8 window between Unicode scalar positions.
         ///
         /// Indices are zero-based `char` positions, not UTF-16 code units or

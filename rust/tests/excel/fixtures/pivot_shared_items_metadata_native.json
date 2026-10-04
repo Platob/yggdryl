@@ -1,0 +1,514 @@
+{
+  "schema_version": 1,
+  "kind": "p6_shared_items_metadata_native_observations",
+  "raw_reports_retained": true,
+  "rust_equivalence_checked": false,
+  "runs": [
+    {
+      "epoch": "1900",
+      "source_sha256": "583b568acc36908eb4b735293bdcd52dc9bdd4deb8547db0cc4dacdfd87ae07d",
+      "manifest_sha256": "a6a393b7f46fad560898898148d73f27caffbde294237a5aa06285f8bdb0315a",
+      "report_sha256": "276e0d275ee379eaf1eff40e97686399230fcecf9ff9e193e7a4ede1e6d42eae",
+      "saved_sha256": "b8deb3b8a6c2b19a30cd1ed262fd4a40ce60630d5f120c45e2f36d7450a2b71e",
+      "native_passed": true,
+      "cleanup_completed": true,
+      "cases": [
+        {
+          "id": "integer_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsString": "0",
+            "containsNumber": "1",
+            "containsInteger": "1",
+            "minValue": "-1",
+            "maxValue": "1",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "0"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fraction_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsString": "0",
+            "containsNumber": "1",
+            "minValue": "-1.5",
+            "maxValue": "4",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1.5"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "0.25"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "boolean_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "count": "2"
+          },
+          "items": [
+            {
+              "kind": "b",
+              "attributes": {
+                "v": "0"
+              }
+            },
+            {
+              "kind": "b",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "date_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "14"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsNonDate": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "minDate": "1900-02-27T00:00:00",
+            "maxDate": "1900-03-02T00:00:00",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-02-27T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-02-28T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-03-01T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "date_blank",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsNonDate": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "containsBlank": "1",
+            "minDate": "1900-02-27T00:00:00",
+            "maxDate": "1900-03-02T00:00:00",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "m",
+              "attributes": {}
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-02-27T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-03-01T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "number_date",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "containsMixedTypes": "1",
+            "minDate": "1900-01-05T09:18:04",
+            "maxDate": "1900-03-01T00:00:00",
+            "count": "4"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "59"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-02-27T00:00:00"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "60"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1900-02-28T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "number_text",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsMixedTypes": "1",
+            "containsNumber": "1",
+            "containsInteger": "1",
+            "minValue": "-1",
+            "maxValue": "1",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "s",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "epoch": "1904",
+      "source_sha256": "0907e5cfaa487fe52d1472b3ac611c9c10136ec4fd13c4f5ed3da2eea8af2926",
+      "manifest_sha256": "ff17526b71e4edbc84f8cb6bb2f7a622f642ce1a5aa129b1647270a7bcabd51c",
+      "report_sha256": "fccd8e0d3c7c65da3fb764aad83e83abfa4c4f2201b2b580b548d755ee178cdd",
+      "saved_sha256": "24438c9dd0c1ede7d9d3155e09856a0caec7d18afc8f20b817fed7dca9f5e917",
+      "native_passed": true,
+      "cleanup_completed": true,
+      "cases": [
+        {
+          "id": "integer_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsString": "0",
+            "containsNumber": "1",
+            "containsInteger": "1",
+            "minValue": "-1",
+            "maxValue": "1",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "0"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "fraction_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsString": "0",
+            "containsNumber": "1",
+            "minValue": "-1.5",
+            "maxValue": "4",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1.5"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "0.25"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "boolean_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "count": "2"
+          },
+          "items": [
+            {
+              "kind": "b",
+              "attributes": {
+                "v": "0"
+              }
+            },
+            {
+              "kind": "b",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "date_only",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "14"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsNonDate": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "minDate": "1904-02-29T00:00:00",
+            "maxDate": "1904-03-03T00:00:00",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-02-29T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-03-01T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-03-02T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "date_blank",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsNonDate": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "containsBlank": "1",
+            "minDate": "1904-02-29T00:00:00",
+            "maxDate": "1904-03-03T00:00:00",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "m",
+              "attributes": {}
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-02-29T00:00:00"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-03-02T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "number_date",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsSemiMixedTypes": "0",
+            "containsDate": "1",
+            "containsString": "0",
+            "containsMixedTypes": "1",
+            "minDate": "1904-01-06T09:18:04",
+            "maxDate": "1904-03-02T00:00:00",
+            "count": "4"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "59"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-02-29T00:00:00"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "60"
+              }
+            },
+            {
+              "kind": "d",
+              "attributes": {
+                "v": "1904-03-01T00:00:00"
+              }
+            }
+          ]
+        },
+        {
+          "id": "number_text",
+          "cache_field_attributes": {
+            "name": "Group",
+            "numFmtId": "0"
+          },
+          "shared_attributes": {
+            "containsMixedTypes": "1",
+            "containsNumber": "1",
+            "containsInteger": "1",
+            "minValue": "-1",
+            "maxValue": "1",
+            "count": "3"
+          },
+          "items": [
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "s",
+              "attributes": {
+                "v": "-1"
+              }
+            },
+            {
+              "kind": "n",
+              "attributes": {
+                "v": "1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

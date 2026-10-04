@@ -28,6 +28,7 @@ use super::formula::Formula;
 use super::layout::{ColumnFormat, Frozen, RowFormats};
 use super::names::DefinedName;
 use super::parser::FormulaAttributes;
+use super::pivot::PivotSpec;
 use super::sheet::{Sheet, SheetState};
 use super::shift::{Axis, Band};
 use super::style::{
@@ -43,6 +44,12 @@ pub struct Restore {
     /// The workbook whose sheet keys, package parts and original XFs these are.
     workbook: u64,
     pub(crate) steps: Vec<Step>,
+    // The authored operation proves whether its inverse affects values.
+    calculation_relevant: bool,
+    // A calculated undo binds its authored inverse to this same receipt.
+    // Public Batch composition cannot detach one from the other.
+    paired: Option<Box<Edit>>,
+    paired_before: bool,
     /// Meanings of the distinct appended styles retained by these steps.
     pub(crate) styles: StyleBindings,
 }
@@ -53,19 +60,32 @@ impl Restore {
         Self {
             workbook: workbook.id,
             steps: Vec::new(),
+            calculation_relevant: true,
+            paired: None,
+            paired_before: false,
             styles: StyleBindings::default(),
         }
     }
 
     /// Refuse workbook-local identities before any target read or mutation.
     pub(crate) fn check_origin(&self, workbook: &Workbook) -> Result<()> {
-        workbook.check_undo_origin(self.workbook)
+        workbook.check_undo_origin(self.workbook)?;
+        if let Some(paired) = self.paired.as_deref() {
+            paired.check_origin(workbook)?;
+        }
+        Ok(())
     }
 
     /// Whether it puts nothing back.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.steps.is_empty()
+        self.steps.is_empty() && self.paired.is_none()
+    }
+
+    /// A calculated cache receipt is the one inverse that restores a prior
+    /// pass instead of scheduling another one.
+    fn restores_calculation(&self) -> bool {
+        self.steps.iter().any(|step| matches!(step, Step::Calculation { .. }))
     }
 
     /// An estimate of the bytes it holds, which the journal's bound counts.
@@ -73,7 +93,9 @@ impl Restore {
     pub fn byte_size(&self) -> usize {
         self.steps.iter().map(Step::byte_size).sum::<usize>()
             + self.styles.byte_size()
+            + self.paired.as_ref().map_or(0, |edit| edit.byte_size())
             + std::mem::size_of::<u64>()
+            + std::mem::size_of::<bool>()
     }
 
     pub(crate) fn push(&mut self, step: Step) {
@@ -296,6 +318,12 @@ pub(crate) enum Step {
     /// The presence and bytes each part beside the sheets held: what an
     /// undo restores, whatever a save made of the member since.
     Overrides(Vec<PartRestore>),
+    /// The exact clock ordinal and last published formula status. Derived
+    /// graph edges are rebuilt after restoration, not retained in an undo.
+    Calculation {
+        pass: u64,
+        status: Option<super::formula::Recalculation>,
+    },
 }
 
 impl Step {
@@ -323,6 +351,14 @@ impl Step {
             Self::Names(names) => names.len() * 256,
             Self::Views(views) => views.len() * std::mem::size_of::<View>(),
             Self::Overrides(parts) => parts.iter().map(PartRestore::byte_size).sum(),
+            Self::Calculation { status, .. } => {
+                std::mem::size_of::<u64>()
+                    + status.as_ref().map_or(0, |status| {
+                        std::mem::size_of::<super::formula::Recalculation>()
+                            + status.circular.len()
+                                * (std::mem::size_of::<SmolStr>() + std::mem::size_of::<CellRef>())
+                    })
+            }
         }
     }
 }
@@ -540,6 +576,16 @@ pub enum Edit {
         destination: Landing,
         cells: Box<Sheet>,
     },
+    /// Create a tabular pivot at `anchor` in an existing worksheet.
+    PivotCreate { spec: PivotSpec, sheet: SmolStr, anchor: CellRef },
+    /// Recompute one editable pivot from its authored source.
+    PivotRefresh { sheet: SmolStr, name: SmolStr },
+    /// Refresh every pivot in package order as one atomic edit and inverse.
+    PivotRefreshAll,
+    /// Change one editable pivot specification while retaining its part identity.
+    PivotUpdate { sheet: SmolStr, name: SmolStr, spec: PivotSpec },
+    /// Remove one pivot's output and its last-owner package parts.
+    PivotRemove { sheet: SmolStr, name: SmolStr },
     /// Every edit in order, as one: all or none, one undo.
     Batch(Vec<Edit>),
     /// Put each cell - or take it out, for `None`: an inverse only, refused
@@ -576,6 +622,12 @@ pub struct Applied {
     pub styles: bool,
     /// An estimate of the bytes the inverse holds.
     pub bytes: usize,
+    /// Formula work and current held/circular status after this transaction.
+    /// An inverse restores prior caches without evaluating a formula again.
+    pub calc: super::formula::Recalculation,
+    /// A source fact from the operation that was applied, combined by Batch.
+    /// Pane and tab visibility have no formula-value effect.
+    calculation_relevant: bool,
     /// What the edit answers: the range pasted, the cells replaced, ...
     pub result: Scalar,
 }
@@ -608,7 +660,10 @@ impl Workbook {
     /// Apply `edit`, answering what it did and the edit undoing it.
     ///
     /// An edit is all or nothing: a refusal leaves the workbook as it was.
-    /// Formulas are not recalculated here.
+    /// Formula values affected by the edit are recalculated once after the
+    /// outermost batch. Metadata-only edits leave cold formula sheets unread.
+    /// Undo and redo restore cached values and pass status without another
+    /// volatile draw.
     ///
     /// ```
     /// use yggdryl::excel::{Edit, Workbook};
@@ -630,19 +685,54 @@ impl Workbook {
     /// Returns the refusal of the method the edit names, before anything
     /// changes, [`Error::Conflict`] for an opaque inverse belonging to
     /// another workbook (including inside a batch), and [`Error::InvalidRecord`] for more than
-    /// [`MAX_EDITED_CELLS`] cells typed into at once.
+    /// [`MAX_EDITED_CELLS`] cells typed into at once, or a formula calculation
+    /// refusal after the authored edit, rolled back with its cache changes.
     pub fn apply(&mut self, edit: Edit) -> Result<Applied> {
         edit.check_origin(self)?;
+        let restores_calculation = edit.restores_calculation();
         let styles = self.style_count();
-        let mut applied = self.apply_edit(edit, Applying::Edit)?;
+        let mark = self.begin_batch();
+        let mut applied = match self.apply_edit(edit, Applying::Edit) {
+            Ok(applied) => applied,
+            Err(error) => {
+                self.rollback_batch(mark);
+                return Err(error);
+            }
+        };
+        if restores_calculation || !applied.calculation_relevant {
+            self.finish_batch(mark.start());
+            applied.calc = self.restored_calculation_status();
+        } else {
+            let prepared = self.prepare_calculation(super::formula::graph::PassKind::Incremental)
+                .and_then(|report| self.capture_prepared_calculation()
+                    .map(|(restore, touched)| (report, restore, touched)));
+            let (report, restore, calculated_touched) = match prepared {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    self.discard_prepared_calculation();
+                    self.begin_rollback();
+                    if let Some(inverse) = applied.inverse.take() {
+                        self.apply_edit(inverse, Applying::Rollback)
+                            .expect("a generated inverse has an infallible rollback path");
+                    }
+                    self.rollback_batch(mark);
+                    self.invalidate_calculation();
+                    return Err(error);
+                }
+            };
+            self.finish_batch(mark.start());
+            self.commit_prepared_calculation(&report);
+            applied.touched.extend(calculated_touched);
+            if let Some(inverse) = applied.inverse.take() {
+                let mut restore = restore;
+                restore.paired = Some(Box::new(inverse));
+                applied.inverse = Some(Edit::Restore(Box::new(restore)));
+            }
+            applied.calc = report;
+        }
         applied.styles |= self.style_count() != styles;
         applied.bytes = applied.inverse.as_ref().map_or(0, Edit::byte_size);
         Ok(applied)
-    }
-
-    /// How many cell formats the styles hold, `0` before they are read.
-    fn style_count(&self) -> usize {
-        self.style_sheet().map_or(0, super::styles::StyleSheet::len)
     }
 
     fn apply_edit(&mut self, edit: Edit, applying: Applying) -> Result<Applied> {
@@ -703,11 +793,22 @@ impl Workbook {
                 ranges,
                 patch,
             } => {
+                // Only the number format can change the typed temporal value
+                // observed by formulas. Appearance edits keep cold sheets cold.
+                let calculation_relevant =
+                    patch.number_format.is_some() || patch.decimals.is_some();
                 let steps = self.format_steps(&sheet, &ranges)?;
                 self.guarded(steps, |workbook| {
                     workbook.set_style(&sheet, &ranges, &patch)
                 })
-                .map(|inverse| touched(&sheet, ranges, inverse))
+                .map(|inverse| {
+                    let mut applied = touched(&sheet, ranges, inverse);
+                    if let Some(Edit::Restore(restore)) = &mut applied.inverse {
+                        restore.calculation_relevant = calculation_relevant;
+                    }
+                    applied.calculation_relevant = calculation_relevant;
+                    applied
+                })
             }
             Edit::InsertRows { sheet, at, count } => self.structural(
                 &sheet,
@@ -890,13 +991,15 @@ impl Workbook {
                 }
                 let held = self.sheet(&sheet)?.frozen();
                 self.sheet_mut(&sheet)?.set_frozen(frozen)?;
-                Ok(Applied::of(
+                let mut applied = Applied::of(
                     Some(Edit::Freeze {
                         sheet,
                         frozen: held,
                     }),
                     Vec::new(),
-                ))
+                );
+                applied.calculation_relevant = false;
+                Ok(applied)
             }
             Edit::Fill {
                 sheet,
@@ -1117,9 +1220,42 @@ impl Workbook {
                 let mut applied =
                     Applied::of(Some(Edit::SheetState { name, state: held }), Vec::new());
                 applied.sheets = true;
+                applied.calculation_relevant = false;
                 Ok(applied)
             }
             Edit::Land { destination, cells } => self.land(destination, *cells),
+            Edit::PivotCreate { spec, sheet, anchor } => {
+                let (range, restore) = self.add_pivot_owned(spec, &sheet, anchor)?;
+                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                result.result = range_result(range);
+                Ok(result)
+            }
+            Edit::PivotRefresh { sheet, name } => {
+                let (range, restore) = self.refresh_pivot_owned(&sheet, &name)?;
+                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                result.result = range_result(range);
+                Ok(result)
+            }
+            Edit::PivotRefreshAll => {
+                let edits = self.pivots()?.iter().map(|pivot| Edit::PivotRefresh {
+                    sheet: SmolStr::new(pivot.host_sheet()),
+                    name: SmolStr::new(pivot.name()),
+                }).collect();
+                self.apply_edit(Edit::Batch(edits), applying)
+            }
+            Edit::PivotUpdate { sheet, name, spec } => {
+                let (range, restore) = self.update_pivot_owned(&sheet, &name, spec)?;
+                let mut result =
+                    Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                result.result = range_result(range);
+                Ok(result)
+            }
+            Edit::PivotRemove { sheet, name } => {
+                let (range, restore) = self.remove_pivot_owned(&sheet, &name)?;
+                let mut result = Applied::of(Some(Edit::Restore(Box::new(restore))), vec![(sheet, range)]);
+                result.result = range_result(range);
+                Ok(result)
+            }
             Edit::Batch(edits) => {
                 if applying == Applying::Rollback {
                     for edit in edits {
@@ -1131,6 +1267,7 @@ impl Workbook {
                 let mark = self.begin_batch();
                 let mut inverses: Vec<Edit> = Vec::with_capacity(edits.len());
                 let mut all = Applied::of(None, Vec::new());
+                all.calculation_relevant = false;
                 let mut undoable = true;
                 for edit in edits {
                     match self.apply_edit(edit, Applying::Edit) {
@@ -1139,6 +1276,7 @@ impl Workbook {
                             all.structural |= applied.structural;
                             all.sheets |= applied.sheets;
                             all.styles |= applied.styles;
+                            all.calculation_relevant |= applied.calculation_relevant;
                             all.result = applied.result;
                             match applied.inverse {
                                 Some(inverse) => inverses.push(inverse),
@@ -1196,16 +1334,57 @@ impl Workbook {
                     })?;
                 self.structural(&sheet, restored.axis, restored.band, applying, false)
             }
-            Edit::Restore(restore) => {
+            Edit::Restore(mut restore) => {
+                if let Some(paired) = restore.paired.take() {
+                    let paired_before = restore.paired_before;
+                    let receipt = Edit::Restore(restore);
+                    let pair = if paired_before {
+                        vec![*paired, receipt]
+                    } else {
+                        vec![receipt, *paired]
+                    };
+                    let mut applied = self.apply_edit(Edit::Batch(pair), applying)?;
+                    if let Some(Edit::Batch(inverses)) = applied.inverse.take() {
+                        let mut inverses = inverses.into_iter();
+                        let first = inverses.next().expect("two generated inverses");
+                        let second = inverses.next().expect("two generated inverses");
+                        let (receipt, paired) = if paired_before {
+                            (first, second)
+                        } else {
+                            (second, first)
+                        };
+                        let Edit::Restore(mut receipt) = receipt else {
+                            unreachable!("the receipt's inverse is a receipt");
+                        };
+                        receipt.paired = Some(Box::new(paired));
+                        receipt.paired_before = !paired_before;
+                        applied.inverse = Some(Edit::Restore(receipt));
+                    }
+                    // This opaque pair restores caches and its authored inverse
+                    // together. Only fresh edits beside it need a new pass.
+                    applied.calculation_relevant = false;
+                    return Ok(applied);
+                }
                 if applying == Applying::Rollback {
                     self.commit_restore(*restore);
                     return Ok(Applied::of(None, Vec::new()));
                 }
+                let touched = if restore.restores_calculation() {
+                    restore.steps.iter().filter_map(|step| match step {
+                        Step::Cells { key, ranges, .. } => self.sheet_by_key(*key).map(|name| {
+                            ranges.iter().copied().map(move |range| (SmolStr::new(name), range))
+                        }),
+                        _ => None,
+                    }).flatten().collect()
+                } else { Vec::new() };
+                let calculation_relevant = restore.calculation_relevant;
                 let inverse = self.restore(*restore)?;
-                Ok(Applied::of(
+                let mut applied = Applied::of(
                     Some(Edit::Restore(Box::new(inverse))),
-                    Vec::new(),
-                ))
+                    touched,
+                );
+                applied.calculation_relevant = calculation_relevant;
+                Ok(applied)
             }
             Edit::RestoreSheet(restored) => {
                 if applying == Applying::Rollback {
@@ -1505,7 +1684,10 @@ impl Workbook {
     /// inverse of a [`Restore`] applied on its own.
     pub(crate) fn restore_inverse(&self, restore: &mut Restore) -> Result<Restore> {
         restore.check_origin(self)?;
-        let mut inverse = Restore::new(self);
+        let mut inverse = Restore {
+            calculation_relevant: restore.calculation_relevant,
+            ..Restore::new(self)
+        };
         for step in &mut restore.steps {
             let step = match step {
                 Step::Cells { key, ranges, .. } => {
@@ -1602,6 +1784,10 @@ impl Workbook {
                         })
                         .collect::<Result<_>>()?,
                 ),
+                Step::Calculation { .. } => {
+                    let (pass, status) = self.calculation_receipt();
+                    Step::Calculation { pass, status }
+                }
             };
             inverse.steps.push(step);
         }
@@ -1659,6 +1845,8 @@ impl Applied {
             sheets: false,
             styles: false,
             bytes: 0,
+            calc: super::formula::Recalculation::default(),
+            calculation_relevant: true,
             result: Scalar::Null,
         }
     }
@@ -1672,6 +1860,14 @@ impl RestoreSheet {
 }
 
 impl Edit {
+    fn restores_calculation(&self) -> bool {
+        match self {
+            Self::Restore(restore) => restore.restores_calculation(),
+            Self::Batch(edits) => !edits.is_empty() && edits.iter().all(Self::restores_calculation),
+            _ => false,
+        }
+    }
+
     /// Opaque inverses retain workbook-local identities. Check a complete
     /// batch before its first child can change values, styles or revisions.
     fn check_origin(&self, workbook: &Workbook) -> Result<()> {
@@ -1778,6 +1974,11 @@ impl Edit {
             } => SmolStr::new_static("Unhide Sheet"),
             Self::SheetState { .. } => SmolStr::new_static("Hide Sheet"),
             Self::Land { .. } => SmolStr::new_static("Get Data"),
+            Self::PivotCreate { .. } => SmolStr::new_static("Create Pivot Table"),
+            Self::PivotRefresh { .. } => SmolStr::new_static("Refresh Pivot Table"),
+            Self::PivotRefreshAll => SmolStr::new_static("Refresh All Pivot Tables"),
+            Self::PivotUpdate { .. } => SmolStr::new_static("Update Pivot Table"),
+            Self::PivotRemove { .. } => SmolStr::new_static("Remove Pivot Table"),
             Self::Batch(edits) => edits
                 .first()
                 .map_or_else(|| SmolStr::new_static("Edit"), Self::label),
@@ -2207,6 +2408,23 @@ impl Edit {
                 options: find_options(field, workbook)?,
                 replacement: SmolStr::new(field.need("replacement")?.text()?),
             },
+            "pivotCreate" => Self::PivotCreate {
+                spec: PivotSpec::from_scalar(field.need("spec")?.value)?,
+                sheet: sheet()?,
+                anchor: field.need("anchor")?.cell()?,
+            },
+            "pivotRefresh" => Self::PivotRefresh {
+                sheet: sheet()?, name: SmolStr::new(field.need("name")?.text()?),
+            },
+            "pivotRefreshAll" => Self::PivotRefreshAll,
+            "pivotUpdate" => Self::PivotUpdate {
+                sheet: sheet()?,
+                name: SmolStr::new(field.need("name")?.text()?),
+                spec: PivotSpec::from_scalar(field.need("spec")?.value)?,
+            },
+            "pivotRemove" => Self::PivotRemove {
+                sheet: sheet()?, name: SmolStr::new(field.need("name")?.text()?),
+            },
             "addSheet" => Self::AddSheet {
                 name: field
                     .given("name")
@@ -2248,7 +2466,7 @@ impl Edit {
                      insertRows, removeRows, insertColumns, removeColumns, rowHeight, \
                      columnWidth, hideRows, hideColumns, merge, unmerge, freeze, fill, sort, \
                      paste, pasteText, replace, addSheet, renameSheet, removeSheet, moveSheet, \
-                     sheetState, batch), got {other:?}"
+                     sheetState, pivotCreate, pivotRefresh, pivotRefreshAll, pivotUpdate, pivotRemove, batch), got {other:?}"
                 )));
             }
         })
@@ -2420,11 +2638,24 @@ pub mod internals {
         super::Edit::Restore(Box::new(restore))
     }
 
-    /// Exercise the core restore preflight without the edit dispatcher.
-    pub fn restore_direct(workbook: &mut Workbook, edit: super::Edit) -> crate::Result<()> {
-        match edit {
-            super::Edit::Restore(restore) => workbook.restore(*restore).map(|_| ()),
-            _ => Err(crate::Error::absent("restore edit", edit.label())),
+    /// Exercise the authored payload's core restore preflight without the
+    /// edit dispatcher. Automatic-calculation receipts wrap that payload;
+    /// the helper validates provenance, then discards only those wrappers.
+    pub fn restore_direct(workbook: &mut Workbook, mut edit: super::Edit) -> crate::Result<()> {
+        edit.check_origin(workbook)?;
+        loop {
+            match edit {
+                super::Edit::Restore(mut restore) => {
+                    if restore.restores_calculation()
+                        && let Some(paired) = restore.paired.take()
+                    {
+                        edit = *paired;
+                        continue;
+                    }
+                    return workbook.restore(*restore).map(|_| ());
+                }
+                other => return Err(crate::Error::absent("restore edit", other.label())),
+            }
         }
     }
 

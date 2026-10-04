@@ -1,0 +1,1219 @@
+{
+  "schema_version": 1,
+  "kind": "error_type_classic7",
+  "source_report": "rust/target/excel-desktop/p5-error-type-classic7-observed/results.json",
+  "source_report_sha256": "2c2362efa8033f81661ae7d580de20412463d4dbbb77cb2d5027cd333a54783a",
+  "manifest_sha256": "f32ac7ed0814c120c48033b0d5b1cad9b48097e86f37c34f67b6c7de42099946",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "8bf37b581fc3bbe19bf93a5cf21488f7ce4eae7b1f7d0f2c221b446897415b61",
+      "cases": 14,
+      "physical_formula_cells": 14
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "e536817b0085c3460ec61e0fbda4e0cc22efa76ad68d2b4dcd5a39577794552f",
+      "cases": 14,
+      "physical_formula_cells": 14
+    }
+  ],
+  "saved_workbooks": {
+    "1900": {
+      "file": "functions-cached-1900.xlsx",
+      "sha256": "a11564c539a7cbc45e91f2dcd21a13bb0987d53bb9ba11359551fdb31580a406",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "e",
+          "formula": "#NULL!",
+          "value_text": "#NULL!"
+        },
+        {
+          "cell": "A2",
+          "type": "e",
+          "formula": "#DIV/0!",
+          "value_text": "#DIV/0!"
+        },
+        {
+          "cell": "A3",
+          "type": "e",
+          "formula": "#VALUE!",
+          "value_text": "#VALUE!"
+        },
+        {
+          "cell": "A4",
+          "type": "e",
+          "formula": "#REF!",
+          "value_text": "#REF!"
+        },
+        {
+          "cell": "A5",
+          "type": "e",
+          "formula": "#NAME?",
+          "value_text": "#NAME?"
+        },
+        {
+          "cell": "A6",
+          "type": "e",
+          "formula": "#NUM!",
+          "value_text": "#NUM!"
+        },
+        {
+          "cell": "A7",
+          "type": "e",
+          "formula": "#N/A",
+          "value_text": "#N/A"
+        }
+      ]
+    },
+    "1904": {
+      "file": "functions-cached-1904.xlsx",
+      "sha256": "52ac2d2425967a0e95a5230e69757e58e2c9403b822e1fbed6d8e37db7ac6dac",
+      "cells": [
+        {
+          "cell": "A1",
+          "type": "e",
+          "formula": "#NULL!",
+          "value_text": "#NULL!"
+        },
+        {
+          "cell": "A2",
+          "type": "e",
+          "formula": "#DIV/0!",
+          "value_text": "#DIV/0!"
+        },
+        {
+          "cell": "A3",
+          "type": "e",
+          "formula": "#VALUE!",
+          "value_text": "#VALUE!"
+        },
+        {
+          "cell": "A4",
+          "type": "e",
+          "formula": "#REF!",
+          "value_text": "#REF!"
+        },
+        {
+          "cell": "A5",
+          "type": "e",
+          "formula": "#NAME?",
+          "value_text": "#NAME?"
+        },
+        {
+          "cell": "A6",
+          "type": "e",
+          "formula": "#NUM!",
+          "value_text": "#NUM!"
+        },
+        {
+          "cell": "A7",
+          "type": "e",
+          "formula": "#N/A",
+          "value_text": "#N/A"
+        }
+      ]
+    }
+  },
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": true,
+  "source_cells": [
+    {
+      "cell": "A1",
+      "formula": "=#NULL!",
+      "class": "classic"
+    },
+    {
+      "cell": "A2",
+      "formula": "=#DIV/0!",
+      "class": "classic"
+    },
+    {
+      "cell": "A3",
+      "formula": "=#VALUE!",
+      "class": "classic"
+    },
+    {
+      "cell": "A4",
+      "formula": "=#REF!",
+      "class": "classic"
+    },
+    {
+      "cell": "A5",
+      "formula": "=#NAME?",
+      "class": "classic"
+    },
+    {
+      "cell": "A6",
+      "formula": "=#NUM!",
+      "class": "classic"
+    },
+    {
+      "cell": "A7",
+      "formula": "=#N/A",
+      "class": "classic"
+    }
+  ],
+  "case_count": 28,
+  "cache_type_counts": {
+    "n": 28
+  },
+  "cases": [
+    {
+      "id": "error-type-direct-1-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B2",
+      "wire_formula": "ERROR.TYPE(#NULL!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NULL!",
+        "class": "classic",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ERROR.TYPE(#NULL!)",
+      "actual_formula2": "=ERROR.TYPE(#NULL!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NULL!)",
+      "after_save_formula2": "=ERROR.TYPE(#NULL!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "1",
+      "cache_formula_text": "ERROR.TYPE(#NULL!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-2-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B3",
+      "wire_formula": "ERROR.TYPE(#DIV/0!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#DIV/0!",
+        "class": "classic",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ERROR.TYPE(#DIV/0!)",
+      "actual_formula2": "=ERROR.TYPE(#DIV/0!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#DIV/0!)",
+      "after_save_formula2": "=ERROR.TYPE(#DIV/0!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "2",
+      "cache_formula_text": "ERROR.TYPE(#DIV/0!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-3-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "ERROR.TYPE(#VALUE!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#VALUE!",
+        "class": "classic",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ERROR.TYPE(#VALUE!)",
+      "actual_formula2": "=ERROR.TYPE(#VALUE!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#VALUE!)",
+      "after_save_formula2": "=ERROR.TYPE(#VALUE!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "3",
+      "cache_formula_text": "ERROR.TYPE(#VALUE!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-4-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "ERROR.TYPE(#REF!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#REF!",
+        "class": "classic",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ERROR.TYPE(#REF!)",
+      "actual_formula2": "=ERROR.TYPE(#REF!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#REF!)",
+      "after_save_formula2": "=ERROR.TYPE(#REF!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "4",
+      "cache_formula_text": "ERROR.TYPE(#REF!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-5-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B6",
+      "wire_formula": "ERROR.TYPE(#NAME?)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NAME?",
+        "class": "classic",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ERROR.TYPE(#NAME?)",
+      "actual_formula2": "=ERROR.TYPE(#NAME?)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NAME?)",
+      "after_save_formula2": "=ERROR.TYPE(#NAME?)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "5",
+      "cache_formula_text": "ERROR.TYPE(#NAME?)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-6-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B7",
+      "wire_formula": "ERROR.TYPE(#NUM!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NUM!",
+        "class": "classic",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ERROR.TYPE(#NUM!)",
+      "actual_formula2": "=ERROR.TYPE(#NUM!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NUM!)",
+      "after_save_formula2": "=ERROR.TYPE(#NUM!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "6",
+      "cache_formula_text": "ERROR.TYPE(#NUM!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-7-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "ERROR.TYPE(#N/A)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#N/A",
+        "class": "classic",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ERROR.TYPE(#N/A)",
+      "actual_formula2": "=ERROR.TYPE(#N/A)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#N/A)",
+      "after_save_formula2": "=ERROR.TYPE(#N/A)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "7",
+      "cache_formula_text": "ERROR.TYPE(#N/A)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-1-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B9",
+      "wire_formula": "ERROR.TYPE(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NULL!",
+        "class": "classic",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A1)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "1",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-2-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "ERROR.TYPE(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#DIV/0!",
+        "class": "classic",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A2)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A2)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A2)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "2",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-3-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B11",
+      "wire_formula": "ERROR.TYPE(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#VALUE!",
+        "class": "classic",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A3)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A3)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A3)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "3",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-4-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "ERROR.TYPE(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#REF!",
+        "class": "classic",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A4)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A4)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A4)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "4",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-5-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B13",
+      "wire_formula": "ERROR.TYPE(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NAME?",
+        "class": "classic",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A5)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A5)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A5)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "5",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-6-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B14",
+      "wire_formula": "ERROR.TYPE(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NUM!",
+        "class": "classic",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A6)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A6)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A6)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "6",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-7-1900",
+      "function": "ERROR.TYPE",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "ERROR.TYPE(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#N/A",
+        "class": "classic",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A7)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A7)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A7)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "7",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-1-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B2",
+      "wire_formula": "ERROR.TYPE(#NULL!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NULL!",
+        "class": "classic",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ERROR.TYPE(#NULL!)",
+      "actual_formula2": "=ERROR.TYPE(#NULL!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NULL!)",
+      "after_save_formula2": "=ERROR.TYPE(#NULL!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "1",
+      "cache_formula_text": "ERROR.TYPE(#NULL!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-2-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B3",
+      "wire_formula": "ERROR.TYPE(#DIV/0!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#DIV/0!",
+        "class": "classic",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ERROR.TYPE(#DIV/0!)",
+      "actual_formula2": "=ERROR.TYPE(#DIV/0!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#DIV/0!)",
+      "after_save_formula2": "=ERROR.TYPE(#DIV/0!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "2",
+      "cache_formula_text": "ERROR.TYPE(#DIV/0!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-3-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "ERROR.TYPE(#VALUE!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#VALUE!",
+        "class": "classic",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ERROR.TYPE(#VALUE!)",
+      "actual_formula2": "=ERROR.TYPE(#VALUE!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#VALUE!)",
+      "after_save_formula2": "=ERROR.TYPE(#VALUE!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "3",
+      "cache_formula_text": "ERROR.TYPE(#VALUE!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-4-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "ERROR.TYPE(#REF!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#REF!",
+        "class": "classic",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ERROR.TYPE(#REF!)",
+      "actual_formula2": "=ERROR.TYPE(#REF!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#REF!)",
+      "after_save_formula2": "=ERROR.TYPE(#REF!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "4",
+      "cache_formula_text": "ERROR.TYPE(#REF!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-5-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B6",
+      "wire_formula": "ERROR.TYPE(#NAME?)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NAME?",
+        "class": "classic",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ERROR.TYPE(#NAME?)",
+      "actual_formula2": "=ERROR.TYPE(#NAME?)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NAME?)",
+      "after_save_formula2": "=ERROR.TYPE(#NAME?)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "5",
+      "cache_formula_text": "ERROR.TYPE(#NAME?)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-6-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B7",
+      "wire_formula": "ERROR.TYPE(#NUM!)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#NUM!",
+        "class": "classic",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ERROR.TYPE(#NUM!)",
+      "actual_formula2": "=ERROR.TYPE(#NUM!)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#NUM!)",
+      "after_save_formula2": "=ERROR.TYPE(#NUM!)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "6",
+      "cache_formula_text": "ERROR.TYPE(#NUM!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-direct-7-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "ERROR.TYPE(#N/A)",
+      "parameters": {
+        "origin": "direct",
+        "error_literal": "#N/A",
+        "class": "classic",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ERROR.TYPE(#N/A)",
+      "actual_formula2": "=ERROR.TYPE(#N/A)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(#N/A)",
+      "after_save_formula2": "=ERROR.TYPE(#N/A)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "7",
+      "cache_formula_text": "ERROR.TYPE(#N/A)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-1-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B9",
+      "wire_formula": "ERROR.TYPE(Inputs!A1)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NULL!",
+        "class": "classic",
+        "source_cell": "A1"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A1)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A1)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "1",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-2-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "ERROR.TYPE(Inputs!A2)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#DIV/0!",
+        "class": "classic",
+        "source_cell": "A2"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A2)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A2)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A2)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A2)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "2",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-3-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B11",
+      "wire_formula": "ERROR.TYPE(Inputs!A3)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#VALUE!",
+        "class": "classic",
+        "source_cell": "A3"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A3)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A3)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A3)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A3)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "3",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A3)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-4-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "ERROR.TYPE(Inputs!A4)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#REF!",
+        "class": "classic",
+        "source_cell": "A4"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A4)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A4)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A4)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A4)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "4",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-5-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B13",
+      "wire_formula": "ERROR.TYPE(Inputs!A5)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NAME?",
+        "class": "classic",
+        "source_cell": "A5"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A5)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A5)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A5)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A5)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "5",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A5)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-6-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B14",
+      "wire_formula": "ERROR.TYPE(Inputs!A6)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#NUM!",
+        "class": "classic",
+        "source_cell": "A6"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A6)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A6)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A6)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A6)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 6.0,
+        "hex": "0x1.8000000000000p+2",
+        "ieee754_hex": "4018000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "6",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A6)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "error-type-reference-7-1904",
+      "function": "ERROR.TYPE",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "ERROR.TYPE(Inputs!A7)",
+      "parameters": {
+        "origin": "reference",
+        "error_literal": "#N/A",
+        "class": "classic",
+        "source_cell": "A7"
+      },
+      "actual_formula": "=ERROR.TYPE(Inputs!A7)",
+      "actual_formula2": "=ERROR.TYPE(Inputs!A7)",
+      "actual_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "after_save_formula": "=ERROR.TYPE(Inputs!A7)",
+      "after_save_formula2": "=ERROR.TYPE(Inputs!A7)",
+      "after_save_value2": {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_value_text": "7",
+      "cache_formula_text": "ERROR.TYPE(Inputs!A7)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ],
+  "rust_equivalence": {
+    "test": "workbook::error_type_classic7_native_cache_matches_28_cases",
+    "harness": "rust/tests/excel.rs",
+    "result": "passed",
+    "scope": "direct and referenced classic error literals; native typed cache equality",
+    "log": "handoff/local-p5-information-followup-green.log",
+    "log_sha256": "d9d01f182da1ea37c0479a4807ffe39234ca5db4b0c901a23067aa25ddab2936"
+  }
+}

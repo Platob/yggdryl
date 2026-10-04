@@ -282,3 +282,162 @@ fn counted_text_stops_where_its_number_no_longer_counts_and_counts_down_past_zer
         ["Item 02", "Item 01", "Item 00"]
     );
 }
+
+#[test]
+fn copying_exceptional_temporal_serials_preserves_source_bits() {
+    let source = crate::excel_package::one_sheet(
+        "<row r=\"1\"><c r=\"A1\" s=\"1\"><v>60</v></c>\
+         <c r=\"B1\" s=\"2\"><v>45292.000000001</v></c></row>",
+        &[], &[], &[0, 14, 22],
+    );
+    let mut workbook = Workbook::from_bytes(source).unwrap();
+    fill(&mut workbook, "A1:B1", "A1:B2", FillMode::Copy);
+    let part = crate::excel_package::member(&workbook, "xl/worksheets/sheet1.xml");
+    for (reference, expected) in [("A2", 60.0_f64), ("B2", "45292.000000001".parse::<f64>().unwrap())] {
+        let cell = part.split_once(&format!("<c r=\"{reference}\"")).unwrap().1.split_once("</c>").unwrap().0;
+        let actual: f64 = cell.split_once("<v>").unwrap().1.split_once("</v>").unwrap().0.parse().unwrap();
+        assert_eq!(actual.to_bits(), expected.to_bits(), "{reference}: {part}");
+    }
+}
+
+#[test]
+fn series_fallback_copy_keeps_a_formula_cache_serial() {
+    let source = crate::excel_package::one_sheet(
+        "<row r=\"1\"><c r=\"A1\" s=\"1\"><f>B1</f><v>60</v></c></row>",
+        &[], &[], &[0, 14],
+    );
+    let mut workbook = Workbook::from_bytes(source).unwrap();
+    fill(&mut workbook, "A1", "A1:A2", FillMode::Series);
+    let part = crate::excel_package::member(&workbook, "xl/worksheets/sheet1.xml");
+    let cell = part.split_once("<c r=\"A2\"").unwrap().1.split_once("</c>").unwrap().0;
+    assert!(cell.contains("<f>B2</f>"), "{part}");
+    assert!(cell.contains("<v>60</v>"), "{part}");
+}
+
+#[test]
+fn fill_series_matches_sixty_native_serial_observations() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/autofill_serial_native.json")).unwrap();
+    assert_eq!(fixture["cleanup_completed"], true);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 2);
+    for case in cases {
+        let year = case["date_system"].as_str().unwrap();
+        let data = "<row r=\"1\">\
+            <c r=\"A1\" s=\"1\"><v>59</v></c><c r=\"C1\" s=\"1\"><v>60</v></c>\
+            <c r=\"E1\"><v>59</v></c><c r=\"G1\" s=\"1\"><v>60</v></c>\
+            <c r=\"I1\" s=\"1\"><v>59</v></c><c r=\"M1\" s=\"1\"><v>59</v></c>\
+            <c r=\"O1\" s=\"1\"><v>45292.000000001</v></c>\
+            <c r=\"Q1\" s=\"1\"><v>45292.000000001</v></c></row>\
+            <row r=\"2\"><c r=\"A2\" s=\"1\"><v>60</v></c>\
+            <c r=\"E2\"><v>60</v></c><c r=\"M2\" s=\"1\"><v>61</v></c></row>\
+            <row r=\"3\"><c r=\"K3\" s=\"1\"><v>61</v></c></row>";
+        let types = crate::excel_package::content_types(1, false, true);
+        let root = crate::excel_package::root_relationships();
+        let book = crate::excel_package::workbook(&["Sheet1"], year == "1904");
+        let rels = crate::excel_package::workbook_relationships(1, false, true);
+        let sheet = crate::excel_package::worksheet(data);
+        let styles = crate::excel_package::styles(&[], &[0, 14]);
+        let bytes = crate::excel_package::package(&[
+            ("[Content_Types].xml", types.as_str()), ("_rels/.rels", root.as_str()),
+            ("xl/workbook.xml", book.as_str()), ("xl/_rels/workbook.xml.rels", rels.as_str()),
+            ("xl/worksheets/sheet1.xml", sheet.as_str()), ("xl/styles.xml", styles.as_str()),
+        ]);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        for (source, target, mode) in [
+            ("A1:A2", "A1:A4", FillMode::Series), ("C1", "C1:C3", FillMode::Series),
+            ("E1:E2", "E1:E4", FillMode::Series), ("G1", "G1:G3", FillMode::Copy),
+            ("I1", "I1:I3", FillMode::Series), ("K3", "K1:K3", FillMode::Series),
+            ("M1:M2", "M1:M4", FillMode::Series), ("O1", "O1:O3", FillMode::Series),
+            ("Q1", "Q1:Q3", FillMode::Copy),
+        ] {
+            fill(&mut workbook, source, target, mode);
+        }
+        let xml = crate::excel_package::member(&workbook, "xl/worksheets/sheet1.xml");
+        let cells = case["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 30);
+        for observation in cells {
+            let address = observation["cell"].as_str().unwrap();
+            let expected = u64::from_str_radix(
+                observation["saved_ieee754_hex"].as_str().unwrap(), 16,
+            ).unwrap();
+            let cell = xml.split_once(&format!("<c r=\"{address}\"")).unwrap().1
+                .split_once("</c>").unwrap().0;
+            let actual: f64 = cell.split_once("<v>").unwrap().1
+                .split_once("</v>").unwrap().0.parse().unwrap();
+            assert_eq!(actual.to_bits(), expected, "{year} {address}: {xml}");
+        }
+    }
+}
+
+
+#[test]
+fn fill_series_matches_fractional_date_native_observations() {
+    let fixture: serde_json::Value = serde_json::from_str(
+        include_str!("fixtures/autofill_fraction_native.json"),
+    ).unwrap();
+    assert_eq!(fixture["cleanup_completed"], true);
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 2);
+    for case in cases {
+        let year = case["date_system"].as_str().unwrap();
+        let data = "<row r=\"1\">\
+            <c r=\"S1\" s=\"1\"><v>45292.5</v></c>\
+            <c r=\"U1\" s=\"1\"><v>45292.001</v></c>\
+            <c r=\"W1\" s=\"1\"><v>45292.00000001158</v></c>\
+            <c r=\"Y1\" s=\"1\"><v>45292.00000001</v></c>\
+            <c r=\"AA1\" s=\"1\"><v>45292.5</v></c></row>\
+            <row r=\"2\"><c r=\"AA2\" s=\"1\"><v>45293.5</v></c></row>";
+        let types = crate::excel_package::content_types(1, false, true);
+        let root = crate::excel_package::root_relationships();
+        let book = crate::excel_package::workbook(&["Sheet1"], year == "1904");
+        let rels = crate::excel_package::workbook_relationships(1, false, true);
+        let sheet = crate::excel_package::worksheet(data);
+        let styles = crate::excel_package::styles(&[], &[0, 14]);
+        let bytes = crate::excel_package::package(&[
+            ("[Content_Types].xml", types.as_str()), ("_rels/.rels", root.as_str()),
+            ("xl/workbook.xml", book.as_str()), ("xl/_rels/workbook.xml.rels", rels.as_str()),
+            ("xl/worksheets/sheet1.xml", sheet.as_str()), ("xl/styles.xml", styles.as_str()),
+        ]);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        for (source, target) in [
+            ("S1", "S1:S3"), ("U1", "U1:U3"), ("W1", "W1:W3"),
+            ("Y1", "Y1:Y3"), ("AA1:AA2", "AA1:AA4"),
+        ] {
+            fill(&mut workbook, source, target, FillMode::Series);
+        }
+        let xml = crate::excel_package::member(&workbook, "xl/worksheets/sheet1.xml");
+        let cells = case["cells"].as_array().unwrap();
+        assert_eq!(cells.len(), 16);
+        for observation in cells {
+            let address = observation["cell"].as_str().unwrap();
+            let expected = u64::from_str_radix(
+                observation["saved_ieee754_hex"].as_str().unwrap(), 16,
+            ).unwrap();
+            let cell = xml.split_once(&format!("<c r=\"{address}\"")).unwrap().1
+                .split_once("</c>").unwrap().0;
+            let actual: f64 = cell.split_once("<v>").unwrap().1
+                .split_once("</v>").unwrap().0.parse().unwrap();
+            assert_eq!(actual.to_bits(), expected, "{year} {address}: {xml}");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn fill_round15_matches_previous_decimal_bits() {
+    use yggdryl::internals::excel_fill::round15_for_test;
+    for value in [
+        0.0, -0.0, 0.1, -0.1, 1.234_567_890_123_456,
+        1.0e-300, -1.0e300, f64::MIN_POSITIVE,
+        f64::from_bits(1), f64::MAX, f64::INFINITY,
+    ] {
+        let expected = if value == 0.0 || !value.is_finite() {
+            value
+        } else {
+            format!("{value:.14e}").parse().unwrap_or(value)
+        };
+        let actual = round15_for_test(value);
+        assert_eq!(actual.to_bits(), expected.to_bits(), "value={value:?}");
+    }
+}

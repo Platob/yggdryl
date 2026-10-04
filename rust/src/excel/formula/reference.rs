@@ -118,14 +118,6 @@ impl Target {
         Some(CellRange::new(first, last))
     }
 
-    /// Relative coordinates in a defined name need a proven name anchor;
-    /// cells share this question with the already-owned area classification.
-    pub(crate) fn is_relative(&self) -> bool {
-        match self {
-            Self::Cell { row, column } => !row.is_absolute() || !column.is_absolute(),
-            _ => self.is_relative_area(),
-        }
-    }
     /// Whether a rectangular or whole-axis reference changes coordinates with
     /// its implicit host. Cell references use the separate scalar cut policy.
     pub(crate) fn is_relative_area(&self) -> bool {
@@ -137,6 +129,14 @@ impl Target {
                 !first.is_absolute() || !last.is_absolute()
             }
             Self::Cell { .. } | Self::Name(_) | Self::Invalid => false,
+        }
+    }
+
+    #[cfg(feature = "internals")]
+    pub(crate) fn is_relative(&self) -> bool {
+        match self {
+            Self::Cell { row, column } => !row.is_absolute() || !column.is_absolute(),
+            _ => self.is_relative_area(),
         }
     }
 

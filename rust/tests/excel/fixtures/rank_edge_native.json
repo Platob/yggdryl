@@ -1,0 +1,2647 @@
+{
+  "schema_version": 1,
+  "kind": "p5_rank_edge_native_evidence",
+  "report": "rust/target/excel-desktop/p5-rank-edge-observed/results.json",
+  "report_sha256": "3a3ef4409912a78fae57863702d475cbaf7f7d415362cc5f309151150cd223a6",
+  "manifest": ".scratch/p5-rank-edge-inputs/cases.json",
+  "manifest_sha256": "6386e5e122ecd22d36c0d9aa791c92375d50b73676d5962eaea9f9a7aa0e7feb",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_cache_equal": 88,
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "6e2f4d8f716a436467446a4cd9cbbc4605eb4e6ef93ce9c7fad5ea85efbc2615",
+      "cases": 22,
+      "physical_formula_cells": 22
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "5e3e7c8e0c6efbd4b4b518da214459abb607405c2b5178ae31fb1c929ac5c9aa",
+      "cases": 22,
+      "physical_formula_cells": 22
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "A1": "abc",
+      "A2": true,
+      "B1": 3,
+      "B2": 3,
+      "B3": 2,
+      "B4": 2
+    }
+  },
+  "cases": [
+    {
+      "id": "error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "E1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "E1",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-no-numbers-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "MEDIAN(Values!A1:A3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-no-numbers"
+      },
+      "actual": {
+        "formula": "=MEDIAN(Values!A1:A3)",
+        "formula2": "=MEDIAN(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(Values!A1:A3)",
+        "formula2": "=MEDIAN(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "MEDIAN(Values!A1:A3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-direct-invalid-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "MEDIAN(\"abc\",2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-direct-invalid"
+      },
+      "actual": {
+        "formula": "=MEDIAN(\"abc\",2)",
+        "formula2": "=MEDIAN(\"abc\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(\"abc\",2)",
+        "formula2": "=MEDIAN(\"abc\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "MEDIAN(\"abc\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-signed-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "MEDIAN(0,-0)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-signed-zero"
+      },
+      "actual": {
+        "formula": "=MEDIAN(0,0)",
+        "formula2": "=MEDIAN(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(0,0)",
+        "formula2": "=MEDIAN(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MEDIAN(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-huge-pair-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "MEDIAN(9E307,9E307)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-huge-pair"
+      },
+      "actual": {
+        "formula": "=MEDIAN(9E+307,9E+307)",
+        "formula2": "=MEDIAN(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 9e+307,
+          "hex": "0x1.005419221015dp+1023",
+          "ieee754_hex": "7fe005419221015d",
+          "classification": "finite"
+        },
+        "display": "9E+307",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(9E+307,9E+307)",
+        "formula2": "=MEDIAN(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 9e+307,
+          "hex": "0x1.005419221015dp+1023",
+          "ieee754_hex": "7fe005419221015d",
+          "classification": "finite"
+        },
+        "display": "9E+307",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.0000000000000005E+307",
+        "formula_text": "MEDIAN(9E+307,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-large-pair-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "MEDIAN(1E200,1E200)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-large-pair"
+      },
+      "actual": {
+        "formula": "=MEDIAN(1E+200,1E+200)",
+        "formula2": "=MEDIAN(1E+200,1E+200)",
+        "value2": {
+          "variant": "float",
+          "value": 1e+200,
+          "hex": "0x1.4e718d7d7625ap+664",
+          "ieee754_hex": "6974e718d7d7625a",
+          "classification": "finite"
+        },
+        "display": "1E+200",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(1E+200,1E+200)",
+        "formula2": "=MEDIAN(1E+200,1E+200)",
+        "value2": {
+          "variant": "float",
+          "value": 1e+200,
+          "hex": "0x1.4e718d7d7625ap+664",
+          "ieee754_hex": "6974e718d7d7625a",
+          "classification": "finite"
+        },
+        "display": "1E+200",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9999999999999997E+199",
+        "formula_text": "MEDIAN(1E+200,1E+200)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-near-normal-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "MEDIAN(3E-308,2.5E-308)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-near-normal"
+      },
+      "actual": {
+        "formula": "=MEDIAN(3E-308,2.5E-308)",
+        "formula2": "=MEDIAN(3E-308,2.5E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5e-308,
+          "hex": "0x1.1fa182c40c60dp-1022",
+          "ieee754_hex": "0011fa182c40c60d",
+          "classification": "finite"
+        },
+        "display": "2.5E-308",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(3E-308,2.5E-308)",
+        "formula2": "=MEDIAN(3E-308,2.5E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5e-308,
+          "hex": "0x1.1fa182c40c60dp-1022",
+          "ieee754_hex": "0011fa182c40c60d",
+          "classification": "finite"
+        },
+        "display": "2.5E-308",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.4999999999999998E-308",
+        "formula_text": "MEDIAN(3E-308,2.5E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-cancel-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "MEDIAN(3E-308,-3E-308)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-cancel"
+      },
+      "actual": {
+        "formula": "=MEDIAN(3E-308,-3E-308)",
+        "formula2": "=MEDIAN(3E-308,-3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(3E-308,-3E-308)",
+        "formula2": "=MEDIAN(3E-308,-3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MEDIAN(3E-308,-3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-error-ref-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "MEDIAN(Values!E1,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-error-ref"
+      },
+      "actual": {
+        "formula": "=MEDIAN(Values!E1,2)",
+        "formula2": "=MEDIAN(Values!E1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(Values!E1,2)",
+        "formula2": "=MEDIAN(Values!E1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "MEDIAN(Values!E1,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-no-numbers-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "MODE(Values!A1:A3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-no-numbers"
+      },
+      "actual": {
+        "formula": "=MODE(Values!A1:A3)",
+        "formula2": "=MODE(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(Values!A1:A3)",
+        "formula2": "=MODE(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "MODE(Values!A1:A3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-direct-invalid-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "MODE(\"abc\",2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-direct-invalid"
+      },
+      "actual": {
+        "formula": "=MODE(\"abc\",2,2)",
+        "formula2": "=MODE(\"abc\",2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(\"abc\",2,2)",
+        "formula2": "=MODE(\"abc\",2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "MODE(\"abc\",2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-reverse-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "MODE(3,3,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE(3,3,2,2)",
+        "formula2": "=MODE(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(3,3,2,2)",
+        "formula2": "=MODE(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "MODE(3,3,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-forward-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "MODE(2,2,3,3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-forward-tie"
+      },
+      "actual": {
+        "formula": "=MODE(2,2,3,3)",
+        "formula2": "=MODE(2,2,3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(2,2,3,3)",
+        "formula2": "=MODE(2,2,3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "MODE(2,2,3,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-reference-reverse-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "MODE(Values!B1:B4)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-reference-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE(Values!B1:B4)",
+        "formula2": "=MODE(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(Values!B1:B4)",
+        "formula2": "=MODE(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "MODE(Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-zero-sign-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "MODE(0,-0)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-zero-sign"
+      },
+      "actual": {
+        "formula": "=MODE(0,0)",
+        "formula2": "=MODE(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(0,0)",
+        "formula2": "=MODE(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MODE(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-near-distinct-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "MODE(1,1.00000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-near-distinct"
+      },
+      "actual": {
+        "formula": "=MODE(1,1.00000000000001)",
+        "formula2": "=MODE(1,1.00000000000001)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(1,1.00000000000001)",
+        "formula2": "=MODE(1,1.00000000000001)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "MODE(1,1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-precision-truncated-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "MODE(1,1.000000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-precision-truncated"
+      },
+      "actual": {
+        "formula": "=MODE(1,1)",
+        "formula2": "=MODE(1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(1,1)",
+        "formula2": "=MODE(1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MODE(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-decimal-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-decimal-tie"
+      },
+      "actual": {
+        "formula": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula2": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula2": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.1",
+        "formula_text": "MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-boolean-direct-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "MODE(TRUE,1,1)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-boolean-direct"
+      },
+      "actual": {
+        "formula": "=MODE(TRUE,1,1)",
+        "formula2": "=MODE(TRUE,1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(TRUE,1,1)",
+        "formula2": "=MODE(TRUE,1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MODE(TRUE,1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-error-ref-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "MODE(Values!E1,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-error-ref"
+      },
+      "actual": {
+        "formula": "=MODE(Values!E1,2,2)",
+        "formula2": "=MODE(Values!E1,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(Values!E1,2,2)",
+        "formula2": "=MODE(Values!E1,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "MODE(Values!E1,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "modern-reverse-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.MODE.SNGL(3,3,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "_xlfn.MODE.SNGL",
+        "operand_shape": "modern-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE.SNGL(3,3,2,2)",
+        "formula2": "=MODE.SNGL(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE.SNGL(3,3,2,2)",
+        "formula2": "=MODE.SNGL(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "_xlfn.MODE.SNGL(3,3,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "modern-reference-reverse-tie-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.MODE.SNGL(Values!B1:B4)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "_xlfn.MODE.SNGL",
+        "operand_shape": "modern-reference-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE.SNGL(Values!B1:B4)",
+        "formula2": "=MODE.SNGL(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE.SNGL(Values!B1:B4)",
+        "formula2": "=MODE.SNGL(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "_xlfn.MODE.SNGL(Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "E1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "E1",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-no-numbers-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "MEDIAN(Values!A1:A3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-no-numbers"
+      },
+      "actual": {
+        "formula": "=MEDIAN(Values!A1:A3)",
+        "formula2": "=MEDIAN(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(Values!A1:A3)",
+        "formula2": "=MEDIAN(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826252
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 6,
+          "literal": "#NUM!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "MEDIAN(Values!A1:A3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-direct-invalid-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "MEDIAN(\"abc\",2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-direct-invalid"
+      },
+      "actual": {
+        "formula": "=MEDIAN(\"abc\",2)",
+        "formula2": "=MEDIAN(\"abc\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(\"abc\",2)",
+        "formula2": "=MEDIAN(\"abc\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "MEDIAN(\"abc\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-signed-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "MEDIAN(0,-0)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-signed-zero"
+      },
+      "actual": {
+        "formula": "=MEDIAN(0,0)",
+        "formula2": "=MEDIAN(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(0,0)",
+        "formula2": "=MEDIAN(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MEDIAN(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-huge-pair-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "MEDIAN(9E307,9E307)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-huge-pair"
+      },
+      "actual": {
+        "formula": "=MEDIAN(9E+307,9E+307)",
+        "formula2": "=MEDIAN(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 9e+307,
+          "hex": "0x1.005419221015dp+1023",
+          "ieee754_hex": "7fe005419221015d",
+          "classification": "finite"
+        },
+        "display": "9E+307",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(9E+307,9E+307)",
+        "formula2": "=MEDIAN(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 9e+307,
+          "hex": "0x1.005419221015dp+1023",
+          "ieee754_hex": "7fe005419221015d",
+          "classification": "finite"
+        },
+        "display": "9E+307",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.0000000000000005E+307",
+        "formula_text": "MEDIAN(9E+307,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-large-pair-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "MEDIAN(1E200,1E200)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-large-pair"
+      },
+      "actual": {
+        "formula": "=MEDIAN(1E+200,1E+200)",
+        "formula2": "=MEDIAN(1E+200,1E+200)",
+        "value2": {
+          "variant": "float",
+          "value": 1e+200,
+          "hex": "0x1.4e718d7d7625ap+664",
+          "ieee754_hex": "6974e718d7d7625a",
+          "classification": "finite"
+        },
+        "display": "1E+200",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(1E+200,1E+200)",
+        "formula2": "=MEDIAN(1E+200,1E+200)",
+        "value2": {
+          "variant": "float",
+          "value": 1e+200,
+          "hex": "0x1.4e718d7d7625ap+664",
+          "ieee754_hex": "6974e718d7d7625a",
+          "classification": "finite"
+        },
+        "display": "1E+200",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9999999999999997E+199",
+        "formula_text": "MEDIAN(1E+200,1E+200)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-near-normal-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "MEDIAN(3E-308,2.5E-308)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-near-normal"
+      },
+      "actual": {
+        "formula": "=MEDIAN(3E-308,2.5E-308)",
+        "formula2": "=MEDIAN(3E-308,2.5E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5e-308,
+          "hex": "0x1.1fa182c40c60dp-1022",
+          "ieee754_hex": "0011fa182c40c60d",
+          "classification": "finite"
+        },
+        "display": "2.5E-308",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(3E-308,2.5E-308)",
+        "formula2": "=MEDIAN(3E-308,2.5E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5e-308,
+          "hex": "0x1.1fa182c40c60dp-1022",
+          "ieee754_hex": "0011fa182c40c60d",
+          "classification": "finite"
+        },
+        "display": "2.5E-308",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.4999999999999998E-308",
+        "formula_text": "MEDIAN(3E-308,2.5E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-cancel-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "MEDIAN(3E-308,-3E-308)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-cancel"
+      },
+      "actual": {
+        "formula": "=MEDIAN(3E-308,-3E-308)",
+        "formula2": "=MEDIAN(3E-308,-3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MEDIAN(3E-308,-3E-308)",
+        "formula2": "=MEDIAN(3E-308,-3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MEDIAN(3E-308,-3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "median-error-ref-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "MEDIAN(Values!E1,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MEDIAN",
+        "operand_shape": "median-error-ref"
+      },
+      "actual": {
+        "formula": "=MEDIAN(Values!E1,2)",
+        "formula2": "=MEDIAN(Values!E1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MEDIAN(Values!E1,2)",
+        "formula2": "=MEDIAN(Values!E1,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "MEDIAN(Values!E1,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-no-numbers-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "MODE(Values!A1:A3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-no-numbers"
+      },
+      "actual": {
+        "formula": "=MODE(Values!A1:A3)",
+        "formula2": "=MODE(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(Values!A1:A3)",
+        "formula2": "=MODE(Values!A1:A3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "MODE(Values!A1:A3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-direct-invalid-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "MODE(\"abc\",2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-direct-invalid"
+      },
+      "actual": {
+        "formula": "=MODE(\"abc\",2,2)",
+        "formula2": "=MODE(\"abc\",2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(\"abc\",2,2)",
+        "formula2": "=MODE(\"abc\",2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "MODE(\"abc\",2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-reverse-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "MODE(3,3,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE(3,3,2,2)",
+        "formula2": "=MODE(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(3,3,2,2)",
+        "formula2": "=MODE(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "MODE(3,3,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-forward-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "MODE(2,2,3,3)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-forward-tie"
+      },
+      "actual": {
+        "formula": "=MODE(2,2,3,3)",
+        "formula2": "=MODE(2,2,3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(2,2,3,3)",
+        "formula2": "=MODE(2,2,3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "MODE(2,2,3,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-reference-reverse-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "MODE(Values!B1:B4)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-reference-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE(Values!B1:B4)",
+        "formula2": "=MODE(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(Values!B1:B4)",
+        "formula2": "=MODE(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "MODE(Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-zero-sign-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "MODE(0,-0)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-zero-sign"
+      },
+      "actual": {
+        "formula": "=MODE(0,0)",
+        "formula2": "=MODE(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(0,0)",
+        "formula2": "=MODE(0,0)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "MODE(0,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-near-distinct-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "MODE(1,1.00000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-near-distinct"
+      },
+      "actual": {
+        "formula": "=MODE(1,1.00000000000001)",
+        "formula2": "=MODE(1,1.00000000000001)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(1,1.00000000000001)",
+        "formula2": "=MODE(1,1.00000000000001)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "MODE(1,1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-precision-truncated-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "MODE(1,1.000000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-precision-truncated"
+      },
+      "actual": {
+        "formula": "=MODE(1,1)",
+        "formula2": "=MODE(1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(1,1)",
+        "formula2": "=MODE(1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MODE(1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-decimal-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-decimal-tie"
+      },
+      "actual": {
+        "formula": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula2": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula2": "=MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.1",
+        "formula_text": "MODE(0.1,0.1,0.100000000000001,0.100000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-boolean-direct-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "MODE(TRUE,1,1)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-boolean-direct"
+      },
+      "actual": {
+        "formula": "=MODE(TRUE,1,1)",
+        "formula2": "=MODE(TRUE,1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE(TRUE,1,1)",
+        "formula2": "=MODE(TRUE,1,1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "MODE(TRUE,1,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "mode-error-ref-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "MODE(Values!E1,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "MODE",
+        "operand_shape": "mode-error-ref"
+      },
+      "actual": {
+        "formula": "=MODE(Values!E1,2,2)",
+        "formula2": "=MODE(Values!E1,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=MODE(Values!E1,2,2)",
+        "formula2": "=MODE(Values!E1,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "MODE(Values!E1,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "modern-reverse-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.MODE.SNGL(3,3,2,2)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "_xlfn.MODE.SNGL",
+        "operand_shape": "modern-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE.SNGL(3,3,2,2)",
+        "formula2": "=MODE.SNGL(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE.SNGL(3,3,2,2)",
+        "formula2": "=MODE.SNGL(3,3,2,2)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "_xlfn.MODE.SNGL(3,3,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "modern-reference-reverse-tie-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.MODE.SNGL(Values!B1:B4)",
+      "shape": {
+        "kind": "rank_edge",
+        "function": "_xlfn.MODE.SNGL",
+        "operand_shape": "modern-reference-reverse-tie"
+      },
+      "actual": {
+        "formula": "=MODE.SNGL(Values!B1:B4)",
+        "formula2": "=MODE.SNGL(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=MODE.SNGL(Values!B1:B4)",
+        "formula2": "=MODE.SNGL(Values!B1:B4)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "_xlfn.MODE.SNGL(Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    }
+  ]
+}
