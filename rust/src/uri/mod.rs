@@ -375,6 +375,26 @@ impl Uri {
         }
     }
 
+    /// Whether this identifier names something an Amazon S3 Tables table
+    /// bucket keeps: an `s3tables:` location, or an ARN of that service.
+    ///
+    /// A table's ARN names it by an identifier, and the location that ARN
+    /// lowers to ([`Self::locator`]) reads as a namespace instead, so a door
+    /// that opens what an identifier names asks this before it lowers one,
+    /// and hands the identifier itself to the bucket's own reading.
+    #[cfg(feature = "s3tables")]
+    pub(crate) fn names_s3_tables(&self) -> bool {
+        if self.scheme() == &Scheme::ARN {
+            return self
+                .path
+                .as_str()
+                .split(':')
+                .nth(1)
+                .is_some_and(|service| service.eq_ignore_ascii_case("s3tables"));
+        }
+        self.scheme().is_s3_tables()
+    }
+
     /// Answer a relative `file:` identifier as the location it names.
     ///
     /// The parser reads text carrying no usable scheme as a filesystem path

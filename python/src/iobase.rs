@@ -31,7 +31,7 @@ use crate::iomedia::{
 use crate::ioresult::PyIOResult;
 use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{decoded_as_py, decoded_into_py, with_python_bytes};
-use crate::uri::{PyUrl, core_url_from_value, url_object};
+use crate::uri::{PyUrl, core_uri_from_value, url_object};
 use crate::value_error;
 
 /// A random-access resource: a local file, a directory, or a memory buffer.
@@ -69,15 +69,19 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     inner.bound_location().cloned().map(yggdryl::fs::located)
 }
 
-/// Hold the resource `url` names, on the store its scheme selects.
+/// Hold the resource `location` names, on the store its scheme selects.
 ///
 /// The core's one dispatcher decides: an `http` or `https` URL is the `GET` of
 /// that resource, an object-store URL the native store, a `file:` URL whose
-/// fragment names an archive member that member, anything else local - and a
-/// scheme no backend speaks is refused by that scheme. Construction touches
-/// nothing on any of them.
-pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
-    Holder::from_url(url, std::iter::empty::<(&str, &str)>())
+/// fragment names an archive member that member, an `s3tables:` URL the
+/// catalog, the namespace or the table it names in its table bucket,
+/// anything else local - and a scheme no backend speaks is refused by that
+/// scheme. An identifier crosses as it was named and the core locates it, so
+/// an ARN that states more than its location - a table's, in a table bucket -
+/// is read whole. Construction touches nothing but a table bucket's table,
+/// which is one request.
+pub(crate) fn located_holder(location: impl AsRef<yggdryl::Uri>) -> PyResult<Holder> {
+    Holder::from_url(location, std::iter::empty::<(&str, &str)>())
         .map_err(crate::holder::fs::storage_error)
 }
 
@@ -826,8 +830,10 @@ impl PyIOBase {
                 Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes)),
             );
         }
-        let url = core_url_from_value(value)?;
-        declared(py, Self::located_url(&url)?)
+        // The identifier as it was named: the core locates it, and reads
+        // off it what its location alone does not say.
+        let location = core_uri_from_value(value)?;
+        declared(py, located_holder(&location)?)
     }
 
     /// Describe a resource on any `pyarrow.fs.FileSystem`.

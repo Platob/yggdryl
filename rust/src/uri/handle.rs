@@ -1,9 +1,10 @@
 //! A [`Uri`] as a handle: the storage it names, resolved on first use.
 //!
 //! Every operation forwards to the one [`Holder`] the identifier resolves to
-//! through [`Uri::locator`] and [`Holder::from_url`], the dispatcher every
-//! location reaches its backend through, so a URL, a URN and an ARN open
-//! exactly what the same location opens anywhere else. The resolved handle is
+//! through [`Holder::from_url`], the dispatcher every location reaches its
+//! backend through, which reads the identifier as it is and locates it
+//! ([`Uri::locator`]) itself, so a URL, a URN and an ARN open exactly what
+//! the same identifier opens anywhere else. The resolved handle is
 //! kept in the value, so a staged write, an open scope and a cached answer
 //! live as long as the `Uri` does; a clone starts unresolved, as its
 //! rendering does. A resolution that fails is stored nowhere: it is the error
@@ -42,7 +43,7 @@ impl Uri {
     /// location does. [`Holder::from_url`] never answers [`Holder::Uri`], so
     /// resolving cannot recurse.
     fn resolve(&self) -> Result<Holder> {
-        Holder::from_url(&self.locator()?, std::iter::empty::<(&str, &str)>())
+        Holder::from_url(self, std::iter::empty::<(&str, &str)>())
     }
 
     /// Whether this identifier is a name - a URN or an ARN - rather than the

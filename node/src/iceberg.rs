@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either4, Null, Result, Undefined,
+    BigInt, Buffer, ClassInstance, Either, Either4, Null, Object, Result, Undefined,
 };
 use napi_derive::napi;
 use yggdryl::iceberg::{
@@ -29,7 +29,9 @@ use yggdryl::{
 use crate::datatype::{DataTypeInput, dtype_from_input};
 use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};
 use crate::field::{JsField, MetadataEntry};
-use crate::iobase::{JsIOBase, LocationInput, folder_from_input, site_from_input};
+use crate::iobase::{
+    JsIOBase, LocationInput, folder_from_input, site_from_input, table_root_from_input,
+};
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
@@ -533,11 +535,37 @@ fn call_options(options: Option<&JsIcebergOptions>) -> Option<CoreIcebergOptions
     options.map(|options| options.inner.clone())
 }
 
-/// Read the format version a number names, defaulting to v2.
-fn format_version(value: Option<u32>) -> Result<FormatVersion> {
-    match value {
-        Some(number) => FormatVersion::from_number(i64::from(number)).map_err(napi_error),
-        None => Ok(FormatVersion::V2),
+/// Read the format version a number names, none when none was given.
+fn format_version(value: Option<u32>) -> Result<Option<FormatVersion>> {
+    value
+        .map(|number| FormatVersion::from_number(i64::from(number)).map_err(napi_error))
+        .transpose()
+}
+
+/// What a table door's `root` names beside the `properties` stated with it:
+/// a handle in hand, as the container it addresses, or the table's location
+/// as it was named, which the core opens by itself under the properties.
+enum TableRoot {
+    /// Boxed: a holder is several times the size of a location.
+    Handle(Box<yggdryl::holder::Holder>),
+    Location(yggdryl::Uri, yggdryl::Properties),
+}
+
+/// Read a table door's `root` and `properties`.
+///
+/// A handle was opened by whoever built it, so properties beside one have
+/// nothing to open and are refused by name rather than dropped.
+fn table_root(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result<TableRoot> {
+    let properties = crate::warehouse::properties_from_input(properties)?;
+    match table_root_from_input(root)? {
+        Either::A(holder) => match properties.iter().next() {
+            Some((name, _)) => Err(napi_error(format!(
+                "expected no properties beside a handle, which was opened by whoever built it, \
+                 got {name:?}; name the table by its location to open it under properties"
+            ))),
+            None => Ok(TableRoot::Handle(Box::new(holder))),
+        },
+        Either::B(location) => Ok(TableRoot::Location(location, properties)),
     }
 }
 
@@ -1464,6 +1492,20 @@ impl JsTable {
 impl JsTable {
     /// Create a table, writing its first metadata document.
     ///
+    /// `root` is the container handle the table lives in, or its location -
+    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - which the core opens by
+    /// itself under `properties`: a folder any backend holds, or
+    /// `s3tables://<bucket>/<namespace>/<table>` for a table an Amazon S3
+    /// Tables table bucket keeps, registered there and committed through
+    /// its control plane, its namespace made on the way where the bucket
+    /// does not hold it. Properties beside a handle are refused: it was
+    /// opened by whoever built it.
+    ///
+    /// `version` omitted is 2 over a handle; over a location it is the
+    /// `format-version` property, else the lowest version that states the
+    /// schema - 3 for a nanosecond timestamp, a variant or an unknown
+    /// column, else 2.
+    ///
     /// `partitionBy` takes a [`PartitionSpec`](JsPartitionSpec) or the
     /// `PARTITION:by` entries to partition on: a bare column - `venue` - is an
     /// identity partition, and an epoch function over a column - `days(ts)`,
@@ -1478,59 +1520,92 @@ impl JsTable {
     /// identifiers keeps every one of them.
     #[napi(
         factory,
-        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null"
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null"
     )]
     pub fn create(
         root: LocationInput<'_>,
         schema: &JsField,
         partition_by: PartitionInput<'_>,
         version: Option<u32>,
+        properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
         let spec = partition_spec(partition_by, &schema)?;
-        CoreTable::create(
-            Handle::from(folder_from_input(root)?),
-            format_version(version)?,
-            schema,
-            spec,
-        )
+        let version = format_version(version)?;
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => CoreTable::create(
+                Handle::from(*holder),
+                version.unwrap_or(FormatVersion::V2),
+                schema,
+                spec,
+            ),
+            TableRoot::Location(location, properties) => {
+                CoreTable::create_from_url(&location, &properties, version, schema, Some(spec))
+            }
+        }
         .map(Self::from_core)
         .map_err(napi_error)
     }
 
-    /// Open the table a container handle addresses.
-    #[napi(factory)]
-    pub fn open(root: LocationInput<'_>) -> Result<Self> {
-        CoreTable::open(Handle::from(folder_from_input(root)?))
-            .map(Self::from_core)
-            .map_err(napi_error)
+    /// Open the table `root` names.
+    ///
+    /// A container handle is the folder the table lives in. A location -
+    /// text, a `Url`, a `Uri`, a `Urn` or an `Arn` - is opened by the core
+    /// under `properties`: a folder any backend holds, or a table an Amazon
+    /// S3 Tables table bucket keeps, named
+    /// `s3tables://<bucket>/<namespace>/<table>` or by its own ARN.
+    #[napi(
+        factory,
+        ts_args_type = "root: LocationInput, properties?: Record<string, string | number | boolean> | null"
+    )]
+    pub fn open(root: LocationInput<'_>, properties: Option<Object<'_>>) -> Result<Self> {
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => CoreTable::open(Handle::from(*holder)),
+            TableRoot::Location(location, properties) => {
+                CoreTable::from_url(&location, &properties)
+            }
+        }
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
     /// Open the table if it exists, creating it otherwise.
     ///
-    /// Like [`create`](Self::create), `partitionBy` is a spec, the
-    /// `PARTITION:by` entries one is read from, `null` for none, or - omitted -
-    /// the schema's own declaration, and unnumbered schema columns are
-    /// numbered automatically; an existing table is opened as it is and
+    /// `root`, `version` and `properties` are read as
+    /// [`create`](Self::create) reads them. Like it, `partitionBy` is a spec,
+    /// the `PARTITION:by` entries one is read from, `null` for none, or -
+    /// omitted - the schema's own declaration, and unnumbered schema columns
+    /// are numbered automatically; an existing table is opened as it is and
     /// `schema` describes only the table this call would create.
     #[napi(
         factory,
-        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null"
+        ts_args_type = "root: LocationInput, schema: Field, partitionBy?: PartitionInput | null, version?: number | undefined | null, properties?: Record<string, string | number | boolean> | null"
     )]
     pub fn open_or_create(
         root: LocationInput<'_>,
         schema: &JsField,
         partition_by: PartitionInput<'_>,
         version: Option<u32>,
+        properties: Option<Object<'_>>,
     ) -> Result<Self> {
         let schema = numbered_schema(schema.inner.clone())?;
         let spec = partition_spec(partition_by, &schema)?;
-        CoreTable::open_or_create(
-            Handle::from(folder_from_input(root)?),
-            format_version(version)?,
-            schema,
-            spec,
-        )
+        let version = format_version(version)?;
+        match table_root(root, properties)? {
+            TableRoot::Handle(holder) => CoreTable::open_or_create(
+                Handle::from(*holder),
+                version.unwrap_or(FormatVersion::V2),
+                schema,
+                spec,
+            ),
+            TableRoot::Location(location, properties) => CoreTable::open_or_create_from_url(
+                &location,
+                &properties,
+                version,
+                schema,
+                Some(spec),
+            ),
+        }
         .map(Self::from_core)
         .map_err(napi_error)
     }

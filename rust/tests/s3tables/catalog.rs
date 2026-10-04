@@ -5,19 +5,27 @@
 //! run on, so both ends of a commit - the files and the pointer - are
 //! requests a test reads back. What the store is never asked - a listing, a
 //! delete, a version hint - is pinned from its log.
+//!
+//! The second half is the bucket by its location alone: what
+//! `s3tables://<bucket>[/<namespace>[/<table>]]`, a bucket's ARN and a
+//! table's ARN each name, through every door that takes one, and what each
+//! costs in requests.
 
 use std::sync::Arc;
 
 use arrow_array::{Array, FixedSizeBinaryArray, RecordBatch, TimestampNanosecondArray};
 
 use crate::fake::{ACCESS_KEY, REGION, S3TablesFake, SECRET_KEY};
-use crate::mod_::{client, lake, scratch};
+use crate::mod_::{LAKE_LABEL, client, lake, scratch};
 use crate::server::FakeS3;
+use yggdryl::holder::Holder;
 use yggdryl::iceberg::FormatVersion;
+use yggdryl::iceberg::{IcebergTable, PartitionSpec};
 use yggdryl::s3tables::S3TablesCatalog;
 use yggdryl::{
-    ArrowCastOptions, Catalog, CatalogValue, DataType, Field, IOBase, IOMedia, NamespaceValue,
-    ObjectValue, Properties, Serie, StructType, Table, TableValue, TimeUnit, Timezone, Url,
+    Arn, ArrowCastOptions, Catalog, CatalogValue, DataType, Field, IOBase, IOKind, IOMedia,
+    NamespaceValue, ObjectValue, Properties, Serie, StructType, Table, TableValue, TimeUnit,
+    Timezone, Url,
 };
 
 /// Fifteen minutes in nanoseconds: one partition's span.
@@ -257,14 +265,9 @@ fn a_table_bucket_is_a_catalog_whose_tables_commit_through_the_control_plane() {
         Some(r#"["part"]"#)
     );
 
-    // The catalog keeps the table: its own listing and removal are refused
-    // rather than reaching the store, and the service still names it.
-    let mut kept = reopened;
-    let error = kept.remove(true).expect_err("kept by the catalog");
-    assert!(
-        error.to_string().contains("drop it through that catalog"),
-        "{error}"
-    );
+    // The catalog keeps the table: its own listing is refused rather than
+    // reaching the store, and the service still names it.
+    let kept = reopened;
     let listed: Vec<_> = kept.ls(true, false).collect();
     assert!(
         listed.len() == 1 && listed[0].is_err(),
@@ -541,6 +544,598 @@ fn a_table_bucket_location_is_its_catalog_under_the_properties_stated() {
     )
     .expect_err("a table, not a bucket");
     assert!(error.to_string().contains("$.url"), "{error}");
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+/// What a location door is handed for the two fakes: who signs, where the
+/// control plane and the store are, and shared files of this test's own, so
+/// nothing of the operator's is read.
+fn stated(fake: &S3TablesFake, store: &FakeS3, aws: &std::path::Path) -> Properties {
+    store_properties(store)
+        .with_property("access_key_id", ACCESS_KEY)
+        .with_property("secret_access_key", SECRET_KEY)
+        .with_property("config_file", aws.join("config").display().to_string())
+        .with_property(
+            "shared_credentials_file",
+            aws.join("credentials").display().to_string(),
+        )
+        .with_property("use_fips_endpoint", "false")
+        .with_property("use_dualstack_endpoint", "false")
+        .with_property("s3tables.region", REGION)
+        .with_property("s3tables.endpoint", fake.endpoint())
+}
+
+/// `text` as the location it spells.
+fn url(text: &str) -> Url {
+    Url::from_str(text).expect("a location")
+}
+
+/// The line `GetTableMetadataLocation` of `desk.<name>` leaves in the log.
+fn metadata_location_line(name: &str) -> String {
+    format!("GET /tables/{LAKE_LABEL}/desk/{name}/metadata-location")
+}
+
+/// Every `GET` of an object the store answered, by key.
+fn fetched(store: &FakeS3) -> Vec<String> {
+    store
+        .requests()
+        .into_iter()
+        .filter(|request| request.method == "GET")
+        .filter_map(|request| request.key)
+        .collect()
+}
+
+#[test]
+fn a_location_names_the_catalog_the_namespace_or_the_table() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let arn = lake(&fake).to_string();
+    let aws = scratch("locate");
+    // The bucket's ARN stated beside the location: nothing asks for it.
+    let properties = stated(&fake, &store, &aws).with_property("warehouse", arn.as_str());
+    let desk = catalog(&fake, &store)
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    desk.create_table("quotes", &declared(), &Properties::new())
+        .expect("a table")
+        .append_serie(rows(&[(2, 1)]).into(), None)
+        .expect("an append");
+
+    // The bucket is its catalog and a segment below it a namespace: a
+    // description each, and no request - a trailing slash names nothing.
+    fake.clear_requests();
+    let held = Holder::from_url(url("s3tables://lake"), &properties).expect("the catalog");
+    let Holder::Catalog(bucket) = &held else {
+        panic!("expected a catalog, got {held:?}");
+    };
+    assert_eq!(bucket.to_string(), "lake");
+    assert_eq!(held.kind(), IOKind::Catalog);
+    for spelled in ["s3tables://lake/desk", "s3tables://lake/desk/"] {
+        let held = Holder::from_url(url(spelled), &properties).expect("the namespace");
+        let Holder::Namespace(namespace) = &held else {
+            panic!("expected a namespace, got {held:?}");
+        };
+        assert_eq!(namespace.to_string(), "lake.desk");
+        assert_eq!(held.kind(), IOKind::Namespace);
+    }
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
+
+    // A table is one request - where its document is - and no `GetNamespace`.
+    let held =
+        Holder::from_url(url("s3tables://lake/desk/quotes"), &properties).expect("the table");
+    let Holder::Table(table) = &held else {
+        panic!("expected a table, got {held:?}");
+    };
+    assert_eq!(table.to_string(), "lake.desk.quotes");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+
+    // Its first read asks the pointer once and reads the one document it
+    // names; what was read is kept.
+    fake.clear_requests();
+    store.clear_requests();
+    let schema = table.field().expect("its schema");
+    assert_eq!(schema.get_metadata("PARTITION:by"), Some(r#"["part"]"#));
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    let documents = fetched(&store);
+    assert!(
+        documents.len() == 1 && documents[0].ends_with(".metadata.json"),
+        "{documents:?}"
+    );
+    table.field().expect("its schema");
+    assert_eq!(fake.request_count(), 1);
+    assert_eq!(read(table), [(0, 2, 1)]);
+
+    // The catalog is named as the `name` property says.
+    let named = Holder::from_url(
+        url("s3tables://lake/desk"),
+        &properties.clone().with_property("name", "prod"),
+    )
+    .expect("the namespace");
+    let Holder::Namespace(namespace) = &named else {
+        panic!("expected a namespace, got {named:?}");
+    };
+    assert_eq!(namespace.to_string(), "prod.desk");
+
+    // What is not there is absent by its warehouse path, at one request.
+    fake.clear_requests();
+    let error = Holder::from_url(url("s3tables://lake/desk/missing"), &properties)
+        .expect_err("no such table");
+    assert!(error.is_absent(), "{error}");
+    assert!(error.to_string().contains("lake.desk.missing"), "{error}");
+    assert_eq!(fake.lines(), [metadata_location_line("missing")]);
+
+    // A location spells at most a namespace and a table below its bucket,
+    // and each by a name the service has: refused with no request.
+    fake.clear_requests();
+    for refused in [
+        "s3tables://lake/a/b/c",
+        "s3tables://lake/desk/quotes/extra/",
+        "s3tables://lake/Desk",
+        "s3tables://lake/desk/no-hyphen",
+    ] {
+        let error = Holder::from_url(url(refused), &properties).expect_err("no such place");
+        assert!(error.to_string().contains("$.url"), "{refused}: {error}");
+        assert!(
+            error
+                .to_string()
+                .contains("s3tables://<bucket>[/<namespace>[/<table>]]"),
+            "{refused}: {error}"
+        );
+    }
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
+fn a_bare_location_finds_its_bucket_once() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    lake(&fake);
+    let aws = scratch("bare");
+    let properties = stated(&fake, &store, &aws);
+    let desk = catalog(&fake, &store)
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    for name in ["orders", "quotes"] {
+        desk.create_table(name, &declared(), &Properties::new())
+            .expect("a table");
+    }
+
+    // A location alone states no account and no region: the one listing a
+    // catalog named so pays finds the bucket's ARN, then the table's
+    // request.
+    fake.clear_requests();
+    Holder::from_url(url("s3tables://lake/desk/quotes"), &properties).expect("the table");
+    assert_eq!(
+        fake.lines(),
+        [
+            "GET /buckets?maxBuckets=250".to_owned(),
+            metadata_location_line("quotes")
+        ]
+    );
+
+    // The namespace keeps what it found: every table below it is one
+    // request, and the listing is never asked again.
+    let held = Holder::from_url(url("s3tables://lake/desk"), &properties).expect("a namespace");
+    let Holder::Namespace(namespace) = &held else {
+        panic!("expected a namespace, got {held:?}");
+    };
+    fake.clear_requests();
+    for name in ["orders", "quotes"] {
+        namespace.tables().get(name).expect("the table");
+    }
+    assert_eq!(
+        fake.lines(),
+        [
+            "GET /buckets?maxBuckets=250".to_owned(),
+            metadata_location_line("orders"),
+            metadata_location_line("quotes")
+        ]
+    );
+
+    // An account stated beside the location saves the listing.
+    fake.clear_requests();
+    Holder::from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties
+            .clone()
+            .with_property("account_id", crate::fake::ACCOUNT),
+    )
+    .expect("the table");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
+fn a_table_drops_itself_through_its_catalog() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let catalog = catalog(&fake, &store);
+    let desk = catalog
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    let mut table = desk
+        .create_table("quotes", &declared(), &Properties::new())
+        .expect("a table");
+    table
+        .append_serie(rows(&[(2, 1)]).into(), None)
+        .expect("an append");
+
+    // One `DeleteTable`, under no version token: the catalog that keeps the
+    // table drops it, and the store is asked for nothing.
+    fake.clear_requests();
+    store.clear_requests();
+    table.remove(true).expect("the table dropped");
+    assert_eq!(
+        fake.lines(),
+        [format!("DELETE /tables/{LAKE_LABEL}/desk/quotes")]
+    );
+    assert_eq!(store.request_count(), 0);
+    assert!(fake.table("lake", "desk", "quotes").is_none());
+    let error = catalog.table("desk.quotes").expect_err("dropped");
+    assert!(error.is_absent(), "{error}");
+
+    // A table that is no longer there is already dropped.
+    fake.clear_requests();
+    table.remove(false).expect("already dropped");
+    assert_eq!(fake.request_count(), 1);
+    assert_eq!(forbidden(&store), Vec::<String>::new());
+}
+
+/// A one-column row no format version before the second states less of.
+fn plain() -> Field {
+    DataType::from(
+        StructType::from_fields([DataType::Int64.required_field("id")]).expect("a column"),
+    )
+    .required_field("row")
+}
+
+/// The ARN the service identifies the fake's table `lake.desk.<name>` by.
+fn identified(fake: &S3TablesFake, name: &str) -> Arn {
+    Arn::from_str(&fake.table("lake", "desk", name).expect("the table").arn).expect("a table's ARN")
+}
+
+/// The line `GetTable` addressed by `table` leaves in the log.
+fn get_table_line(table: &Arn) -> String {
+    format!(
+        "GET /get-table?tableArn={}",
+        crate::fake::encode(&table.to_string(), false)
+    )
+}
+
+#[test]
+fn a_table_opens_by_its_location_or_by_its_arn() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let bucket = lake(&fake);
+    let aws = scratch("open");
+    let properties = stated(&fake, &store, &aws);
+    let desk = catalog(&fake, &store)
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    desk.create_table("quotes", &declared(), &Properties::new())
+        .expect("a table")
+        .append_serie(rows(&[(2, 1)]).into(), None)
+        .expect("an append");
+    let arn = identified(&fake, "quotes");
+
+    // A table's ARN is one `GetTable` addressed by it alone: its answer names
+    // the namespace and the name, and the bucket's ARN is the table's own
+    // less its identifier, so nothing lists the caller's buckets.
+    fake.clear_requests();
+    let table = IcebergTable::from_url(&arn, &properties).expect("the table");
+    assert_eq!(ObjectValue::path(&table), ["lake", "desk", "quotes"]);
+    assert_eq!(fake.lines(), [get_table_line(&arn)]);
+
+    // That answer primes nothing: the first read asks where the document is
+    // and reads it, once each.
+    fake.clear_requests();
+    store.clear_requests();
+    assert_eq!(table.metadata_version().expect("its version"), 1);
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(fetched(&store).len(), 1, "{:?}", fetched(&store));
+    assert_eq!(read(&Table::from(table)), [(0, 2, 1)]);
+
+    // The same table by its location, the bucket's ARN known from the
+    // account: one request, and the same rows.
+    fake.clear_requests();
+    let located = IcebergTable::from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties
+            .clone()
+            .with_property("account_id", crate::fake::ACCOUNT),
+    )
+    .expect("the table");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(read(&Table::from(located.clone())), [(0, 2, 1)]);
+
+    // Who signs is the session's: the table keeps no identity property, so
+    // it lists and prints no secret.
+    let kept = ObjectValue::properties(&located).expect("its properties");
+    assert!(
+        kept.iter()
+            .all(|(name, _)| !yggdryl::aws::Session::is_property(name)),
+        "an identity property kept in {kept:?}"
+    );
+    assert!(!format!("{located:?}").contains(SECRET_KEY));
+
+    // What a location names that is no table is refused by its kind, at no
+    // request; an identifier the bucket has no table of is absent, at one.
+    fake.clear_requests();
+    for (location, kind) in [
+        (bucket.clone().into_uri(), "catalog"),
+        (url("s3tables://lake").into_uri(), "catalog"),
+        (url("s3tables://lake/desk").into_uri(), "namespace"),
+    ] {
+        let error = IcebergTable::from_url(&location, &properties).expect_err("no table");
+        let error = error.to_string();
+        assert!(error.contains("$.url"), "{error}");
+        assert!(error.contains(&format!("got the {kind} ")), "{error}");
+    }
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
+    let unknown = Arn::from_str(&format!(
+        "{bucket}/table/00000000-0000-4000-8000-00000000beef"
+    ))
+    .expect("a table's ARN");
+    let error = IcebergTable::from_url(&unknown, &properties).expect_err("no such table");
+    assert!(error.is_absent(), "{error}");
+    assert_eq!(fake.lines(), [get_table_line(&unknown)]);
+
+    // An ARN below a bucket that is no table's is refused before a request.
+    fake.clear_requests();
+    let malformed = Arn::from_str(&format!("{bucket}/index/quotes")).expect("an ARN");
+    let error = IcebergTable::from_url(&malformed, &properties).expect_err("no table's ARN");
+    assert!(error.to_string().contains("table/<id>"), "{error}");
+    assert_eq!(fake.request_count(), 0);
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
+fn a_table_is_created_at_its_location_under_a_namespace_made_on_the_way() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let arn = lake(&fake).to_string();
+    let aws = scratch("create");
+    let properties = stated(&fake, &store, &aws).with_property("warehouse", arn.as_str());
+    let created = format!("PUT /tables/{LAKE_LABEL}/desk");
+    let published = |name: &str| format!("PUT /tables/{LAKE_LABEL}/desk/{name}/metadata-location");
+
+    // The namespace is not there: the refused creation, the namespace, then
+    // the creation's own three requests and its one document.
+    fake.clear_requests();
+    store.clear_requests();
+    let mut table = IcebergTable::create_from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties,
+        None,
+        declared(),
+        None,
+    )
+    .expect("a table");
+    assert_eq!(
+        fake.lines(),
+        [
+            created.clone(),
+            format!("PUT /namespaces/{LAKE_LABEL}"),
+            created.clone(),
+            metadata_location_line("quotes"),
+            published("quotes"),
+        ]
+    );
+    assert_eq!(fake.requests()[0].status, 404);
+    let keys = written(&store);
+    assert!(
+        keys.len() == 1 && keys[0].ends_with(".metadata.json"),
+        "{keys:?}"
+    );
+    assert_eq!(ObjectValue::path(&table), ["lake", "desk", "quotes"]);
+    // Neither a version nor a spec stated: the lowest version that states a
+    // nanosecond instant, and the partition the schema declares.
+    let metadata = table.metadata().expect("its document");
+    assert_eq!(metadata.format_version(), FormatVersion::V3);
+    assert_eq!(metadata.default_spec().expect("a spec").fields.len(), 1);
+    assert!(!format!("{table:?}").contains(SECRET_KEY));
+
+    // Under a namespace that is there, the three alone - at the version and
+    // under the spec the create states.
+    fake.clear_requests();
+    let stated_layout = IcebergTable::create_from_url(
+        url("s3tables://lake/desk/orders/"),
+        &properties,
+        Some(FormatVersion::V3),
+        plain(),
+        Some(PartitionSpec::unpartitioned()),
+    )
+    .expect("a table");
+    assert_eq!(
+        fake.lines(),
+        [
+            created.clone(),
+            metadata_location_line("orders"),
+            published("orders")
+        ]
+    );
+    assert_eq!(
+        stated_layout
+            .metadata()
+            .expect("its document")
+            .format_version(),
+        FormatVersion::V3
+    );
+
+    // A table already there is a conflict by its warehouse path, at the one
+    // request that says so.
+    fake.clear_requests();
+    let error = IcebergTable::create_from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties,
+        None,
+        declared(),
+        None,
+    )
+    .expect_err("already there");
+    assert!(error.is_conflict(), "{error}");
+    assert!(error.to_string().contains("lake.desk.quotes"), "{error}");
+    assert_eq!(fake.lines(), [created.as_str()]);
+
+    // Opening or creating opens what is there and creates what is not.
+    fake.clear_requests();
+    let opened = IcebergTable::open_or_create_from_url(
+        url("s3tables://lake/desk/quotes"),
+        &properties,
+        None,
+        declared(),
+        None,
+    )
+    .expect("the table");
+    assert_eq!(fake.lines(), [metadata_location_line("quotes")]);
+    assert_eq!(
+        opened.metadata_location().expect("its location"),
+        table.metadata_location().expect("its location")
+    );
+    fake.clear_requests();
+    IcebergTable::open_or_create_from_url(
+        url("s3tables://lake/desk/fills"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect("a table");
+    assert_eq!(
+        fake.lines(),
+        [
+            metadata_location_line("fills"),
+            created.clone(),
+            metadata_location_line("fills"),
+            published("fills"),
+        ]
+    );
+
+    // The table is written, reopened by its location and dropped as any
+    // other the bucket keeps is.
+    table
+        .append_serie(rows(&[(QUARTER + 7, 3), (2, 1)]).into(), None)
+        .expect("an append");
+    let mut reopened =
+        IcebergTable::from_url(url("s3tables://lake/desk/quotes"), &properties).expect("the table");
+    assert_eq!(
+        read(&Table::from(reopened.clone())),
+        [(0, 2, 1), (QUARTER, QUARTER + 7, 3)]
+    );
+    fake.clear_requests();
+    reopened.remove(true).expect("the table dropped");
+    assert_eq!(
+        fake.lines(),
+        [format!("DELETE /tables/{LAKE_LABEL}/desk/quotes")]
+    );
+    assert!(fake.table("lake", "desk", "quotes").is_none());
+
+    // A create names a table by its namespace and its name: a bucket, a
+    // namespace, a deeper path and a table's ARN - a table that exists -
+    // are refused with no request, and so is a version no format has.
+    fake.clear_requests();
+    for refused in [
+        url("s3tables://lake").into_uri(),
+        url("s3tables://lake/desk").into_uri(),
+        url("s3tables://lake/desk/quotes/extra").into_uri(),
+        identified(&fake, "orders").into_uri(),
+    ] {
+        let error = IcebergTable::create_from_url(&refused, &properties, None, plain(), None)
+            .expect_err("no table's location");
+        assert!(error.to_string().contains("$.url"), "{refused}: {error}");
+    }
+    let error = IcebergTable::create_from_url(
+        url("s3tables://lake/desk/refused"),
+        &properties.clone().with_property("format-version", "7"),
+        None,
+        plain(),
+        None,
+    )
+    .expect_err("no format version 7");
+    assert!(
+        error.to_string().contains("$.with.format-version"),
+        "{error}"
+    );
+    assert_eq!(fake.request_count(), 0, "{:?}", fake.lines());
+    assert_eq!(forbidden(&store), Vec::<String>::new());
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
+fn a_create_under_a_bucket_that_is_not_there_is_the_services_refusal() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let aws = scratch("no-bucket");
+    // The account states the bucket's ARN, so nothing lists to find it.
+    let properties = stated(&fake, &store, &aws).with_property("account_id", crate::fake::ACCOUNT);
+
+    // The creation is refused, and the namespace made on the way is too:
+    // what is missing is the bucket, and nothing is sent a third time.
+    let error = IcebergTable::create_from_url(
+        url("s3tables://nowhere/desk/quotes"),
+        &properties,
+        None,
+        plain(),
+        None,
+    )
+    .expect_err("no such bucket");
+    assert_eq!(crate::mod_::refusal(&error), (404, "NotFoundException"));
+    let lines = fake.lines();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].starts_with("PUT /tables/"), "{lines:?}");
+    assert!(lines[1].starts_with("PUT /namespaces/"), "{lines:?}");
+    assert_eq!(store.request_count(), 0);
+    let _ = std::fs::remove_dir_all(&aws);
+}
+
+#[test]
+fn an_arn_is_read_as_the_arn_it_is_and_never_as_the_location_it_lowers_to() {
+    let fake = S3TablesFake::start();
+    let store = store();
+    let bucket = lake(&fake);
+    let aws = scratch("handle");
+    let properties = stated(&fake, &store, &aws);
+    catalog(&fake, &store)
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace")
+        .create_table("quotes", &declared(), &Properties::new())
+        .expect("a table");
+    let arn = identified(&fake, "quotes");
+
+    // A bucket's ARN is its catalog, the region and the account read off it:
+    // no request, as an `Arn` or as the `Uri` it is.
+    fake.clear_requests();
+    for held in [
+        Holder::from_url(&bucket, &properties).expect("the catalog"),
+        Holder::from_url(bucket.clone().into_uri(), &properties).expect("the catalog"),
+    ] {
+        let Holder::Catalog(named) = &held else {
+            panic!("expected a catalog, got {held:?}");
+        };
+        let Catalog::S3Tables(named) = named.as_ref() else {
+            panic!("expected an S3 Tables catalog");
+        };
+        assert_eq!(named.bucket_arn().expect("the ARN"), &bucket);
+    }
+    assert_eq!(fake.request_count(), 0);
+
+    // A table's ARN is the table, at the one `GetTable` it addresses.
+    let held = Holder::from_url(&arn, &properties).expect("the table");
+    let Holder::Table(table) = &held else {
+        panic!("expected a table, got {held:?}");
+    };
+    assert_eq!(table.to_string(), "lake.desk.quotes");
+    assert_eq!(fake.lines(), [get_table_line(&arn)]);
+
+    // The location that ARN lowers to spells the identifier where a
+    // namespace goes, and is no name of one: refused, at no request.
+    fake.clear_requests();
+    let lowered = arn.locator().expect("a location");
+    let error = Holder::from_url(&lowered, &properties).expect_err("no namespace");
+    assert!(error.to_string().contains("$.url"), "{error}");
+    assert!(error.to_string().contains("read as the ARN"), "{error}");
+    assert_eq!(fake.request_count(), 0);
     let _ = std::fs::remove_dir_all(&aws);
 }
 

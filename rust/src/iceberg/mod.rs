@@ -78,7 +78,11 @@
 //! metadata document; a table whose current document a catalog service names
 //! is opened through a [`MetadataPointer`] instead
 //! ([`IcebergTable::open_pointed`]), which is how the Amazon S3 Tables
-//! catalog commits.
+//! catalog commits. [`IcebergTable::from_url`],
+//! [`IcebergTable::create_from_url`] and
+//! [`IcebergTable::open_or_create_from_url`] reach a table by its location
+//! alone - a folder any backend holds or, under the `s3tables` feature, a
+//! table an Amazon S3 Tables table bucket keeps - with nothing built first.
 //!
 //! Writes support `bucket`, `truncate`, `year`, `month`, `day`, `hour`,
 //! `identity`, and `void` through the official scalar transform contract.
@@ -103,8 +107,7 @@ pub(crate) mod table;
 mod types;
 pub(crate) mod value;
 
-#[cfg_attr(not(feature = "s3tables"), allow(unused_imports))]
-pub(crate) use catalog::format_version_for;
+pub(crate) use catalog::create_layout;
 pub use catalog::{IcebergCatalog, IcebergNamespace};
 pub use evolve::{SchemaUpdate, can_promote};
 pub use manifest::{

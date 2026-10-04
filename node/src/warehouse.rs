@@ -96,7 +96,7 @@ fn object_output(object: CoreObject) -> ObjectOutput {
 /// Read a properties bag: a plain object, its keys in order, each value text
 /// or a number or boolean spelled as text; an `undefined` value is skipped,
 /// the project's spelling for an argument that was not given.
-fn properties_from_input(value: Option<Object<'_>>) -> Result<Properties> {
+pub(crate) fn properties_from_input(value: Option<Object<'_>>) -> Result<Properties> {
     let mut properties = Properties::new();
     let Some(object) = value else {
         return Ok(properties);

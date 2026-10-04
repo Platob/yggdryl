@@ -12,7 +12,8 @@
 
 use super::bucket::{absent_is_done, bucket_label};
 use super::client::{
-    Call, Reader, S3Tables, body, check_name, check_version_token, invalid_input, label,
+    Call, Reader, S3Tables, SERVICE, body, check_name, check_version_token, echo, invalid_input,
+    label,
 };
 use super::listing::{Page, TableSummaries};
 use super::namespace::check_namespace;
@@ -297,6 +298,32 @@ impl S3Tables {
         TableDescription::read(self.send(&call)?.reader())
     }
 
+    /// Describe the table the ARN `table` names -
+    /// `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>` -
+    /// with one `GET`.
+    ///
+    /// The ARN names a table by the identifier the service gave it, which
+    /// neither a rename nor a move to another namespace changes, so the
+    /// answer is what says which namespace holds the table now and what it
+    /// is called there.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`](crate::Error::Parse) for an ARN that names
+    /// no table of a table bucket, before any request;
+    /// [`Error::Absent`](crate::Error::Absent) when no table has the
+    /// identifier; and the service's refusal otherwise.
+    pub fn get_table_by_arn(&self, table: &Arn) -> Result<TableDescription> {
+        bucket_of(table)?;
+        let text = table.to_string();
+        let call = Call::get("GetTable", "/get-table".to_owned(), text.clone())
+            .with_query("tableArn", &text)
+            // The region a table's ARN states is its bucket's.
+            .in_bucket(table)
+            .absent_as(KIND);
+        TableDescription::read(self.send(&call)?.reader())
+    }
+
     /// Every table of the table bucket `bucket` - of its namespace
     /// `namespace` alone when one is named - one `GET` per page as the
     /// iterator is drained and none before it is asked. An ARN or a
@@ -497,8 +524,48 @@ fn iceberg_metadata(schema: &Field) -> Result<Scalar> {
 }
 
 /// Refuse `name` unless the model lets a table be called it.
-fn check_table(name: &str) -> Result<()> {
+pub(crate) fn check_table(name: &str) -> Result<()> {
     check_name("table name", name, 1, 255, b'_')
+}
+
+/// The ARN of the table bucket that holds the table the ARN `table` names:
+/// the table's own, less its `/table/<id>`.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`](crate::Error::Parse) when the ARN's service is
+/// not `s3tables`, at the service field, or when its resource is not
+/// `bucket/<name>/table/<id>`, at the resource.
+pub(crate) fn bucket_of(table: &Arn) -> Result<Arn> {
+    let text = table.to_string();
+    let refuse = |position: usize| crate::Error::Parse {
+        target: "table arn",
+        position,
+        reason: smol_str::format_smolstr!(
+            "expected a table's ARN - arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id> - got {:?}",
+            echo(&text)
+        ),
+    };
+    if table.service() != SERVICE {
+        return Err(refuse("arn:".len() + table.partition().len() + 1));
+    }
+    let resource = table.resource();
+    let named = resource
+        .strip_prefix("bucket/")
+        .and_then(|below| below.split_once("/table/"))
+        .filter(|(bucket, id)| {
+            !bucket.is_empty() && !bucket.contains('/') && !id.is_empty() && !id.contains('/')
+        });
+    let Some((bucket, _)) = named else {
+        return Err(refuse(text.len() - resource.len()));
+    };
+    Arn::from_parts(
+        table.partition(),
+        SERVICE,
+        table.region().unwrap_or_default(),
+        table.account().unwrap_or_default(),
+        &format!("bucket/{bucket}"),
+    )
 }
 
 /// `/tables/{tableBucketARN}/{namespace}/{name}`, each label encoded once.

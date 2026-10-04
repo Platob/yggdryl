@@ -569,6 +569,39 @@ fn states_v3_types(node: &Field) -> bool {
         })
 }
 
+/// What a create lays a table out as: `field` as Iceberg expresses it - a
+/// layout the format does not state rewritten to the one it does, a column
+/// no type of its holds refused by path - numbered above the highest
+/// identifier it carries, then the partition spec and the format version.
+///
+/// A `spec` or a `version` the create states is taken as stated; one it
+/// leaves out is the schema's own: [`PartitionSpec::from_schema`], and
+/// [`format_version_for`].
+///
+/// # Errors
+///
+/// Returns the schema's refusal, a declared partition no spec holds, and
+/// [`format_version_for`]'s refusal of the `format-version` property.
+pub(crate) fn create_layout(
+    field: &Field,
+    properties: &Properties,
+    version: Option<FormatVersion>,
+    spec: Option<PartitionSpec>,
+) -> Result<(Field, PartitionSpec, FormatVersion)> {
+    let mut schema = field.clone().into_scheme_compat(&crate::Scheme::ICEBERG)?;
+    let start = super::last_column_id(&schema)?.saturating_add(1);
+    super::assign_field_ids(&mut schema, start)?;
+    let spec = match spec {
+        Some(spec) => spec,
+        None => PartitionSpec::from_schema(0, &schema)?,
+    };
+    let version = match version {
+        Some(version) => version,
+        None => format_version_for(&schema, properties)?,
+    };
+    Ok((schema, spec, version))
+}
+
 /// Create the table `name` under `folder`, writing its first metadata
 /// document: the schema numbered above the highest identifier it carries,
 /// the partition spec derived from the columns it marks, and the format
@@ -594,11 +627,7 @@ fn create_table(
             // not state - a dictionary, a view string - is rewritten to the
             // one it does, and a column no type of its holds is refused by
             // path. The rows an append brings are cast to it once.
-            let mut schema = field.clone().into_scheme_compat(&crate::Scheme::ICEBERG)?;
-            let start = super::last_column_id(&schema)?.saturating_add(1);
-            super::assign_field_ids(&mut schema, start)?;
-            let spec = PartitionSpec::from_schema(0, &schema)?;
-            let version = format_version_for(&schema, properties)?;
+            let (schema, spec, version) = create_layout(field, properties, None, None)?;
             let table = IcebergTable::create(child, version, schema, spec)?
                 .map_root(|root| Handle::bound(root, false, &below, Properties::new()))
                 .placed(below)

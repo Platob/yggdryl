@@ -146,6 +146,13 @@ fn every_verb_is_exactly_one_request() {
         )]
     );
     assert_eq!(
+        sent(&|| drop(tables.get_table_by_arn(&arn(&seeded.arn)).expect("a table"))),
+        [format!(
+            "GET /get-table?tableArn={}",
+            crate::fake::encode(&seeded.arn, false)
+        )]
+    );
+    assert_eq!(
         sent(&|| assert_eq!(tables.tables(&lake, Some("trial")).count(), 1)),
         [format!(
             "GET /tables/{LAKE_LABEL}?maxTables=250&namespace=trial"

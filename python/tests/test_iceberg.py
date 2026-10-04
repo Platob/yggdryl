@@ -27,6 +27,8 @@ from yggdryl import (
     Namespace,
     Table,
     UnknownPropertyWarning,
+    Uri,
+    Url,
 )
 from yggdryl.iceberg import (
     Compaction,
@@ -477,6 +479,113 @@ class TestCreatingAndOpening:
         # address is an identity, and no backend holds a `mem:` location.
         with pytest.raises(ValueError, match='"mem" does not support'):
             IcebergTable.create(IOBase.from_bytes(), numbered)
+
+
+class TestLocations:
+    """A table named by its location alone: the core opens it, and nothing is
+    built first. None of this reaches a network."""
+
+    def test_a_location_creates_reopens_and_drops_the_table_its_folder_is(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        folder = tmp_path / "located"
+
+        # A path-like names the folder; the version and the spec a create
+        # states neither of are the schema's own.
+        created = IcebergTable.create(folder, SCHEMA, ["venue"])
+        assert created.name == "located"
+        assert created.format_version == 2
+        assert [field.name for field in created.spec.fields] == ["venue"]
+        assert created.metadata_file_name == "v1.metadata.json"
+        created.append(_rows())
+
+        # A path, its text, its URL and its identifier are one location.
+        for root in (folder, str(folder), Url.from_path(folder), Uri.from_path(folder)):
+            reopened = IcebergTable(root)
+            assert type(reopened) is IcebergTable
+            assert reopened.table_uuid == created.table_uuid
+            assert reopened.scan().read_all().num_rows == 3
+
+        # Opening or creating opens what is there as it is, and creates what
+        # is not - under the version and the partitioning stated.
+        same = IcebergTable.open_or_create(str(folder), SCHEMA, None, format_version=1)
+        assert same.table_uuid == created.table_uuid
+        assert same.format_version == 2
+        other = IcebergTable.open_or_create(tmp_path / "other", SCHEMA, None, format_version=1)
+        assert other.format_version == 1
+        assert other.spec.is_unpartitioned()
+
+        # A second create at the location does not write over the table.
+        with pytest.raises(ValueError):
+            IcebergTable.create(folder, SCHEMA)
+        assert IcebergTable(folder).scan().read_all().num_rows == 3
+
+        # Dropped as the folder it is, and then nothing is there to open.
+        IcebergTable(folder).remove(recursive=True)
+        assert not folder.exists()
+        with pytest.raises(ValueError, match="metadata"):
+            IcebergTable(folder)
+
+    def test_properties_open_a_location_and_never_a_handle(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # Beside a location they are what the table states: the format
+        # version a create that names none takes is one of them.
+        table = IcebergTable.create(tmp_path / "stated", SCHEMA, **{"format-version": "3"})
+        assert table.format_version == 3
+        assert table.properties["format-version"] == "3"
+
+        # An explicit argument wins over the property, and `...` is a
+        # property that was not given.
+        explicit = IcebergTable.create(
+            tmp_path / "explicit", SCHEMA, format_version=1, **{"format-version": "3"}
+        )
+        assert explicit.format_version == 1
+        skipped = IcebergTable.create(tmp_path / "skipped", SCHEMA, **{"format-version": ...})
+        assert skipped.format_version == 2
+
+        # A handle was opened by whoever built it: properties beside one have
+        # nothing to open, and are refused by name rather than dropped.
+        handle = IOBase(tmp_path / "stated")
+        for refused in (
+            lambda: IcebergTable(handle, region="eu-west-3"),
+            lambda: IcebergTable.create(handle, SCHEMA, region="eu-west-3"),
+            lambda: IcebergTable.open_or_create(handle, SCHEMA, region="eu-west-3"),
+        ):
+            with pytest.raises(ValueError, match="beside a handle"):
+                refused()
+        assert IcebergTable(handle).format_version == 3
+
+    def test_a_table_bucket_location_names_at_most_a_namespace_and_a_table(self) -> None:
+        # Refused where the location is read, before any request: there is
+        # nothing to sign, and nothing is sent.
+        deep = "s3tables://bucket/a/b/c"
+        for refused in (
+            lambda: IcebergTable(deep),
+            lambda: IcebergTable.create(deep, SCHEMA),
+            lambda: IcebergTable.open_or_create(deep, SCHEMA),
+            lambda: IOBase(deep),
+        ):
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                refused()
+
+        # A bucket or a namespace is no table, and a create names one by its
+        # namespace and its name.
+        for location in ("s3tables://bucket", "s3tables://bucket/desk"):
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable(location)
+            with pytest.raises(ValueError, match=r"\$\.url"):
+                IcebergTable.create(location, SCHEMA)
+
+    def test_a_table_bucket_location_is_the_object_it_names(self) -> None:
+        # A description each, and no request: the bucket is its catalog and
+        # a segment below it a namespace, as the handle each is.
+        catalog = IOBase("s3tables://bucket")
+        assert isinstance(catalog, Catalog)
+        assert catalog.path == ("bucket",)
+        namespace = IOBase("s3tables://bucket/desk/")
+        assert isinstance(namespace, Namespace)
+        assert str(namespace) == "bucket.desk"
 
 
 class TestCommits:

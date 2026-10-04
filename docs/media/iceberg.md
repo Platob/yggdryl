@@ -8,9 +8,9 @@ Apache Iceberg tables in a folder: `metadata/` and `data/`, no catalog required,
 | --- | --- |
 | Declared by | a table folder - `metadata/` and `data/` beneath it |
 | Build | the `iceberg` feature, which implies `parquet` |
-| Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer |
-| Python | `yggdryl.iceberg`: `IcebergTable` (`create`, `open_or_create`, the constructor `IcebergTable(root)` that opens one, `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog`, `IcebergNamespace` and `IcebergTable` the `Catalog`, `Namespace` and `Table` subclasses a warehouse folder answers |
-| JavaScript | `iceberg`: `IcebergTable` (`create`, `open`, `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace` over a warehouse folder, `IcebergTable.from(table)` the Iceberg table a `warehouse.Table` holds |
+| Rust | `yggdryl::iceberg`: `IcebergTable` (`create`, `open`, `open_or_create`, and by location alone `from_url`, `create_from_url`, `open_or_create_from_url`, `scan`, `scan_matching`, `plan_matching`, `commit_append`, `commit_overwrite`, `commit_merge`, `update_schema`, `compact`), `PartitionSpec`, `PartitionField`, `Transform`, `SortOrder`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace`, the [warehouse](../warehouse/index.md) implementations over a folder of namespaces of tables, `IcebergTable` the `Table` they answer |
+| Python | `yggdryl.iceberg`: `IcebergTable` (`create`, `open_or_create`, the constructor `IcebergTable(root, **properties)` that opens one - `root` a container handle or the table's location - `scan`, `scan_matching`, `plan_matching`, `append`, `overwrite`, `merge`, `update_schema`, `compact`), `PartitionSpec`, `SchemaUpdate`, `IcebergOptions`; `IcebergCatalog`, `IcebergNamespace` and `IcebergTable` the `Catalog`, `Namespace` and `Table` subclasses a warehouse folder answers |
+| JavaScript | `iceberg`: `IcebergTable` (`create`, `open`, `openOrCreate` - `root` a container handle or the table's location, `properties` beside a location - `scan`, `scanMatching`, `planMatching`, `append`, `overwrite`, `merge`, `updateSchema`, `compact`), `PartitionSpec`, `IcebergOptions`; `IcebergCatalog` and `IcebergNamespace` over a warehouse folder, `IcebergTable.from(table)` the Iceberg table a `warehouse.Table` holds |
 | Settings | `IcebergOptions`, each resolved from the call, then the table property, then the default: `read.parallelism`, `write.parallelism`, `write.target-file-size-bytes` and the commit retries among them; a write's `RecordOptions` add `commit_batch_num` and `num_threads`. A count or a byte size held as a table property reads as the one integer grammar reads a whole number - a sign and the digits, the surrounding blanks not part of it, no unit suffix - and a property that does not read is refused naming its key |
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
@@ -823,26 +823,27 @@ The cost is stated in store calls and pinned in `rust/tests/iceberg/catalog/mod_
 
 ### A table a catalog service names
 
-A table laid out as `HadoopTables` lays one out names its current document itself - `metadata/version-hint.text`, else the highest number a listing of `metadata/` shows - and commits by writing the next one there. A table a catalog service keeps is named by the service instead, and its folder need take neither a listing nor a delete. `MetadataPointer` is that service reduced to its two questions - `current()`, the document named now and the token a publication is conditioned on, and `publish(token, location)`, which names the next document on condition the pointer still stands at the token - and `IcebergTable::open_pointed` and `IcebergTable::create_pointed` are the doors beside `open` and `create`.
+A table laid out as `HadoopTables` lays one out names its current document itself - `metadata/version-hint.text`, else the highest number a listing of `metadata/` shows - and commits by writing the next one there. A table a catalog service keeps is named by the service instead, and its folder need take neither a listing nor a delete. `MetadataPointer` is that service reduced to its two questions - `current()`, the document named now and the token a publication is conditioned on, and `publish(token, location)`, which names the next document on condition the pointer still stands at the token - beside `remove()`, which drops the table from the catalog and which a pointer answers only where its catalog drops one; and `IcebergTable::open_pointed` and `IcebergTable::create_pointed` are the doors beside `open` and `create`.
 
 ```text
 trait MetadataPointer: Debug + Send + Sync {
     fn current(&self) -> Result<PointerState>;                               // its location - none before the first document - and its token
     fn publish(&self, token: &str, location: &Url) -> Result<PointerState>;  // a moved pointer is a conflict
+    fn remove(&self) -> Result<()> { .. }                                    // provided: refuses; a catalog that drops a table answers it
 }
 IcebergTable::open_pointed(root, pointer) -> Result<IcebergTable<H>>         // one answer, one read of the document it names
 IcebergTable::create_pointed(root, format_version, schema, spec, pointer)    // version 0, published under the token read
 ```
 
-A pointed table reads the one document the pointer names, its location taken relative to the root's, and writes each next one as `metadata/{version:05}-{uuid}.metadata.json` - the name Iceberg's own catalogs write, the first `00000` - which it publishes under the token the last reading or publication answered, so a commit is its files, one document and one publication, with nothing read first. The pointer is the compare-and-swap plain storage lacks: a publication refused because the pointer moved reads it again, one answer and one document, and an append or a metadata-only commit applies again onto the winner under the retry budget the folder contract keeps, while an overwrite, a merge or a compaction is a `CommitConflict` at once - unless the pointer still names the document it planned against, a token moved by a change that wrote no document, which it publishes again under the new token. A publication that fails otherwise is in doubt, so the pointer is read once more and a pointer naming the attempt is the commit made. No read and no commit lists the folder, writes or reads a hint, or removes a file: a failed commit's files and its document stay, unreferenced. The table's own `ls` and `remove` are refused as `Error::Unsupported`, touching nothing, because the catalog that keeps the pointer keeps the table: it is dropped through that catalog, never by deleting the files the catalog's document names. `metadata_version` is the number the document's name states, and the table's path, equality and hash are what they are under the folder contract - the pointer is not its identity. Rust only: a binding reaches a pointed table through the [S3 Tables catalog](#iceberg-on-amazon-s3-tables).
+A pointed table reads the one document the pointer names, its location taken relative to the root's, and writes each next one as `metadata/{version:05}-{uuid}.metadata.json` - the name Iceberg's own catalogs write, the first `00000` - which it publishes under the token the last reading or publication answered, so a commit is its files, one document and one publication, with nothing read first. The pointer is the compare-and-swap plain storage lacks: a publication refused because the pointer moved reads it again, one answer and one document, and an append or a metadata-only commit applies again onto the winner under the retry budget the folder contract keeps, while an overwrite, a merge or a compaction is a `CommitConflict` at once - unless the pointer still names the document it planned against, a token moved by a change that wrote no document, which it publishes again under the new token. A publication that fails otherwise is in doubt, so the pointer is read once more and a pointer naming the attempt is the commit made. No read and no commit lists the folder, writes or reads a hint, or removes a file: a failed commit's files and its document stay, unreferenced. The table's own `ls` is refused as `Error::Unsupported`, touching nothing, and its `remove` is the pointer's - whatever `recursive` says, since a catalog drops a table whole - because the catalog that keeps the pointer keeps the table: it is dropped through that catalog, never by deleting the files the catalog's document names, and a pointer whose catalog drops nothing refuses as `Error::Unsupported`, naming itself. `metadata_version` is the number the document's name states, and the table's path, equality and hash are what they are under the folder contract - the pointer is not its identity. Rust only: a binding reaches a pointed table as the [Amazon S3 Tables](#iceberg-on-amazon-s3-tables) table its [location](#a-table-by-its-location) names.
 
 ### Iceberg on Amazon S3 Tables
 
-An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect, and a table's `remove` is refused rather than deleting its files: `S3Tables::remove_table` drops it.
+An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/index.md) abstraction, behind the `s3tables` feature (which implies `s3` and `iceberg`): `S3TablesCatalog` is the bucket, its namespaces one level below it (`namespace_levels` is `Some(1)`), each an `S3TablesNamespace` holding Iceberg tables, and each table the `IcebergTable` a generic `Table::Iceberg` holds, rooted on a `Handle` on the warehouse `s3:` location the service chose (`s3://<id>--table-s3`), opened through the [S3 backend](../holder/index.md#object-stores) under the catalog's session, in the bucket's region and under the catalog's properties - so the store's own names (`s3.endpoint`, `s3.region`, ...) stated on the catalog reach every table's files. The service names a table's current document, so every table is [pointed](#a-table-a-catalog-service-names) at it: `GetTableMetadataLocation` is `current()` and `UpdateTableMetadataLocation` is `publish`, whose `409 ConflictException` - a version token the table moved past - is the commit conflict. The warehouse location takes `PutObject` and `GetObject`, and nothing here asks it for more: no listing, no hint, no delete - a failed commit's files are the bucket's unreferenced-file removal's to collect, and a table's `remove` deletes none of its files: it is one `DeleteTable`, the bucket dropping the table it keeps.
 
 `create_table` runs the steps `IcebergCatalog`'s runs, against the control plane: the schema as Iceberg states it (`into_scheme_compat`), numbered above the highest identifier it carries, partitioned by `PartitionSpec::from_schema` - a derived `PARTITION:by` entry included - and sorted by its `SORT:by`; then `CreateTable` registers the table with no schema, `GetTableMetadataLocation` answers its warehouse and token, and its first document is written and published under that token, so the document the table keeps is the crate's own rather than one the service wrote. A first document that is not published removes the registration again under its token, which a publication that took has moved past. Both catalogs create at the format version the create's `format-version` property states, else the lowest that states the schema: 3 where it holds a nanosecond timestamp, a variant or an unknown column, 2 otherwise. The service keeps no properties for a bucket or a namespace, so theirs are what was stated; a table's ride its metadata, as on any Iceberg table.
 
-`Catalog::from_url` answers one for the table bucket's ARN, or for the `s3tables://<bucket>` location the ARN locates. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the one the location was given as - read once, its region and account kept - else the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use, since a bare `s3tables://<bucket>` states neither. A location naming a table below a bucket is refused at `$.url`, a `warehouse` ARN naming another bucket, or another ARN than the one the location was given as, at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name. The catalog keeps, and hands every namespace and table under it, the properties less the ones the session read: who signs is the session from there on, so `properties` lists no credential.
+`Catalog::from_url` answers one for the table bucket's ARN, or for the `s3tables://<bucket>` location the ARN locates. Who signs is `Session::from_properties` over the properties, PyIceberg's `s3tables.`-prefixed names (`s3tables.profile-name`, `s3tables.access-key-id`, ...) read after the bare ones; `s3tables.region` and `s3tables.endpoint` are the client's region and endpoint. The bucket's ARN is the one the location was given as - read once, its region and account kept - else the `s3tables.warehouse` or `warehouse` property where one names it, else built from the `account_id` property and the client's region, else found by name among the caller's own table buckets in that region by one `ListTableBuckets` on first use, since a bare `s3tables://<bucket>` states neither. `Catalog::from_url` is the bucket's door alone - a location naming a namespace or a table below a bucket is refused at `$.url` there, and named by [the doors that take one](#a-table-by-its-location) - a `warehouse` ARN naming another bucket, or another ARN than the one the location was given as, at `$.with.warehouse`; creating a namespace under a namespace, or a table directly under the catalog, is refused by implementation name. The catalog keeps, and hands every namespace and table under it, the properties less the ones the session read: who signs is the session from there on, so `properties` lists no credential.
 
 | Operation | Requests |
 | --- | --- |
@@ -854,6 +855,7 @@ An Amazon S3 Tables table bucket is a catalog on the [warehouse](../warehouse/in
 | `children()` of a namespace | 1 `ListTables` per page, 1 `GetTableMetadataLocation` per table as its turn comes |
 | `get` of a table - `catalog.table("desk.quotes")` adds the namespace's `GetNamespace` | 1 `GetTableMetadataLocation` |
 | `create_table` | `CreateTable`, `GetTableMetadataLocation`, 1 `PutObject` and `UpdateTableMetadataLocation` |
+| a table's `remove` | 1 `DeleteTable` |
 | a table's first read | 1 `GetTableMetadataLocation` and 1 `GetObject` |
 | a commit | its files' `PutObject`s and 1 `UpdateTableMetadataLocation`; a refused one 1 `GetTableMetadataLocation` and 1 `GetObject` more |
 
@@ -924,6 +926,154 @@ An ignored test runs a table's life in the catalog against the live service, in 
 YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> cargo test -p yggdryl --features s3tables --test s3tables catalog::live -- --ignored --nocapture
 ```
 
+#### A table by its location
+
+A location alone reaches what a table bucket keeps, with no catalog built first. `s3tables://<bucket>[/<namespace>[/<table>]]` names the bucket's catalog, one of its namespaces or one of its tables: a trailing slash names nothing, and more than a namespace and a table below the bucket - or a name the service has no namespace or table of - is refused at `$.url`, before any request. A table bucket's ARN names the catalog, and a table's ARN, `arn:<partition>:s3tables:<region>:<account>:bucket/<name>/table/<id>`, the table that identifier is, wherever a rename has moved it. That ARN is read as the ARN it is: the location it locates (`Arn::locator`, `s3tables://<bucket>/<id>`) spells the identifier where a namespace goes, so every door reads the identifier before it lowers it. One reading answers all of them:
+
+| Door | Answers |
+| --- | --- |
+| `Holder::from_url(location, properties)`, and an identifier used as a handle - `Holder::from(arn)`, Python `IOBase(location)`, JavaScript `new IOBase(location)` | the catalog, the namespace or the table, as the handle it is: `kind()` says which, and Python answers the `Catalog`, `Namespace` or `IcebergTable` class |
+| `IcebergTable::from_url(location, properties)` - Python `IcebergTable(location, **properties)`, JavaScript `IcebergTable.open(location, properties)` | the table, described: its document is read on the first verb that needs it. A bucket or a namespace is refused by its kind at `$.url` |
+| `IcebergTable::create_from_url(location, properties, version, schema, spec)` - Python `IcebergTable.create(location, schema, partition_by, format_version=None, **properties)`, JavaScript `IcebergTable.create(location, schema, partitionBy, version, properties)` | the table registered in its bucket and its first document published, as [`create_table`](#iceberg-on-amazon-s3-tables) does it. A namespace the bucket does not hold is made on the way, which is this door's alone; a table's ARN names a table that exists, and is refused |
+| `IcebergTable::open_or_create_from_url` - Python `IcebergTable.open_or_create`, JavaScript `IcebergTable.openOrCreate` | the table opened, and on absence created |
+
+The same three doors open, create, and open or create a table in a folder any backend holds - `file:`, an object store, a path - rooted on the handle `Holder::from_url` opens for the location under the properties, resolved on first use and again by every clone. Either way a `version` left out is the `format-version` property, else the lowest version that states the schema - 3 for a nanosecond timestamp, a variant or an unknown column, else 2 - a `spec` left out is the one the schema declares, and the schema is stored as Iceberg expresses it, numbered above the highest identifier it carries. In the bindings a `root` that is a handle keeps what it did - the folder it addresses, format version 2 unless stated - and properties beside a handle are refused by name: a handle was opened by whoever built it.
+
+The properties are read as `Catalog::from_url` reads them - who signs, `s3tables.region`, `s3tables.endpoint`, the bucket's ARN from `s3tables.warehouse` or `warehouse` or from `account_id` - and the catalog is called what the `name` property says, else what the bucket is. A table reached this way states nothing of its own and inherits the properties less the ones the session read, so it lists and prints no credential. Dropping it is its `remove`: one `DeleteTable` under no version token, a table already gone being dropped; a folder table's `remove(recursive)` removes its folder, as it always did.
+
+| Operation | Requests |
+| --- | --- |
+| a bucket's or a namespace's location, a bucket's ARN | none |
+| a table's location, the bucket's ARN known - a `warehouse` property or `account_id` | 1 `GetTableMetadataLocation`, and no `GetNamespace` |
+| a table's location alone | that, and the 1 `ListTableBuckets` per page a catalog named so pays, once |
+| a table's ARN | 1 `GetTable`, addressed by `tableArn` |
+| `create_from_url` | `CreateTable`, `GetTableMetadataLocation`, 1 `PutObject` and `UpdateTableMetadataLocation` |
+| `create_from_url` under a namespace the bucket does not hold | the refused `CreateTable`, 1 `CreateNamespace`, then those four |
+| `open_or_create_from_url` | the open; absent, its one refused request, then the create |
+| `remove` | 1 `DeleteTable` |
+| the first read after an open | 1 `GetTableMetadataLocation` and 1 `GetObject`: the request that located the table primes nothing, since an object may be read long after it is built |
+
+The counts are pinned in `rust/tests/s3tables/catalog.rs` against the two fakes, and the folder doors in `rust/tests/iceberg/table.rs` (`mod located`).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::iceberg::IcebergTable;
+    use yggdryl::{Arn, DataType, IOBase, IOKind, Properties, StructType, Url};
+
+    // An identity stated in full: nothing below is sent.
+    let properties = Properties::new()
+        .with_property("access_key_id", "AKIAIOSFODNN7EXAMPLE")
+        .with_property("secret_access_key", "a-secret");
+
+    // The bucket is its catalog and a segment below it a namespace, by its
+    // location or by its ARN: a description each, and no request.
+    let lake = Arn::from_str("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake")?;
+    assert_eq!(Holder::from_url(&lake, &properties)?.kind(), IOKind::Catalog);
+    let bucket = Url::from_str("s3tables://lake")?;
+    assert_eq!(Holder::from_url(&bucket, &properties)?.kind(), IOKind::Catalog);
+    let desk = Url::from_str("s3tables://lake/desk/")?;
+    assert_eq!(Holder::from_url(&desk, &properties)?.kind(), IOKind::Namespace);
+
+    // A location names at most a namespace and a table, and a table door
+    // takes a table: both are refused where the location is read.
+    let deep = Url::from_str("s3tables://lake/a/b/c")?;
+    let refused = IcebergTable::from_url(&deep, &properties).unwrap_err();
+    assert!(refused.to_string().contains("$.url"));
+    let refused = IcebergTable::from_url(&desk, &properties).unwrap_err();
+    assert!(refused.to_string().contains("got the namespace"));
+
+    // The same doors over a folder any backend holds: created, reopened and
+    // dropped by its location, the version and the spec the schema's own.
+    let folder = std::env::temp_dir().join(format!("yggdryl-located-doc-{}", std::process::id()));
+    let location = Url::from_path(&folder)?;
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+        .required_field("row");
+    let created = IcebergTable::create_from_url(&location, &Properties::new(), None, schema, None)?;
+    let mut table = IcebergTable::from_url(&location, &Properties::new())?;
+    assert_eq!(table.metadata_file_name()?, created.metadata_file_name()?);
+    assert!(table.current_snapshot()?.is_none());
+    table.remove(true)?;
+    assert!(!folder.exists());
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import Catalog, IOBase, Namespace
+    from yggdryl.iceberg import IcebergTable
+
+    # The bucket is its catalog and a segment below it a namespace, by its
+    # location or by its ARN: a description each, so nothing is sent.
+    assert isinstance(IOBase("s3tables://lake"), Catalog)
+    assert isinstance(IOBase("arn:aws:s3tables:eu-west-3:123456789012:bucket/lake"), Catalog)
+    desk = IOBase("s3tables://lake/desk/")
+    assert isinstance(desk, Namespace)
+    assert str(desk) == "lake.desk"
+
+    # A location names at most a namespace and a table, and a table door takes
+    # a table: both are refused where the location is read.
+    for location in ("s3tables://lake/a/b/c", "s3tables://lake/desk"):
+        try:
+            IcebergTable(location)
+        except ValueError as refused:
+            assert "$.url" in str(refused)
+        else:
+            raise AssertionError("expected a refusal")
+
+    # The same doors over a folder any backend holds: created, reopened and
+    # dropped by its location, the version and the spec the schema's own.
+    with tempfile.TemporaryDirectory() as root:
+        folder = pathlib.Path(root) / "trades"
+        schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+        created = IcebergTable.create(folder, schema)
+        table = IcebergTable(str(folder))
+        assert table.table_uuid == created.table_uuid
+        assert table.format_version == 2
+        table.remove(recursive=True)
+        assert not folder.exists()
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, IOBase, fields, iceberg } = require('yggdryl')
+
+    // The bucket is its catalog and a segment below it a namespace, by its
+    // location or by its ARN: a description each, so nothing is sent.
+    assert.equal(new IOBase('s3tables://lake').kind(), 'catalog')
+    assert.equal(new IOBase('arn:aws:s3tables:eu-west-3:123456789012:bucket/lake').kind(), 'catalog')
+    assert.equal(new IOBase('s3tables://lake/desk/').kind(), 'namespace')
+
+    // A location names at most a namespace and a table, and a table door
+    // takes a table: both are refused where the location is read.
+    assert.throws(() => iceberg.IcebergTable.open('s3tables://lake/a/b/c'), /\$\.url/)
+    assert.throws(() => iceberg.IcebergTable.open('s3tables://lake/desk'), /\$\.url/)
+
+    // The same doors over a folder any backend holds: created, reopened and
+    // dropped by its location, the version and the spec the schema's own.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-located-'))
+    const folder = path.join(root, 'trades')
+    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const created = iceberg.IcebergTable.create(folder, schema)
+    const table = iceberg.IcebergTable.open(folder)
+    assert.equal(table.tableUuid, created.tableUuid)
+    assert.equal(table.formatVersion, 2)
+    IOBase.from(table.intoTable()).remove(true)
+    assert.equal(fs.existsSync(folder), false)
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
 #### The table bucket's catalog
 
 `yggdryl::s3tables::S3Tables` is the client of that catalog: the control plane of a table bucket, which holds namespaces, each holding Iceberg tables. It creates, describes, lists and removes the three levels, and it moves a table's metadata location - which is what a commit to one of these tables is, since the service names the current metadata file rather than a version hint beside it. A table's files stay the [S3 backend's](../holder/index.md#object-stores) to read and write, at the warehouse `s3:` location the catalog answers. The client is behind the `s3tables` feature, which implies `s3` and `iceberg`. Every request it sends is an `http::Request` signed by [`Request::with_sigv4`](../holder/index.md#aws-identity) for the `s3tables` service as an `aws::Session` answers, to `Session::service_endpoint("s3tables", region)` unless the client states its own. The control plane is reached at the configured endpoint when one is configured - `AWS_ENDPOINT_URL_S3TABLES`, `AWS_ENDPOINT_URL`, the profile's `[services]` entry `s3tables`, its `endpoint_url` ([Where each service is reached](../holder/index.md#where-each-service-is-reached)) - else at the region's published host; a stated or configured endpoint is used whatever the session's FIPS and dual-stack switches say, which choose among the published hosts, as botocore uses one. The service takes no anonymous request, so a session that answers no credential set is refused before anything is sent. Rust only.
@@ -947,6 +1097,7 @@ tables.remove_namespace(&bucket, namespace) -> Result<()>
 
 tables.create_table(&bucket, namespace, name, Some(&schema)) -> Result<TableVersion>
 tables.get_table(&bucket, namespace, name) -> Result<TableDescription>
+tables.get_table_by_arn(&table) -> Result<TableDescription> // by the ARN alone: its namespace and name answered
 tables.tables(&bucket, Some(namespace)) -> TableSummaries // lazy: Iterator<Item = Result<TableSummary>>
 tables.rename_table(&bucket, namespace, name, new_namespace, new_name, version_token) -> Result<()>
 tables.remove_table(&bucket, namespace, name, version_token) -> Result<()>
@@ -971,14 +1122,14 @@ Every verb is one request and a listing is one per page of 250, asked for when t
 | `namespaces` | `GET /namespaces/{arn}`, one per page |
 | `remove_namespace` | `DELETE /namespaces/{arn}/{namespace}` |
 | `create_table` | `PUT /tables/{arn}/{namespace}` |
-| `get_table` | `GET /get-table` |
+| `get_table`, `get_table_by_arn` | `GET /get-table` |
 | `tables` | `GET /tables/{arn}`, one per page |
 | `rename_table` | `PUT /tables/{arn}/{namespace}/{name}/rename` |
 | `remove_table` | `DELETE /tables/{arn}/{namespace}/{name}` |
 | `get_table_metadata_location` | `GET /tables/{arn}/{namespace}/{name}/metadata-location` |
 | `update_table_metadata_location` | `PUT /tables/{arn}/{namespace}/{name}/metadata-location` |
 
-A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket, an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and what the session refuses of a configured endpoint - a value naming none, a `[services]` section nobody wrote. An endpoint carrying user information, a query or a fragment is refused where it is read, and no refusal and no `Debug` repeats the user information. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
+A table bucket is addressed by its ARN, which also names the region a request is signed for and sent to. Refused before any request: a name the service's model refuses - a table bucket is 3 to 63 of `0-9`, `a-z` and `-`, a namespace and a table 1 to 255 of `0-9`, `a-z` and `_` - an ARN that names no table bucket - or, for `get_table_by_arn`, no table of one - an empty version token, a rename that names no new namespace and no new name, a region that is no host label (it names the host the signed request goes to), and what the session refuses of a configured endpoint - a value naming none, a `[services]` section nobody wrote. An endpoint carrying user information, a query or a fragment is refused where it is read, and no refusal and no `Debug` repeats the user information. `create_table` sends what the schema declares beside its columns: its `PARTITION:by` as the table's `partitionSpec` and its `SORT:by` as its `writeOrder`. The service's `NotFoundException` is `Error::Absent` from a `get_*` verb and success from a `remove_*` verb; its `ConflictException` is `Error::Conflict` from a `create_*` verb; every other refusal is `Error::Remote` with the service's own status, error type and message, a commit under a version token the table has moved past (`409 ConflictException`) among them.
 
 === "Rust"
 

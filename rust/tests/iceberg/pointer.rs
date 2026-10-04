@@ -3,7 +3,9 @@
 //!
 //! The pointer here is a value in memory; the table's folder is a counting
 //! filesystem, so every pin below states what the store was asked - and that
-//! it was never asked to list, nor to delete, nor for a version hint.
+//! it was never asked to list, nor to delete, nor for a version hint. A
+//! removal is the pointer's own to answer: the folder is asked for nothing
+//! either way.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -74,6 +76,29 @@ impl MetadataPointer for MemoryPointer {
             )));
         }
         Ok(PointerState::new(held.0.clone(), held.1.to_string()))
+    }
+}
+
+/// A pointer whose catalog drops a table: [`MemoryPointer`], counting the
+/// drops it was asked for.
+#[derive(Debug, Default)]
+struct DroppingPointer {
+    pointer: MemoryPointer,
+    drops: AtomicUsize,
+}
+
+impl MetadataPointer for DroppingPointer {
+    fn current(&self) -> yggdryl::Result<PointerState> {
+        self.pointer.current()
+    }
+
+    fn publish(&self, token: &str, location: &Url) -> yggdryl::Result<PointerState> {
+        self.pointer.publish(token, location)
+    }
+
+    fn remove(&self) -> yggdryl::Result<()> {
+        self.drops.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 }
 
@@ -414,22 +439,30 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
 
     // The catalog keeps the table: its folder is neither listed nor
     // removed, however the table is asked, and nothing reaches the store.
+    // A removal is the pointer's to answer, and one that drops nothing
+    // refuses by its own name.
     let mut listed = None;
     let mut removed = None;
     let costs = filesystem.costs(|| {
         listed = Some(table.ls(true, false).collect::<Vec<_>>());
-        removed = Some(table.remove(true));
+        removed = Some((table.remove(true), table.remove(false)));
     });
     assert_eq!(costs, "none");
     let listed = listed.unwrap();
     assert_eq!(listed.len(), 1, "one refusal");
     let error = listed.into_iter().next().unwrap().unwrap_err();
     assert!(error.to_string().contains("listing the files"), "{error}");
-    let error = removed.unwrap().unwrap_err();
-    assert!(
-        error.to_string().contains("drop it through that catalog"),
-        "{error}"
-    );
+    let (recursive, flat) = removed.unwrap();
+    for error in [recursive.unwrap_err(), flat.unwrap_err()] {
+        assert!(matches!(error, Error::Unsupported { .. }), "{error:?}");
+        assert!(
+            error
+                .to_string()
+                .contains("dropping a table through its pointer"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("MemoryPointer"), "{error}");
+    }
 
     // The table is where it was, and still reads.
     assert!(holds(&filesystem, &format!("kept/metadata/{name}")));
@@ -438,6 +471,33 @@ fn a_pointed_table_neither_lists_nor_removes_its_folder() {
         Some(table.metadata_location().unwrap())
     );
     assert_eq!(ids(&table), [1]);
+}
+
+#[test]
+fn removing_a_pointed_table_asks_its_pointer_and_never_its_folder() {
+    let (filesystem, folder) = counted_folder("dropped");
+    let pointer = Arc::new(DroppingPointer::default());
+    let mut table = IcebergTable::create_pointed(
+        folder,
+        FormatVersion::V2,
+        schema(),
+        PartitionSpec::unpartitioned(),
+        Arc::clone(&pointer) as Arc<dyn MetadataPointer>,
+    )
+    .unwrap();
+    table.commit_append(rows(&[("XNAS", 1)])).unwrap();
+    let name = table.metadata_file_name().unwrap();
+
+    // The catalog drops the table whole, so the pointer is asked once
+    // whatever `recursive` says, and the store is asked for nothing: the
+    // files are the catalog's to collect.
+    let costs = filesystem.costs(|| {
+        table.remove(false).unwrap();
+        table.remove(true).unwrap();
+    });
+    assert_eq!(costs, "none");
+    assert_eq!(pointer.drops.load(Ordering::SeqCst), 2);
+    assert!(holds(&filesystem, &format!("dropped/metadata/{name}")));
 }
 
 #[test]

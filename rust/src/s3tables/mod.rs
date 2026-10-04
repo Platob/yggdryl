@@ -71,7 +71,7 @@
 //! | [`namespaces`](S3Tables::namespaces) | 1 `GET /namespaces/{arn}` per page of 250 |
 //! | [`remove_namespace`](S3Tables::remove_namespace) | 1 `DELETE /namespaces/{arn}/{namespace}` |
 //! | [`create_table`](S3Tables::create_table) | 1 `PUT /tables/{arn}/{namespace}` |
-//! | [`get_table`](S3Tables::get_table) | 1 `GET /get-table` |
+//! | [`get_table`](S3Tables::get_table), [`get_table_by_arn`](S3Tables::get_table_by_arn) | 1 `GET /get-table` |
 //! | [`tables`](S3Tables::tables) | 1 `GET /tables/{arn}` per page of 250 |
 //! | [`rename_table`](S3Tables::rename_table) | 1 `PUT /tables/{arn}/{namespace}/{name}/rename` |
 //! | [`remove_table`](S3Tables::remove_table) | 1 `DELETE /tables/{arn}/{namespace}/{name}` |
@@ -138,6 +138,7 @@ mod table;
 
 pub use bucket::TableBucket;
 pub use catalog::{S3TablesCatalog, S3TablesNamespace};
+pub(crate) use catalog::{create, locate};
 pub use client::S3Tables;
 pub use listing::{NamespaceSummaries, TableBuckets, TableSummaries};
 pub use namespace::NamespaceSummary;
