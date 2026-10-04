@@ -911,11 +911,13 @@ mod generic {
         assert_eq!(field.as_iceberg().len(), 1);
     }
 
-    #[cfg(feature = "iceberg")]
     #[test]
-    fn a_typed_read_outlives_the_view_it_was_read_through() {
+    fn a_read_outlives_the_view_it_was_read_through() {
         let mut field = DataType::Int64.required_field("price");
-        field.as_iceberg_mut().set_doc("closing price").unwrap();
+        field
+            .as_iceberg_mut()
+            .insert("doc", "closing price")
+            .unwrap();
         field.set_display("Closing price").unwrap();
 
         // Compiling is the assertion. Every one of these reads through a view that
@@ -923,13 +925,11 @@ mod generic {
         // rather than the view's. Deref does not: `field.as_iceberg().name()` is
         // E0716, which is what `as_field` exists to spell instead.
         let name = field.as_iceberg().as_field().name();
-        let doc = field.as_iceberg().doc();
         let property = field.as_iceberg().get("doc");
         let display = field.as_iceberg().display();
 
         assert_eq!(name, "price");
-        assert_eq!(doc, Some("closing price"));
-        assert_eq!(property, doc);
+        assert_eq!(property, Some("closing price"));
         assert_eq!(display, Some("Closing price"));
     }
 
@@ -989,17 +989,17 @@ mod generic {
             let field = DataType::Int64.required_field("price");
             let cached = Arc::new(field.clone().into_arrow_field().unwrap());
             let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
-            field.as_iceberg_mut().set_doc("closing price").unwrap();
+            field.as_iceberg_mut().set_spec_id(7).unwrap();
             let rebuilt = field.clone().into_arrow_field_ref().unwrap();
             assert!(!Arc::ptr_eq(&cached, &rebuilt));
 
             let mut field = Field::from_arrow_field_ref(Arc::clone(&rebuilt)).unwrap();
-            field.as_iceberg_mut().set_doc("closing price").unwrap();
+            field.as_iceberg_mut().set_spec_id(7).unwrap();
             assert!(Arc::ptr_eq(
                 &rebuilt,
                 &field.clone().into_arrow_field_ref().unwrap()
             ));
-            assert_eq!(field.as_iceberg().doc(), Some("closing price"));
+            assert_eq!(field.as_iceberg().spec_id().unwrap(), Some(7));
         }
     }
 

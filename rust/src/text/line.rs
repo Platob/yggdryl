@@ -1215,18 +1215,19 @@ impl TextLine {
     }
 
     /// What the line states under one of the element columns, as the
-    /// column's cell, or nothing where it states no fact: an element fact
-    /// reads no capture, so there is nothing to refuse.
+    /// column's cell, or nothing where it states no fact - the cross code
+    /// always, the empty text where nothing addressed the line: an element
+    /// fact reads no capture, so there is nothing to refuse.
     #[must_use]
     pub fn element_fact(&self, column: crate::graph::ElementColumn) -> Option<Scalar> {
         match column {
             // The generic element projection starts from `&str`, which would
             // allocate a new long string value for every row. This line owns
             // the shared value already, so its Arrow cell is a cheap clone.
-            crate::graph::ElementColumn::CrossCode => self
-                .crosscode_value()
-                .filter(|code| !code.is_empty())
-                .map(|code| Scalar::Utf8String(code.clone())),
+            crate::graph::ElementColumn::CrossCode => Some(match self.crosscode_value() {
+                Some(code) => Scalar::Utf8String(code.clone()),
+                None => Scalar::from(""),
+            }),
             _ => column.fact(self),
         }
     }

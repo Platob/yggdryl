@@ -547,7 +547,6 @@ fn iceberg_field(extra: usize) -> Field {
     view.set_schema_id(3).expect("a static schema identifier");
     view.set_identifier_field_ids(&[1, 2, 3])
         .expect("static identifier columns");
-    view.set_doc("row identifier").expect("a static doc string");
     view.set_spec_id(7).expect("a static spec identifier");
     view.set_partition_source_id(11)
         .expect("a static source column");
@@ -1775,9 +1774,6 @@ fn an_iceberg_read_costs_only_what_it_hands_back() {
     // read pays for its key: `ICEBERG:schema-id` and `ICEBERG:spec-id` are
     // free, and so is the 27-byte `ICEBERG:partition-source-id` that used to
     // reach the heap when the key was a `SmolStr` past its inline 23 bytes.
-    free("doc", || {
-        let _ = black_box(field.as_iceberg().doc());
-    });
     free("schema_id", || {
         let _ = black_box(field.as_iceberg().schema_id());
     });
@@ -1925,7 +1921,7 @@ fn a_no_op_media_type_rewrite_costs_the_same_whatever_surrounds_it() {
 
 #[cfg(feature = "iceberg")]
 #[test]
-fn writing_a_doc_string_costs_the_key_and_the_value_and_nothing_else() {
+fn writing_an_identifier_costs_the_key_and_the_value_and_nothing_else() {
     // Unlike the media pair, a single property write never copies the map, so
     // both the no-op and the effective write are pinned: two allocations, the
     // assembled key and the value, however much metadata is already stored.
@@ -1934,22 +1930,22 @@ fn writing_a_doc_string_costs_the_key_and_the_value_and_nothing_else() {
         let (unchanged, ()) = counted(|| {
             field
                 .as_iceberg_mut()
-                .set_doc("row identifier")
-                .expect("the identical doc string remains valid");
+                .set_spec_id(7)
+                .expect("the identical identifier remains valid");
         });
         assert_eq!(
             unchanged, 2,
-            "rewriting the same doc over {extra} unrelated keys grew"
+            "rewriting the same identifier over {extra} unrelated keys grew"
         );
         let (effective, ()) = counted(|| {
             field
                 .as_iceberg_mut()
-                .set_doc("the row identifier")
-                .expect("the replacement doc string is valid");
+                .set_spec_id(8)
+                .expect("the replacement identifier is valid");
         });
         assert_eq!(
             effective, 2,
-            "replacing the doc over {extra} unrelated keys grew"
+            "replacing the identifier over {extra} unrelated keys grew"
         );
     }
 }

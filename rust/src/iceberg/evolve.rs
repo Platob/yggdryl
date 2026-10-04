@@ -151,7 +151,7 @@ enum Op {
     DropColumn { path: SmolStr },
     /// Rename a column, keeping its identifier.
     RenameColumn { path: SmolStr, name: SmolStr },
-    /// Set a column's `ICEBERG:doc` documentation string.
+    /// Set a column's documentation: the field's own description.
     UpdateDoc { path: SmolStr, doc: SmolStr },
     /// Relax a required column to optional.
     MakeNullable { path: SmolStr },
@@ -210,8 +210,9 @@ impl SchemaUpdate {
         });
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at
-    /// `path`, through the field's Iceberg protocol view.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own [`Field::description`], which the schema document states
+    /// as its `doc`. An empty one clears it.
     pub fn update_doc(&mut self, path: &str, doc: impl Into<SmolStr>) {
         self.ops.push(Op::UpdateDoc {
             path: SmolStr::new(path),
@@ -348,14 +349,19 @@ fn apply_rename(schema: &mut Field, path: &str, name: SmolStr) -> Result<()> {
     })
 }
 
-/// Set the `ICEBERG:doc` property on the column at `path`.
+/// Set the description of the column at `path`, or clear it for an empty
+/// one.
 fn apply_doc(schema: &mut Field, path: &str, doc: &str) -> Result<()> {
     let (segments, target) = resolve_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
         let Some(index) = children.iter().position(|child| child.name() == target) else {
             return Err(missing_column(&target, children, path));
         };
-        children[index].as_iceberg_mut().set_doc(doc)?;
+        if doc.is_empty() {
+            children[index].remove_description();
+        } else {
+            children[index].set_description(doc)?;
+        }
         Ok(())
     })
 }

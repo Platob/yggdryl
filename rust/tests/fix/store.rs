@@ -3363,10 +3363,15 @@ mod committed {
     /// description says zero is the first place rather than a null, the
     /// crate's field shard and the fixed row component written again over
     /// that one field. No count of the census below moved.
+    /// It last moved when a cross code came to be never absent: `crosscode`
+    /// (65003) is required - the field and the fixed row's member both, a
+    /// message naming none stating the empty text rather than a null - the
+    /// crate's field shard and the fixed row component written again over
+    /// that one flag. No count of the census below moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 9_503_387_175_628_511_469);
+        assert_eq!(registry.stable_hash(), 12_622_587_116_294_776_451);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

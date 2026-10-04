@@ -485,15 +485,17 @@ mod text {
                     .collect::<Vec<_>>(),
                 with_event(&["mimetype", "body", "dropped_byte_size", "level"])
             );
-            // The six facts every event settles are the six a line always
-            // states - its place among them, zero for the first; everything
-            // a line may leave unsaid is nullable, and the two the reader
-            // itself answers - what the line was classified as, and the
-            // line - are not.
+            // The seven facts every event settles are the seven a line
+            // always states - its place among them, zero for the first, and
+            // its cross code, the empty text where nothing addressed it;
+            // everything a line may leave unsaid is nullable, and the two
+            // the reader itself answers - what the line was classified as,
+            // and the line - are not.
             let required = [
                 "currunix",
                 "curruuid",
                 "crossuuid",
+                "crosscode",
                 "currhashcode",
                 "crosshashcode",
                 "seqnum",

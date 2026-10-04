@@ -30,7 +30,7 @@
         "dtype": {
           "type": "null"
         },
-        "nullable": true,
+        "nullable": false,
         "metadata": {
           "FIX:field": "crosscode",
           "FIX:tag": "65003"

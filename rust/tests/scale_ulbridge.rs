@@ -34,9 +34,10 @@
 //! thousands of rows each, as a bridge's own days are, rather than decades
 //! of quarters holding a dozen. The copies are written through
 //! the crate's own Zstandard encoder into `.log.zst` files, a run of copies
-//! each, and read back as the one table their folder is through an
-//! [`FsFolder`] over [`LocalFileSystem`] - plain `std::fs` reads, never a
-//! mapping, whose pages would count in the very figure measured.
+//! each, and read back as the one table their folder is through the
+//! crate's own [`LocalFolder`], the backend a local path resolves to: its
+//! leaves are memory-mapped, and a mapping's pages are the file's, counted
+//! in `RssFile` and never in the `RssAnon` asserted.
 //!
 //! Memory is read from `/proc/self/status` after every batch a stage pulls
 //! ([`Probe`]), each reading placed by the text rows read so far, which is
@@ -92,7 +93,6 @@ use arrow_array::{
 use arrow_schema::{ArrowError, SchemaRef};
 use regex::bytes::Regex;
 use yggdryl::arrow::BatchReader;
-use yggdryl::fs::{FsFolder, LocalFileSystem};
 use yggdryl::graph::{BookIterator, MarketData};
 use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
 use yggdryl::local::LocalFolder;
@@ -126,11 +126,18 @@ const SMOKE_COPIES: u64 = 3;
 /// happened and the hash of what it states.
 const PRIMARY_KEY: [&str; 2] = ["currunix", "currhashcode"];
 
-/// The columns every table of the pipeline requires of each row: its key
-/// and its place among the rows of its instant. A text row and a FIX row
-/// already do; the `marketdata` row lets a leaf that is no event state
-/// none, and these tables hold events alone.
-const REQUIRED: [&str; 3] = ["currunix", "currhashcode", "seqnum"];
+/// The columns every table of the pipeline requires of each row: its key,
+/// its place among the rows of its instant, and the code and hash of the
+/// chain it belongs to. A text row and a FIX row already do; the
+/// `marketdata` row lets a leaf that is no event state none, and these
+/// tables hold events alone.
+const REQUIRED: [&str; 5] = [
+    "currunix",
+    "currhashcode",
+    "seqnum",
+    "crosscode",
+    "crosshashcode",
+];
 
 /// The copies the scale run stacks inside one span, each a second after the
 /// one before: some twenty-four thousand text rows a quarter of an hour.
@@ -1209,6 +1216,25 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
             );
         }
     }
+    // Every column says what it holds - the partition column by the term it
+    // is derived by - and the table states each as the column's doc.
+    let silent: Vec<&str> = schema
+        .fields()
+        .iter()
+        .filter(|child| child.description().is_none())
+        .map(Field::name)
+        .collect();
+    assert!(
+        silent.is_empty(),
+        "{name}: every column says what it holds, and these do not: {silent:?}"
+    );
+    assert_eq!(
+        schema
+            .get_field_by_path("partunix")
+            .and_then(Field::description),
+        Some("Derived from the row as time_bucket('15 minutes', currunix)."),
+        "{name}: the partition column is described by its term"
+    );
     assert_eq!(
         schema.get_metadata("PARTITION:by"),
         Some(r#"["partunix"]"#),
@@ -1290,15 +1316,9 @@ fn run(shape: &Run) -> Outcome {
     let baseline = Resident::now();
 
     let started = Instant::now();
-    // Every file the folder holds is one leaf of one table of text rows:
-    // read through the filesystem, one leaf open at a time.
-    let source = FsFolder::from_path(
-        Arc::new(LocalFileSystem::new()),
-        // A filesystem path is raw text joined with `/`, on every platform.
-        logs.to_str().expect("a UTF-8 path").replace('\\', "/"),
-        None,
-    )
-    .expect("the input binds");
+    // Every file the folder holds is one leaf of one table of text rows,
+    // read through the native local backend, one leaf open at a time.
+    let source = LocalFolder::new(&logs).expect("the input folder");
     let lines = source.read_serie(Some(&options)).expect("the text rows");
     let text_row = lines.field().clone();
     let lines = counted(lines, &probe, |probe| &probe.lines);

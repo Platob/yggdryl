@@ -323,8 +323,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("the static schema identifier is valid");
         view.set_identifier_field_ids(&[1, 2, 3])
             .expect("the static identifier columns are valid");
-        view.set_doc("row identifier")
-            .expect("the static doc string is valid");
         view.set_spec_id(7)
             .expect("the static spec identifier is valid");
         view.set_partition_source_id(11)
@@ -336,8 +334,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .into_arrow_field_ref()
             .expect("the static Iceberg field projects to Arrow");
 
-        group.bench_function("iceberg_doc_exact", |bencher| {
-            bencher.iter(|| black_box(&iceberg_field).as_iceberg().doc());
+        group.bench_function("iceberg_spec_id_exact", |bencher| {
+            bencher.iter(|| black_box(&iceberg_field).as_iceberg().spec_id());
         });
         group.bench_function("iceberg_schema_id_typed", |bencher| {
             bencher.iter(|| {
@@ -381,22 +379,22 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     .expect("the static identifier columns remain valid")
             });
         });
-        group.bench_function("iceberg_doc_set_noop", |bencher| {
+        group.bench_function("iceberg_spec_id_set_noop", |bencher| {
             bencher.iter(|| {
                 iceberg_field
                     .as_iceberg_mut()
-                    .set_doc(black_box("row identifier"))
-                    .expect("the identical doc string remains valid");
+                    .set_spec_id(black_box(7))
+                    .expect("the identical spec identifier remains valid");
             });
         });
-        group.bench_function("iceberg_doc_set_changed", |bencher| {
+        group.bench_function("iceberg_spec_id_set_changed", |bencher| {
             bencher.iter_batched(
                 || iceberg_field.clone(),
                 |mut field| {
                     field
                         .as_iceberg_mut()
-                        .set_doc(black_box("the row identifier"))
-                        .expect("the replacement doc string is valid");
+                        .set_spec_id(black_box(8))
+                        .expect("the replacement spec identifier is valid");
                     black_box(field)
                 },
                 BatchSize::SmallInput,

@@ -61,6 +61,22 @@ impl OperationColumn {
         }
     }
 
+    /// What the column holds, for a catalog.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::OrdQty => "The quantity the operation asked for.",
+            Self::TimeInForce => "How long the operation stands.",
+            Self::Tradable => "Whether the operation trades; null where it states nothing.",
+            Self::Identifiers => {
+                "The operation's own identifiers, sorted by key: an identifier's source and type to its value, each with its lineage."
+            }
+            Self::PartyIds => {
+                "The parties the operation names, sorted by key: accounts, traders, firms and users."
+            }
+        }
+    }
+
     /// The one datatype the column is built and read at.
     #[must_use]
     pub fn datatype(self) -> DataType {
@@ -79,14 +95,16 @@ impl OperationColumn {
         true
     }
 
-    /// The column as a field, named, typed and displayed.
+    /// The column as a field, named, typed and nullable, with its display
+    /// and description for a catalog.
     ///
     /// # Errors
     ///
-    /// Returns an error when the display cannot be set.
+    /// Returns an error when the display or the description cannot be set.
     pub fn field(self) -> Result<Field> {
         let mut field = Field::new(self.name(), self.datatype(), self.nullable());
         field.set_display(self.display())?;
+        field.set_description(self.description())?;
         Ok(field)
     }
 

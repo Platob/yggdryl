@@ -661,7 +661,8 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
 ];
 
 /// The crate's own columns every message states: the instants the identity
-/// is settled against, the codes and the identity it settles to, and the
+/// is settled against, the codes and the identity it settles to - the cross
+/// code among them, the empty text where the message names none - and the
 /// place it holds among the messages of its instant - zero for the first,
 /// so never absent.
 ///
@@ -669,11 +670,12 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 37] = [
 /// `UNKNOWN` where nothing states one - but the column admits a null,
 /// because a state has no neutral member for an empty cell to read as, and
 /// a column no default can fill is not one a row can be required to state.
-const ALWAYS_STATED: [i32; 7] = [
+const ALWAYS_STATED: [i32; 8] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
+    CROSSCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
     CROSSUUID_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
@@ -760,8 +762,9 @@ impl Crated {
         Self::holding(tag_name, Holds::Event(column))
     }
 
-    /// One graph market column under the crate's own tag, which must say
-    /// what it holds: a market column carries no wording of its own.
+    /// One graph market column under the crate's own tag, saying what FIX
+    /// states of it: the fields its value is read off, which the column's
+    /// own wording cannot name.
     const fn market(
         tag_name: (i32, &'static str),
         column: MarketColumn,
@@ -842,8 +845,8 @@ impl Crated {
         let (dtype, display, description) = match self.holds {
             Holds::Element(column) => (column.datatype(), column.display(), column.description()),
             Holds::Event(column) => (column.datatype(), column.display(), column.description()),
-            Holds::Market(column) => (column.datatype(), column.display(), ""),
-            Holds::Operation(column) => (column.datatype(), column.display(), ""),
+            Holds::Market(column) => (column.datatype(), column.display(), column.description()),
+            Holds::Operation(column) => (column.datatype(), column.display(), column.description()),
             Holds::Own {
                 datatype,
                 display,

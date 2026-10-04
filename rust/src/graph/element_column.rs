@@ -36,8 +36,13 @@ use super::Element;
 /// let mut again = OrderEvent::default();
 /// ElementColumn::SrcUuids.record(&mut again, &sources);
 /// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
-/// // Nothing stated is a null: an empty code, an empty list.
-/// assert_eq!(ElementColumn::CrossCode.fact(&OrderEvent::default()), None);
+/// // A code is always stated, the empty text where the element names
+/// // none; an empty list is a null.
+/// assert_eq!(
+///     ElementColumn::CrossCode.fact(&OrderEvent::default()),
+///     Some(yggdryl::Scalar::from(""))
+/// );
+/// assert_eq!(ElementColumn::SrcUuids.fact(&OrderEvent::default()), None);
 /// assert_eq!(ElementColumn::of_name("SrcUuids"), Some(ElementColumn::SrcUuids));
 /// // When an element happened is an event's fact, not an element's.
 /// assert_eq!(ElementColumn::of_name("currunix"), None);
@@ -110,7 +115,7 @@ impl ElementColumn {
                 "The identity every element of one chain shares, derived from the code they share; the element's own where it names none."
             }
             Self::CrossCode => {
-                "The code every element of one chain shares, as the element spells it; empty where none."
+                "The code every element of one chain shares, as the element spells it: the empty text where it names none, never null."
             }
             Self::CurrHashCode => "The XXH3-64 of what the element states.",
             Self::CrossHashCode => {
@@ -135,12 +140,13 @@ impl ElementColumn {
         }
     }
 
-    /// Whether the column may hold a null: the code and the sources, which
-    /// an element answers as nothing where it states none, may; the
-    /// identities and the codes it digests to are never absent.
+    /// Whether the column may hold a null: the sources, which an element
+    /// answers as nothing where it states none, may; the identities, the
+    /// cross code - the empty text where the element names none - and the
+    /// codes it digests to are never absent.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        matches!(self, Self::CrossCode | Self::SrcUuids)
+        matches!(self, Self::SrcUuids)
     }
 
     /// The column as a field: its name, datatype and nullability, with
@@ -175,15 +181,13 @@ impl ElementColumn {
 
     /// What an element states under this column, as the raw value the
     /// column's datatype types, or nothing where it states no fact: an
-    /// empty code or serie.
+    /// empty serie. The cross code is always stated, the empty text where
+    /// the element names none.
     pub fn fact<E: Element + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
             Self::CurrUuid => Some(Scalar::Uuid(element.get_curruuid())),
             Self::CrossUuid => Some(Scalar::Uuid(element.get_crossuuid())),
-            Self::CrossCode => {
-                let code = element.get_crosscode();
-                (!code.is_empty()).then(|| Scalar::from(code))
-            }
+            Self::CrossCode => Some(Scalar::from(element.get_crosscode())),
             Self::CurrHashCode => Some(Scalar::from(element.get_currhashcode())),
             Self::CrossHashCode => Some(Scalar::from(element.get_crosshashcode())),
             Self::SrcUuids => uuids_fact(element.get_srcuuids()),

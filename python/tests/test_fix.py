@@ -2344,6 +2344,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert [name for name, field in fields.items() if not field.nullable] == [
         "curruuid",
         "crossuuid",
+        "crosscode",
         "currhashcode",
         "crosshashcode",
         "currunix",
@@ -4506,6 +4507,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "creaunix",
         "currhashcode",
         "crosshashcode",
+        "crosscode",
         "curruuid",
         "crossuuid",
         "seqnum",
@@ -5000,9 +5002,9 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
 # The key every table of the capture pipeline declares: when a row happened
 # and the hash of what it states.
 CAPTURE_PRIMARY_KEY = ("currunix", "currhashcode")
-# What every table of the pipeline requires of each row: its key and its
-# place among the rows of its instant.
-CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "seqnum")
+# What every table of the pipeline requires of each row: its key, its place
+# among the rows of its instant, and the code and hash of its chain.
+CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
 
 
 def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTable:
@@ -5067,8 +5069,14 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     assert stored.metadata["SORT:by"] == '["partunix","currunix","seqnum","currhashcode"]'
     key = sorted(stored[name].parquet_field_id for name in CAPTURE_PRIMARY_KEY)
     assert stored.iceberg.get("identifier-field-ids") == ",".join(map(str, key))
-    assert [stored[name].nullable for name in CAPTURE_REQUIRED] == [False, False, False]
+    assert not any(stored[name].nullable for name in CAPTURE_REQUIRED)
     assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
+    # Every column says what it holds, which the table states as its doc:
+    # the partition column by the term it is derived by.
+    assert [column.name for column in stored if column.description is None] == []
+    assert stored["partunix"].description == (
+        "Derived from the row as time_bucket('15 minutes', currunix)."
+    )
 
     def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
         # The two instants as their nanosecond counts, in the order read.

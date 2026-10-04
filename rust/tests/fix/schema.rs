@@ -371,6 +371,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         [
             "curruuid",
             "crossuuid",
+            "crosscode",
             "currhashcode",
             "crosshashcode",
             "currunix",

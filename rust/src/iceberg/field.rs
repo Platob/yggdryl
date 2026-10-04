@@ -1,12 +1,12 @@
 //! Iceberg's own vocabulary, on the field views that carry it.
 //!
 //! An Iceberg schema states more about a column than a [`Field`](crate::Field)
-//! has structural slots for - the schema identifier, a doc string, the v3
-//! defaults, an `unknown` column the `variant` it reads as cannot
-//! distinguish - and a
+//! has structural slots for - the schema identifier, the v3 defaults, an
+//! `unknown` column the `variant` it reads as cannot distinguish - and a
 //! partition tuple states how each of its values was derived. All of it rides
 //! as `ICEBERG:` properties, so these two impls are the one place that
-//! vocabulary is spelled, parsed and rendered.
+//! vocabulary is spelled, parsed and rendered. A column's `doc` is not among
+//! them: it is the field's own [`description`](crate::Field::description).
 //!
 //! The impls live here rather than beside the other protocol views because the
 //! property constants belong to the documents they are read from and written
@@ -18,10 +18,10 @@
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! let mut field = DataType::Int64.required_field("id");
-//! field.as_iceberg_mut().set_doc("row identifier")?;
+//! field.as_iceberg_mut().set_spec_id(1)?;
 //! field.as_iceberg_mut().set_partition_source_id(3)?;
 //!
-//! assert_eq!(field.as_iceberg().doc(), Some("row identifier"));
+//! assert_eq!(field.as_iceberg().spec_id()?, Some(1));
 //! assert_eq!(field.as_iceberg().partition_source_id()?, Some(3));
 //! assert_eq!(field.get_metadata("ICEBERG:partition-source-id"), Some("3"));
 //! # Ok(())
@@ -32,7 +32,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Transform;
 use super::partition::{SOURCE_ID, SPEC_ID, TRANSFORM};
-use super::schema::{DOC, IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
+use super::schema::{IDENTIFIER, INITIAL_DEFAULT, SCHEMA_ID, TYPE, UNKNOWN, WRITE_DEFAULT};
 use crate::integer::integer_from_text_as;
 use crate::{DataType, Error, Field, IcebergField, IcebergFieldMut, Result, Scalar};
 
@@ -75,11 +75,6 @@ impl<'field> IcebergField<'field> {
                 })
             })
             .collect()
-    }
-
-    /// Returns this column's Iceberg documentation string.
-    pub fn doc(&self) -> Option<&'field str> {
-        self.get(DOC)
     }
 
     /// Whether the schema declares this column Iceberg's `unknown`.
@@ -196,15 +191,6 @@ impl IcebergFieldMut<'_> {
     pub fn set_identifier_field_ids(&mut self, ids: &[i32]) -> Result<()> {
         let joined: Vec<String> = ids.iter().map(i32::to_string).collect();
         self.store(IDENTIFIER, joined.join(","))
-    }
-
-    /// Records this column's Iceberg documentation string.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::set_schema_id`] carries the rule.
-    pub fn set_doc(&mut self, doc: impl Into<String>) -> Result<()> {
-        self.store(DOC, doc)
     }
 
     /// Declares this column Iceberg's `unknown`, or clears the declaration.

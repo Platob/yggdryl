@@ -285,25 +285,31 @@ mod schema_updates {
     }
 
     #[test]
-    fn update_doc_writes_the_iceberg_doc_property() {
+    fn update_doc_writes_the_column_s_own_description() {
         let metadata = metadata();
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.update_doc("id", "trade identifier");
         update.update_doc("quote.price", "closing price");
         let evolved = update.into_field().unwrap();
-        assert_eq!(
-            evolved.get_field_by_path("id").unwrap().as_iceberg().doc(),
-            Some("trade identifier")
-        );
+        let id = evolved.get_field_by_path("id").unwrap();
+        assert_eq!(id.description(), Some("trade identifier"));
+        assert_eq!(id.get_metadata("ICEBERG:doc"), None);
         assert_eq!(
             evolved
                 .get_field_by_path("quote")
                 .unwrap()
                 .get_field_by_path("price")
                 .unwrap()
-                .get_metadata("ICEBERG:doc"),
+                .description(),
             Some("closing price")
         );
+
+        // An empty doc says nothing: it clears the description.
+        let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
+        update.update_doc("id", "trade identifier");
+        update.update_doc("id", "");
+        let cleared = update.into_field().unwrap();
+        assert_eq!(cleared.get_field_by_path("id").unwrap().description(), None);
     }
 
     #[test]
@@ -455,10 +461,7 @@ mod schema_updates {
         update.update_doc("ticker", "renamed first");
         let evolved = update.into_field().unwrap();
         assert_eq!(
-            evolved
-                .get_field_by_path("ticker")
-                .unwrap()
-                .get_metadata("ICEBERG:doc"),
+            evolved.get_field_by_path("ticker").unwrap().description(),
             Some("renamed first")
         );
     }

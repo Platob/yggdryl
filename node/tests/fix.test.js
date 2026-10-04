@@ -3130,7 +3130,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
   // The columns a row must carry a value at: the settled identity, the
   // place at its instant, and the version every message opens with.
-  const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'seqnum', 'beginstring']
+  const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode', 'seqnum', 'beginstring']
 
   // Two frames on one row: a line is none, one or many messages, and this
   // one is two.

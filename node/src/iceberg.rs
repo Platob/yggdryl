@@ -2449,7 +2449,9 @@ impl JsSchemaUpdate {
         self.inner.rename_column(&path, name);
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at `path`.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own description, which the schema states as its `doc`. An
+    /// empty one clears it.
     #[napi]
     pub fn update_doc(&mut self, path: String, doc: String) {
         self.inner.update_doc(&path, doc);

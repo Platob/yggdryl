@@ -13,13 +13,22 @@
 //! emitting a schema document for another system. It numbers a field tree
 //! depth-first from a starting id; a field that already carries an id keeps it.
 //!
-//! Everything a field cannot hold structurally - the schema identifier, a
-//! column's documentation, the v3 default values, an `unknown` column read as
-//! the `variant` it can become - is kept as Iceberg protocol
+//! Everything a field cannot hold structurally - the schema identifier, the
+//! v3 default values, an `unknown` column read as the `variant` it can
+//! become - is kept as Iceberg protocol
 //! properties, so re-emitting a document reproduces it rather than quietly
 //! dropping what the field model has no slot for. Those properties are reached
 //! through [`Field::as_iceberg`] and [`Field::as_iceberg_mut`], which own the
 //! `ICEBERG:` vocabulary so this module never spells a metadata key itself.
+//!
+//! A column's `doc` is none of them: it is the field's own
+//! [`Field::description`], written to the document and read back from it,
+//! because a field has one meaning however many catalogs quote it. A
+//! description is one line, so a line break or any other control character a
+//! writer left in a `doc` reads as a space, and a `doc` that says nothing as
+//! no description.
+
+use std::borrow::Cow;
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -29,8 +38,9 @@ use crate::{DataType, Error, Field, Result, Scalar, StructType};
 /// The Iceberg property naming a schema identifier.
 pub(super) const SCHEMA_ID: &str = "schema-id";
 
-/// The Iceberg property holding a column's documentation string.
-pub(super) const DOC: &str = "doc";
+/// The key a field object states a column's documentation under: the
+/// field's own description, never a property of its own.
+const DOC: &str = "doc";
 
 /// The Iceberg property holding a v3 `initial-default`, as encoded JSON.
 pub(super) const INITIAL_DEFAULT: &str = "initial-default";
@@ -234,8 +244,12 @@ fn field_from_json(entry: &Scalar) -> Result<Field> {
 
     let mut field = typed_field_from_json(name, type_json, !required)?;
     field.set_parquet_field_id(field_id(id, name)?);
-    if let Some(doc) = entry.get_key_str("doc").and_then(Scalar::as_str) {
-        field.as_iceberg_mut().set_doc(doc)?;
+    if let Some(description) = entry
+        .get_key_str(DOC)
+        .and_then(Scalar::as_str)
+        .and_then(description_from_doc)
+    {
+        field.set_description(description)?;
     }
     if let Some(default) = entry.get_key_str(INITIAL_DEFAULT) {
         field.as_iceberg_mut().set_initial_default(default)?;
@@ -318,6 +332,18 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
     }
 }
 
+/// What a field object's `doc` says, as the description the column keeps:
+/// a control character reads as a space, the blanks that leaves at either
+/// end are dropped, and a `doc` that then says nothing is no description.
+fn description_from_doc(doc: &str) -> Option<Cow<'_, str>> {
+    if !doc.contains(char::is_control) {
+        return (!doc.is_empty()).then_some(Cow::Borrowed(doc));
+    }
+    let line = doc.replace(char::is_control, " ");
+    let line = line.trim();
+    (!line.is_empty()).then(|| Cow::Owned(line.to_owned()))
+}
+
 /// Render a struct field's children as Iceberg field objects.
 fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
     let fields = root.fields();
@@ -335,8 +361,8 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
             (Scalar::from("required"), Scalar::from(!field.is_nullable())),
             (Scalar::from("type"), type_to_json(field)?),
         ];
-        if let Some(doc) = field.as_iceberg().doc() {
-            object.push((Scalar::from("doc"), Scalar::from(doc)));
+        if let Some(description) = field.description() {
+            object.push((Scalar::from(DOC), Scalar::from(description)));
         }
         if let Some(default) = field.as_iceberg().initial_default()? {
             object.push((Scalar::from(INITIAL_DEFAULT), default));

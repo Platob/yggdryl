@@ -1233,7 +1233,9 @@ class TestSchemaUpdates:
 
         evolved = narrow.schema.dtype[0]
         assert evolved.nullable
-        assert evolved.iceberg["doc"] == "row identifier"
+        # A column's doc is its own description, never an `ICEBERG:` property.
+        assert evolved.description == "row identifier"
+        assert "doc" not in evolved.iceberg
 
     def test_a_dropped_column_retires_its_identifier(self, narrow: IcebergTable) -> None:
         with narrow.update_schema() as update:

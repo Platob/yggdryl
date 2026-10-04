@@ -30,7 +30,7 @@
     "dtype": {
       "type": "string"
     },
-    "nullable": true,
+    "nullable": false,
     "metadata": {
       "FIX:tag": "65003",
       "FIX:transient": "false",

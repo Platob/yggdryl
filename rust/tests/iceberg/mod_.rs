@@ -1138,6 +1138,76 @@ mod schema_documents {
     use yggdryl::StructType;
 
     #[test]
+    fn a_description_is_the_doc_a_column_states_at_every_depth() {
+        let mut price = DataType::Float64.nullable_field("price");
+        price.set_description("the closing price").unwrap();
+        let mut quote =
+            DataType::from(StructType::from_fields([price]).unwrap()).nullable_field("quote");
+        quote.set_description("the last quote").unwrap();
+        let mut id = DataType::Int64.required_field("id");
+        id.set_description("the row identifier").unwrap();
+        let silent = DataType::Int64.nullable_field("silent");
+        let mut schema = DataType::from(StructType::from_fields([id, quote, silent]).unwrap())
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+
+        let document = schema_into_json(&schema).unwrap();
+        let fields = document.get_key_str("fields").unwrap();
+        let doc = |entry: &Scalar| {
+            entry
+                .get_key_str("doc")
+                .and_then(Scalar::as_str)
+                .map(str::to_owned)
+        };
+        let entries = fields.sequence_rows().unwrap();
+        assert_eq!(doc(&entries[0]).as_deref(), Some("the row identifier"));
+        assert_eq!(doc(&entries[1]).as_deref(), Some("the last quote"));
+        assert_eq!(doc(&entries[2]), None, "no description states no doc");
+        let nested = entries[1]
+            .get_key_str("type")
+            .unwrap()
+            .get_key_str("fields")
+            .unwrap();
+        let nested = nested.sequence_rows().unwrap();
+        assert_eq!(doc(&nested[0]).as_deref(), Some("the closing price"));
+
+        // Read back, every description is where it was: each column is the
+        // same field, the description under its own key. The root alone
+        // differs, by the schema id a document read states.
+        let read = schema_from_json("row", &document).unwrap();
+        assert_eq!(read.fields(), schema.fields());
+        assert_eq!(read.fields()[0].description(), Some("the row identifier"));
+        assert_eq!(
+            read.fields()[1].fields()[0].description(),
+            Some("the closing price")
+        );
+        assert_eq!(read.fields()[2].description(), None);
+    }
+
+    #[test]
+    fn a_doc_another_writer_broke_over_lines_reads_as_one_line() {
+        let document = yggdryl::json::from_utf8(
+            r#"{
+                "type": "struct",
+                "fields": [
+                    {"id": 1, "name": "a", "required": true, "type": "long",
+                     "doc": "first line\nsecond\tline\r\n"},
+                    {"id": 2, "name": "b", "required": true, "type": "long", "doc": ""},
+                    {"id": 3, "name": "c", "required": true, "type": "long", "doc": "\n"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(
+            schema.fields()[0].description(),
+            Some("first line second line")
+        );
+        assert_eq!(schema.fields()[1].description(), None, "an empty doc");
+        assert_eq!(schema.fields()[2].description(), None, "a blank doc");
+    }
+
+    #[test]
     fn a_nested_schema_round_trips_through_json() {
         let document = yggdryl::json::from_utf8(
             r#"{
@@ -1167,10 +1237,10 @@ mod schema_documents {
         let schema = schema_from_json("row", &document).unwrap();
         assert_eq!(schema.field_len(), 4);
         assert!(!schema.is_nullable());
-        assert_eq!(
-            schema.fields()[1].get_metadata("ICEBERG:doc"),
-            Some("ticker")
-        );
+        // A column's `doc` is the field's own description, never a
+        // property of its own.
+        assert_eq!(schema.fields()[1].description(), Some("ticker"));
+        assert_eq!(schema.fields()[1].get_metadata("ICEBERG:doc"), None);
 
         // Requirement inverts into nullability.
         assert!(!schema.fields()[0].is_nullable());

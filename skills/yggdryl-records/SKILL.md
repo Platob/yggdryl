@@ -59,6 +59,7 @@ medium does the work before a byte is decoded.
 | Iceberg filtered scan | `scan_matching("px > 1", None)?`, `plan_matching(..)?` | `scan_matching("px > 1")`, `plan_matching(..)` | `scanMatching('px > 1')`, `planMatching(..)` |
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `update_schema(&update)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
+| a column description a catalog shows (the Iceberg `doc`) | `field.set_description("..")?` before `create`; `update.update_doc(path, "..")` on a stored table | `field.description = ".."`; `update_schema().update_doc(path, "..").commit()` | `field.setDescription('..')`; `updateSchema().updateDoc(path, '..').commit()` |
 | lazy engine scan | - | `scan_polars()`, `scan_arrow()` | - |
 | pandas / polars frames to and from a file | - | `read_pandas_frame()`, `read_polars_frame()` (whole), `read_pandas()` / `read_polars()` (lazy iterator of frames), `overwrite_pandas_frame(df)`, `append_polars_frame(df)`, `merge_pandas_frame(df, merge_by=[...])`, `write_polars(frames, mode)` | - |
 | SQL-like write/read plan | `"select ...".parse::<Plan>()?.execute()?`, `apply_arrow_reader` | `Plan("insert into ...").apply_arrow_batch(b)`, `.execute()` | `new Plan('...').applyArrowBatch(b)`, `.execute()` |

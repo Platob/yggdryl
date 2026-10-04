@@ -292,6 +292,30 @@ impl Column {
         }
     }
 
+    /// What a column of the row's own holds, for a catalog: a fact's
+    /// column states its own.
+    const fn description(self) -> Option<&'static str> {
+        match self {
+            Self::Element(_) | Self::Event(_) | Self::Market(_) | Self::Operation(_) => None,
+            Self::BookScope => {
+                Some("The book scope a market-data entry belongs to, where it states one.")
+            }
+            Self::BookAction => Some(
+                "The update action a market-data entry states: what a book walk does with the entry.",
+            ),
+            Self::BookPosition => Some("The position of a market-data entry in its price level."),
+            Self::Alive => Some(
+                "The entries standing in the book, stated where the book is complete: at a snapshot tick.",
+            ),
+            Self::Deltas => Some(
+                "The entries the book changed by since the book before it, in the order applied.",
+            ),
+            Self::Executions => Some("The executions a trade is made of; null on a book."),
+            Self::BidLimits => Some("The price levels of the bid side, best first."),
+            Self::AskLimits => Some("The price levels of the ask side, best first."),
+        }
+    }
+
     /// The root column one name spells, whatever its case.
     fn of_name(name: &str) -> Option<Self> {
         root_columns()
@@ -301,7 +325,7 @@ impl Column {
 
     /// The column's field in the struct `role` names.
     fn field(self, role: Role) -> Result<Field> {
-        let field = match self {
+        let mut field = match self {
             Self::Element(column) => column.field()?,
             Self::Event(column) => column.field()?,
             Self::Market(column) => column.field()?,
@@ -328,6 +352,9 @@ impl Column {
                 DataType::serie(Limit::field()).nullable_field(self.name())
             }
         };
+        if let Some(description) = self.description() {
+            field.set_description(description)?;
+        }
         // A root states only what its leaf does, so every identity, clock
         // and nested column may be null there; a nested row's own columns
         // keep the nullability its fact has.
@@ -748,9 +775,7 @@ impl<'a> Row<'a> {
         let element: &'a dyn Element = self.element;
         let market: &'a dyn Market = self.market;
         match column {
-            Column::Element(ElementColumn::CrossCode) => {
-                Some(element.get_crosscode()).filter(|code| !code.is_empty())
-            }
+            Column::Element(ElementColumn::CrossCode) => Some(element.get_crosscode()),
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
             Column::Market(MarketColumn::BidCcy) => market.get_bidccy().map(Ccy::as_str),
             Column::Market(MarketColumn::AskCcy) => market.get_askccy().map(Ccy::as_str),

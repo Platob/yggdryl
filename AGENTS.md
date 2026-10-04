@@ -498,8 +498,11 @@ the JavaScript files beside it, `node/src/text/line.rs` by
   view borrows a whole `Field` and derefs to it, and typed protocol vocabulary
   (`DIGEST:role`, the `PARTITION:` pair, the `PYTHON:` class declaration) lives
   there, never on `Field`. `Field` owns `FIELD:init`, `FIELD:partition`,
-  `alias`, `comment`, `display`, `location` under any key; `PARQUET:field_id`
-  is the reserved typed exception.
+  `alias`, `comment`, `display`, `description`, `location` under any key;
+  `PARQUET:field_id` is the reserved typed exception. A `description` is what
+  the field holds, said once: every catalog that publishes one publishes it -
+  an Iceberg schema as the column's `doc`, read back the same way - and no
+  protocol keeps a copy under a key of its own.
 - `holder` is the only digest role: a declaration says what a field holds or
   derives, never what another contributes - mark one field, leave its sources
   ordinary columns.
@@ -1370,7 +1373,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   `parse_mtime`, states that fact in the event's own column, and a capture
   named `execunix` is an ordinary one: a line is no market element. The event
   states every fact a column used to repeat and no column repeats one: the
-  object a line came from is `crosscode`, so `crosshashcode` is the XXH3-64 of
+  object a line came from is `crosscode`, never null - the empty text where
+  nothing addressed the line - so `crosshashcode` is the XXH3-64 of
   that URL string and `crossuuid` derives from it; the row number under
   `TextOptions.start_rownum` is `seqnum`, never null - zero is the first
   place - and refused where a count cannot hold it; when the record was
@@ -1428,7 +1432,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   `name_truncate`). `Field::with_partition_by` is the one door from the
   declaration to the layout: it stores the key, marks the identity columns
   and materializes every derived entry as a marked `TRANSFORM:` column typed
-  by its term; `with_partition_fields` is it over bare columns, and
+  by its term and, where nothing else says what it holds, described by it;
+  `with_partition_fields` is it over bare columns, and
   `partition_by` reads the key, else the marks. A mark the declaration does
   not name is refused naming both; a declared column may be unmarked or
   absent, because a leaf stores the rows minus the partition columns under
@@ -1504,7 +1509,11 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - `SchemaUpdate` owns evolution: preserve field IDs and never reuse dropped ones;
   promotions are Int32->Int64, Float32->Float64, same-scale decimal widening,
   and v3's `unknown` - a variant its field declares `unknown` - to any type;
-  validate loaded metadata and every commit.
+  validate loaded metadata and every commit. A column's `doc` is the field's
+  own `description` in both directions (`iceberg/schema.rs`): written at every
+  depth, read back with a control character another writer left in it as a
+  space and an empty one as none, set by `update_doc`, an empty text clearing
+  it; there is no `ICEBERG:doc`.
 - An overwrite replaces the partitions its rows fall in: the plan opens
   those partitions alone, drops their live files and carries every other
   file with its row lineage, on every format version; a write cut into

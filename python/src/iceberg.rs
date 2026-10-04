@@ -1892,8 +1892,9 @@ impl PySchemaUpdate {
         Ok(slf)
     }
 
-    /// Record a new `ICEBERG:doc` documentation string on the column at
-    /// `path`.
+    /// Record a new documentation string on the column at `path`: the
+    /// column's own description, which the schema states as its `doc`. An
+    /// empty one clears it.
     fn update_doc<'py>(
         mut slf: PyRefMut<'py, Self>,
         path: &str,

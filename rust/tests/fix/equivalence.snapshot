@@ -17817,6 +17817,7 @@ ulbridge[097]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[097]:0.wire	8=FIX.4.4|
 ulbridge[097]:0.field.curruuid	"01a000bd-48e5-7000-9e2c-3cce57e8bea6"
 ulbridge[097]:0.field.crossuuid	"01a000bd-48e5-7000-9e2c-3cce57e8bea6"
+ulbridge[097]:0.field.crosscode	""
 ulbridge[097]:0.field.currhashcode	17048031482770144234
 ulbridge[097]:0.field.crosshashcode	0
 ulbridge[097]:0.field.srcuuids	["01a000bd-48e5-7062-86b7-3cfc7f4bb0fd"]
@@ -17838,6 +17839,7 @@ ulbridge[098]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[098]:0.wire	8=FIX.4.4|
 ulbridge[098]:0.field.curruuid	"01a000bd-494d-7000-9e2c-3cce57e8bea6"
 ulbridge[098]:0.field.crossuuid	"01a000bd-494d-7000-9e2c-3cce57e8bea6"
+ulbridge[098]:0.field.crosscode	""
 ulbridge[098]:0.field.currhashcode	17048031482770144234
 ulbridge[098]:0.field.crosshashcode	0
 ulbridge[098]:0.field.srcuuids	["01a000bd-494d-7063-9a3e-83f768348fae"]
@@ -17859,6 +17861,7 @@ ulbridge[099]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[099]:0.wire	8=FIX.4.4|
 ulbridge[099]:0.field.curruuid	"01a000bd-49ad-7000-9e2c-3cce57e8bea6"
 ulbridge[099]:0.field.crossuuid	"01a000bd-49ad-7000-9e2c-3cce57e8bea6"
+ulbridge[099]:0.field.crosscode	""
 ulbridge[099]:0.field.currhashcode	17048031482770144234
 ulbridge[099]:0.field.crosshashcode	0
 ulbridge[099]:0.field.srcuuids	["01a000bd-49ad-7064-a43d-7537717bd528"]
@@ -17997,6 +18000,7 @@ ulbridge[102]:0.wire	8=FIX.4.4|35=0|49=FIRMAUDITX1|56=OMSAUDITX1|34=3091|52=2026
 ulbridge[102]:0.entry[0]	t9 bodylength=61
 ulbridge[102]:0.field.curruuid	"01a0004f-6b84-7000-b41a-39bbacdcf895"
 ulbridge[102]:0.field.crossuuid	"01a0004f-6b84-7000-b41a-39bbacdcf895"
+ulbridge[102]:0.field.crosscode	""
 ulbridge[102]:0.field.currhashcode	3491125381250579226
 ulbridge[102]:0.field.crosshashcode	0
 ulbridge[102]:0.field.srcuuids	["01a000bd-4a14-7067-acb3-2f5173f317b1"]
@@ -18027,6 +18031,7 @@ ulbridge[103]:0.entry[0]	t9 bodylength=70
 ulbridge[103]:0.entry[1]	t112 testreqid=PING
 ulbridge[103]:0.field.curruuid	"01a0004f-6b89-7000-aefb-6c9585813d85"
 ulbridge[103]:0.field.crossuuid	"01a0004f-6b89-7000-aefb-6c9585813d85"
+ulbridge[103]:0.field.crosscode	""
 ulbridge[103]:0.field.currhashcode	1707535790467679789
 ulbridge[103]:0.field.crosshashcode	0
 ulbridge[103]:0.field.srcuuids	["01a000bd-4a19-7068-94e8-77b00aaec34e"]
@@ -18418,6 +18423,7 @@ ulbridge[105]:0.entry[4]	t141 resetseqnumflag=Y
 ulbridge[105]:0.entry[5]	t553 username=bridge
 ulbridge[105]:0.field.curruuid	"01a0004f-6b8c-7000-baef-ce79760e62d4"
 ulbridge[105]:0.field.crossuuid	"01a0004f-6b8c-7000-baef-ce79760e62d4"
+ulbridge[105]:0.field.crosscode	""
 ulbridge[105]:0.field.currhashcode	9631633333515894856
 ulbridge[105]:0.field.crosshashcode	0
 ulbridge[105]:0.field.srcuuids	["01a000bd-4a1c-706a-a6f2-bb540736fd47"]
@@ -18549,6 +18555,7 @@ ulbridge[108]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[108]:0.wire	8=FIX.4.4|
 ulbridge[108]:0.field.curruuid	"01a000bd-4ad8-7000-9e2c-3cce57e8bea6"
 ulbridge[108]:0.field.crossuuid	"01a000bd-4ad8-7000-9e2c-3cce57e8bea6"
+ulbridge[108]:0.field.crosscode	""
 ulbridge[108]:0.field.currhashcode	17048031482770144234
 ulbridge[108]:0.field.crosshashcode	0
 ulbridge[108]:0.field.srcuuids	["01a000bd-4ad8-706d-82d5-b683abf1f8f4"]
@@ -19028,6 +19035,7 @@ ulbridge[113]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[113]:0.wire	8=FIX.4.4|
 ulbridge[113]:0.field.curruuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
 ulbridge[113]:0.field.crossuuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
+ulbridge[113]:0.field.crosscode	""
 ulbridge[113]:0.field.currhashcode	17048031482770144234
 ulbridge[113]:0.field.crosshashcode	0
 ulbridge[113]:0.field.srcuuids	["019ffe39-42a2-7072-a69e-ac2dd7a1ff09"]
@@ -19049,6 +19057,7 @@ ulbridge[114]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[114]:0.wire	8=FIX.4.4|
 ulbridge[114]:0.field.curruuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
 ulbridge[114]:0.field.crossuuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
+ulbridge[114]:0.field.crosscode	""
 ulbridge[114]:0.field.currhashcode	17048031482770144234
 ulbridge[114]:0.field.crosshashcode	0
 ulbridge[114]:0.field.srcuuids	["019ffe39-42a2-7073-bda7-ee8ff1e27149"]
@@ -19074,6 +19083,7 @@ ulbridge[119]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[119]:0.wire	8=FIX.4.4|
 ulbridge[119]:0.field.curruuid	"019ffe39-42a7-7000-9e2c-3cce57e8bea6"
 ulbridge[119]:0.field.crossuuid	"019ffe39-42a7-7000-9e2c-3cce57e8bea6"
+ulbridge[119]:0.field.crosscode	""
 ulbridge[119]:0.field.currhashcode	17048031482770144234
 ulbridge[119]:0.field.crosshashcode	0
 ulbridge[119]:0.field.srcuuids	["019ffe39-42a7-7078-904d-987b6ed63014"]
@@ -19097,6 +19107,7 @@ ulbridge[121]:0.wire	8=FIX.4.4|35=0|49=KRS.YDFS.CSZ|56=BO.YDFS|34=14599|52=20260
 ulbridge[121]:0.entry[0]	t9 bodylength=62
 ulbridge[121]:0.field.curruuid	"019ffdcb-7020-7000-b41a-39bbacdcf895"
 ulbridge[121]:0.field.crossuuid	"019ffdcb-7020-7000-b41a-39bbacdcf895"
+ulbridge[121]:0.field.crosscode	""
 ulbridge[121]:0.field.currhashcode	3491125381250579226
 ulbridge[121]:0.field.crosshashcode	0
 ulbridge[121]:0.field.srcuuids	["019ffe39-4d30-707a-b515-f77d15a566ea"]
@@ -19626,6 +19637,7 @@ ulbridge[128]:0.digest	99aa06d3014798d86001c324468d497f
 ulbridge[128]:0.wire	8=FIX.4.4|
 ulbridge[128]:0.field.curruuid	"019ffe42-69ab-7000-9e2c-3cce57e8bea6"
 ulbridge[128]:0.field.crossuuid	"019ffe42-69ab-7000-9e2c-3cce57e8bea6"
+ulbridge[128]:0.field.crosscode	""
 ulbridge[128]:0.field.currhashcode	17048031482770144234
 ulbridge[128]:0.field.crosshashcode	0
 ulbridge[128]:0.field.srcuuids	["019ffe42-69ab-7081-bde9-ebc6d87f56f0"]
@@ -20492,6 +20504,7 @@ ulbridge[142]:0.wire	8=FIX.4.2|35=0|49=FIRMB|56=FIDESSA|34=16384|52=20260814-21:
 ulbridge[142]:0.entry[0]	t9 bodylength=62
 ulbridge[142]:0.field.curruuid	"01a00249-d620-7000-b41a-39bbacdcf895"
 ulbridge[142]:0.field.crossuuid	"01a00249-d620-7000-b41a-39bbacdcf895"
+ulbridge[142]:0.field.crosscode	""
 ulbridge[142]:0.field.currhashcode	3491125381250579226
 ulbridge[142]:0.field.crosshashcode	0
 ulbridge[142]:0.field.srcuuids	["01a002b7-b320-708f-8017-006f0a58093a"]
@@ -20521,6 +20534,7 @@ ulbridge[143]:0.wire	8=FIX.4.2|35=0|49=FIDESSA_KOVBZ|56=FIRMAPRD|34=2481|43=N|52
 ulbridge[143]:0.entry[0]	t9 bodylength=72
 ulbridge[143]:0.field.curruuid	"01a00249-db41-7000-b41a-39bbacdcf895"
 ulbridge[143]:0.field.crossuuid	"01a00249-db41-7000-b41a-39bbacdcf895"
+ulbridge[143]:0.field.crosscode	""
 ulbridge[143]:0.field.currhashcode	3491125381250579226
 ulbridge[143]:0.field.crosshashcode	0
 ulbridge[143]:0.field.srcuuids	["01a002b7-b86c-7090-b2e9-2c31b800bd78"]
@@ -20555,6 +20569,7 @@ lifecycle[000].wire	8=FIX.4.4|35=0|49=KRS.YDFS.CSZ|56=BO.YDFS|34=14599|52=202608
 lifecycle[000].entry[0]	t9 bodylength=62
 lifecycle[000].field.curruuid	"019ffdcb-7020-7000-b41a-39bbacdcf895"
 lifecycle[000].field.crossuuid	"019ffdcb-7020-7000-b41a-39bbacdcf895"
+lifecycle[000].field.crosscode	""
 lifecycle[000].field.currhashcode	3491125381250579226
 lifecycle[000].field.crosshashcode	0
 lifecycle[000].field.srcuuids	["019ffe39-4d30-707a-b515-f77d15a566ea"]
@@ -20761,6 +20776,7 @@ lifecycle[003].digest	99aa06d3014798d86001c324468d497f
 lifecycle[003].wire	8=FIX.4.4|
 lifecycle[003].field.curruuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
 lifecycle[003].field.crossuuid	"019ffe39-42a2-7000-9e2c-3cce57e8bea6"
+lifecycle[003].field.crosscode	""
 lifecycle[003].field.currhashcode	17048031482770144234
 lifecycle[003].field.crosshashcode	0
 lifecycle[003].field.srcuuids	["019ffe39-42a2-7072-a69e-ac2dd7a1ff09"]
@@ -20781,6 +20797,7 @@ lifecycle[004].digest	99aa06d3014798d86001c324468d497f
 lifecycle[004].wire	8=FIX.4.4|
 lifecycle[004].field.curruuid	"019ffe39-42a7-7000-9e2c-3cce57e8bea6"
 lifecycle[004].field.crossuuid	"019ffe39-42a7-7000-9e2c-3cce57e8bea6"
+lifecycle[004].field.crosscode	""
 lifecycle[004].field.currhashcode	17048031482770144234
 lifecycle[004].field.crosshashcode	0
 lifecycle[004].field.srcuuids	["019ffe39-42a7-7078-904d-987b6ed63014"]
@@ -20801,6 +20818,7 @@ lifecycle[005].digest	99aa06d3014798d86001c324468d497f
 lifecycle[005].wire	8=FIX.4.4|
 lifecycle[005].field.curruuid	"019ffe42-69ab-7000-9e2c-3cce57e8bea6"
 lifecycle[005].field.crossuuid	"019ffe42-69ab-7000-9e2c-3cce57e8bea6"
+lifecycle[005].field.crosscode	""
 lifecycle[005].field.currhashcode	17048031482770144234
 lifecycle[005].field.crosshashcode	0
 lifecycle[005].field.srcuuids	["019ffe42-69ab-7081-bde9-ebc6d87f56f0"]
@@ -23185,6 +23203,7 @@ lifecycle[020].wire	8=FIX.4.4|35=0|49=FIRMAUDITX1|56=OMSAUDITX1|34=3091|52=20260
 lifecycle[020].entry[0]	t9 bodylength=61
 lifecycle[020].field.curruuid	"01a0004f-6b84-7000-b41a-39bbacdcf895"
 lifecycle[020].field.crossuuid	"01a0004f-6b84-7000-b41a-39bbacdcf895"
+lifecycle[020].field.crosscode	""
 lifecycle[020].field.currhashcode	3491125381250579226
 lifecycle[020].field.crosshashcode	0
 lifecycle[020].field.srcuuids	["01a000bd-4a14-7067-acb3-2f5173f317b1"]
@@ -23214,6 +23233,7 @@ lifecycle[021].entry[0]	t9 bodylength=70
 lifecycle[021].entry[1]	t112 testreqid=PING
 lifecycle[021].field.curruuid	"01a0004f-6b89-7000-aefb-6c9585813d85"
 lifecycle[021].field.crossuuid	"01a0004f-6b89-7000-aefb-6c9585813d85"
+lifecycle[021].field.crosscode	""
 lifecycle[021].field.currhashcode	1707535790467679789
 lifecycle[021].field.crosshashcode	0
 lifecycle[021].field.srcuuids	["01a000bd-4a19-7068-94e8-77b00aaec34e"]
@@ -23248,6 +23268,7 @@ lifecycle[022].entry[4]	t141 resetseqnumflag=Y
 lifecycle[022].entry[5]	t553 username=bridge
 lifecycle[022].field.curruuid	"01a0004f-6b8c-7000-baef-ce79760e62d4"
 lifecycle[022].field.crossuuid	"01a0004f-6b8c-7000-baef-ce79760e62d4"
+lifecycle[022].field.crosscode	""
 lifecycle[022].field.currhashcode	9631633333515894856
 lifecycle[022].field.crosshashcode	0
 lifecycle[022].field.srcuuids	["01a000bd-4a1c-706a-a6f2-bb540736fd47"]
@@ -23772,6 +23793,7 @@ lifecycle[027].digest	99aa06d3014798d86001c324468d497f
 lifecycle[027].wire	8=FIX.4.4|
 lifecycle[027].field.curruuid	"01a000bd-48e5-7000-9e2c-3cce57e8bea6"
 lifecycle[027].field.crossuuid	"01a000bd-48e5-7000-9e2c-3cce57e8bea6"
+lifecycle[027].field.crosscode	""
 lifecycle[027].field.currhashcode	17048031482770144234
 lifecycle[027].field.crosshashcode	0
 lifecycle[027].field.srcuuids	["01a000bd-48e5-7062-86b7-3cfc7f4bb0fd"]
@@ -23792,6 +23814,7 @@ lifecycle[028].digest	99aa06d3014798d86001c324468d497f
 lifecycle[028].wire	8=FIX.4.4|
 lifecycle[028].field.curruuid	"01a000bd-494d-7000-9e2c-3cce57e8bea6"
 lifecycle[028].field.crossuuid	"01a000bd-494d-7000-9e2c-3cce57e8bea6"
+lifecycle[028].field.crosscode	""
 lifecycle[028].field.currhashcode	17048031482770144234
 lifecycle[028].field.crosshashcode	0
 lifecycle[028].field.srcuuids	["01a000bd-494d-7063-9a3e-83f768348fae"]
@@ -23812,6 +23835,7 @@ lifecycle[029].digest	99aa06d3014798d86001c324468d497f
 lifecycle[029].wire	8=FIX.4.4|
 lifecycle[029].field.curruuid	"01a000bd-49ad-7000-9e2c-3cce57e8bea6"
 lifecycle[029].field.crossuuid	"01a000bd-49ad-7000-9e2c-3cce57e8bea6"
+lifecycle[029].field.crosscode	""
 lifecycle[029].field.currhashcode	17048031482770144234
 lifecycle[029].field.crosshashcode	0
 lifecycle[029].field.srcuuids	["01a000bd-49ad-7064-a43d-7537717bd528"]
@@ -23832,6 +23856,7 @@ lifecycle[030].digest	99aa06d3014798d86001c324468d497f
 lifecycle[030].wire	8=FIX.4.4|
 lifecycle[030].field.curruuid	"01a000bd-4ad8-7000-9e2c-3cce57e8bea6"
 lifecycle[030].field.crossuuid	"01a000bd-4ad8-7000-9e2c-3cce57e8bea6"
+lifecycle[030].field.crosscode	""
 lifecycle[030].field.currhashcode	17048031482770144234
 lifecycle[030].field.crosshashcode	0
 lifecycle[030].field.srcuuids	["01a000bd-4ad8-706d-82d5-b683abf1f8f4"]
@@ -24667,6 +24692,7 @@ lifecycle[037].wire	8=FIX.4.2|35=0|49=FIRMB|56=FIDESSA|34=16384|52=20260814-21:5
 lifecycle[037].entry[0]	t9 bodylength=62
 lifecycle[037].field.curruuid	"01a00249-d620-7000-b41a-39bbacdcf895"
 lifecycle[037].field.crossuuid	"01a00249-d620-7000-b41a-39bbacdcf895"
+lifecycle[037].field.crosscode	""
 lifecycle[037].field.currhashcode	3491125381250579226
 lifecycle[037].field.crosshashcode	0
 lifecycle[037].field.srcuuids	["01a002b7-b320-708f-8017-006f0a58093a"]
@@ -24695,6 +24721,7 @@ lifecycle[038].wire	8=FIX.4.2|35=0|49=FIDESSA_KOVBZ|56=FIRMAPRD|34=2481|43=N|52=
 lifecycle[038].entry[0]	t9 bodylength=72
 lifecycle[038].field.curruuid	"01a00249-db41-7000-b41a-39bbacdcf895"
 lifecycle[038].field.crossuuid	"01a00249-db41-7000-b41a-39bbacdcf895"
+lifecycle[038].field.crosscode	""
 lifecycle[038].field.currhashcode	3491125381250579226
 lifecycle[038].field.crosshashcode	0
 lifecycle[038].field.srcuuids	["01a002b7-b86c-7090-b2e9-2c31b800bd78"]
@@ -24793,6 +24820,7 @@ shapes[002]:0.wire	8=FIX.4.4|35=8|59=0|10=1|
 shapes[002]:0.entry[0]	t59 timeinforce=0
 shapes[002]:0.field.curruuid	"018cc9ab-d1d0-7000-a3e1-c42c4ccd573f"
 shapes[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-a3e1-c42c4ccd573f"
+shapes[002]:0.field.crosscode	""
 shapes[002]:0.field.currhashcode	6240419710694499700
 shapes[002]:0.field.crosshashcode	0
 shapes[002]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -24817,6 +24845,7 @@ shapes[003]:0.entry[0]	t55 symbol=TTF
 shapes[003]:0.entry[1]	t54 side=1
 shapes[003]:0.field.curruuid	"018cc9ab-d1d0-7000-8f36-da03c7094a78"
 shapes[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-8f36-da03c7094a78"
+shapes[003]:0.field.crosscode	""
 shapes[003]:0.field.currhashcode	4660231024995873425
 shapes[003]:0.field.crosshashcode	0
 shapes[003]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -24873,6 +24902,7 @@ shapes[005]:0.entry[0]	t55 symbol=TTF
 shapes[005]:0.entry[1]	t54 side=1
 shapes[005]:0.field.curruuid	"018cc9ab-d1d0-7000-950a-85785830aff5"
 shapes[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-950a-85785830aff5"
+shapes[005]:0.field.crosscode	""
 shapes[005]:0.field.currhashcode	4228355331605588920
 shapes[005]:0.field.crosshashcode	0
 shapes[005]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -24951,6 +24981,7 @@ shapes[010]:0.digest	0b12ae0ee391fe989cddd67b8cdf4256
 shapes[010]:0.wire	8=FIX.4.4|17=E1|
 shapes[010]:0.field.curruuid	"018cc9ab-d1d0-7000-a8fa-73090e0e3c3b"
 shapes[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-a8fa-73090e0e3c3b"
+shapes[010]:0.field.crosscode	""
 shapes[010]:0.field.currhashcode	14983765810495881085
 shapes[010]:0.field.crosshashcode	0
 shapes[010]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25000,6 +25031,7 @@ frames[000]:0.entry[1]	t55 symbol=AAPL
 frames[000]:0.entry[2]	t59 timeinforce=0
 frames[000]:0.field.curruuid	"018cc9ab-d1d0-7000-b4aa-f25687670984"
 frames[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-b4aa-f25687670984"
+frames[000]:0.field.crosscode	""
 frames[000]:0.field.currhashcode	847158728616417430
 frames[000]:0.field.crosshashcode	0
 frames[000]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25030,6 +25062,7 @@ frames[001]:0.entry[0.1.0]	t448 partyid=VENUE
 frames[001]:0.entry[1]	t59 timeinforce=0
 frames[001]:0.field.curruuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
 frames[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
+frames[001]:0.field.crosscode	""
 frames[001]:0.field.currhashcode	15991035116622961747
 frames[001]:0.field.crosshashcode	0
 frames[001]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25057,6 +25090,7 @@ frames[002]:0.entry[0.1.0]	t448 partyid=VENUE
 frames[002]:0.entry[1]	t59 timeinforce=0
 frames[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
 frames[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
+frames[002]:0.field.crosscode	""
 frames[002]:0.field.currhashcode	15991035116622961747
 frames[002]:0.field.crosshashcode	0
 frames[002]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25083,6 +25117,7 @@ frames[003]:0.entry[0.1]	t0 linesoftextcomponent
 frames[003]:0.entry[0.1.0]	t58 text=b
 frames[003]:0.field.curruuid	"018cc9ab-d1d0-7000-a8f8-59e8932bbf68"
 frames[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-a8f8-59e8932bbf68"
+frames[003]:0.field.crosscode	""
 frames[003]:0.field.currhashcode	1126075620763340156
 frames[003]:0.field.crosshashcode	0
 frames[003]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25107,6 +25142,7 @@ frames[004]:0.entry[1.0.0]	t79 allocaccount=ACC
 frames[004]:0.entry[1.0.1]	t80 allocqty=5
 frames[004]:0.field.curruuid	"018cc9ab-d1d0-7000-80d0-6b6148922163"
 frames[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-80d0-6b6148922163"
+frames[004]:0.field.crosscode	""
 frames[004]:0.field.currhashcode	10078913839440777824
 frames[004]:0.field.crosshashcode	0
 frames[004]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25139,6 +25175,7 @@ frames[005]:0.entry[1.0.1.0.2.0.0]	t523 partysubid=S1
 frames[005]:0.entry[1.0.1.0.2.0.1]	t803 partysubidtype=1
 frames[005]:0.field.curruuid	"018cc9ab-d1d0-7000-8305-686857bdd308"
 frames[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-8305-686857bdd308"
+frames[005]:0.field.crosscode	""
 frames[005]:0.field.currhashcode	11215776836702135313
 frames[005]:0.field.crosshashcode	0
 frames[005]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25200,6 +25237,7 @@ frames[006]:0.entry[1]	t54 side=1
 frames[006]:0.entry[2]	t59 timeinforce=0
 frames[006]:0.field.curruuid	"018cc9ab-d1d0-7000-90da-4a1063c11872"
 frames[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-90da-4a1063c11872"
+frames[006]:0.field.crosscode	""
 frames[006]:0.field.currhashcode	673087660265449703
 frames[006]:0.field.crosshashcode	0
 frames[006]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25227,6 +25265,7 @@ frames[007]:0.entry[1]	t0 9999=y
 frames[007]:0.entry[2]	t59 timeinforce=0
 frames[007]:0.field.curruuid	"018cc9ab-d1d0-7000-90ee-2268ec9e1a61"
 frames[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-90ee-2268ec9e1a61"
+frames[007]:0.field.crosscode	""
 frames[007]:0.field.currhashcode	13592966762767598594
 frames[007]:0.field.crosshashcode	0
 frames[007]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25252,6 +25291,7 @@ frames[008]:0.entry[1]	t55 symbol=AAPL
 frames[008]:0.entry[2]	t59 timeinforce=0
 frames[008]:0.field.curruuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
 frames[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
+frames[008]:0.field.crosscode	""
 frames[008]:0.field.currhashcode	10400368620768726258
 frames[008]:0.field.crosshashcode	0
 frames[008]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25278,6 +25318,7 @@ frames[009]:0.entry[0]	t55 symbol=AAPL
 frames[009]:0.entry[1]	t59 timeinforce=0
 frames[009]:0.field.curruuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
 frames[009]:0.field.crossuuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
+frames[009]:0.field.crosscode	""
 frames[009]:0.field.currhashcode	10400368620768726258
 frames[009]:0.field.crosshashcode	0
 frames[009]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25304,6 +25345,7 @@ frames[010]:0.entry[0.1]	t448 partyid=third
 frames[010]:0.entry[1]	t59 timeinforce=0
 frames[010]:0.field.curruuid	"018cc9ab-d1d0-7000-9d43-0a47d74db364"
 frames[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-9d43-0a47d74db364"
+frames[010]:0.field.crosscode	""
 frames[010]:0.field.currhashcode	5311835859289936140
 frames[010]:0.field.crosshashcode	0
 frames[010]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25325,6 +25367,7 @@ frames[011]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 frames[011]:0.entry[0]	t59 timeinforce=0
 frames[011]:0.field.curruuid	"018cc9ab-d1d0-7000-847b-b29a10c7e2bd"
 frames[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-847b-b29a10c7e2bd"
+frames[011]:0.field.crosscode	""
 frames[011]:0.field.currhashcode	16870876407649409689
 frames[011]:0.field.crosshashcode	0
 frames[011]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25348,6 +25391,7 @@ frames[012]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 frames[012]:0.entry[0]	t59 timeinforce=0
 frames[012]:0.field.curruuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
 frames[012]:0.field.crossuuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
+frames[012]:0.field.crosscode	""
 frames[012]:0.field.currhashcode	8444734059643977378
 frames[012]:0.field.crosshashcode	0
 frames[012]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25587,6 +25631,7 @@ frames[022]:0.entry[0]	t0 #orderid=345
 frames[022]:0.entry[1]	t59 timeinforce=0
 frames[022]:0.field.curruuid	"018cc9ab-d1d0-7000-96b4-69dfbbab8d1b"
 frames[022]:0.field.crossuuid	"018cc9ab-d1d0-7000-96b4-69dfbbab8d1b"
+frames[022]:0.field.crosscode	""
 frames[022]:0.field.currhashcode	6347191192221853189
 frames[022]:0.field.crosshashcode	0
 frames[022]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25682,6 +25727,7 @@ frames[026]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 frames[026]:0.entry[0.0.1]	t452 partyrole=1
 frames[026]:0.field.curruuid	"018cc9ab-d1d0-7000-86ee-013ea6970f72"
 frames[026]:0.field.crossuuid	"018cc9ab-d1d0-7000-86ee-013ea6970f72"
+frames[026]:0.field.crosscode	""
 frames[026]:0.field.currhashcode	13766340809501324021
 frames[026]:0.field.crosshashcode	0
 frames[026]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25705,6 +25751,7 @@ frames[027]:0.entry[0.0]	t0 party
 frames[027]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 frames[027]:0.field.curruuid	"018cc9ab-d1d0-7000-b92c-3d39f9d662c5"
 frames[027]:0.field.crossuuid	"018cc9ab-d1d0-7000-b92c-3d39f9d662c5"
+frames[027]:0.field.crosscode	""
 frames[027]:0.field.currhashcode	4984827844197990382
 frames[027]:0.field.crosshashcode	0
 frames[027]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25729,6 +25776,7 @@ frames[028]:0.entry[0.0.1]	t452 partyrole=1
 frames[028]:0.entry[1]	t59 timeinforce=0
 frames[028]:0.field.curruuid	"018cc9ab-d1d0-7000-a450-dfa298348fe7"
 frames[028]:0.field.crossuuid	"018cc9ab-d1d0-7000-a450-dfa298348fe7"
+frames[028]:0.field.crosscode	""
 frames[028]:0.field.currhashcode	6644946659946169805
 frames[028]:0.field.crosshashcode	0
 frames[028]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25761,6 +25809,7 @@ frames[029]:0.entry[0.2.1]	t452 partyrole=1
 frames[029]:0.entry[1]	t59 timeinforce=0
 frames[029]:0.field.curruuid	"018cc9ab-d1d0-7000-8c6c-a172ef01357c"
 frames[029]:0.field.crossuuid	"018cc9ab-d1d0-7000-8c6c-a172ef01357c"
+frames[029]:0.field.crosscode	""
 frames[029]:0.field.currhashcode	4954537597943408048
 frames[029]:0.field.crosshashcode	0
 frames[029]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25790,6 +25839,7 @@ frames[030]:0.entry[0.1.1]	t452 partyrole=1
 frames[030]:0.entry[1]	t59 timeinforce=0
 frames[030]:0.field.curruuid	"018cc9ab-d1d0-7000-8300-b7ab5e55932b"
 frames[030]:0.field.crossuuid	"018cc9ab-d1d0-7000-8300-b7ab5e55932b"
+frames[030]:0.field.crosscode	""
 frames[030]:0.field.currhashcode	7337630094674463462
 frames[030]:0.field.crosshashcode	0
 frames[030]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25824,6 +25874,7 @@ frames[031]:0.entry[0.1.2]	t452 partyrole=1
 frames[031]:0.entry[1]	t59 timeinforce=0
 frames[031]:0.field.curruuid	"018cc9ab-d1d0-7000-a50a-64b1bfd3d757"
 frames[031]:0.field.crossuuid	"018cc9ab-d1d0-7000-a50a-64b1bfd3d757"
+frames[031]:0.field.crosscode	""
 frames[031]:0.field.currhashcode	15645899755420544634
 frames[031]:0.field.crosshashcode	0
 frames[031]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25855,6 +25906,7 @@ frames[032]:0.entry[0.0.3]	t452 partyrole=1
 frames[032]:0.entry[1]	t59 timeinforce=0
 frames[032]:0.field.curruuid	"018cc9ab-d1d0-7000-97c5-d261ac7103bc"
 frames[032]:0.field.crossuuid	"018cc9ab-d1d0-7000-97c5-d261ac7103bc"
+frames[032]:0.field.crosscode	""
 frames[032]:0.field.currhashcode	13870575408298065462
 frames[032]:0.field.crosshashcode	0
 frames[032]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25889,6 +25941,7 @@ frames[033]:0.entry[0.0.0.1.1]	t448 partyid=X
 frames[033]:0.entry[0.0.0.1.2]	t452 partyrole=1
 frames[033]:0.field.curruuid	"018cc9ab-d1d0-7000-b7a1-92708234b232"
 frames[033]:0.field.crossuuid	"018cc9ab-d1d0-7000-b7a1-92708234b232"
+frames[033]:0.field.crosscode	""
 frames[033]:0.field.currhashcode	15647701780781674672
 frames[033]:0.field.crosshashcode	0
 frames[033]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25945,6 +25998,7 @@ frames[034]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 frames[034]:0.entry[0]	t9 bodylength=61
 frames[034]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 frames[034]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+frames[034]:0.field.crosscode	""
 frames[034]:0.field.currhashcode	3491125381250579226
 frames[034]:0.field.crosshashcode	0
 frames[034]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25969,6 +26023,7 @@ frames[035]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 frames[035]:0.entry[0]	t9 bodylength=61
 frames[035]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 frames[035]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+frames[035]:0.field.crosscode	""
 frames[035]:0.field.currhashcode	3491125381250579226
 frames[035]:0.field.crosshashcode	0
 frames[035]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -25993,6 +26048,7 @@ frames[036]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 frames[036]:0.entry[0]	t9 bodylength=61
 frames[036]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 frames[036]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+frames[036]:0.field.crosscode	""
 frames[036]:0.field.currhashcode	3491125381250579226
 frames[036]:0.field.crosshashcode	0
 frames[036]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26017,6 +26073,7 @@ frames[037]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 frames[037]:0.entry[0]	t9 bodylength=61
 frames[037]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 frames[037]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+frames[037]:0.field.crosscode	""
 frames[037]:0.field.currhashcode	3491125381250579226
 frames[037]:0.field.crosshashcode	0
 frames[037]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26041,6 +26098,7 @@ frames[038]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 frames[038]:0.entry[0]	t9 bodylength=61
 frames[038]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 frames[038]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+frames[038]:0.field.crosscode	""
 frames[038]:0.field.currhashcode	3491125381250579226
 frames[038]:0.field.crosshashcode	0
 frames[038]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26102,6 +26160,7 @@ frames[040]:0.entry[2]	t213 xmldata=EXECTYPE=Restated
 frames[040]:0.entry[3]	t150 exectype=D
 frames[040]:0.field.curruuid	"018cc9ab-d1d0-7000-b545-c0e97c47d297"
 frames[040]:0.field.crossuuid	"018cc9ab-d1d0-7000-b545-c0e97c47d297"
+frames[040]:0.field.crosscode	""
 frames[040]:0.field.currhashcode	1946101746455170102
 frames[040]:0.field.crosshashcode	0
 frames[040]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26306,6 +26365,7 @@ frames[045]:0.wire	8=FIX.4.4|35=D|59=0|10=000|
 frames[045]:0.entry[0]	t59 timeinforce=0
 frames[045]:0.field.curruuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
 frames[045]:0.field.crossuuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
+frames[045]:0.field.crosscode	""
 frames[045]:0.field.currhashcode	8444734059643977378
 frames[045]:0.field.crosshashcode	0
 frames[045]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26586,6 +26646,7 @@ bridge[003]:0.entry[2.0.2]	t452 partyrole=1
 bridge[003]:0.entry[3]	t59 timeinforce=0
 bridge[003]:0.field.curruuid	"018cc9ab-d1d0-7000-baf9-6e1bf714b99a"
 bridge[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-baf9-6e1bf714b99a"
+bridge[003]:0.field.crosscode	""
 bridge[003]:0.field.currhashcode	6272686871883238364
 bridge[003]:0.field.crosshashcode	0
 bridge[003]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26639,6 +26700,7 @@ bridge[005]:0.digest	99aa06d3014798d86001c324468d497f
 bridge[005]:0.wire	8=FIX.4.4|
 bridge[005]:0.field.curruuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
 bridge[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
+bridge[005]:0.field.crosscode	""
 bridge[005]:0.field.currhashcode	17048031482770144234
 bridge[005]:0.field.crosshashcode	0
 bridge[005]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -26660,6 +26722,7 @@ bridge[007]:0.wire	8=FIX.4.4|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814
 bridge[007]:0.entry[0]	t9 bodylength=68
 bridge[007]:0.field.curruuid	"019ffe97-d20f-7000-b41a-39bbacdcf895"
 bridge[007]:0.field.crossuuid	"019ffe97-d20f-7000-b41a-39bbacdcf895"
+bridge[007]:0.field.crosscode	""
 bridge[007]:0.field.currhashcode	3491125381250579226
 bridge[007]:0.field.crosshashcode	0
 bridge[007]:0.field.currunix	"2026-08-14T04:46:30.415655000Z"
@@ -26951,6 +27014,7 @@ bridge[011]:0.digest	99aa06d3014798d86001c324468d497f
 bridge[011]:0.wire	8=FIX.4.4|
 bridge[011]:0.field.curruuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
 bridge[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
+bridge[011]:0.field.crosscode	""
 bridge[011]:0.field.currhashcode	17048031482770144234
 bridge[011]:0.field.crosshashcode	0
 bridge[011]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27043,6 +27107,7 @@ lift[002]:0.entry[1]	t59 timeinforce=0
 lift[002]:0.entry[2]	t381 grosstradeamt=637.5
 lift[002]:0.field.curruuid	"018cc9ab-d1d0-7000-b621-98d7fb949528"
 lift[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-b621-98d7fb949528"
+lift[002]:0.field.crosscode	""
 lift[002]:0.field.currhashcode	858055487049602066
 lift[002]:0.field.crosshashcode	0
 lift[002]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27390,6 +27455,7 @@ lift[014]:0.wire	8=FIX.4.4|49=SENDER|56=TARGET|34=1092|43=Y|52=20240102-10:15:30
 lift[014]:0.entry[0]	t122 origsendingtime=20240102-10:15:30
 lift[014]:0.field.curruuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
 lift[014]:0.field.crossuuid	"018cc9ab-d1d0-7000-9e2c-3cce57e8bea6"
+lift[014]:0.field.crosscode	""
 lift[014]:0.field.currhashcode	17048031482770144234
 lift[014]:0.field.crosshashcode	0
 lift[014]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27419,6 +27485,7 @@ lift[015]:0.entry[0.0.0]	t448 partyid=ONE
 lift[015]:0.entry[1]	t59 timeinforce=0
 lift[015]:0.field.curruuid	"018cc9ab-d1d0-7000-8c9e-2b1c748e8b90"
 lift[015]:0.field.crossuuid	"018cc9ab-d1d0-7000-8c9e-2b1c748e8b90"
+lift[015]:0.field.crosscode	""
 lift[015]:0.field.currhashcode	8146515339003994092
 lift[015]:0.field.crosshashcode	0
 lift[015]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27443,6 +27510,7 @@ enrich[000]:0.entry[1]	t39 ordstatus=0
 enrich[000]:0.entry[2]	t59 timeinforce=0
 enrich[000]:0.field.curruuid	"018cc9ab-d1d0-7000-8037-1f27093ffa5e"
 enrich[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-8037-1f27093ffa5e"
+enrich[000]:0.field.crosscode	""
 enrich[000]:0.field.currhashcode	14911197489859878966
 enrich[000]:0.field.crosshashcode	0
 enrich[000]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27473,6 +27541,7 @@ enrich[001]:0.entry[1]	t39 ordstatus=1
 enrich[001]:0.entry[2]	t59 timeinforce=0
 enrich[001]:0.field.curruuid	"018cc9ab-d1d0-7000-b574-6d2e33c5fccd"
 enrich[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-b574-6d2e33c5fccd"
+enrich[001]:0.field.crosscode	""
 enrich[001]:0.field.currhashcode	17455282060400944480
 enrich[001]:0.field.crosshashcode	0
 enrich[001]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27535,6 +27604,7 @@ enrich[002]:0.entry[1]	t39 ordstatus=2
 enrich[002]:0.entry[2]	t59 timeinforce=0
 enrich[002]:0.field.curruuid	"018cc9ab-d1d0-7000-83a3-5448b0b95830"
 enrich[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-83a3-5448b0b95830"
+enrich[002]:0.field.crosscode	""
 enrich[002]:0.field.currhashcode	976837507143532573
 enrich[002]:0.field.crosshashcode	0
 enrich[002]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27597,6 +27667,7 @@ enrich[003]:0.entry[1]	t39 ordstatus=2
 enrich[003]:0.entry[2]	t59 timeinforce=0
 enrich[003]:0.field.curruuid	"018cc9ab-d1d0-7000-a6ea-b7b6cbd9c0d1"
 enrich[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-a6ea-b7b6cbd9c0d1"
+enrich[003]:0.field.crosscode	""
 enrich[003]:0.field.currhashcode	4908733130428583731
 enrich[003]:0.field.crosshashcode	0
 enrich[003]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27624,6 +27695,7 @@ enrich[004]:0.entry[1]	t150 exectype=F
 enrich[004]:0.entry[2]	t59 timeinforce=0
 enrich[004]:0.field.curruuid	"018cc9ab-d1d0-7000-ae9b-414745f98b40"
 enrich[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-ae9b-414745f98b40"
+enrich[004]:0.field.crosscode	""
 enrich[004]:0.field.currhashcode	4202603385723470883
 enrich[004]:0.field.crosshashcode	0
 enrich[004]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27678,6 +27750,7 @@ enrich[005]:0.entry[1]	t150 exectype=F
 enrich[005]:0.entry[2]	t59 timeinforce=0
 enrich[005]:0.field.curruuid	"018cc9ab-d1d0-7000-a01a-079ef5615764"
 enrich[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-a01a-079ef5615764"
+enrich[005]:0.field.crosscode	""
 enrich[005]:0.field.currhashcode	2463312771585576485
 enrich[005]:0.field.crosshashcode	0
 enrich[005]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27740,6 +27813,7 @@ enrich[006]:0.entry[1]	t39 ordstatus=A
 enrich[006]:0.entry[2]	t59 timeinforce=0
 enrich[006]:0.field.curruuid	"018cc9ab-d1d0-7000-bfa3-0efa760381fe"
 enrich[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-bfa3-0efa760381fe"
+enrich[006]:0.field.crosscode	""
 enrich[006]:0.field.currhashcode	1666848110021698863
 enrich[006]:0.field.crosshashcode	0
 enrich[006]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27765,6 +27839,7 @@ enrich[007]:0.entry[0]	t150 exectype=D
 enrich[007]:0.entry[1]	t59 timeinforce=0
 enrich[007]:0.field.curruuid	"018cc9ab-d1d0-7000-b548-306881b1c5bc"
 enrich[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-b548-306881b1c5bc"
+enrich[007]:0.field.crosscode	""
 enrich[007]:0.field.currhashcode	17580700002252206409
 enrich[007]:0.field.crosshashcode	0
 enrich[007]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -27791,6 +27866,7 @@ enrich[008]:0.entry[2]	t59 timeinforce=0
 enrich[008]:0.entry[3]	t2897 currencycodesource=6
 enrich[008]:0.field.curruuid	"018cc9ab-d1d0-7000-a9d7-ada5e1b91f3c"
 enrich[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-a9d7-ada5e1b91f3c"
+enrich[008]:0.field.crosscode	""
 enrich[008]:0.field.currhashcode	9887165713664424286
 enrich[008]:0.field.crosshashcode	0
 enrich[008]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28246,6 +28322,7 @@ enrich[024]:0.wire	8=FIX.4.4|35=AE|1003=TRADE-1|571=REPORT-1|10=0|
 enrich[024]:0.entry[0]	t571 tradereportid=REPORT-1
 enrich[024]:0.field.curruuid	"018cc9ab-d1d0-7000-88f7-160d4906d35f"
 enrich[024]:0.field.crossuuid	"018cc9ab-d1d0-7000-88f7-160d4906d35f"
+enrich[024]:0.field.crosscode	""
 enrich[024]:0.field.currhashcode	3702934173977331776
 enrich[024]:0.field.crosshashcode	0
 enrich[024]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28432,6 +28509,7 @@ verbatim[000]:0.entry[1]	t55 symbol=AAPL
 verbatim[000]:0.entry[2]	t59 timeinforce=0
 verbatim[000]:0.field.curruuid	"018cc9ab-d1d0-7000-b4aa-f25687670984"
 verbatim[000]:0.field.crossuuid	"018cc9ab-d1d0-7000-b4aa-f25687670984"
+verbatim[000]:0.field.crosscode	""
 verbatim[000]:0.field.currhashcode	847158728616417430
 verbatim[000]:0.field.crosshashcode	0
 verbatim[000]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28462,6 +28540,7 @@ verbatim[001]:0.entry[0.1.0]	t448 partyid=VENUE
 verbatim[001]:0.entry[1]	t59 timeinforce=0
 verbatim[001]:0.field.curruuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
 verbatim[001]:0.field.crossuuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
+verbatim[001]:0.field.crosscode	""
 verbatim[001]:0.field.currhashcode	15991035116622961747
 verbatim[001]:0.field.crosshashcode	0
 verbatim[001]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28489,6 +28568,7 @@ verbatim[002]:0.entry[0.1.0]	t448 partyid=VENUE
 verbatim[002]:0.entry[1]	t59 timeinforce=0
 verbatim[002]:0.field.curruuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
 verbatim[002]:0.field.crossuuid	"018cc9ab-d1d0-7000-9fa8-61d216021039"
+verbatim[002]:0.field.crosscode	""
 verbatim[002]:0.field.currhashcode	15991035116622961747
 verbatim[002]:0.field.crosshashcode	0
 verbatim[002]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28515,6 +28595,7 @@ verbatim[003]:0.entry[0.1]	t0 linesoftextcomponent
 verbatim[003]:0.entry[0.1.0]	t58 text=b
 verbatim[003]:0.field.curruuid	"018cc9ab-d1d0-7000-a8f8-59e8932bbf68"
 verbatim[003]:0.field.crossuuid	"018cc9ab-d1d0-7000-a8f8-59e8932bbf68"
+verbatim[003]:0.field.crosscode	""
 verbatim[003]:0.field.currhashcode	1126075620763340156
 verbatim[003]:0.field.crosshashcode	0
 verbatim[003]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28539,6 +28620,7 @@ verbatim[004]:0.entry[1.0.0]	t79 allocaccount=ACC
 verbatim[004]:0.entry[1.0.1]	t80 allocqty=5
 verbatim[004]:0.field.curruuid	"018cc9ab-d1d0-7000-80d0-6b6148922163"
 verbatim[004]:0.field.crossuuid	"018cc9ab-d1d0-7000-80d0-6b6148922163"
+verbatim[004]:0.field.crosscode	""
 verbatim[004]:0.field.currhashcode	10078913839440777824
 verbatim[004]:0.field.crosshashcode	0
 verbatim[004]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28571,6 +28653,7 @@ verbatim[005]:0.entry[1.0.1.0.2.0.0]	t523 partysubid=S1
 verbatim[005]:0.entry[1.0.1.0.2.0.1]	t803 partysubidtype=1
 verbatim[005]:0.field.curruuid	"018cc9ab-d1d0-7000-8305-686857bdd308"
 verbatim[005]:0.field.crossuuid	"018cc9ab-d1d0-7000-8305-686857bdd308"
+verbatim[005]:0.field.crosscode	""
 verbatim[005]:0.field.currhashcode	11215776836702135313
 verbatim[005]:0.field.crosshashcode	0
 verbatim[005]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28632,6 +28715,7 @@ verbatim[006]:0.entry[1]	t54 side=1
 verbatim[006]:0.entry[2]	t59 timeinforce=0
 verbatim[006]:0.field.curruuid	"018cc9ab-d1d0-7000-90da-4a1063c11872"
 verbatim[006]:0.field.crossuuid	"018cc9ab-d1d0-7000-90da-4a1063c11872"
+verbatim[006]:0.field.crosscode	""
 verbatim[006]:0.field.currhashcode	673087660265449703
 verbatim[006]:0.field.crosshashcode	0
 verbatim[006]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28659,6 +28743,7 @@ verbatim[007]:0.entry[1]	t0 9999=y
 verbatim[007]:0.entry[2]	t59 timeinforce=0
 verbatim[007]:0.field.curruuid	"018cc9ab-d1d0-7000-90ee-2268ec9e1a61"
 verbatim[007]:0.field.crossuuid	"018cc9ab-d1d0-7000-90ee-2268ec9e1a61"
+verbatim[007]:0.field.crosscode	""
 verbatim[007]:0.field.currhashcode	13592966762767598594
 verbatim[007]:0.field.crosshashcode	0
 verbatim[007]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28684,6 +28769,7 @@ verbatim[008]:0.entry[1]	t55 symbol=AAPL
 verbatim[008]:0.entry[2]	t59 timeinforce=0
 verbatim[008]:0.field.curruuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
 verbatim[008]:0.field.crossuuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
+verbatim[008]:0.field.crosscode	""
 verbatim[008]:0.field.currhashcode	10400368620768726258
 verbatim[008]:0.field.crosshashcode	0
 verbatim[008]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28710,6 +28796,7 @@ verbatim[009]:0.entry[0]	t55 symbol=AAPL
 verbatim[009]:0.entry[1]	t59 timeinforce=0
 verbatim[009]:0.field.curruuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
 verbatim[009]:0.field.crossuuid	"018cc9ab-d1d0-7000-bb4c-a4580447a9df"
+verbatim[009]:0.field.crosscode	""
 verbatim[009]:0.field.currhashcode	10400368620768726258
 verbatim[009]:0.field.crosshashcode	0
 verbatim[009]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28736,6 +28823,7 @@ verbatim[010]:0.entry[0.1]	t448 partyid=third
 verbatim[010]:0.entry[1]	t59 timeinforce=0
 verbatim[010]:0.field.curruuid	"018cc9ab-d1d0-7000-9d43-0a47d74db364"
 verbatim[010]:0.field.crossuuid	"018cc9ab-d1d0-7000-9d43-0a47d74db364"
+verbatim[010]:0.field.crosscode	""
 verbatim[010]:0.field.currhashcode	5311835859289936140
 verbatim[010]:0.field.crosshashcode	0
 verbatim[010]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28757,6 +28845,7 @@ verbatim[011]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 verbatim[011]:0.entry[0]	t59 timeinforce=0
 verbatim[011]:0.field.curruuid	"018cc9ab-d1d0-7000-847b-b29a10c7e2bd"
 verbatim[011]:0.field.crossuuid	"018cc9ab-d1d0-7000-847b-b29a10c7e2bd"
+verbatim[011]:0.field.crosscode	""
 verbatim[011]:0.field.currhashcode	16870876407649409689
 verbatim[011]:0.field.crosshashcode	0
 verbatim[011]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -28780,6 +28869,7 @@ verbatim[012]:0.wire	8=FIX.4.4|35=D|59=0|10=0|
 verbatim[012]:0.entry[0]	t59 timeinforce=0
 verbatim[012]:0.field.curruuid	"018cc9ab-d1d0-7000-aad8-dba910210457"
 verbatim[012]:0.field.crossuuid	"018cc9ab-d1d0-7000-aad8-dba910210457"
+verbatim[012]:0.field.crosscode	""
 verbatim[012]:0.field.currhashcode	2650752801166475791
 verbatim[012]:0.field.crosshashcode	0
 verbatim[012]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29020,6 +29110,7 @@ verbatim[022]:0.entry[0]	t0 #orderid=345
 verbatim[022]:0.entry[1]	t59 timeinforce=0
 verbatim[022]:0.field.curruuid	"018cc9ab-d1d0-7000-96b4-69dfbbab8d1b"
 verbatim[022]:0.field.crossuuid	"018cc9ab-d1d0-7000-96b4-69dfbbab8d1b"
+verbatim[022]:0.field.crosscode	""
 verbatim[022]:0.field.currhashcode	6347191192221853189
 verbatim[022]:0.field.crosshashcode	0
 verbatim[022]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29115,6 +29206,7 @@ verbatim[026]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 verbatim[026]:0.entry[0.0.1]	t452 partyrole=1
 verbatim[026]:0.field.curruuid	"018cc9ab-d1d0-7000-86ee-013ea6970f72"
 verbatim[026]:0.field.crossuuid	"018cc9ab-d1d0-7000-86ee-013ea6970f72"
+verbatim[026]:0.field.crosscode	""
 verbatim[026]:0.field.currhashcode	13766340809501324021
 verbatim[026]:0.field.crosshashcode	0
 verbatim[026]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29138,6 +29230,7 @@ verbatim[027]:0.entry[0.0]	t0 party
 verbatim[027]:0.entry[0.0.0]	t448 partyid=BUYSIDE
 verbatim[027]:0.field.curruuid	"018cc9ab-d1d0-7000-b92c-3d39f9d662c5"
 verbatim[027]:0.field.crossuuid	"018cc9ab-d1d0-7000-b92c-3d39f9d662c5"
+verbatim[027]:0.field.crosscode	""
 verbatim[027]:0.field.currhashcode	4984827844197990382
 verbatim[027]:0.field.crosshashcode	0
 verbatim[027]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29162,6 +29255,7 @@ verbatim[028]:0.entry[0.0.1]	t452 partyrole=1
 verbatim[028]:0.entry[1]	t59 timeinforce=0
 verbatim[028]:0.field.curruuid	"018cc9ab-d1d0-7000-a450-dfa298348fe7"
 verbatim[028]:0.field.crossuuid	"018cc9ab-d1d0-7000-a450-dfa298348fe7"
+verbatim[028]:0.field.crosscode	""
 verbatim[028]:0.field.currhashcode	6644946659946169805
 verbatim[028]:0.field.crosshashcode	0
 verbatim[028]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29194,6 +29288,7 @@ verbatim[029]:0.entry[0.2.1]	t452 partyrole=1
 verbatim[029]:0.entry[1]	t59 timeinforce=0
 verbatim[029]:0.field.curruuid	"018cc9ab-d1d0-7000-8c6c-a172ef01357c"
 verbatim[029]:0.field.crossuuid	"018cc9ab-d1d0-7000-8c6c-a172ef01357c"
+verbatim[029]:0.field.crosscode	""
 verbatim[029]:0.field.currhashcode	4954537597943408048
 verbatim[029]:0.field.crosshashcode	0
 verbatim[029]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29223,6 +29318,7 @@ verbatim[030]:0.entry[0.1.1]	t452 partyrole=1
 verbatim[030]:0.entry[1]	t59 timeinforce=0
 verbatim[030]:0.field.curruuid	"018cc9ab-d1d0-7000-8300-b7ab5e55932b"
 verbatim[030]:0.field.crossuuid	"018cc9ab-d1d0-7000-8300-b7ab5e55932b"
+verbatim[030]:0.field.crosscode	""
 verbatim[030]:0.field.currhashcode	7337630094674463462
 verbatim[030]:0.field.crosshashcode	0
 verbatim[030]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29257,6 +29353,7 @@ verbatim[031]:0.entry[0.1.2]	t452 partyrole=1
 verbatim[031]:0.entry[1]	t59 timeinforce=0
 verbatim[031]:0.field.curruuid	"018cc9ab-d1d0-7000-a50a-64b1bfd3d757"
 verbatim[031]:0.field.crossuuid	"018cc9ab-d1d0-7000-a50a-64b1bfd3d757"
+verbatim[031]:0.field.crosscode	""
 verbatim[031]:0.field.currhashcode	15645899755420544634
 verbatim[031]:0.field.crosshashcode	0
 verbatim[031]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29288,6 +29385,7 @@ verbatim[032]:0.entry[0.0.3]	t452 partyrole=1
 verbatim[032]:0.entry[1]	t59 timeinforce=0
 verbatim[032]:0.field.curruuid	"018cc9ab-d1d0-7000-97c5-d261ac7103bc"
 verbatim[032]:0.field.crossuuid	"018cc9ab-d1d0-7000-97c5-d261ac7103bc"
+verbatim[032]:0.field.crosscode	""
 verbatim[032]:0.field.currhashcode	13870575408298065462
 verbatim[032]:0.field.crosshashcode	0
 verbatim[032]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29322,6 +29420,7 @@ verbatim[033]:0.entry[0.0.0.1.1]	t448 partyid=X
 verbatim[033]:0.entry[0.0.0.1.2]	t452 partyrole=1
 verbatim[033]:0.field.curruuid	"018cc9ab-d1d0-7000-b7a1-92708234b232"
 verbatim[033]:0.field.crossuuid	"018cc9ab-d1d0-7000-b7a1-92708234b232"
+verbatim[033]:0.field.crosscode	""
 verbatim[033]:0.field.currhashcode	15647701780781674672
 verbatim[033]:0.field.crosshashcode	0
 verbatim[033]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29378,6 +29477,7 @@ verbatim[034]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 verbatim[034]:0.entry[0]	t9 bodylength=61
 verbatim[034]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 verbatim[034]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+verbatim[034]:0.field.crosscode	""
 verbatim[034]:0.field.currhashcode	3491125381250579226
 verbatim[034]:0.field.crosshashcode	0
 verbatim[034]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29402,6 +29502,7 @@ verbatim[035]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 verbatim[035]:0.entry[0]	t9 bodylength=61
 verbatim[035]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 verbatim[035]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+verbatim[035]:0.field.crosscode	""
 verbatim[035]:0.field.currhashcode	3491125381250579226
 verbatim[035]:0.field.crosshashcode	0
 verbatim[035]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29426,6 +29527,7 @@ verbatim[036]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 verbatim[036]:0.entry[0]	t9 bodylength=61
 verbatim[036]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 verbatim[036]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+verbatim[036]:0.field.crosscode	""
 verbatim[036]:0.field.currhashcode	3491125381250579226
 verbatim[036]:0.field.crosshashcode	0
 verbatim[036]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29450,6 +29552,7 @@ verbatim[037]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 verbatim[037]:0.entry[0]	t9 bodylength=61
 verbatim[037]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 verbatim[037]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+verbatim[037]:0.field.crosscode	""
 verbatim[037]:0.field.currhashcode	3491125381250579226
 verbatim[037]:0.field.crosshashcode	0
 verbatim[037]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29474,6 +29577,7 @@ verbatim[038]:0.wire	8=FIX.4.4|35=0|49=XPAR|9=61|10=017|
 verbatim[038]:0.entry[0]	t9 bodylength=61
 verbatim[038]:0.field.curruuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
 verbatim[038]:0.field.crossuuid	"018cc9ab-d1d0-7000-b41a-39bbacdcf895"
+verbatim[038]:0.field.crosscode	""
 verbatim[038]:0.field.currhashcode	3491125381250579226
 verbatim[038]:0.field.crosshashcode	0
 verbatim[038]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29535,6 +29639,7 @@ verbatim[040]:0.entry[2]	t213 xmldata=EXECTYPE=Restated
 verbatim[040]:0.entry[3]	t150 exectype=D
 verbatim[040]:0.field.curruuid	"018cc9ab-d1d0-7000-b545-c0e97c47d297"
 verbatim[040]:0.field.crossuuid	"018cc9ab-d1d0-7000-b545-c0e97c47d297"
+verbatim[040]:0.field.crosscode	""
 verbatim[040]:0.field.currhashcode	1946101746455170102
 verbatim[040]:0.field.crosshashcode	0
 verbatim[040]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"
@@ -29739,6 +29844,7 @@ verbatim[045]:0.wire	8=FIX.4.4|35=D|59=0|10=000|
 verbatim[045]:0.entry[0]	t59 timeinforce=0
 verbatim[045]:0.field.curruuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
 verbatim[045]:0.field.crossuuid	"018cc9ab-d1d0-7000-a4c4-42f9951c13ec"
+verbatim[045]:0.field.crosscode	""
 verbatim[045]:0.field.currhashcode	8444734059643977378
 verbatim[045]:0.field.crosshashcode	0
 verbatim[045]:0.field.currunix	"2024-01-02T10:15:30.000000000Z"

@@ -58,12 +58,11 @@ impl Catalog {
     /// The explicit `type` property decides first - `memory`, `folder`, or
     /// `hadoop`, an Iceberg warehouse folder, PyIceberg's spelling - and
     /// otherwise the scheme does: an `s3tables://<bucket>` location is that
-    /// bucket's [`S3TablesCatalog`](crate::s3tables::S3TablesCatalog) under
-    /// the `s3tables` feature, and every location a byte backend holds is a
-    /// folder catalog over the container it names. The catalog is called
-    /// what the `name` property says, else the location's last segment, or
-    /// its bucket. A property this door does not read travels on to every
-    /// handle under the catalog.
+    /// bucket's `S3TablesCatalog` under the `s3tables` feature, and every
+    /// location a byte backend holds is a folder catalog over the container
+    /// it names. The catalog is called what the `name` property says, else
+    /// the location's last segment, or its bucket. A property this door does
+    /// not read travels on to every handle under the catalog.
     ///
     /// # Errors
     ///

@@ -450,11 +450,18 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // for an empty cell to read as.
     assert_eq!(typed("state"), &DataType::State);
     assert!(field("state").is_nullable());
-    for name in ["currhashcode", "crosshashcode", "curruuid", "crossuuid"] {
+    // The cross code is stated with them: the empty text where the message
+    // names none, never a null.
+    for name in [
+        "currhashcode",
+        "crosshashcode",
+        "crosscode",
+        "curruuid",
+        "crossuuid",
+    ] {
         assert!(!field(name).is_nullable(), "{name}");
     }
     assert_eq!(typed("crosscode"), &DataType::utf8());
-    assert!(field("crosscode").is_nullable());
     // Where a line was read from is the URL it is, so a row joins on it and
     // a reader resolves it rather than parsing text back into one.
     assert_eq!(typed(yggdryl::SOURCEURL_TAG_NAME.1), &DataType::url());
