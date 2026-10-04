@@ -12,9 +12,12 @@
 //! that row types them, an empty or absent store is the empty reading, and
 //! the `BOOK` rows come back as [`BookEvent`]s through
 //! [`MarketData::from_arrow_reader`]. A `ticker` that is no book key is
-//! resolved - by the projected scan [`BookService::tickers`] makes - only
-//! once the read of it as a key answers nothing, and the key it names is
-//! read then. Each reading is
+//! resolved - by one projected read of the rows stating it as their ticker
+//! - only once the read of it as a key answers nothing, and the key it
+//! names is read then; the book at an instant is read back from it a grid
+//! window at a time where the service states the grid the books were
+//! folded on, so a table partitioned by that grid opens one partition for a
+//! key alive there. Each reading is
 //! also answered without HTTP ([`BookService::tickers`],
 //! [`BookService::candles`], [`BookService::book`],
 //! [`BookService::events`]), so a test, a binding and the CLI reach the same
@@ -37,7 +40,7 @@
 //! # }
 //! ```
 
-use std::collections::{BTreeMap, BinaryHeap};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::sync::Arc;
 
 use arrow_array::{RecordBatch, RecordBatchReader};
@@ -628,7 +631,7 @@ impl BookService {
         match Self::keyed(
             table,
             ticker,
-            |key| Self::latest(table, key, at),
+            |key| Self::latest(table, key, at, self.grid()),
             Option::is_some,
         ) {
             Ok((_, latest)) => Ok(latest),
@@ -640,17 +643,57 @@ impl BookService {
         }
     }
 
+    /// The snapshot grid the service states, nanoseconds; zero is none.
+    fn grid(&self) -> i64 {
+        i64::try_from(self.options.snapshot_millis())
+            .unwrap_or(i64::MAX)
+            .saturating_mul(NANOS_PER_MILLI)
+    }
+
+    /// The most grid steps [`Self::latest`] reads back a window at a time
+    /// before it reads the key's rows whole: the windows double from one
+    /// step, so a key alive at the instant costs one read of one window and
+    /// a key whose last book stands further back the reads up to it.
+    const WIDEST_WINDOW: i64 = 1 << 10;
+
     /// The book of the key `key` standing at `at`, as [`Self::book`]
-    /// answers it: one read of its rows at or before `at`.
-    fn latest(table: &BookTable, key: &str, at: i64) -> Result<Option<BookEvent>> {
-        let filter = Filter::all(
-            [
-                category(),
-                of_key(key),
-                Term::column(EventColumn::CurrUnix.name()).le(literal_instant(at)?),
-            ]
-            .map(Filter::from),
-        );
+    /// answers it. With no `grid` (nanoseconds; zero) one read of its rows
+    /// at or before `at`. Under the grid the books were folded on, a walk
+    /// emits every book holding an entry whole at every tick, so the last
+    /// origin of a key alive at `at` stands in the window of the tick
+    /// before it: the rows are read back from `at` a window at a time,
+    /// each opening on a tick and twice the one before, from one grid step
+    /// to [`Self::WIDEST_WINDOW`] steps, and whole only past that - a table
+    /// partitioned by the grid opens one partition for a key alive at `at`.
+    fn latest(table: &BookTable, key: &str, at: i64, grid: i64) -> Result<Option<BookEvent>> {
+        let mut steps = 1_i64;
+        loop {
+            let lower = window_lower(at, grid, steps);
+            let (latest, origin) = Self::latest_in(table, key, at, lower)?;
+            if origin || lower.is_none() {
+                return Ok(latest);
+            }
+            steps = steps.saturating_mul(2);
+        }
+    }
+
+    /// The book of `key` standing at `at` over its rows at or before `at` -
+    /// and at or after `lower`, where one is stated - as [`Self::latest`]
+    /// answers it, and whether an origin was read: without one, the books
+    /// read state their deltas alone, which the rows before `lower` would
+    /// rebuild. One read.
+    fn latest_in(
+        table: &BookTable,
+        key: &str,
+        at: i64,
+        lower: Option<i64>,
+    ) -> Result<(Option<BookEvent>, bool)> {
+        let currunix = || Term::column(EventColumn::CurrUnix.name());
+        let mut terms = vec![category(), of_key(key), currunix().le(literal_instant(at)?)];
+        if let Some(lower) = lower {
+            terms.push(currunix().ge(literal_instant(lower)?));
+        }
+        let filter = Filter::all(terms.into_iter().map(Filter::from));
         // The last origin - a complete book, or one following no book - and
         // the books after it stating their deltas alone, in whatever order
         // the table holds them.
@@ -670,6 +713,7 @@ impl BookService {
             }
         }
         tail.sort_by_key(Event::get_currunix);
+        let found = base.is_some();
         let mut latest = match base {
             Some(origin) if !origin.is_complete() => {
                 let stated = origin.clone();
@@ -689,7 +733,7 @@ impl BookService {
                 _ => delta,
             });
         }
-        Ok(latest)
+        Ok((latest, found))
     }
 
     /// The audit rows of `query`: for every book of `query.ticker` - a book
@@ -876,12 +920,12 @@ impl BookService {
     }
 
     /// `read` of the book key `ticker` names, and the key: `ticker` read as
-    /// a key first, the projected scan behind `resolve_key` made only when
+    /// a key first, the filtered read behind `resolve_key` made only when
     /// that read answers nothing - to name the key a ticker stands for,
     /// which is read then, or to refuse one no book states. A key costs one
-    /// read; a ticker of another key the read, the scan and the read again.
-    /// A stored cross code (`3:0:ACME`) is no key - `of_key` would read its
-    /// base - so it goes to the scan directly.
+    /// read; a ticker of another key the read, the ticker's read and the
+    /// read again. A stored cross code (`3:0:ACME`) is no key - `of_key`
+    /// would read its base - so it goes to the ticker's read directly.
     fn keyed<T>(
         table: &BookTable,
         ticker: &str,
@@ -920,23 +964,41 @@ impl BookService {
 
     /// The book key `ticker` names in `table`: itself where it is a key the
     /// table holds books of, else the one key whose books state it as their
-    /// ticker. One projected scan ([`Self::spans`]).
+    /// ticker. One projected read of `crosscode` under
+    /// `marketdatakind = 'BOOK' and ticker = '<ticker>'`, which a store
+    /// pruning on its columns answers from the files holding that ticker.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] at `$.ticker` for a ticker two
     /// keys' books state, and [`Error::Absent`] for one no book states.
     fn resolve_key(table: &BookTable, ticker: &str) -> Result<SmolStr> {
-        let spans = Self::spans(table)?;
-        if spans.contains_key(ticker) {
-            return Ok(SmolStr::new(ticker));
+        let crosscode = ElementColumn::CrossCode.name();
+        let reader = Self::projected(
+            table,
+            &Filter::all([category(), of_ticker(ticker)].map(Filter::from)),
+            vec![DataType::utf8().nullable_field(crosscode)],
+        )?;
+        let mut keys: BTreeSet<SmolStr> = BTreeSet::new();
+        for rows in reader {
+            let rows = rows?;
+            let codes = rows
+                .child(crosscode)
+                .and_then(Serie::as_utf8)
+                .ok_or_else(|| unshaped("the crosscode column of a marketdata row"))?;
+            for index in 0..rows.len() {
+                if let Some(code) = codes.value(index) {
+                    let key = base_crosscode(code);
+                    if key == ticker {
+                        return Ok(SmolStr::new(ticker));
+                    }
+                    keys.insert(SmolStr::new(key));
+                }
+            }
         }
-        let mut keyed = spans
-            .iter()
-            .filter(|(_, span)| span.ticker.as_deref() == Some(ticker))
-            .map(|(key, _)| key);
-        match (keyed.next(), keyed.count()) {
-            (Some(key), 0) => Ok(key.clone()),
+        let mut keys = keys.into_iter();
+        match (keys.next(), keys.len()) {
+            (Some(key), 0) => Ok(key),
             (Some(_), more) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.ticker"),
                 reason: format_smolstr!(
@@ -1459,10 +1521,44 @@ fn of_key(key: &str) -> Term {
     ))
 }
 
+/// `ticker = '<ticker>'`: the books whose instrument goes by `ticker`.
+fn of_ticker(ticker: &str) -> Term {
+    Term::column(MarketColumn::Ticker.name()).eq(Term::literal(ticker))
+}
+
 /// The instant `unix` as the `datetime64(ns, UTC)` literal a `currunix`
 /// column compares to.
 fn literal_instant(unix: i64) -> Result<Term> {
     Ok(Term::literal(zoned(unix, Timezone::UTC)?))
+}
+
+/// Nanoseconds in a millisecond, the grid's unit.
+const NANOS_PER_MILLI: i64 = 1_000_000;
+
+/// Where the window [`BookService::book`] reads back from `at` opens after
+/// `steps` grid steps of `grid` nanoseconds: on the tick at or below
+/// `at - steps * grid`, so the tick's whole book stands inside it; `None`
+/// with no grid, or past [`BookService::WIDEST_WINDOW`] steps, where the
+/// rows are read whole.
+fn window_lower(at: i64, grid: i64, steps: i64) -> Option<i64> {
+    if grid <= 0 || steps > BookService::WIDEST_WINDOW {
+        return None;
+    }
+    let span = grid.saturating_mul(steps);
+    Some(
+        at.saturating_sub(span)
+            .div_euclid(grid)
+            .saturating_mul(grid),
+    )
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/graph/serve.rs` pins and a caller cannot reach.
+    pub fn window_lower(at: i64, grid: i64, steps: i64) -> Option<i64> {
+        super::window_lower(at, grid, steps)
+    }
 }
 
 /// Whether the delta `entry` is about the side `asked` keeps: anywhere when

@@ -45,6 +45,12 @@ shlex = "2.0"
 # staged binary (`scripts/stage_cli.py`) enables it; the default build stays the
 # schema-only core.
 iceberg = ["yggdryl/iceberg"]
+# `yggdryl market serve` over an S3 location, and over an Amazon S3 Tables
+# table (`s3tables://<bucket>/<namespace>/<table>`): the core's object store and
+# its table-bucket catalog. The staged binary enables `s3tables`, which implies
+# both, beside `iceberg`.
+s3 = ["yggdryl/s3"]
+s3tables = ["yggdryl/s3tables", "iceberg"]
 
 [[bench]]
 name = "fix"
