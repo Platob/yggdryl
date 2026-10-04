@@ -204,7 +204,7 @@ A quote is one element holding its bid and its ask - `bidpx`, `bidqty`, `bidccy`
 
 ## Security identifiers
 
-`securityids` is an [`Identifiers`](identifier.md) map: the names the security goes by, one value per key `src:type` - the base key spelled as its type alone and holding the type's answer ([The base key](identifier.md#the-base-key)) - each validated by its type where the crate knows it - `isin=US0378331005`, `derived:cusip=037833100`, `oms:instrumentid=dbi;CH0012214059_XSWX_CHF`.
+`securityids` is an [`Identifiers`](identifier.md) map: the names the security goes by, one value per key `src:type` - the base key spelled as its type alone and holding the type's answer ([The base key](identifier.md#the-base-key)) - each validated by its type where the crate knows it - `isin=US0378331005`, `derived:cusip=037833100`, `oms:instrumentid=dbi;CH0012214059_XSWX_CHF`. On a [`marketdata` row](market-data.md#side-information) the cell holds the base keys alone, every other key side information in `metadata`.
 
 | Verb | Rule |
 | --- | --- |

@@ -89,7 +89,10 @@ Hold these facts:
   fill). The base key is the type's answer: a named source fills it where it
   is empty (`ullink:isin=X` alone is also `isin=X`), a statement takes back
   the type's derivation, and it moves only through its own key - removing it
-  removes the type. Build one with `Identifier(key, value)` - the key read
+  removes the type. On a `marketdata` row the cell holds the base keys alone,
+  one per type; every other key is side information in `metadata` under its
+  `src:type` spelling, read back into the map of its type. Build one with
+  `Identifier(key, value)` - the key read
   exactly (`"isin"`, `"ullink:isin"`, `"fix:isin"` is `isin`), the value
   held to its type's shape, so `Identifier("isin", code)` takes any twelve
   characters of an ISIN's shape and refuses only another shape - a check digit

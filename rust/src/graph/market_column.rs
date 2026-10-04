@@ -236,7 +236,7 @@ impl MarketColumn {
             Self::Unit => "The unit the quantity is counted in; empty where it states none.",
             Self::Side => "The side the element takes; UNKN where it states none.",
             Self::SecurityIds => {
-                "The security identifiers the element names, sorted by key: an identifier's source and type to its value, the type alone for the base source."
+                "The security identifiers the element names, one per type, sorted by key: the type to its value, the type's answer; what each source stated of a type is side information in metadata under src:type."
             }
             Self::IsinCode => "The ISIN the element names: its isin security identifier.",
             Self::CfiCode => "The detailed CFI classification of the instrument.",
@@ -264,7 +264,9 @@ impl MarketColumn {
                 "The FX rates the element states: a target currency to the rate an amount is divided by."
             }
             Self::Ticker => "The ticker the instrument goes by.",
-            Self::Metadata => "The free-form facts the element carries, sorted by key.",
+            Self::Metadata => {
+                "The free-form facts the element carries beside the side information of its identifier maps - what each source stated of a type, under src:type - sorted by key."
+            }
         }
     }
 
