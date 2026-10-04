@@ -511,13 +511,14 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         Ok(vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill.clone())])
     };
 
-    // One book per instant an order touched; the fill is pruned. Each states
-    // its deltas alone, beside the top of book they settled on.
+    // One book per instant an order touched; the fill is recorded beside
+    // the better bid. Each states its deltas alone, beside the top of book
+    // they settled on.
     let books = BookIterator::new(stream()?.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
     assert!(books.iter().all(|book| !book.is_complete()));
     let last = &books[1];
-    assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 1, 0));
+    assert_eq!((last.get_currunix(), last.deltas().len(), last.alive().count()), (T + SECOND, 2, 0));
     assert_eq!(last.best_price(Side::Buy), Some("189.49".parse()?));
     assert_eq!((books[0].get_prevuuid(), last.get_prevuuid()), (None, Some(books[0].get_curruuid())));
 
@@ -534,7 +535,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         .iter()
         .map(|book| (book.get_currunix() - T, book.deltas().len(), book.is_complete()))
         .collect();
-    assert_eq!(ticks, [(0, 1, true), (500_000_000, 0, true), (SECOND, 1, true)]);
+    assert_eq!(ticks, [(0, 1, true), (500_000_000, 0, true), (SECOND, 2, true)]);
 
     // A value a book does not fold is refused by its kind.
     let mut undated = Order::new();
@@ -562,13 +563,14 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     )
     stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
-    # One book per instant an order touched; the fill is pruned. Each states
-    # its deltas alone, beside the top of book they settled on.
+    # One book per instant an order touched; the fill is recorded beside the
+    # better bid. Each states its deltas alone, beside the top of book they
+    # settled on.
     books = list(graph.BookIterator(stream))
     assert len(books) == 2
     assert not any(book.is_complete for book in books)
     last = books[1]
-    assert (last.currunix, len(last.deltas), len(last.alive)) == (T + SECOND, 1, 0)
+    assert (last.currunix, len(last.deltas), len(last.alive)) == (T + SECOND, 2, 0)
     best = last.best_price(Side.BUYS)
     assert best is not None and best.as_py() == Decimal("189.49")
     assert (books[0].prevuuid, last.prevuuid) == (None, books[0].curruuid)
@@ -586,7 +588,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     assert [(book.currunix - T, len(book.deltas), book.is_complete) for book in gridded] == [
         (0, 1, True),
         (500_000_000, 0, True),
-        (SECOND, 1, True),
+        (SECOND, 2, True),
     ]
 
     # A value a book does not fold is refused by its kind.
@@ -614,14 +616,15 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     })
     const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
-    // One book per instant an order touched; the fill is pruned. Each states
-    // its deltas alone, beside the top of book they settled on.
+    // One book per instant an order touched; the fill is recorded beside
+    // the better bid. Each states its deltas alone, beside the top of book
+    // they settled on.
     const books = [...new graph.BookIterator(stream)]
     assert.equal(books.length, 2)
     assert.ok(books.every((book) => !book.isComplete))
     const last = books[1]
     assert.equal(last.currunix, T + SECOND)
-    assert.deepEqual([last.deltas().length, last.alive().length], [1, 0])
+    assert.deepEqual([last.deltas().length, last.alive().length], [2, 0])
     assert.equal(last.bestPrice('BUYS'), '189.49')
     assert.equal(books[0].prevuuid, null)
     assert.equal(last.prevuuid, books[0].curruuid)
@@ -636,7 +639,7 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     // A 500 ms grid yields every book whole, the crossed tick between included.
     const gridded = [...new graph.BookIterator(stream, 500)]
     assert.deepEqual(gridded.map((book) => [book.currunix - T, book.deltas().length, book.isComplete]), [
-      [0n, 1, true], [500_000_000n, 0, true], [SECOND, 1, true],
+      [0n, 1, true], [500_000_000n, 0, true], [SECOND, 2, true],
     ])
 
     // A value a book does not fold is refused by its kind.

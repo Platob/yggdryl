@@ -344,11 +344,11 @@ fill = graph.ExecutionEvent(T + SECOND, crosscode="E-1", ticker="AAPL", side="BU
 stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
 books = list(graph.BookIterator(stream))
-assert len(books) == 2, "one book per instant that moved it; the execution folds into none"
+assert len(books) == 2, "one book per instant that moved it; the execution is recorded beside the better bid"
 # No grid and no snapshot input: each book states its deltas alone and its top of book.
 last = books[1]
 assert not last.is_complete
-assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 1, [])
+assert (last.currunix, len(last.deltas), last.alive) == (T + SECOND, 2, [])
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal("189.49")
 # Rebuilt whole: the first over the empty book its key starts from, the next over it.
@@ -362,8 +362,8 @@ assert (len(whole.alive), whole.curruuid) == (2, last.curruuid), "depth persists
 # A 500 ms grid states the whole living book at each crossed tick.
 gridded = list(graph.BookIterator(stream, snapshot_millis=500))
 assert len(gridded) == 3 and all(book.is_complete for book in gridded)
-# A filter narrows what folds, and never admits an execution.
-assert list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'")) == []
+# A filter narrows what folds: one keeping the execution alone folds its book.
+assert len(list(graph.BookIterator(stream, filter="marketdatakind = 'EXEC'"))) == 1
 # The book key: the instrument's ISIN, else the ticker, else `XX0000000000`.
 [keyless] = graph.BookIterator([graph.OrderEvent(T, crosscode="L-1", side="SELL")])
 assert (keyless.crosscode, keyless.ticker) == ("3:0:XX0000000000", None)
@@ -532,8 +532,8 @@ assert first is not None and first.is_complete
 assert last is not None
 best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
-# The bid's change is the one delta; the trade entry (`269=2`) folds into no book.
-assert not last.is_complete and len(last.deltas) == 1
+# The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
+assert not last.is_complete and len(last.deltas) == 2
 ```
 
 ## Fold books into candles
