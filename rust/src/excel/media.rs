@@ -34,8 +34,8 @@ use crate::RecordHeader;
 ///
 /// The owned handle carries the media type the copy took over, so
 /// [`Workbook::open`] refuses a coded name without asking `handle` again.
-fn open<H: IOBase + ?Sized>(handle: &H) -> Result<Workbook> {
-    Workbook::open(crate::iobase::owned_handle(handle)?)
+fn open<H: IOBase + ?Sized>(handle: &H, media_type: &crate::MediaType) -> Result<Workbook> {
+    Workbook::open(crate::iobase::owned_handle(handle, media_type)?)
 }
 
 /// Discover named tables and suggested occupied-cell regions in a workbook.
@@ -63,7 +63,7 @@ pub fn regions<H: IOBase + ?Sized>(
     handle: &H,
     sheet: Option<&str>,
 ) -> Result<Vec<super::ExcelRegion>> {
-    let workbook = open(handle)?;
+    let workbook = open(handle, handle.media_type())?;
     super::regions::read(&workbook, sheet)
 }
 
@@ -370,7 +370,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Res
     if let Some(field) = options.field() {
         return Ok(field);
     }
-    let workbook = open(handle)?;
+    let workbook = open(handle, handle.media_type())?;
     match addressed(&workbook, options, None)? {
         Some(name) => inferred(&workbook, &name, options),
         None => super::reader::empty_root(options.name()),
@@ -384,7 +384,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Res
 ///
 /// Returns a read, package or sheet failure.
 pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &ExcelOptions) -> Result<u64> {
-    let workbook = open(handle)?;
+    let workbook = open(handle, handle.media_type())?;
     let declared = options.field();
     let Some(name) = addressed(&workbook, options, declared.as_ref())? else {
         return Ok(0);
@@ -405,7 +405,7 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(
     if handle.size() == 0 {
         return Ok(None);
     }
-    let workbook = open(handle)?;
+    let workbook = open(handle, handle.media_type())?;
     let Some(name) = addressed(&workbook, options, None)? else {
         return Ok(None);
     };
@@ -443,7 +443,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     options: &ExcelOptions,
 ) -> crate::arrow::Result<BatchReader> {
     options.require_valid()?;
-    let workbook = open(handle)?;
+    let workbook = open(handle, handle.media_type())?;
     let declared = field.cloned().or_else(|| options.field());
     let Some(mut name) = addressed(&workbook, options, declared.as_ref())? else {
         // Per the laziness contract, a missing workbook holds no rows.
@@ -505,13 +505,14 @@ pub fn overwrite_arrow_reader<H: IOBase + ?Sized>(
 ) -> Result<()> {
     options.require_write()?;
     // Refused before the stream is read, an empty handle included.
-    super::reject_outer_coding(handle)?;
+    let media_type = handle.media_type();
+    super::reject_outer_coding(media_type)?;
     let root = field_from_arrow_schema(options.name(), batches.schema().as_ref())?;
     let rows = SerieReader::from_arrow_reader(Some(&root), batches, ArrowCastOptions::default())?;
     let mut workbook = if handle.size() == 0 {
         Workbook::new()
     } else {
-        open(handle)?
+        open(handle, media_type)?
     };
     if let Some(wanted) = options.table() {
         let NamedTable {
@@ -779,10 +780,10 @@ impl<H: IOBase> Excel<H> {
             if let Some(workbook) = self.cached.get() {
                 return Ok(Held::Cached(workbook));
             }
-            let workbook = open(&self.handle)?;
+            let workbook = open(&self.handle, self.handle.media_type())?;
             return Ok(Held::Cached(self.cached.get_or_init(|| workbook)));
         }
-        open(&self.handle).map(Held::Fresh)
+        open(&self.handle, self.handle.media_type()).map(Held::Fresh)
     }
 
     fn require_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a ExcelOptions> {

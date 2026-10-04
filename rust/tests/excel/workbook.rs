@@ -5113,7 +5113,7 @@ fn table_cut_cross_sheet_refuses_multiple_relationship_roots_atomically() {
         } => {
             assert_eq!(format, "xlsx");
             assert_eq!(position, extra_at);
-            assert!(reason.contains("one metadata root"), "{reason}");
+            assert!(reason.contains("one OPC Relationships root"), "{reason}");
         }
         error => panic!("expected a located duplicate-root refusal, got {error}"),
     }

@@ -1253,18 +1253,27 @@ fn decimal256_wide_signed_scalar_float_cast_matches_arrow() {
 }
 
 #[test]
-fn decimal_float_completion_does_not_parse_untyped_text_or_boolean() {
+fn floating_scalar_cast_reads_numeric_text_and_refuses_invalid_text_or_boolean() {
     use yggdryl::{DataType, Scalar};
-    for value in [
-        Scalar::from("2.25"),
-        Scalar::from("not a number"),
-        Scalar::from(true),
-    ] {
+    let numeric_text = Scalar::from("2.25");
+    assert_eq!(
+        DataType::Float64.cast_scalar(&numeric_text).unwrap(),
+        Scalar::from(2.25_f64)
+    );
+    assert_eq!(
+        DataType::Float64.try_cast_scalar(&numeric_text),
+        Scalar::from(2.25_f64)
+    );
+    for value in [Scalar::from("not a number"), Scalar::from(true)] {
         assert!(DataType::Float64.cast_scalar(&value).is_err(), "{value:?}");
         assert_eq!(DataType::Float64.try_cast_scalar(&value), Scalar::Null);
     }
     assert_eq!(
         DataType::Float64.cast_scalar(&Scalar::Null).unwrap(),
+        Scalar::Null
+    );
+    assert_eq!(
+        DataType::Float64.try_cast_scalar(&Scalar::Null),
         Scalar::Null
     );
 }

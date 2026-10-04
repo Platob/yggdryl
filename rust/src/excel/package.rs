@@ -298,13 +298,28 @@ impl Relationships {
                         // Only direct OPC entries own parts. Foreign wrappers,
                         // local-name lookalikes and qualified attributes carry
                         // no relationship identity.
-                        let id = exact_attribute(start, b"Id", position)?.unwrap_or_default();
-                        let type_uri =
-                            exact_attribute(start, b"Type", position)?.unwrap_or_default();
+                        let (mut id, mut type_uri, mut mode, mut target) = (None, None, None, None);
+                        for attribute in start.attributes() {
+                            let attribute = attribute
+                                .map_err(|error| codec_error(position, error.to_string()))?;
+                            let value = match attribute.key.as_ref() {
+                                b"Id" => &mut id,
+                                b"Type" => &mut type_uri,
+                                b"TargetMode" => &mut mode,
+                                b"Target" => &mut target,
+                                _ => continue,
+                            };
+                            *value = Some(
+                                attribute
+                                    .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                    .map_err(|error| codec_error(position, error.to_string()))?,
+                            );
+                        }
+                        let id = id.unwrap_or_default();
+                        let type_uri = type_uri.unwrap_or_default();
                         let kind = RelationshipKind::of(&type_uri);
-                        let external = exact_attribute(start, b"TargetMode", position)?
-                            .is_some_and(|mode| mode.eq_ignore_ascii_case("External"));
-                        let target = exact_attribute(start, b"Target", position)?;
+                        let external =
+                            mode.is_some_and(|mode| mode.eq_ignore_ascii_case("External"));
                         let target = match target {
                             Some(target) if !external => Some(resolve_target(source, &target)),
                             _ => None,

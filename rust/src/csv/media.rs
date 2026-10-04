@@ -184,7 +184,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ) -> crate::arrow::Result<BatchReader> {
     let declared = field.cloned().or_else(|| options.field());
     let url = handle.url().cloned();
-    let bytes = owned_decoded(crate::iobase::owned_handle(handle)?);
+    let bytes = owned_decoded(crate::iobase::owned_handle(handle, handle.media_type())?);
     match reader::open(bytes, options, declared.as_ref(), url)? {
         Some(opened) => {
             // The record surface applies a total row limit after projection

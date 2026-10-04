@@ -845,6 +845,84 @@ mod vertical {
 #[path = "pivot/part.rs"]
 mod part;
 
+// Default-native blank captions sort last; the authored `(blank)` sorts first.
+// The native authored-blank fixture owns that order. These test permutations
+// align semantic axis items without changing either fixture or display plan.
+fn authored_pivot_cell(
+    reference: yggdryl::excel::CellRef,
+    native_rows: &[u32],
+    native_columns: &[u32],
+) -> yggdryl::excel::CellRef {
+    let native_row = reference.row().checked_sub(2).unwrap();
+    let row = native_rows
+        .iter()
+        .position(|&row| row == native_row)
+        .unwrap() as u32
+        + 2;
+    // The first row names selector fields rather than displayed axis items.
+    let column = if native_row == 0 {
+        reference.column()
+    } else {
+        native_columns
+            .iter()
+            .position(|&column| column == reference.column())
+            .unwrap() as u32
+    };
+    yggdryl::excel::CellRef::new(row, column)
+}
+
+fn assert_pivot_labels(book: &yggdryl::excel::Workbook, sheet: &str, labels: &[(&str, &str)]) {
+    let sheet = book.sheet(sheet).unwrap();
+    for &(reference, label) in labels {
+        assert_eq!(
+            sheet.scalar(reference.parse().unwrap()).as_str(),
+            Some(label),
+            "{}!{reference}",
+            sheet.name()
+        );
+    }
+}
+
+fn assert_native_pivot_grid(
+    book: &yggdryl::excel::Workbook,
+    native_name: &str,
+    native_rows: &[u32],
+    native_columns: &[u32],
+    first_value_column: u32,
+) {
+    let native = book.sheet(native_name).unwrap();
+    let authored = book.sheet("P6Proof").unwrap();
+    let range = native.dimension().unwrap();
+    assert_eq!(range.start(), "A3".parse().unwrap());
+    assert_eq!(authored.dimension(), Some(range));
+    assert_eq!(range.row_size() as usize, native_rows.len());
+    assert_eq!(range.column_size() as usize, native_columns.len());
+    assert!((range.start().column()..=range.end().column()).contains(&first_value_column));
+    // Compare every cached value column. Axis labels have separate ordering
+    // assertions because inner-item sorting moves their suppressed captions.
+    for row in range.start().row()..=range.end().row() {
+        for column in first_value_column..=range.end().column() {
+            let reference = yggdryl::excel::CellRef::new(row, column);
+            let at = authored_pivot_cell(reference, native_rows, native_columns);
+            let expected = native.scalar(reference);
+            let actual = authored.scalar(at);
+            if expected.is_null() {
+                assert_eq!(
+                    actual,
+                    Scalar::Null,
+                    "{native_name}!{reference} -> P6Proof!{at}"
+                );
+            } else if let Some(value) = expected.as_f64() {
+                assert_eq!(
+                    actual.as_f64().map(f64::to_bits),
+                    Some(value.to_bits()),
+                    "{native_name}!{reference} -> P6Proof!{at}"
+                );
+            }
+        }
+    }
+}
+
 mod matrix {
     //! Native five-case PivotTable fixture controls for the shared display plan.
 
@@ -901,8 +979,14 @@ mod matrix {
         }
     }
 
-    fn number(book: &Workbook, at: &str) -> Scalar {
-        book.sheet("P6Proof").unwrap().scalar(at.parse().unwrap())
+    fn number(book: &Workbook, at: &str, native_rows: &[u32], native_columns: &[u32]) -> Scalar {
+        book.sheet("P6Proof")
+            .unwrap()
+            .scalar(super::authored_pivot_cell(
+                at.parse().unwrap(),
+                native_rows,
+                native_columns,
+            ))
     }
 
     #[test]
@@ -951,6 +1035,33 @@ mod matrix {
                 .to_string(),
             "A3:E8"
         );
+        let native_rows = [0, 1, 4, 2, 3, 5];
+        let native_columns = [0, 3, 1, 2, 4];
+        super::assert_pivot_labels(
+            &book,
+            "CaseMatrix",
+            &[
+                ("B4", "Apples"),
+                ("C4", "Pears"),
+                ("D4", "(vide)"),
+                ("A5", "East"),
+                ("A6", "West"),
+                ("A7", "(vide)"),
+            ],
+        );
+        super::assert_pivot_labels(
+            &book,
+            "P6Proof",
+            &[
+                ("B4", "(blank)"),
+                ("C4", "Apples"),
+                ("D4", "Pears"),
+                ("A5", "(blank)"),
+                ("A6", "East"),
+                ("A7", "West"),
+            ],
+        );
+        super::assert_native_pivot_grid(&book, "CaseMatrix", &native_rows, &native_columns, 1);
         for (at, expected) in [
             ("B5", 13.0),
             ("C5", 5.0),
@@ -964,12 +1075,20 @@ mod matrix {
             ("D8", 4.0),
             ("E8", 62.0),
         ] {
-            assert_eq!(number(&book, at), Scalar::from(expected), "{at}");
+            assert_eq!(
+                number(&book, at, &native_rows, &native_columns),
+                Scalar::from(expected),
+                "{at}"
+            );
         }
         assert!(
             book.sheet("P6Proof")
                 .unwrap()
-                .cell("D6".parse().unwrap())
+                .cell(super::authored_pivot_cell(
+                    "D6".parse().unwrap(),
+                    &native_rows,
+                    &native_columns
+                ))
                 .is_none()
         );
     }
@@ -983,6 +1102,19 @@ mod matrix {
                 .to_string(),
             "A3:C7"
         );
+        let native_rows = [0, 3, 1, 2, 4];
+        let native_columns = [0, 1, 2];
+        super::assert_pivot_labels(
+            &book,
+            "CaseNoColumn",
+            &[("A4", "East"), ("A5", "West"), ("A6", "(vide)")],
+        );
+        super::assert_pivot_labels(
+            &book,
+            "P6Proof",
+            &[("A4", "(blank)"), ("A5", "East"), ("A6", "West")],
+        );
+        super::assert_native_pivot_grid(&book, "CaseNoColumn", &native_rows, &native_columns, 1);
         for (at, expected) in [
             ("B4", 22.0),
             ("C4", 1.75),
@@ -993,7 +1125,11 @@ mod matrix {
             ("B7", 62.0),
             ("C7", 2.25),
         ] {
-            assert_eq!(number(&book, at), Scalar::from(expected), "{at}");
+            assert_eq!(
+                number(&book, at, &native_rows, &native_columns),
+                Scalar::from(expected),
+                "{at}"
+            );
         }
     }
 
@@ -1006,6 +1142,33 @@ mod matrix {
                 .to_string(),
             "A3:I9"
         );
+        let native_rows = [0, 1, 2, 5, 3, 4, 6];
+        let native_columns = [0, 5, 6, 1, 2, 3, 4, 7, 8];
+        super::assert_pivot_labels(
+            &book,
+            "CaseTwoValues",
+            &[
+                ("B4", "Apples"),
+                ("D4", "Pears"),
+                ("F4", "(vide)"),
+                ("A6", "East"),
+                ("A7", "West"),
+                ("A8", "(vide)"),
+            ],
+        );
+        super::assert_pivot_labels(
+            &book,
+            "P6Proof",
+            &[
+                ("B4", "(blank)"),
+                ("D4", "Apples"),
+                ("F4", "Pears"),
+                ("A6", "(blank)"),
+                ("A7", "East"),
+                ("A8", "West"),
+            ],
+        );
+        super::assert_native_pivot_grid(&book, "CaseTwoValues", &native_rows, &native_columns, 1);
         for (at, expected) in [
             ("B6", 13.0),
             ("C6", 2.5),
@@ -1020,7 +1183,11 @@ mod matrix {
             ("H9", 62.0),
             ("I9", 2.25),
         ] {
-            assert_eq!(number(&book, at), Scalar::from(expected), "{at}");
+            assert_eq!(
+                number(&book, at, &native_rows, &native_columns),
+                Scalar::from(expected),
+                "{at}"
+            );
         }
     }
 }
@@ -1190,6 +1357,40 @@ mod subtotal {
             "A3:E14"
         );
         let sheet = book.sheet("P6Proof").unwrap();
+        let native_rows = [0, 1, 9, 10, 4, 2, 3, 5, 6, 7, 8, 11];
+        let native_columns = [0, 1, 2, 3, 4];
+        super::assert_pivot_labels(
+            &book,
+            "CaseNested",
+            &[
+                ("A5", "East"),
+                ("B5", "Apples"),
+                ("B6", "Pears"),
+                ("B7", "(vide)"),
+                ("A8", "Total East"),
+                ("A9", "West"),
+                ("A11", "Total West"),
+                ("A12", "(vide)"),
+                ("A13", "Total (vide)"),
+            ],
+        );
+        super::assert_pivot_labels(
+            &book,
+            "P6Proof",
+            &[
+                ("A5", "(blank)"),
+                ("B5", "Apples"),
+                ("A6", "Total (blank)"),
+                ("A7", "East"),
+                ("B7", "(blank)"),
+                ("B8", "Apples"),
+                ("B9", "Pears"),
+                ("A10", "Total East"),
+                ("A11", "West"),
+                ("A13", "Total West"),
+            ],
+        );
+        super::assert_native_pivot_grid(&book, "CaseNested", &native_rows, &native_columns, 2);
         for (at, expected) in [
             ("C5", 10.0),
             ("D5", 3.0),
@@ -1208,12 +1409,24 @@ mod subtotal {
             ("E14", 62.0),
         ] {
             assert_eq!(
-                sheet.scalar(at.parse().unwrap()),
+                sheet.scalar(super::authored_pivot_cell(
+                    at.parse().unwrap(),
+                    &native_rows,
+                    &native_columns
+                )),
                 Scalar::from(expected),
                 "{at}"
             );
         }
-        assert!(sheet.cell("C6".parse().unwrap()).is_none());
+        assert!(
+            sheet
+                .cell(super::authored_pivot_cell(
+                    "C6".parse().unwrap(),
+                    &native_rows,
+                    &native_columns
+                ))
+                .is_none()
+        );
     }
 }
 

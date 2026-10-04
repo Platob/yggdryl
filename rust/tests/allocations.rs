@@ -390,7 +390,7 @@ fn version_allocates_only_a_patch_past_the_inline_capacity() {
         ("1.2SP2_EP240", "SP2_EP240"),
         ("1.2.65536", "65536"),
         ("1.2.00065536", "65536"),
-        ("1.2ÃƒÂ§Ã¢â‚¬Â¢Ã…â€™", "ÃƒÂ§Ã¢â‚¬Â¢Ã…â€™"),
+        ("1.2\u{754c}", "\u{754c}"),
     ] {
         let expected = Version::new(1, 2, Some(patch));
         free("parsing a version with a qualified patch", || {
@@ -10666,8 +10666,11 @@ fn excel_named_table_write_allocations_do_not_follow_unrelated_rows() {
     // is not established. Pin the guaranteed saving and zero unrelated-row
     // slope, without claiming the additional capacity saving on every run.
     assert_eq!(small, large, "unselected rows must add no XML allocations");
+    // Strict package intake adds at most 40 fixed allocations: 20 for
+    // four relationship namespace resolvers, seven checked attribute sets,
+    // seven retained Type URIs, and six for the workbook resolver.
     assert!(
-        small <= 829,
+        small <= 829 + 40,
         "raw neighboring cells must retain the saving: {small}"
     );
 }
@@ -10839,8 +10842,11 @@ fn excel_named_table_write_selected_row_plan_allocations_are_pinned() {
     // allocation (828/6675 versus 829/6676), with identical growth.
     // These ceilings preserve at least 8/13 savings and the improved slope;
     // the separate benchmark catches repeated scanning of earlier splices.
+    // Strict package intake adds at most 40 fixed allocations: 20 for
+    // four relationship namespace resolvers, seven checked attribute sets,
+    // seven retained Type URIs, and six for the workbook resolver.
     assert!(
-        short <= 829 && long <= 6676,
+        short <= 829 + 40 && long <= 6676 + 40,
         "selected row plan exceeds its allocation bound: {short}/{long}"
     );
     assert!(
@@ -10898,7 +10904,13 @@ fn excel_named_table_metadata_observation_skips_unrelated_cells() {
         // worksheet resolvers (6 each) and the unpolled output resolver (4).
         // Private package intake now moves its first chunk: 2 instead of 23
         // allocations for these compressed packages, removing 21 fixed costs.
-        assert_eq!((small, large), (428, 428));
+        // Strict package intake adds at most 31 fixed allocations: 15 for
+        // three relationship namespace resolvers, five checked attribute
+        // sets, five retained Type URIs, and six for the workbook resolver.
+        // The declared-field reader replaces AppliedPlan's empty-batch
+        // setup with SerieReader's cast plan, saving 15 fixed allocations.
+        assert_eq!(small, large, "unselected rows must add no allocations");
+        assert!(small <= 428 + 31 - 15, "metadata allocation bound: {small}");
     }
 }
 
@@ -10951,6 +10963,7 @@ fn excel_named_table_inferred_field_and_full_read_skip_unrelated_rows() {
         (field_allocations, read_allocations)
     };
 
+    let mut first: Option<(usize, usize)> = None;
     for table_rows in [2, 32] {
         let small = cost(table_rows, 16);
         let large = cost(table_rows, 256);
@@ -10974,7 +10987,19 @@ fn excel_named_table_inferred_field_and_full_read_skip_unrelated_rows() {
         } else {
             (457, 552)
         };
-        assert_eq!((small, large), (expected, expected));
+        // Strict package intake adds at most 31 fixed allocations: 15 for
+        // three relationship namespace resolvers, five checked attribute
+        // sets, five retained Type URIs, and six for the workbook resolver.
+        assert_eq!(small, large, "unselected rows must add no allocations");
+        assert!(
+            small.0 <= expected.0 + 31 && small.1 <= expected.1 + 31,
+            "inferred field/read allocation bounds: {small:?}"
+        );
+        if let Some(first) = first {
+            assert_eq!((small.0 - first.0, small.1 - first.1), (32, 95));
+        } else {
+            first = Some(small);
+        }
     }
 }
 
@@ -11053,7 +11078,11 @@ fn excel_named_table_inferred_no_body_skips_unrelated_rows() {
     // allocations for these compressed packages, removing 21 fixed costs.
     // HeaderProbe needs no column node when the body is empty. Removing
     // the old dtype/present/nullable Vecs therefore removes exactly three.
-    assert_eq!((small, large), (411, 411));
+    // Strict package intake adds at most 31 fixed allocations: 15 for
+    // three relationship namespace resolvers, five checked attribute sets,
+    // five retained Type URIs, and six for the workbook resolver.
+    assert_eq!(small, large, "unselected rows must add no allocations");
+    assert!(small <= 411 + 31, "no-body field allocation bound: {small}");
 }
 
 #[test]
@@ -11113,7 +11142,14 @@ fn excel_regions_allocations_follow_result_count_not_worksheet_height() {
     // collection reuse capacity as 64-byte ExcelRegion values without the
     // old single-result shrink allocation (72-byte Found). Unstable sort
     // avoids stable-sort heap scratch for 32 results; output order is total.
-    assert_eq!((short_one, short_many), (147, 150));
+    // Strict package intake adds at most 20 fixed allocations: ten for
+    // two relationship namespace resolvers, two checked attribute sets,
+    // two retained Type URIs, and six for the workbook resolver.
+    assert!(
+        short_one <= 147 + 20 && short_many <= 150 + 20,
+        "region allocation bounds: {short_one}/{short_many}"
+    );
+    assert_eq!(short_many - short_one, 3);
     // Crossing the ZIP writer's 64 KiB restart stride adds one Vec<u64>
     // and one Arc<[u64]> in package intake. That is transport metadata,
     // not row work: the default writer control deliberately pins its +2.

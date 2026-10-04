@@ -159,7 +159,10 @@ pub(super) fn no_children(url: Option<&Url>, name: &str) -> Error {
 /// # Errors
 ///
 /// Returns the parent's resolution failure, or a stream/allocation failure.
-pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
+pub(crate) fn owned_handle(
+    handle: &(impl IOBase + ?Sized),
+    media_type: &crate::MediaType,
+) -> Result<Holder> {
     // A located handle is reopened where its *stored* bytes are. A handle
     // that applies a coding presents them decoded and its media type names
     // no coding, so the reopened one is stamped with that coding put back
@@ -167,7 +170,7 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     // every coded name. Raw DEFLATE has no media type spelling and `Coded`
     // never applies it; the zlib framing is what the one table spells.
     let stored_media_type = || -> Result<crate::MediaType> {
-        let mut media_type = handle.media_type().clone();
+        let mut media_type = media_type.clone();
         if let Some(coding) = crate::iobase::coding_mime(handle.applied_codec()) {
             media_type.push_encoding(coding)?;
         }
@@ -204,8 +207,7 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
         })?;
         bytes.extend_from_slice(&chunk);
     }
-    let buffer =
-        crate::holder::Buffer::from_bytes(bytes).with_media_type(handle.media_type().clone());
+    let buffer = crate::holder::Buffer::from_bytes(bytes).with_media_type(media_type.clone());
     Ok(Holder::buffer(buffer))
 }
 
@@ -218,6 +220,6 @@ pub mod internals {
     pub fn owned_handle(
         handle: &(impl crate::IOBase + ?Sized),
     ) -> crate::Result<crate::holder::Holder> {
-        super::owned_handle(handle)
+        super::owned_handle(handle, handle.media_type())
     }
 }

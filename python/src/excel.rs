@@ -697,7 +697,7 @@ impl PyRow {
 /// What a `Sheet` object stands for: a sheet of its own, or a live view of
 /// the one a workbook holds under `name`.
 enum Held {
-    Own(Sheet),
+    Own(Box<Sheet>),
     Shared { workbook: Shared, name: String },
 }
 
@@ -715,7 +715,7 @@ pub(crate) struct PySheet {
 impl PySheet {
     fn own(sheet: Sheet) -> Self {
         Self {
-            held: Held::Own(sheet),
+            held: Held::Own(Box::new(sheet)),
         }
     }
 
@@ -728,7 +728,7 @@ impl PySheet {
     /// Read through to the sheet, wherever it lives.
     fn read<R>(&self, read: impl FnOnce(&Sheet) -> PyResult<R>) -> PyResult<R> {
         match &self.held {
-            Held::Own(sheet) => read(sheet),
+            Held::Own(sheet) => read(sheet.as_ref()),
             Held::Shared { workbook, name } => {
                 let workbook = lock(workbook)?;
                 read(workbook.sheet(name).map_err(excel_error)?)
@@ -739,7 +739,7 @@ impl PySheet {
     /// Write through to the sheet, wherever it lives.
     fn write<R>(&mut self, write: impl FnOnce(&mut Sheet) -> PyResult<R>) -> PyResult<R> {
         match &mut self.held {
-            Held::Own(sheet) => write(sheet),
+            Held::Own(sheet) => write(sheet.as_mut()),
             Held::Shared { workbook, name } => {
                 let mut workbook = lock(workbook)?;
                 write(workbook.sheet_mut(name).map_err(excel_error)?)
@@ -757,9 +757,11 @@ impl PySheet {
                 let name = sheet.name().to_owned();
                 let mut workbook = Workbook::new();
                 workbook.set_date_system(sheet.date_system());
-                workbook.insert_sheet(sheet.clone()).map_err(excel_error)?;
+                workbook
+                    .insert_sheet(sheet.as_ref().clone())
+                    .map_err(excel_error)?;
                 edit(&mut workbook, &name).map_err(excel_error)?;
-                *sheet = workbook.sheet(&name).map_err(excel_error)?.clone();
+                **sheet = workbook.sheet(&name).map_err(excel_error)?.clone();
                 Ok(())
             }
             Held::Shared { workbook, name } => {

@@ -46,7 +46,12 @@ pub(crate) fn read_arrow_reader(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_arrow_reader_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
+    read_owned_arrow_reader_at(
+        crate::iobase::owned_handle(handle, handle.media_type())?,
+        source,
+        mtime,
+        options,
+    )
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
@@ -193,7 +198,12 @@ pub fn read_text_lines(
     // with a copy: a buffered copy of the bytes is not the object whose
     // modification time this is.
     let mtime = handle_mtime(handle, options);
-    read_owned_text_lines_at(crate::iobase::owned_handle(handle)?, source, mtime, options)
+    read_owned_text_lines_at(
+        crate::iobase::owned_handle(handle, handle.media_type())?,
+        source,
+        mtime,
+        options,
+    )
 }
 
 /// The same decode over a handle the iterator owns.

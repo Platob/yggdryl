@@ -5488,7 +5488,7 @@ impl Workbook {
     /// part for a package with no workbook.
     pub fn open(handle: impl Into<Holder>) -> Result<Self> {
         let handle = handle.into();
-        super::reject_outer_coding(&handle)?;
+        super::reject_outer_coding(handle.media_type())?;
         if handle.size() == 0 {
             return Ok(Self::new());
         }

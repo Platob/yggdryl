@@ -987,15 +987,16 @@ mod records {
         // that transport is the owned one - the `url` the rows are located
         // by, the `bound_location` and `parent` asks `owned_handle` makes
         // before it copies a buffer, and the one `media_type` the copy
-        // takes over. The column count is the header's width read off a
+        // takes over. Private intake retires the public atomic copy's two
+        // staging location probes. The column count is the header's width read off a
         // borrowed transport - the `size` is the empty check the dimension
         // defaults make first - and the row count walks the records on the
         // same borrowed transport, reading no cell and asking for no `url`.
         surfaces(
             "csv",
             "file:///lake/part.csv",
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 bound_location=1 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 bound_location=1 media_type=1 is_container=1 parent=1",
             "pstream_bytes=1 size=1 url=1 media_type=2 is_container=2",
             "pstream_bytes=1 media_type=2 is_container=2",
         );

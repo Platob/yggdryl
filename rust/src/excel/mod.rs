@@ -155,8 +155,8 @@ pub const DEFAULT_SHEET_NAME: &str = "Sheet1";
 /// file no spreadsheet opens: every door that reads or writes the package
 /// refuses the name before a byte crosses, as Parquet's do, and the holder
 /// leaves the coding undecoded so the refusal is the answer a caller gets.
-pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crate::Result<()> {
-    let codec = handle.codec();
+pub(crate) fn reject_outer_coding(media_type: &crate::MediaType) -> crate::Result<()> {
+    let codec = crate::Codec::from_media_type(media_type);
     if codec.is_identity() {
         return Ok(());
     }
