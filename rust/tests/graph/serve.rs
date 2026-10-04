@@ -623,6 +623,129 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
     let _ = std::fs::remove_dir_all(&path);
 }
 
+/// Under the grid its books were folded on, the book at an instant is read
+/// back one grid window at a time, so over a table partitioned by that
+/// grid only the window's partitions are opened: the oldest partition's
+/// data file, cut to nothing, is never read for a key alive at the instant,
+/// while the same lookup with no grid stated reads the key's rows whole and
+/// fails on it.
+#[test]
+fn a_book_under_the_grid_opens_the_partitions_of_its_window_alone() {
+    use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
+    use yggdryl::local::LocalFolder;
+
+    let path = std::env::temp_dir().join(format!(
+        "yggdryl-graph-serve-gridded-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&path);
+    // The pipeline's layout at a minute: every row partitioned by the
+    // bucket its instant falls in.
+    let mut schema = MarketData::field()
+        .unwrap()
+        .into_scheme_compat(&Scheme::ICEBERG)
+        .unwrap()
+        .with_partition_by(["time_bucket('1 minute', currunix) as partunix"
+            .parse()
+            .unwrap()])
+        .unwrap();
+    assign_field_ids(&mut schema, 1).unwrap();
+    IcebergTable::create(
+        LocalFolder::new(&path).unwrap(),
+        FormatVersion::V3,
+        schema.clone(),
+        PartitionSpec::from_schema(0, &schema).unwrap(),
+    )
+    .unwrap();
+    // The fixture folded on a one-minute grid: a whole book at every tick
+    // ACME holds an entry, each in the partition of its minute.
+    let mut holder = Holder::folder(&path).unwrap();
+    let books = BookIterator::new(operations().into_iter(), 60_000)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let options = holder.record_options().unwrap();
+    holder
+        .append_arrow_reader(
+            MarketData::arrow_reader(books, None, None).unwrap(),
+            &options,
+        )
+        .unwrap();
+    // The oldest partition's data file holds nothing a reader can read.
+    let mut files: Vec<std::path::PathBuf> = walkdir(&path.join("data"))
+        .into_iter()
+        .filter(|file| {
+            file.extension()
+                .is_some_and(|extension| extension == "parquet")
+        })
+        .collect();
+    files.sort();
+    assert!(files.len() >= 2, "one file per minute partition: {files:?}");
+    std::fs::write(&files[0], vec![0_u8; 4096]).unwrap();
+
+    let at = T0 + 125 * SECOND;
+    let gridded = BookService::new(BookServiceOptions::new().with_snapshot_millis(60_000))
+        .with_table("books", Holder::folder(&path).unwrap());
+    let book = gridded
+        .book("books", "ACME", at)
+        .unwrap()
+        .expect("the book at the last instant");
+    assert_eq!(book.get_currunix(), at);
+    assert!(book.is_complete(), "rebuilt over the tick before it");
+    assert_eq!(book.alive().count(), 4, "every ACME quote rests");
+    let whole = BookService::new(BookServiceOptions::new())
+        .with_table("books", Holder::folder(&path).unwrap());
+    assert!(
+        whole.book("books", "ACME", at).is_err(),
+        "with no grid the key's rows are read whole, the cut partition among them"
+    );
+    let _ = std::fs::remove_dir_all(&path);
+}
+
+/// Every file below `folder`, recursively.
+fn walkdir(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
+#[cfg(feature = "internals")]
+mod internal {
+    //! The window a book lookup reads back, which no caller names.
+
+    use super::{SECOND, T0};
+    use yggdryl::internals::graph_serve::window_lower;
+
+    #[test]
+    fn a_window_opens_on_the_tick_below_its_steps_back_and_none_past_the_widest() {
+        let grid = 60 * SECOND;
+        let at = T0 + 125 * SECOND;
+        // Each window twice the one before, opening on a tick.
+        assert_eq!(window_lower(at, grid, 1), Some(T0 + 60 * SECOND));
+        assert_eq!(window_lower(at, grid, 2), Some(T0));
+        assert_eq!(window_lower(at, grid, 4), Some(T0 - 120 * SECOND));
+        assert_eq!(
+            window_lower(at, grid, 1 << 10),
+            Some(T0 + 120 * SECOND - (1 << 10) * grid)
+        );
+        // Past the widest window, and under no grid, the rows are read whole.
+        assert_eq!(window_lower(at, grid, 1 << 11), None);
+        assert_eq!(window_lower(at, 0, 1), None);
+    }
+}
+
 #[test]
 fn an_empty_or_absent_table_answers_the_empty_reading() {
     let absent =

@@ -511,8 +511,9 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
         Ok(vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill.clone())])
     };
 
-    // One book per recorded instant; the order and fill are both deltas,
-    // with only the order changing the top of book.
+    // One book per instant an order touched; the fill is recorded beside
+    // the better bid. Each states its deltas alone, beside the top of book
+    // they settled on.
     let books = BookIterator::new(stream()?.into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
     assert_eq!(books.len(), 2);
     assert!(books.iter().all(|book| !book.is_complete()));
@@ -562,8 +563,9 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     )
     stream = [bid(T, "B-1", "189.48", 300), bid(T + SECOND, "B-2", "189.49", 200), fill]
 
-    # One book per recorded instant; the order and fill are both deltas,
-    # with only the order changing the top of book.
+    # One book per instant an order touched; the fill is recorded beside the
+    # better bid. Each states its deltas alone, beside the top of book they
+    # settled on.
     books = list(graph.BookIterator(stream))
     assert len(books) == 2
     assert not any(book.is_complete for book in books)
@@ -614,8 +616,9 @@ A sorted stream: a bid, then a better bid and a fill a second later. With no gri
     })
     const stream = [bid(T, 'B-1', '189.48', 300), bid(T + SECOND, 'B-2', '189.49', 200), fill]
 
-    // One book per recorded instant; the order and fill are both deltas,
-    // with only the order changing the top of book.
+    // One book per instant an order touched; the fill is recorded beside
+    // the better bid. Each states its deltas alone, beside the top of book
+    // they settled on.
     const books = [...new graph.BookIterator(stream)]
     assert.equal(books.length, 2)
     assert.ok(books.every((book) => !book.isComplete))

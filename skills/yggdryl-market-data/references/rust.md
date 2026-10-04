@@ -424,7 +424,7 @@ fill.finalize();
 let stream = vec![bid(T, "B-1", "189.48", 300)?, bid(T + SECOND, "B-2", "189.49", 200)?, MarketData::from(fill)];
 
 let books = BookIterator::new(stream.clone().into_iter(), 0)?.collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(books.len(), 2, "one book per recorded instant; the execution moves no side");
+assert_eq!(books.len(), 2, "one book per instant that moved it; the execution is recorded beside the better bid");
 // No grid and no snapshot input: each book states its deltas alone and its top of book.
 let last = &books[1];
 assert!(!last.is_complete());
@@ -441,7 +441,7 @@ assert_eq!((whole.alive().count(), whole.get_curruuid()), (2, last.get_curruuid(
 let gridded = BookIterator::new(stream.clone().into_iter(), 500)?.collect::<yggdryl::Result<Vec<_>>>()?;
 assert_eq!(gridded.len(), 3);
 assert!(gridded.iter().all(BookEvent::is_complete));
-// A filter can keep the execution alone, recorded without moving a side.
+// A filter narrows what folds: one keeping the execution alone folds its book.
 let filtered = BookIterator::new(stream.into_iter(), 0)?.with_filter("marketdatakind = 'EXEC'")?;
 assert_eq!(filtered.count(), 1);
 
@@ -633,7 +633,7 @@ let first = books[0].as_book_event().expect("a book row");
 assert!(first.is_complete());
 let last = books[1].as_book_event().expect("a book row");
 assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(), Some("101"));
-// The bid's change and the execution (`269=2`) are deltas; only the bid moves a side.
+// The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
 assert!(!last.is_complete());
 assert_eq!(last.deltas().len(), 2);
 ```
