@@ -141,11 +141,11 @@ a settled identity.
 
 The filter is per frame, so a row carrying a keepalive and an order answers the
 order. It reads the type the row states at its top level: a bridge frame whose
-nested `XmlData` states the real type is filtered by the frame's own. The same
-reading holds in a [walk](lifecycle.md) - a keepalive belongs to the session
-rather than to a chain, so `lifecycle` refuses it whatever parsed it - and
-through it in the batch doors, so a capture read into Arrow lands the messages
-that say something.
+nested `XmlData` states the real type is filtered by the frame's own. The
+filter is the parse's alone: a [walk](lifecycle.md) reads what it is handed as
+already cleaned, so a keepalive a caller admitted (`exclude_msgtypes([])`) is
+walked as any message is, and the batch doors parse through the same filter,
+so a capture read into Arrow lands the messages that say something.
 
 What opens a frame is the rule the scanner locates a line's first frame by, read
 over the line's own pairs: an unmarked `8=`, and where the rest of the run

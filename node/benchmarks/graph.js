@@ -128,7 +128,7 @@ REGISTRY.merge({
 })
 benchmark(`identifiers fromObject/${IDENTIFIERS.length}`, () => Identifiers.fromObject(IDENTIFIERS_OBJECT))
 benchmark(`identifiers intoObject/${IDENTIFIERS.length}`, () => IDENTIFIERS.intoObject())
-benchmark('isin registry getByRic', () => REGISTRY.getByRic('HOLN.S'))
+benchmark('isin registry get', () => REGISTRY.get('CH0012214059'))
 benchmark('isin registry getByTicker', () => REGISTRY.getByTicker('HOLN', 'XSWX'))
 benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['isin'] as isin"]))
 benchmarkStreams(`market view orders/${FOLD_OPERATION_COUNT}`, () =>

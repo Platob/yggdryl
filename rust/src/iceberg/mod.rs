@@ -146,6 +146,25 @@ pub(crate) struct Located {
 }
 
 impl Located {
+    /// Whether the location addresses the table whole rather than one of
+    /// its partitions.
+    pub(crate) fn is_whole(&self) -> bool {
+        self.filters.is_empty()
+    }
+
+    /// Replace every row of the table with `batches` in one snapshot,
+    /// whatever its partitions ([`IcebergTable::commit_overwrite_where`]
+    /// with no filter).
+    pub(crate) fn overwrite_whole(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
+        self.table.commit_overwrite_where(&[], batches)
+    }
+
+    /// Empty the table in one snapshot that keeps it a table
+    /// ([`IOBase::clear`] on it).
+    pub(crate) fn clear(&mut self) -> Result<()> {
+        self.table.clear()
+    }
+
     /// Return the table field used to shape every chunk of one resumed write.
     pub(crate) fn stored_field(&self) -> Result<crate::Field> {
         self.table.schema().cloned()

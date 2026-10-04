@@ -144,7 +144,7 @@ Hold these facts:
 | a quote and its two legs | `set_bidpx`, `set_askpx`, `set_bidqty` ..., or `set_side` + `set_price` for one leg | `graph.QuoteEvent(unix, bidpx=..., askpx=...)` | `new graph.QuoteEvent(unix, { bidpx, askpx })` |
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
 | an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
-| what instruments are known by | `IsinRegistry::from_handle(&file)?`, `registry.enrich(&mut event)`, `get_by_ric("HOLN.S")`, `get_by_ticker("HOLN", Some(&mic))` | `IsinRegistry.from_handle(path)`, `registry.get_by_ric("HOLN.S")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)` | `IsinRegistry.fromHandle(path)`, `registry.getByRic('HOLN.S')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)` |
+| what instruments are known by | `IsinRegistry::from_url(&url, props)?`, `registry.enrich(&mut event)`, `get("CH0012214059")`, `get_by_ticker("HOLN", Some(&mic))`, `commit()?` | `IsinRegistry.from_url(path)`, `registry.get("CH0012214059")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)`, `commit()` | `IsinRegistry.fromUrl(path)`, `registry.get('CH0012214059')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)`, `commit()` |
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
 | read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
 | FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
@@ -310,10 +310,14 @@ Hold these facts:
   type alone for the base source, and `Identifier("fix:clordid", value)` is the
   base `clordid`.
 - An `IsinRegistry` fills what an element leaves unsaid about its instrument
-  from what earlier elements stated - keyed by the ISIN, a RIC leading to its
-  ISIN, a Bloomberg symbol only an equivalent - as `derived` identifiers, so a
-  filled code reads back `is_derived`; the bindings' `learn`/`fill`/`enrich`
-  take a `FixMsg`, and a FIX lifecycle runs it on every message.
+  from what earlier elements stated - keyed by the ISIN alone, a ticker
+  leading to it on its market, a RIC or a Bloomberg symbol only an equivalent
+  - as `derived` identifiers, so a filled code reads back `is_derived`, plus
+  the ticker, the CFI code and the listing's currency as market facts; a
+  valid stated value fills and replaces whatever the time. The bindings'
+  `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every
+  message, and a parse fills the identifiers from the table its door fixed.
+  Bind one to a store with `from_url` and write it back with `commit()`.
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a

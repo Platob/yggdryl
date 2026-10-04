@@ -478,12 +478,14 @@ assert_eq!(chained, 4);
 
 ## Share what lifecycles learn about instruments
 
-A lifecycle learns each message's ISIN - else its RIC, which only fills - its
-CFI code, market, ticker and security codes into an `IsinRegistry`, and fills
-what later messages of that instrument leave unsaid, as `derived` identifiers
-and the CFI and ticker facts, never the wire. A codec without one learns into
-a registry of each walk's own; `with_isin_registry` shares one across walks run
-one after another, and the record surface saves and loads it.
+A lifecycle learns each message's ISIN - the one key - its CFI code, country,
+market, ticker, currency, pair and security codes into an `IsinRegistry`, and
+fills what later messages of that instrument leave unsaid, as `derived`
+identifiers and the ticker, CFI and currency facts, never the wire; a parse
+through the same codec fills derived identifiers from the table its door
+fixed. A codec without one learns into a registry of each walk's own;
+`with_isin_registry` shares one across walks run one after another, bound to
+a store with `from_url` and written back with `commit` only where it moved.
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -497,17 +499,19 @@ let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)
 let instruments = Arc::new(Mutex::new(IsinRegistry::new()));
 let codec = FixCodec::new(registry).with_isin_registry(Arc::clone(&instruments));
 
-// The first walk states Holcim's ISIN, RIC and CFI code.
-let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|10=0|"];
+// The first walk states Holcim's ISIN, RIC, CFI code, ticker and market.
+let stated = ["8=FIX.4.4|35=D|11=A|22=4|48=CH0012214059|454=1|455=HOLN.S|456=5|461=ESVUFR|55=HOLN|207=XSWX|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(stated).collect::<yggdryl::Result<_>>()?;
 codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(instruments.lock().unwrap().get_by_ric("HOLN.S").map(|row| row.isin().as_str()), Some("CH0012214059"));
+assert_eq!(instruments.lock().unwrap().get("CH0012214059").and_then(|row| row.get(&yggdryl::IdType::Ric)), Some("HOLN.S"));
 
-// A later walk naming only the RIC is filled from what the first learned.
-let later = ["8=FIX.4.4|35=D|11=B|22=5|48=HOLN.S|10=0|"];
+// A later parse naming only the ticker on the market takes the ISIN from
+// the table, derived; the walk fills the CFI code as a market fact.
+let later = ["8=FIX.4.4|35=D|11=B|55=HOLN|207=XSWX|10=0|"];
 let parsed: Vec<FixMsg> = codec.parse_lines(later).collect::<yggdryl::Result<_>>()?;
+assert_eq!(parsed[0].get_isincode(), Some("CH0012214059"));
 let walked = codec.lifecycle(parsed).collect::<yggdryl::Result<Vec<_>>>()?;
-assert_eq!(walked[0].get_isincode(), Some("CH0012214059"));
+assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
 assert_eq!(walked[0].get_cficode().map(|code| code.as_str()), Some("ESVUFR"));
 ```
 

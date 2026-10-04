@@ -1422,7 +1422,9 @@ mod isin_registry {
         }
         let one_read = calls.snapshot().to_string();
         costs("an isin registry read", &calls, &one_read, || {
-            assert_eq!(IsinRegistry::from_handle(&handle).unwrap().len(), 1);
+            let mut registry = IsinRegistry::new();
+            assert_eq!(registry.extend_from_handle(&handle).unwrap(), 1);
+            assert_eq!(registry.len(), 1);
         });
     }
 }
