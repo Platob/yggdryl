@@ -7112,7 +7112,8 @@ export declare class RecordOptions {
   set comment(comment: string | null)
   /**
    * Whether the first record names the columns - a CSV's first record, a
-   * workbook's first row; `null` for another encoding.
+   * workbook row; `null` for an encoding whose columns are named by its
+   * own schema.
    */
   get header(): boolean | null
   /**

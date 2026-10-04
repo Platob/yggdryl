@@ -10,7 +10,7 @@ use napi_derive::napi;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
-use yggdryl::{IOMode, Level};
+use yggdryl::{IOMode, Level, RecordHeader};
 
 use crate::enums::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
@@ -656,10 +656,13 @@ impl JsRecordOptions {
     }
 
     /// Whether the first record names the columns - a CSV's first record, a
-    /// workbook's first row; `null` for another encoding.
+    /// workbook row; `null` for an encoding whose columns are named by its
+    /// own schema.
     #[napi(getter)]
     pub fn header(&self) -> Option<bool> {
-        self.inner.header()
+        self.inner
+            .header()
+            .map(|header| header != RecordHeader::None)
     }
 
     /// Set whether the first record names the columns: a CSV's first record,

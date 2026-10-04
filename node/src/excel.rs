@@ -12,7 +12,8 @@ use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Either3, Result};
 use napi_derive::napi;
 use yggdryl::IOBase;
 use yggdryl::excel::{
-    Cell, CellKind, CellRange, CellRef, DateSystem, Row, Sheet, SheetState, Workbook,
+    Cell, CellKind, CellRange, CellRef, DateSystem, ExcelError, Formula, Row, Sheet, SheetState,
+    Workbook,
 };
 use yggdryl::holder::{Buffer as CoreBuffer, Holder};
 
@@ -305,17 +306,18 @@ impl JsCell {
         formula: Option<String>,
         error: Option<String>,
     ) -> Result<Self> {
+        let reference = cell_ref_from(reference)?;
         let mut cell = Cell::new(
-            cell_ref_from(reference)?,
+            reference,
             CellKind::from_attribute(&kind).map_err(napi_error)?,
             format.parse().map_err(napi_error)?,
             value.inner.clone(),
         );
         if let Some(formula) = formula {
-            cell = cell.with_formula(formula);
+            cell = cell.with_formula(Formula::from_entry(&formula, reference).map_err(napi_error)?);
         }
         if let Some(error) = error {
-            cell = cell.with_error(error);
+            cell = with_cell_error(cell, &error);
         }
         Ok(Self { inner: cell })
     }
@@ -363,13 +365,17 @@ impl JsCell {
     /// The formula the cell carries, when it states one.
     #[napi(getter)]
     pub fn formula(&self) -> Option<String> {
-        self.inner.formula().map(ToOwned::to_owned)
+        self.inner
+            .formula()
+            .map(|formula| formula.entry_at(self.inner.reference()).to_string())
     }
 
     /// The error the cell carries, such as `#DIV/0!`, when it is one.
     #[napi(getter)]
     pub fn error(&self) -> Option<String> {
-        self.inner.error().map(ToOwned::to_owned)
+        self.inner
+            .error()
+            .map(|_| self.inner.error_text().to_owned())
     }
 
     /// Whether the cell holds no value.
@@ -386,17 +392,18 @@ impl JsCell {
 
     /// This cell carrying `formula`.
     #[napi]
-    pub fn with_formula(&self, formula: String) -> Self {
-        Self {
+    pub fn with_formula(&self, formula: String) -> Result<Self> {
+        let formula = Formula::from_entry(&formula, self.inner.reference()).map_err(napi_error)?;
+        Ok(Self {
             inner: self.inner.clone().with_formula(formula),
-        }
+        })
     }
 
     /// This cell as the error `error`.
     #[napi]
     pub fn with_error(&self, error: String) -> Self {
         Self {
-            inner: self.inner.clone().with_error(error),
+            inner: with_cell_error(self.inner.clone(), &error),
         }
     }
 
@@ -430,10 +437,35 @@ impl JsCell {
             reference: self.inner.reference().to_string(),
             kind: self.kind().to_owned(),
             format: self.format().to_owned(),
-            formula: self.inner.formula().map(ToOwned::to_owned),
-            error: self.inner.error().map(ToOwned::to_owned),
+            formula: self
+                .inner
+                .formula()
+                .map(|formula| formula.entry_at(self.inner.reference()).to_string()),
+            error: self
+                .inner
+                .error()
+                .map(|_| self.inner.error_text().to_owned()),
         }
     }
+}
+
+fn with_cell_error(cell: Cell, text: &str) -> Cell {
+    let error = ExcelError::from_text(text);
+    if error != ExcelError::Unrecognized {
+        return cell.with_error(error);
+    }
+    let formula = cell.formula().cloned();
+    let mut updated = Cell::new(
+        cell.reference(),
+        CellKind::Error,
+        cell.format(),
+        yggdryl::Scalar::from(text),
+    )
+    .with_style(cell.style());
+    if let Some(formula) = formula {
+        updated = updated.with_formula(formula);
+    }
+    updated.with_error(error)
 }
 
 /// A cell's parts beside its value.
@@ -542,6 +574,26 @@ impl JsSheet {
     fn snapshot(&self) -> Result<Sheet> {
         self.read(|sheet| Ok(sheet.clone()))
     }
+
+    fn edit_rows(
+        &mut self,
+        edit: impl FnOnce(&mut Workbook, &str) -> yggdryl::Result<()>,
+    ) -> Result<()> {
+        match &mut self.held {
+            Held::Own(sheet) => {
+                let name = sheet.name().to_owned();
+                let mut workbook = Workbook::new();
+                workbook.insert_sheet(sheet.clone()).map_err(napi_error)?;
+                edit(&mut workbook, &name).map_err(napi_error)?;
+                *sheet = workbook.sheet(&name).map_err(napi_error)?.clone();
+                Ok(())
+            }
+            Held::Shared { workbook, name } => {
+                let mut workbook = lock(workbook)?;
+                edit(&mut workbook, name).map_err(napi_error)
+            }
+        }
+    }
 }
 
 /// The settings a sheet is built with.
@@ -573,7 +625,7 @@ impl JsSheet {
     /// of the column names first unless `header` is false.
     #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
     pub fn from_serie_native(name: String, serie: &JsSerie, header: Option<bool>) -> Result<Self> {
-        Sheet::from_serie(name, &serie.inner, header.unwrap_or(true))
+        Sheet::from_serie(name, &serie.inner, header.unwrap_or(true).into())
             .map(Self::own)
             .map_err(napi_error)
     }
@@ -767,16 +819,13 @@ impl JsSheet {
     /// from there down.
     #[napi]
     pub fn insert_rows(&mut self, at: u32, count: u32) -> Result<()> {
-        self.write(|sheet| sheet.insert_rows(at, count).map_err(napi_error))
+        self.edit_rows(|workbook, name| workbook.insert_rows(name, at, count))
     }
 
     /// Drop the rows from `start` up to `stop`, moving the rows below up.
     #[napi]
     pub fn remove_rows(&mut self, start: u32, stop: u32) -> Result<()> {
-        self.write(|sheet| {
-            sheet.remove_rows(start..stop);
-            Ok(())
-        })
+        self.edit_rows(|workbook, name| workbook.remove_rows(name, start..stop))
     }
 
     /// Lay the rows of `serie` out with their top-left cell at `anchor`, a
@@ -792,7 +841,7 @@ impl JsSheet {
         let serie = serie.inner.clone();
         self.write(|sheet| {
             sheet
-                .write_serie(anchor, &serie, header.unwrap_or(true))
+                .write_serie(anchor, &serie, header.unwrap_or(true).into())
                 .map_err(napi_error)
         })
     }
@@ -819,7 +868,7 @@ impl JsSheet {
         let field = field.map(crate::iceberg::field_from_input).transpose()?;
         let sheet = self.snapshot()?;
         sheet
-            .into_serie(field.as_ref(), options.header.unwrap_or(true), cast)
+            .into_serie(field.as_ref(), options.header.unwrap_or(true).into(), cast)
             .map(JsSerie::from_core)
             .map_err(napi_error)
     }
