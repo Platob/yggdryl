@@ -178,6 +178,94 @@ impl MarketData {
         }))
     }
 
+    /// The deltas of the books `source` holds, laid out as `marketdata`
+    /// rows in book order, as a stream: every event each book states among
+    /// its deltas - of `kind` where one is stated, every kind otherwise -
+    /// as the leaf it is, one record batch at a time under one plan compiled
+    /// from the row field once, the books pulled as the rows are. What a
+    /// stage reads the orders, the quotes or the executions of a window out
+    /// of a table of books with: `read_serie` into this, into the write.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerieSource::into_reader`](crate::SerieSource::into_reader)'s
+    /// refusal of a run or of a record column holding an absent row, and the
+    /// row field's when it cannot be built; past it, every refusal is an item
+    /// of the stream - [`Self::from_arrow_reader`]'s of a row, and a row that
+    /// is no book, refused by its kind - which fuses after it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use yggdryl::graph::{BookIterator, Element, ExecutionEvent, Market, MarketData, OrderEvent};
+    /// use yggdryl::{ArrowCastOptions, Decimal, MarketDataKind, Serie, Side};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// const T: i64 = 1_700_000_000_000_000_000;
+    /// let order = |unix: i64, code: &str, side: Side| {
+    ///     let mut order = OrderEvent::at(unix);
+    ///     order.set_crosscode(code.to_owned());
+    ///     order.set_ticker(Some("AAPL".into()), true);
+    ///     order.set_side(side, true);
+    ///     order.set_price(Some(Decimal::from_int(189)), true);
+    ///     order.set_quantity(Some(Decimal::from_int(100)), true);
+    ///     order.finalize();
+    ///     MarketData::from(order)
+    /// };
+    /// let mut fill = ExecutionEvent::at(T + 2);
+    /// fill.set_crosscode("E-1".to_owned());
+    /// fill.set_ticker(Some("AAPL".into()), true);
+    /// fill.set_side(Side::Buy, true);
+    /// fill.set_lastqty(Some(Decimal::from_int(100)), true);
+    /// fill.finalize();
+    /// let inputs = vec![order(T, "B-1", Side::Buy), order(T + 1, "A-1", Side::Sell), MarketData::from(fill)];
+    ///
+    /// // Three books, one per instant, laid out as rows once and held: what a
+    /// // table of books holds.
+    /// let books = BookIterator::new(inputs.into_iter(), 0)?.map(|book| book.map(MarketData::from));
+    /// let rows = Serie::from_arrow_reader(None, MarketData::arrow_reader(books, None, None)?, ArrowCastOptions::new())?;
+    /// assert_eq!(rows.len(), 3);
+    ///
+    /// // Every delta of every book, in book order; the executions alone.
+    /// let count = |kind: Option<MarketDataKind>| -> yggdryl::Result<usize> {
+    ///     MarketData::deltas_serie(rows.clone(), kind)?
+    ///         .map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) })
+    ///         .sum()
+    /// };
+    /// assert_eq!(count(None)?, 3);
+    /// assert_eq!(count(Some(MarketDataKind::Execution))?, 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn deltas_serie(
+        source: impl Into<crate::SerieSource>,
+        kind: Option<MarketDataKind>,
+    ) -> Result<SerieReader> {
+        let books = Self::from_arrow_reader(source.into().into_reader()?.into_arrow_reader())?;
+        let deltas = books.flat_map(move |book| match book {
+            Ok(MarketData::BookEvent(book)) => book
+                .deltas()
+                .filter(|delta| kind.is_none_or(|kind| delta.marketdatakind() == kind))
+                .cloned()
+                .map(Ok)
+                .collect::<Vec<_>>(),
+            Ok(other) => vec![Err(invalid(
+                SmolStr::new_static("$.marketdatakind"),
+                format_smolstr!(
+                    "expected a book_event among books, got {}",
+                    other.kind().as_str()
+                ),
+            ))],
+            Err(error) => vec![Err(error)],
+        });
+        let rows = Self::arrow_reader(deltas, None, None)?;
+        Ok(SerieReader::from_arrow_reader(
+            Some(&Self::field()?),
+            rows,
+            ArrowCastOptions::new(),
+        )?)
+    }
+
     /// Reads values back from record batches, one value per row.
     ///
     /// Tolerant of the batch's shape: its root columns are resolved by name
@@ -1454,8 +1542,8 @@ fn validate_trade_for_write(trade: &TradeEvent, path: &Path<'_>) -> Result<()> {
 }
 
 fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
-    let entries = |list: &'static str, entries: &mut dyn Iterator<Item = &MarketData>| {
-        let list = path.field(list);
+    let entries = |name: &'static str, entries: &mut dyn Iterator<Item = &MarketData>| {
+        let list = path.field(name);
         for (index, entry) in entries.enumerate() {
             let item = list.child(Segment::Index(index));
             match entry {
@@ -1465,11 +1553,17 @@ fn validate_book_for_write(book: &BookEvent, path: &Path<'_>) -> Result<()> {
                 MarketData::QuoteEvent(operation) => {
                     validate_operation_for_write(operation, &item)?
                 }
+                // An execution is recorded among the deltas and rests on no
+                // side: alive, it is no entry of this crate's.
+                MarketData::ExecutionEvent(operation) if name == DELTAS => {
+                    validate_operation_for_write(operation, &item)?
+                }
                 other => {
                     return Err(invalid(
                         at(&item, MarketColumn::MarketDataKind.name()),
                         format_smolstr!(
-                            "expected order_event or quote_event on a book, got {}",
+                            "expected order_event or quote_event alive on a book, or an \
+                             execution_event among its deltas, got {}",
                             other.kind().as_str()
                         ),
                     ));
@@ -2524,9 +2618,18 @@ impl Landed {
                         .items
                         .operation_event::<QuoteKind>(at, &item)
                         .map(MarketData::from),
+                    // Recorded among the deltas, resting on no side: the
+                    // book's own validation refuses one alive.
+                    MarketDataKind::Execution => list
+                        .items
+                        .operation_event::<ExecutionKind>(at, &item)
+                        .map(MarketData::from),
                     other => Err(invalid(
                         self::at(&item, MarketColumn::MarketDataKind.name()),
-                        format_smolstr!("expected ORDR or QUOT on a book, got {}", other.as_str()),
+                        format_smolstr!(
+                            "expected ORDR, QUOT or EXEC on a book, got {}",
+                            other.as_str()
+                        ),
                     )),
                 }
             })

@@ -782,11 +782,13 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
 }
 
 /// A12: a capture's market data holds each execution exactly once - the
-/// trade's sided executions and the order's fill - and its books hold none:
-/// a fill moves a book through its order's report, the delta that report
-/// applies, and an instant only executions touched emits no book.
+/// trade's sided executions and the order's fill - and its books record
+/// each among their deltas, resting on no side: a fill moves a book through
+/// its order's report, the delta that report applies, with the execution
+/// beside it, and an instant only executions touched emits a book stating
+/// them alone.
 #[test]
-fn a_capture_folds_no_execution_into_its_books() {
+fn a_capture_records_each_execution_in_its_book_and_folds_none() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
     let lines: [&[u8]; 3] = [
         b"8=FIX.4.4|35=D|52=20260921-09:59:59|11=C-9|55=AAPL|54=1|44=10.5|38=100|326=17|10=0|",
@@ -809,21 +811,41 @@ fn a_capture_folds_no_execution_into_its_books() {
             .book_arrow_reader(codec.lifecycle(messages.clone()), 0, None)
             .expect("a book stream"),
     );
-    // The order, then its fill's report; the trade's instant emits none.
-    assert_eq!(books.len(), 2);
+    // The order; its fill's report beside the execution the parse split
+    // off; the trade's instant, stating its two executions alone.
+    assert_eq!(books.len(), 3);
     assert!(
         books
             .iter()
-            .flat_map(|book| book.alive().chain(book.deltas()))
+            .flat_map(|book| book.alive())
             .all(|entry| entry.marketdatakind() != MarketDataKind::Execution),
-        "no book holds an execution"
+        "no book holds an execution alive"
     );
-    let [report] = books[1].deltas().collect::<Vec<_>>()[..] else {
-        panic!("the fill's report is the one delta")
-    };
-    assert_eq!(report.marketdatakind(), MarketDataKind::Order);
+    let deltas = books[1].deltas().collect::<Vec<_>>();
+    assert_eq!(deltas.len(), 2, "the fill's report and the execution");
+    let report = deltas
+        .iter()
+        .find(|delta| delta.marketdatakind() == MarketDataKind::Order)
+        .expect("the fill's report");
+    assert!(
+        deltas
+            .iter()
+            .any(|delta| delta.marketdatakind() == MarketDataKind::Execution),
+        "the execution the parse split off"
+    );
     assert_eq!(*operation_of(report).get_state(), State::PartiallyFilled);
-    assert_eq!(alive(&books[1], true), [report]);
+    assert_eq!(alive(&books[1], true), [*report]);
+    assert_eq!(
+        books[2]
+            .deltas()
+            .map(MarketData::marketdatakind)
+            .collect::<Vec<_>>(),
+        [MarketDataKind::Execution, MarketDataKind::Execution]
+    );
+    // Rebuilt over the fill's book, the trade's instant keeps the order
+    // alive: its executions replace no membership and rest on no side.
+    assert_eq!(alive(&books[2], true), [*report]);
+    assert!(alive(&books[2], false).is_empty());
 
     let mut held: Vec<String> = codec
         .market_data(codec.lifecycle(messages))
@@ -1289,12 +1311,20 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     // The best tradable levels are the book's bid and ask (A22).
     assert_eq!(text(books[1].get_bidpx()).as_deref(), Some("101"));
     assert_eq!(text(books[1].get_askqty()).as_deref(), Some("12"));
-    // The update's trade entry (`269=2`) is an execution, which no book
-    // folds: the bid's change is the book's one delta.
-    let [delta] = books[1].deltas().collect::<Vec<_>>()[..] else {
-        panic!("the bid's change alone")
-    };
+    // The update's trade entry (`269=2`) is an execution, recorded among
+    // the deltas beside the bid's change and moving no side.
+    let deltas = books[1].deltas().collect::<Vec<_>>();
+    assert_eq!(deltas.len(), 2, "the bid's change and the trade entry");
+    let delta = deltas
+        .iter()
+        .find(|delta| delta.marketdatakind() != MarketDataKind::Execution)
+        .expect("the bid's change");
     assert_eq!(text(delta.get_price()).as_deref(), Some("101"));
+    assert!(
+        deltas
+            .iter()
+            .any(|delta| delta.marketdatakind() == MarketDataKind::Execution)
+    );
     // A leaf states its own category: a book entry naming no order is a
     // quote, whatever the message's `BOOK`.
     assert_eq!(
@@ -1335,11 +1365,20 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
         .chain(ignored.iter().cloned())
         .collect::<Vec<_>>();
     let expected = books_of(codec.book_arrow_reader(admitted.clone(), 0, None).unwrap());
-    // The execution report's fill is market data no book folds: its instant
-    // emits no book.
-    assert_eq!(expected.len(), 4);
+    // The execution report's fill is market data its book records: its
+    // instant emits a book stating the execution alone.
+    assert_eq!(expected.len(), 5);
     let filled = admitted[2].get_currunix();
-    assert!(expected.iter().all(|book| book.get_currunix() != filled));
+    let fill = expected
+        .iter()
+        .find(|book| book.get_currunix() == filled)
+        .expect("the fill's book");
+    assert_eq!(
+        fill.deltas()
+            .map(MarketData::marketdatakind)
+            .collect::<Vec<_>>(),
+        [MarketDataKind::Execution]
+    );
     assert_eq!(
         drained(codec.market_data(admitted))
             .unwrap()
@@ -1443,9 +1482,10 @@ fn codec_book_admission_passes_over_what_no_book_reads() {
 }
 
 /// The book door narrows its books to what its filter keeps, after the
-/// kind rule: no filter admits the execution a fill report splits off, a
-/// filter keeping every row folds what no filter does, and one naming a
-/// column the row does not carry is refused before a message is read.
+/// kind rule: a filter keeps or drops the execution a fill report splits
+/// off as it does an order, a filter keeping every row folds what no filter
+/// does, and one naming a column the row does not carry is refused before a
+/// message is read.
 #[test]
 fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
@@ -1473,15 +1513,19 @@ fn book_arrow_reader_narrows_its_books_to_what_its_filter_keeps() {
     assert_eq!(bids.len(), 2, "the order and its fill's report");
     for book in &bids {
         assert!(alive(book, false).is_empty() && deltas(book, false).is_empty());
-        assert!(
-            book.deltas()
-                .all(|delta| delta.marketdatakind() == MarketDataKind::Order)
-        );
+        assert!(book.deltas().all(|delta| matches!(
+            delta.marketdatakind(),
+            MarketDataKind::Order | MarketDataKind::Execution
+        )));
     }
     let asks = books(Some("side = 'SELL'"));
     assert_eq!(asks.len(), 1);
     assert_eq!(text(asks[0].get_askpx()).as_deref(), Some("101"));
-    assert!(books(Some("marketdatakind = 'EXEC'")).is_empty());
+    assert_eq!(
+        books(Some("marketdatakind = 'EXEC'")).len(),
+        1,
+        "the execution's instant alone"
+    );
     assert_eq!(books(Some("true")), books(None));
 
     let refused: yggdryl::Filter = "nope = 1".parse().expect("a filter");
@@ -2183,7 +2227,7 @@ fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
 }
 
 #[test]
-fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_no_book_folds() {
+fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_its_book_records() {
     // The forward's two parts are lifted under their own tags; `LastPx(31)`,
     // stated by nobody, derives as their sum; the market reads both parts.
     let held = message(
@@ -2216,7 +2260,8 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_no_book
     assert_eq!(held.by_tag(195).unwrap(), super::decimal("0.0025"));
 
     // The execution the report splits off is a market leaf with its FX
-    // parts, and no book folds it: its report moves the book.
+    // parts, recorded by its book among its deltas and moving nothing: its
+    // report moves the book.
     let [_, execution] = <[FixMsg; 2]>::try_from(split(
         b"8=FIX.4.4|35=8|17=E1|37=O1|55=EURUSD|54=1|32=1000000|150=F|194=1.25|195=0.0025|10=0|",
     ))
@@ -2227,7 +2272,14 @@ fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_stays_a_leaf_no_book
     };
     assert_eq!(execution.marketdatakind(), MarketDataKind::Execution);
     let mut books = yggdryl::graph::BookIterator::new(inputs.clone().into_iter(), 0).unwrap();
-    assert!(books.next().is_none(), "no book folds an execution");
+    let book = books.next().expect("the execution's book").expect("a book");
+    assert!(books.next().is_none());
+    assert_eq!(
+        book.deltas().count(),
+        1,
+        "the execution is its book's one delta"
+    );
+    assert!(book.alive().next().is_none(), "and it rests on no side");
     assert_eq!(text(execution.get_spotrate()).as_deref(), Some("1.25"));
     assert_eq!(
         text(execution.get_forwardpoints()).as_deref(),

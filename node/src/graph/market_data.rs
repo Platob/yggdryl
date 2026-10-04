@@ -5,7 +5,9 @@ use std::iter::FusedIterator;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use napi::bindgen_prelude::{ClassInstance, Either, Either10, Env, Function, Result, Unknown};
+use napi::bindgen_prelude::{
+    ClassInstance, Either, Either3, Either10, Env, Function, Result, Unknown,
+};
 use napi_derive::napi;
 use yggdryl::FieldPath;
 use yggdryl::graph::{MarketData as CoreMarketData, MarketKind, MarketView as CoreMarketView};
@@ -18,10 +20,12 @@ use super::operation::{
 };
 use super::trade::JsTradeEvent;
 use super::{AnyMarketData, market_data_from, market_data_of};
+use crate::chunked_serie::JsChunkedSerie;
 use crate::expression::JsPlan;
 use crate::field::JsField;
 use crate::fix::JsFixMsg;
 use crate::iomedia::JsBatchReader;
+use crate::serie::{JsSerie, JsSerieReader, serie_source};
 use crate::text::line::{JsFieldPath, path_from_input};
 use crate::{Pulled, exact_u64, javascript_failure, napi_error};
 
@@ -287,6 +291,31 @@ impl JsMarketData {
         let batches = reader.take()?;
         let rows = CoreMarketData::from_arrow_reader(batches).map_err(napi_error)?;
         Ok(JsMarketDataRowIterator::over(Box::new(rows)))
+    }
+
+    /// The deltas of the books `source` holds - a `Serie`, a `ChunkedSerie`
+    /// or a `SerieReader`, consumed - laid out as `marketdata` rows in book
+    /// order, as a `SerieReader`: every event each book states among its
+    /// deltas, of `kind` where one is named (`'ORDR'`, `'QUOT'`, `'EXEC'`,
+    /// any spelling the kind reads), every kind otherwise; a row that is no
+    /// book is refused by its kind where it is read.
+    #[napi]
+    pub fn deltas_serie(
+        source: Either3<
+            ClassInstance<'_, JsSerie>,
+            ClassInstance<'_, JsChunkedSerie>,
+            ClassInstance<'_, JsSerieReader>,
+        >,
+        kind: Option<String>,
+    ) -> Result<JsSerieReader> {
+        let kind = kind
+            .as_deref()
+            .map(yggdryl::MarketDataKind::read)
+            .transpose()
+            .map_err(napi_error)?;
+        let source = serie_source(source)?;
+        let reader = CoreMarketData::deltas_serie(source, kind).map_err(napi_error)?;
+        JsSerieReader::from_core(reader)
     }
 
     /// The plan one named view is over a `marketdata` stream - `orders`,

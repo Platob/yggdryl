@@ -283,10 +283,11 @@ Four enums - `ElementColumn` (`graph::element_column`), `EventColumn` (`graph::c
 | Rows | every fact is its own typed column, null where the leaf states none; a book states its best tradable bid and ask in `bidpx`/`bidqty`/`bidccy` and `askpx`/`askqty`/`askccy`; `isincode` is the `isin` of `securityids`; every decimal is the registered [`decimal`](../types/numeric/decimal.md#decimal) |
 | `arrow_reader(values, batch_row_size, batch_byte_size)` | streams `IntoIterator` of `MarketData`/`Result<MarketData>` into bounded `BatchReader` batches, lazily - a [FIX message held whole](#a-fix-message-held-whole) written as the leaves it splits into - column by column, no per-row `Scalar`; no row bound = shared default, zero = one row; a byte bound closes a nonempty batch once reached; values write only as their canonical self - stale derived facts refused at their row; a source/refusal error follows the completed prefix, fuses the reader |
 | `from_arrow_reader(batches)` | one value per row, tolerant of shape: root columns resolved by name once per stream (any case, subset, order); an unnamed column ignored; a castable column cast via one plan compiled before the first batch; two columns naming one fact refused before a row is read |
+| `deltas_serie(source, kind)` | the deltas of the books `source` holds - any `SerieSource`: a table's `read_serie`, a held `Serie` - laid out as `marketdata` rows in book order, as a `SerieReader` pulled with the rows: every event each book states among its deltas, of `kind` where one is stated, every kind otherwise; a row that is no book is refused by its kind as an item of the stream. What a stage reads a window's orders, quotes or executions out of a table of books with |
 | Leaves | a row's `marketdatakind` and `currunix` name its leaf - [below](#the-leaf-a-row-names); each batch lands once as one record [`Serie`](../types/serie.md), so no cell decodes twice; a refused value is named by row and path - `$[0].alive[0].miccode` - before any leaf is rebuilt |
 | Canonical rows | a trade rebuilds only via `TradeEvent::from_parts`, a book from its `alive` and `deltas` directly - a complete book's sides from its `alive`, a delta book's deltas alone - never by replaying deltas; every stated identity must match the rebuilt leaf's (null `curruuid`/`crossuuid`/`currhashcode`/`crosshashcode` refused, absent = nothing); every other stated fact - the stored `crosscode`, a book's `bidlimits`/`asklimits` and bid/ask included - must match the leaf, else refused with `expected the value derived from the row ...` (a dated order stating no side and the code `O-1001` is refused at `$[0].crosscode`: expected `10:0:O-1001`); a reader failure or refused row returns once, fuses the iterator |
 | `isincode`, `fxrates` | a stated `isincode` fills an absent `isin` base key and must equal the `securityids` answer (`expected the securityids isin "US0378331005", got ...`); `securityids`, `identifiers` and `partyids` are read raw and closed, and refuse a key that reads as none, a value `Identifier::new` refuses and two spellings of one key with two values, located at the row's column and key (`$[0].identifiers['fix:']`); `fxrates` refuses a null key or rate and a target stated twice |
-| Bindings | Python `graph.MarketData.field()`, `arrow_reader(items, batch_row_size=None, batch_byte_size=None)` - a `pyarrow.RecordBatchReader` - and `from_arrow_reader(source)`; JavaScript `graph.MarketData.field()`, `arrowReader(items, batchRowSize, batchByteSize)` - a `BatchReader` - and `fromArrowReader(reader)`, any source `BatchReader.from` accepts |
+| Bindings | Python `graph.MarketData.field()`, `arrow_reader(items, batch_row_size=None, batch_byte_size=None)` - a `pyarrow.RecordBatchReader` - `from_arrow_reader(source)` and `deltas_serie(source, kind=None)` - a native `SerieReader` over any source `read_serie` answers; JavaScript `graph.MarketData.field()`, `arrowReader(items, batchRowSize, batchByteSize)` - a `BatchReader` - `fromArrowReader(reader)`, any source `BatchReader.from` accepts, and `deltasSerie(source, kind)` over a `Serie`, a `ChunkedSerie` or a `SerieReader` |
 
 ### The leaf a row names
 
@@ -453,6 +454,103 @@ The one loss: a complete book holding no live entry that states deltas and no `s
     const event = lifted.asOrderEvent()
     assert.equal(event.crosscode, '10:0:O-1001')
     assert.equal(event.currunix, 1_700_000_000_000_000_000n)
+    ```
+
+### The deltas of books as rows
+
+A table of books holds every event of each book's tick among its `deltas`; `deltas_serie` lays them back out as `marketdata` rows in book order, every kind or one - what a stage reads a window's orders, quotes or executions out of such a table with, through [`read_serie`](../media/index.md#read).
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::graph::{BookIterator, Element, ExecutionEvent, Market, MarketData, OrderEvent};
+    use yggdryl::{ArrowCastOptions, Decimal, MarketDataKind, Serie, Side};
+
+    const T: i64 = 1_700_000_000_000_000_000;
+    let order = |unix: i64, code: &str, side: Side| {
+        let mut order = OrderEvent::at(unix);
+        order.set_crosscode(code.to_owned());
+        order.set_ticker(Some("AAPL".into()), true);
+        order.set_side(side, true);
+        order.set_price(Some(Decimal::from_int(189)), true);
+        order.set_quantity(Some(Decimal::from_int(100)), true);
+        order.finalize();
+        MarketData::from(order)
+    };
+    let mut fill = ExecutionEvent::at(T + 2);
+    fill.set_crosscode("E-1".to_owned());
+    fill.set_ticker(Some("AAPL".into()), true);
+    fill.set_side(Side::Buy, true);
+    fill.set_lastqty(Some(Decimal::from_int(100)), true);
+    fill.finalize();
+    let inputs = vec![order(T, "B-1", Side::Buy), order(T + 1, "A-1", Side::Sell), MarketData::from(fill)];
+
+    // Three books, one per instant, laid out as rows once and held: what a
+    // table of books holds.
+    let books = BookIterator::new(inputs.into_iter(), 0)?.map(|book| book.map(MarketData::from));
+    let rows = Serie::from_arrow_reader(None, MarketData::arrow_reader(books, None, None)?, ArrowCastOptions::new())?;
+    assert_eq!(rows.len(), 3);
+
+    // Every delta of every book, in book order; the executions alone.
+    let count = |kind: Option<MarketDataKind>| -> yggdryl::Result<usize> {
+        MarketData::deltas_serie(rows.clone(), kind)?
+            .map(|serie| -> yggdryl::Result<usize> { Ok(serie?.len()) })
+            .sum()
+    };
+    assert_eq!(count(None)?, 3);
+    assert_eq!(count(Some(MarketDataKind::Execution))?, 1);
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    from yggdryl import graph
+
+    T = 1_700_000_000_000_000_000
+
+    def order(unix: int, code: str, side: str) -> graph.OrderEvent:
+        return graph.OrderEvent(unix, crosscode=code, ticker="AAPL", side=side, price=Decimal("189"), quantity=100)
+
+    fill = graph.ExecutionEvent(T + 2, crosscode="E-1", ticker="AAPL", side="BUYS", lastqty=100)
+    inputs = [order(T, "B-1", "BUYS"), order(T + 1, "A-1", "SELL"), fill]
+
+    # Three books, one per instant, laid out as rows once and held: what a
+    # table of books holds.
+    books = graph.MarketData.arrow_reader(graph.BookIterator(inputs)).read_all()
+    assert books.num_rows == 3
+
+    # Every delta of every book, in book order; the executions alone.
+    def count(kind: str | None) -> int:
+        return sum(len(serie) for serie in graph.MarketData.deltas_serie(books, kind))
+
+    assert count(None) == 3
+    assert count("EXEC") == 1
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Serie, graph } = require('yggdryl')
+
+    const T = 1_700_000_000_000_000_000n
+    const order = (unix, code, side) => new graph.OrderEvent(unix, {
+      crosscode: code, ticker: 'AAPL', side, price: '189', quantity: 100,
+    })
+    const fill = new graph.ExecutionEvent(T + 2n, { crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastqty: 100 })
+    const inputs = [order(T, 'B-1', 'BUYS'), order(T + 1n, 'A-1', 'SELL'), fill]
+
+    // Three books, one per instant, laid out as rows once and held: what a
+    // table of books holds.
+    const books = Serie.fromArrowReader(graph.MarketData.arrowReader([...new graph.BookIterator(inputs)]))
+    assert.equal(books.length, 3)
+
+    // Every delta of every book, in book order; the executions alone.
+    const count = (kind) => [...graph.MarketData.deltasSerie(books, kind)].reduce((n, serie) => n + serie.length, 0)
+    assert.equal(count(undefined), 3)
+    assert.equal(count('EXEC'), 1)
     ```
 
 ## Views

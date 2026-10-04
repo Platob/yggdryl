@@ -118,10 +118,11 @@ Hold these facts:
   a row read back answers it unchanged; never recompute one by hand.
 - **Books are folded, and stated as deltas.** `BookIterator` folds a sorted
   stream into one `BookEvent` per book and instant that moved it. A book
-  folds orders and quotes alone (`MarketDataKind::is_booked`, Rust-only): an
-  execution, a trade or a batch is pruned before the walk, a fill moving the
-  book through its order's or quote's own report, so a book holds no
-  execution. A book is **complete** (`is_complete`: its `alive` entries and
+  folds orders and quotes into its sides (`MarketDataKind::is_booked`,
+  Rust-only) and records every execution among its `deltas` at its instant
+  (`is_recorded`), moving no side - a fill moved the book through its
+  order's or quote's own report; a trade or a batch is pruned before the
+  walk. A book is **complete** (`is_complete`: its `alive` entries and
   `limits`) only at a snapshot tick - every grid tick a positive
   `snapshot_millis` crosses, and a snapshot input (a FIX `W` full refresh, an
   empty `W`, inputs stating `snapunix`); every other book states its

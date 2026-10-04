@@ -155,6 +155,21 @@ fn every_leaf() -> Vec<MarketData> {
     ]
 }
 
+/// A stream of books over `inputs`, as the serie a table of books reads
+/// back as.
+fn books_serie(inputs: Vec<MarketData>) -> yggdryl::SerieReader {
+    let books = yggdryl::graph::BookIterator::new(inputs.into_iter(), 0)
+        .unwrap()
+        .map(|book| book.map(MarketData::from));
+    let rows = MarketData::arrow_reader(books, None, None).unwrap();
+    yggdryl::SerieReader::from_arrow_reader(
+        Some(&MarketData::field().unwrap()),
+        rows,
+        yggdryl::ArrowCastOptions::new(),
+    )
+    .unwrap()
+}
+
 fn read(source: BatchReader) -> yggdryl::Result<Vec<MarketData>> {
     MarketData::from_arrow_reader(source)?.collect()
 }
@@ -495,7 +510,8 @@ fn every_leaf_round_trips_in_bounded_batches() {
     assert_eq!(actual[6].as_trade_event().unwrap().executions().len(), 2);
     let book = actual[7].as_book_event().unwrap();
     assert_eq!(book.alive().count(), 2);
-    assert_eq!(book.deltas().len(), 2);
+    // The order and the quote it placed, and the execution it recorded.
+    assert_eq!(book.deltas().len(), 3);
     // A trade's row states its executions; a book's states none.
     let executions = batches[1].column_by_name("executions").unwrap();
     assert!(executions.is_valid(1) && executions.is_null(2));
@@ -2213,4 +2229,66 @@ fn a_delta_book_row_stating_another_chain_is_refused_at_its_identity() {
     let none = Arc::clone(empty.column_by_name("deltas").unwrap());
     let error = refusal(with_column(&batch, "deltas", none));
     assert!(error.contains("$[0].curruuid"), "{error}");
+}
+
+/// The deltas of a stream of books lay out as the rows of their kind, in
+/// book order: every event each book recorded, of the kind asked for or of
+/// every kind, and a stream holding a row that is no book is refused at
+/// that row.
+#[test]
+fn the_deltas_of_books_lay_out_as_the_rows_of_their_kind() {
+    let inputs = || {
+        vec![
+            MarketData::from(order(1, "O-1")),
+            MarketData::from(execution(2, "E-2", "Buy")),
+            MarketData::from(order(3, "O-3")),
+        ]
+    };
+    let codes = |rows: &[MarketData]| {
+        rows.iter()
+            .map(|row| row.get_crosscode().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    let executions = MarketData::deltas_serie(
+        books_serie(inputs()),
+        Some(yggdryl::MarketDataKind::Execution),
+    )
+    .unwrap();
+    let executions = read(executions.into_arrow_reader()).unwrap();
+    assert_eq!(codes(&executions), ["8:1:E-2"]);
+    assert_eq!(executions[0].get_execunix(), Some(0));
+
+    let every = MarketData::deltas_serie(books_serie(inputs()), None).unwrap();
+    assert_eq!(
+        codes(&read(every.into_arrow_reader()).unwrap()),
+        ["10:1:O-1", "8:1:E-2", "10:1:O-3"]
+    );
+
+    // A stream that holds no book answers its deltas: none.
+    let orders = MarketData::deltas_serie(
+        books_serie(inputs()),
+        Some(yggdryl::MarketDataKind::Quotation),
+    )
+    .unwrap();
+    assert!(read(orders.into_arrow_reader()).unwrap().is_empty());
+
+    // A row that is no book is refused as an item of the stream.
+    let flat = MarketData::arrow_reader(inputs(), None, None).unwrap();
+    let flat = yggdryl::SerieReader::from_arrow_reader(
+        Some(&MarketData::field().unwrap()),
+        flat,
+        yggdryl::ArrowCastOptions::new(),
+    )
+    .unwrap();
+    let error = read(
+        MarketData::deltas_serie(flat, None)
+            .unwrap()
+            .into_arrow_reader(),
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("expected a book_event"),
+        "{error}"
+    );
 }

@@ -681,6 +681,58 @@ fn a_refused_line_is_passed_over_and_every_line_after_it_reads() {
 }
 
 #[test]
+fn a_walk_written_under_a_table_schema_keeps_its_enum_columns_as_their_codes() {
+    // An Iceberg table stores an enum column as the plain integer its code
+    // is, so a walk over what such a table answers writes back under a
+    // schema whose `state`, `side`, `marketdatakind` and `marketdatatype`
+    // are `int32`: each member lands as its code, never as a null.
+    use arrow_array::Array;
+
+    let codec = codec();
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let stored = schema
+        .clone()
+        .into_scheme_compat(&yggdryl::Scheme::ICEBERG)
+        .unwrap();
+    assert_eq!(stored.get_field("state").unwrap().dtype(), &DataType::Int32);
+    const LINE: &str = "8=FIX.4.4|35=D|11=A|55=AAPL|54=1|38=5|44=10|10=0|";
+    let rows = batches(
+        codec
+            .arrow_reader(schema.clone(), codec.parse_lines(&[LINE]))
+            .unwrap(),
+    );
+    // What the walk states of the message, which the stored row must hold.
+    let walked_message = codec
+        .lifecycle(codec.parse_lines(&[LINE]))
+        .next()
+        .expect("one walked message")
+        .expect("a message");
+    let as_stored = yggdryl::SerieReader::from_arrow_reader(
+        Some(&stored),
+        yggdryl::arrow::batch_reader(rows[0].schema(), rows),
+        yggdryl::ArrowCastOptions::new(),
+    )
+    .unwrap()
+    .into_arrow_reader();
+    let walked = batches(codec.lifecycle_arrow_reader(as_stored).unwrap());
+    assert_eq!(row_count(&walked), 1);
+    for (name, code) in [
+        ("state", i32::from(walked_message.get_state().code())),
+        ("side", i32::from(walked_message.get_side().code())),
+        ("marketdatakind", i32::from(walked_message.msgcat().code())),
+    ] {
+        assert_ne!(code, 0, "{name} states a member");
+        let column = walked[0].column_by_name(name).unwrap();
+        let column = column
+            .as_any()
+            .downcast_ref::<arrow_array::Int32Array>()
+            .unwrap_or_else(|| panic!("{name} stored as int32"));
+        assert_eq!(column.null_count(), 0, "{name}");
+        assert_eq!(column.value(0), code, "{name}");
+    }
+}
+
+#[test]
 fn a_source_failure_ends_the_batch_stream_after_the_completed_prefix() {
     let codec = codec();
     let schema = fix_schema(codec.registry(), "fix").unwrap();

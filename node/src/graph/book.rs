@@ -223,9 +223,10 @@ impl JsBookEvent {
 
     /// This book with every operation of one atomic group applied: each an
     /// order or quote event, a snapshot control, or a `MarketData` holding
-    /// one, folded; an execution or a trade event is pruned and changes
-    /// nothing, since a fill moves a book through its order's or quote's
-    /// report. A book stating its deltas alone is refused at `$.alive`.
+    /// one, folded, and an execution event recorded among the deltas,
+    /// moving no side, since a fill moves a book through its order's or
+    /// quote's report; a trade event is pruned and changes nothing. A book
+    /// stating its deltas alone is refused at `$.alive`.
     #[napi(
         ts_args_type = "operations: Array<MarketData | Order | Quote | Execution | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>"
     )]

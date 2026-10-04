@@ -9370,6 +9370,13 @@ class MarketData:
     @staticmethod
     def from_arrow_reader(reader: FixArrowSource) -> MarketDataRowIterator: ...
     @staticmethod
+    def deltas_serie(source: FixArrowSource, kind: str | None = None) -> SerieReader:
+        """The deltas of the books ``source`` holds, laid out as ``marketdata``
+        rows in book order as a native ``SerieReader``: every event each book
+        states among its deltas, of ``kind`` where one is named (``"ORDR"``,
+        ``"QUOT"``, ``"EXEC"``), every kind otherwise."""
+        ...
+    @staticmethod
     def plan(
         view: str,
         lifts: Sequence[str | FieldPath] | None = (),
@@ -9428,8 +9435,9 @@ class BookIterator(Iterator[BookEvent]):
     """Books from a sorted stream of leaves, one per book key and effective timestamp.
 
     Pulling its items lazily from the caller's iterable: order and quote
-    events and snapshot controls fold; an execution or a trade is pruned where
-    it is pulled, and any other leaf is refused by its kind. An operation
+    events and snapshot controls fold, an execution is recorded among its
+    book's deltas, moving no side; a trade is pruned where it is pulled, and
+    any other leaf is refused by its kind. An operation
     dated before its book, an order or a quote stating neither side and a
     group the book refuses are left out with a ``logging`` warning, never an
     error. A book is whole at a snapshot tick - every grid tick when
