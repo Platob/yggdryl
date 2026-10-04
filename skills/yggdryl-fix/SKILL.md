@@ -145,14 +145,15 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    `fix_column_of(&schema, 35)` in Rust. Columns are the dictionary's folded
    names; the tag stays on each column's `FIX:tag`. Two captures under one
    dictionary share one schema exactly.
-9. A capture's own columns (`url`, `rownum`, `loglevel`...) follow the
+9. A capture's own columns (`url`, `rownum`, a `thread` of your own...) follow the
    element, event, market and operation columns every row opens with; a column named after a FIX field fills that field where the frame
    stated none; `beginstring` and `msgdirection` columns are per-row
    parameters. An `mtime` capture dates the line - its messages' `recdunix`
    and the sending clock of any stating no `SendingTime(52)` - read under the
    text options' `timezone`; a `timestamp` capture of your own dates nothing.
-   `ULBRIDGE_ROWHEADER` captures `mtime` and `loglevel`, so it dates every
-   line it matches (set `timezone` to the bridge's local zone).
+   `ULBRIDGE_ROWHEADER` captures `mtime`, so it dates every line it matches
+   (set `timezone` to the bridge's local zone); the thread that wrote a
+   line and the level it was logged at are matched and lifted into no column.
 10. Store and reload a dictionary through `commit`/`from_handle` (or `yggdryl fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated

@@ -14,6 +14,8 @@
 /// message context and the sequence number, separated as the bridge writes
 /// them. Those three are optional as a whole, so a line that carries only
 /// the thread still frames and leaves them null rather than failing the row.
+/// The thread and the level are matched and never captured: they are the
+/// log's own, not the message's, so no row lifts either.
 ///
 /// The clock is `mtime`, so the header dates the lines it matches: a text
 /// read consumes the capture into the line's `currunix` rather than
@@ -35,9 +37,8 @@
 /// [`MsgPluginId`](super::MSGPLUGINID_TAG_NAME) - the session names the
 /// line moved between are what the line itself spells, never the plugin.
 ///
-/// The other two name no field, and are the capture's own columns carried
-/// in front of the row: `msgthreadid`, and `loglevel`, the bridge's own log
-/// level, which answers no column but its own.
+/// Every capture but the clock names the field it fills, so the header
+/// carries no column of its own in front of a row.
 ///
 /// The bridge writes the session, the context and the sequence in camel
 /// case - `senderSessionId`, `msgCtxId`, `seqNum` - and they were captured
@@ -83,7 +84,9 @@
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
 /// // The clock is consumed into each line's `currunix`, so it leads no column.
-/// assert!(names.ends_with(&["msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "loglevel"]));
+/// assert!(names.ends_with(&["msgsessionid", "msgctxid", "msgseqnum", "msgpluginid"]));
+/// // The thread and the level are matched and lifted into no column.
+/// assert!(!names.contains(&"msgthreadid") && !names.contains(&"loglevel"));
 /// assert!(!names.contains(&"mtime"));
 /// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
 /// let lines = yggdryl::text::read_text_lines(
@@ -101,7 +104,7 @@
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<loglevel>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d{3}(?:_\d{3})?)?) \[[1-9]\d*(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \([A-Z]+\) ";
 
 /// The plugin a message came into the bridge through, as the prose in front
 /// of its payload names it, the first of three sentences that reads:

@@ -5289,10 +5289,11 @@ export interface Fix {
    * each line it matches: the capture is consumed into the line's
    * `currunix` - the `recdunix` of its messages and the sending clock of one
    * stating no `SendingTime(52)` - read at nanoseconds UTC under the text
-   * options' `timezone`, never the file's modification time. Four of the
-   * other six captures are named for the fields they fill - `msgsessionid`,
-   * `msgctxid`, `msgseqnum` and `msgpluginid`; `msgthreadid` and `loglevel`
-   * name none and are the capture's own columns, carried in front. Its
+   * options' `timezone`, never the file's modification time. The other
+   * four captures are named for the fields they fill - `msgsessionid`,
+   * `msgctxid`, `msgseqnum` and `msgpluginid` - so the header carries no
+   * column of its own; the thread that wrote a line and the level it was
+   * logged at are matched and lifted into no column. Its
    * clock reads what bridges write, a point or a comma before three digits
    * or grouped microseconds, or no fraction at all, and a line a row header
    * does not match carries no capture context - which is what the lifecycle

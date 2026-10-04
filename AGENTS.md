@@ -1432,8 +1432,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   `name_truncate`). `Field::with_partition_by` is the one door from the
   declaration to the layout: it stores the key, marks the identity columns
   and materializes every derived entry as a marked `TRANSFORM:` column typed
-  by its term and, where nothing else says what it holds, described by it;
-  `with_partition_fields` is it over bare columns, and
+  by its term; `with_partition_fields` is it over bare columns, and
   `partition_by` reads the key, else the marks. A mark the declaration does
   not name is refused naming both; a declared column may be unmarked or
   absent, because a leaf stores the rows minus the partition columns under

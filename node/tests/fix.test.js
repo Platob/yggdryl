@@ -4579,7 +4579,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a bridge capture parses whole and walks its chains', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['mtime', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'loglevel'],
+      captureNames: ['mtime', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid'],
       defaultSendingTime: SENDING,
     })
     const messages = captured(codec)
@@ -4764,7 +4764,7 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
   test('a bridge capture reads as sorted market operations that fold into books', () => {
     const registry = seed()
     const codec = reading(registry, {
-      captureNames: ['mtime', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'loglevel'],
+      captureNames: ['mtime', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid'],
       defaultSendingTime: SENDING,
       threads: 1,
     })
@@ -4881,14 +4881,15 @@ const rowKinds = (cell) => new Map(Array.from(cell).filter(([key]) => !key.inclu
     for (let at = 0; at < captures.fieldLen; at += 1) {
       names.push(captures.fieldAt(at).name)
     }
-    assert.deepEqual(names.slice(-6), [
-      'msgthreadid',
+    assert.deepEqual(names.slice(-4), [
       'msgsessionid',
       'msgctxid',
       'msgseqnum',
       'msgpluginid',
-      'loglevel',
     ])
+    // The thread and the level are matched and lifted into no column.
+    assert.equal(names.includes('msgthreadid'), false)
+    assert.equal(names.includes('loglevel'), false)
     assert.equal(String(captures.field('msgseqnum').dtype), 'int64')
     // The clock is `mtime`, consumed into each line's `currunix`, so it
     // leads no column of its own.

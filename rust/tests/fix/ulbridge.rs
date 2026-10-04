@@ -159,13 +159,22 @@ mod dataset {
         assert_eq!(dated.len(), clocks.len());
         assert!(!dated.contains(&handle.expect("the file's time")));
         // The clock is consumed into `currunix`, so no column carries it; the
-        // level is the capture's own column.
+        // thread and the level are matched and never captured, so no column
+        // carries them either.
         let names = header_captures();
-        assert_eq!(names.first().map(String::as_str), Some("mtime"));
-        assert_eq!(names.last().map(String::as_str), Some("loglevel"));
+        assert_eq!(
+            names,
+            [
+                "mtime",
+                "msgsessionid",
+                "msgctxid",
+                "msgseqnum",
+                "msgpluginid"
+            ]
+        );
         let carried = options.source_field().expect("the source field");
         assert!(carried.field("mtime").is_err() && carried.field("timestamp").is_err());
-        assert!(carried.field("loglevel").is_ok());
+        assert!(carried.field("msgthreadid").is_err() && carried.field("loglevel").is_err());
     }
 
     #[test]
@@ -2136,10 +2145,11 @@ mod pipeline {
         // message's own columns follow those. A capture whose folded name a
         // fixed column takes is not carried, it fills that column: the
         // reader's `msgtype`, and the header's `bridgesessionid`, `msgctxid`
-        // and `msgseqnum`, each named for the field it fills. What is left
-        // is what no column is spelled for - the thread that wrote the line
-        // and its level; the clock the bridge printed dates the line, so it
-        // is the line's `currunix` and leads no column of its own. Where the
+        // and `msgseqnum`, each named for the field it fills. Nothing is
+        // left for the header to carry: the thread and the level are
+        // matched and never captured, and the clock the bridge printed
+        // dates the line, so it is the line's `currunix` and leads no
+        // column of its own. Where the
         // line came out of, which line it was and when it was written are
         // `crosscode`, `seqnum` and `currunix`, the columns both halves open
         // with.
@@ -2150,8 +2160,8 @@ mod pipeline {
             + 1;
         assert_eq!(names[0], "curruuid", "{names:?}");
         assert_eq!(
-            &names[shared..shared + 5],
-            ["mimetype", "body", "msgthreadid", "loglevel", "sendingtime"],
+            &names[shared..shared + 3],
+            ["mimetype", "body", "sendingtime"],
             "{names:?}"
         );
         let at = |name: &str| {
@@ -2160,15 +2170,7 @@ mod pipeline {
                 .position(|held| *held == name)
                 .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
         };
-        for pair in [
-            "currunix",
-            "creaunix",
-            "prevunix",
-            "loglevel",
-            "beginstring",
-        ]
-        .windows(2)
-        {
+        for pair in ["currunix", "creaunix", "prevunix", "body", "beginstring"].windows(2) {
             assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
         }
         let header = names
@@ -2185,7 +2187,7 @@ mod pipeline {
             "crosscode",
             "seqnum",
             "currunix",
-            "loglevel",
+            "body",
             "msgsessionid",
             "msgctxid",
             "msgpluginid",
@@ -2334,16 +2336,14 @@ mod pipeline {
             }
         }
 
-        // The row header's captures survive the codec untouched: the thread that
-        // wrote the line and the level, and the bracket's sequence number - null
-        // where the bracket held only the thread.
-        assert_eq!(
-            text_column(&read, "loglevel")[FILL_ROW].as_deref(),
-            Some("INFO")
-        );
-        let thread = column(&read, "msgthreadid");
-        assert_eq!(thread[ROUTED_ROW].as_i64(), Some(15_333));
-        assert_eq!(thread[HEARTBEAT_ROW].as_i64(), Some(15_261));
+        // The thread that wrote the line and the level it was logged at are
+        // matched by the row header and lifted into no column.
+        for unlifted in ["msgthreadid", "loglevel"] {
+            assert!(
+                read.schema().column_with_name(unlifted).is_none(),
+                "{unlifted}"
+            );
+        }
         // The bracket's sequence number is FIX's own `MsgSeqNum(34)`, so it fills
         // that column rather than riding in front of the row - and only where the
         // message states none. The routed line is keyed by name and spells no

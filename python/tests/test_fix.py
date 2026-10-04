@@ -4915,14 +4915,14 @@ def test_the_bridge_row_header_is_the_crates_own_text_and_names_its_captures() -
     options.rowheader = ULBRIDGE_ROWHEADER
     captures = options.source_field()
     names = [child.name for child in captures]
-    assert names[-6:] == [
-        "msgthreadid",
+    assert names[-4:] == [
         "msgsessionid",
         "msgctxid",
         "msgseqnum",
         "msgpluginid",
-        "loglevel",
     ]
+    # The thread and the level are matched and lifted into no column.
+    assert "msgthreadid" not in names and "loglevel" not in names
     assert str(captures.field("msgseqnum").dtype) == "int64"
     # The clock is `mtime`, consumed into each line's `currunix`, so it leads
     # no column of its own.
@@ -5002,6 +5002,12 @@ def test_the_serie_faces_keep_a_capture_native_from_text_rows_to_walked_rows(
 # The key every table of the capture pipeline declares: when a row happened
 # and the hash of what it states.
 CAPTURE_PRIMARY_KEY = ("currunix", "currhashcode")
+# What the partition column every table of the pipeline computes holds: a
+# derived column is described by whoever declares it.
+CAPTURE_PARTUNIX = (
+    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes."
+)
+
 # What every table of the pipeline requires of each row: its key, its place
 # among the rows of its instant, and the code and hash of its chain.
 CAPTURE_REQUIRED = (*CAPTURE_PRIMARY_KEY, "seqnum", "crosscode", "crosshashcode")
@@ -5022,6 +5028,9 @@ def _capture_table(root: pathlib.Path, row: Field) -> yggdryl.iceberg.IcebergTab
         column = schema[name]
         column.set_nullable(False)
         schema[name] = column
+    partunix = schema["partunix"]
+    partunix.set_description(CAPTURE_PARTUNIX)
+    schema["partunix"] = partunix
     schema.sort.by = ["partunix", "currunix", "seqnum", "currhashcode"]
     schema = yggdryl.iceberg.assign_field_ids(schema)
     # Iceberg names a key by the identifiers of its columns, which exist once
@@ -5072,11 +5081,9 @@ def test_the_capture_pipeline_lands_table_to_table_on_series(
     assert not any(stored[name].nullable for name in CAPTURE_REQUIRED)
     assert {str(stored[name].dtype) for name in ("curruuid", "crossuuid", "prevuuid")} == {"uuid"}
     # Every column says what it holds, which the table states as its doc:
-    # the partition column by the term it is derived by.
+    # the partition column as the pipeline declared it.
     assert [column.name for column in stored if column.description is None] == []
-    assert stored["partunix"].description == (
-        "Derived from the row as time_bucket('15 minutes', currunix)."
-    )
+    assert stored["partunix"].description == CAPTURE_PARTUNIX
 
     def ordered(table: yggdryl.iceberg.IcebergTable) -> list[tuple[int, int]]:
         # The two instants as their nanosecond counts, in the order read.

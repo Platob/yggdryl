@@ -8725,7 +8725,11 @@ export declare class SchemaUpdate {
   dropColumn(path: string): void
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): void
-  /** Record a new `ICEBERG:doc` documentation string on the column at `path`. */
+  /**
+   * Record a new documentation string on the column at `path`: the
+   * column's own description, which the schema states as its `doc`. An
+   * empty one clears it.
+   */
   updateDoc(path: string, doc: string): void
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): void

@@ -79035,7 +79035,7 @@
           "display": "Cross Code"
         },
         "name": "crosscode",
-        "nullable": true
+        "nullable": false
       },
       {
         "dtype": {

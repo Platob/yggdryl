@@ -126,6 +126,12 @@ const SMOKE_COPIES: u64 = 3;
 /// happened and the hash of what it states.
 const PRIMARY_KEY: [&str; 2] = ["currunix", "currhashcode"];
 
+/// What the partition column every table of the pipeline computes holds,
+/// as the table states it: a derived column is described by whoever
+/// declares it.
+const PARTUNIX: &str =
+    "The quarter of an hour the row's instant falls in: currunix floored to fifteen minutes.";
+
 /// The columns every table of the pipeline requires of each row: its key,
 /// its place among the rows of its instant, and the code and hash of the
 /// chain it belongs to. A text row and a FIX row already do; the
@@ -1035,6 +1041,15 @@ fn create(root: &Path, row: &Field) -> IcebergTable<LocalFolder> {
             .with_nullable(false);
         schema.set_field(name, column).expect("the required column");
     }
+    let partunix = schema
+        .get_field_by_path("partunix")
+        .expect("the partition column")
+        .clone()
+        .try_with_description(PARTUNIX)
+        .expect("the description");
+    schema
+        .set_field("partunix", partunix)
+        .expect("the described column");
     schema
         .as_sort_mut()
         .set_by_texts(["partunix", "currunix", "seqnum", "currhashcode"])
@@ -1216,8 +1231,8 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
             );
         }
     }
-    // Every column says what it holds - the partition column by the term it
-    // is derived by - and the table states each as the column's doc.
+    // Every column says what it holds - the partition column as the
+    // pipeline declared it - and the table states each as the column's doc.
     let silent: Vec<&str> = schema
         .fields()
         .iter()
@@ -1232,8 +1247,8 @@ fn verify(name: &str, table: &IcebergTable<LocalFolder>, expected: &Stored) {
         schema
             .get_field_by_path("partunix")
             .and_then(Field::description),
-        Some("Derived from the row as time_bucket('15 minutes', currunix)."),
-        "{name}: the partition column is described by its term"
+        Some(PARTUNIX),
+        "{name}: the partition column says what it holds"
     );
     assert_eq!(
         schema.get_metadata("PARTITION:by"),

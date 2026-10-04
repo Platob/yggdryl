@@ -1222,9 +1222,7 @@ impl Field {
     /// with the function in Iceberg's singular - `ts_year`, `ts_day`,
     /// `ts_minutes`, `name_truncate` - is added, or re-declared where it
     /// exists, typed by the term over this struct, carrying the term as its
-    /// [`TRANSFORM:`](crate::TransformField) declaration and the mark, and
-    /// described - where neither the term's field nor the column it replaces
-    /// says what it holds - by the term it is derived by. A
+    /// [`TRANSFORM:`](crate::TransformField) declaration and the mark. A
     /// column marked before and no longer declared is unmarked, so the marks
     /// are exactly the declaration's. An empty `by` removes the declaration.
     ///
@@ -1266,7 +1264,6 @@ impl Field {
     ///     derived.as_transform().term()?.map(|term| term.to_string()),
     ///     Some("minutes(ts, 15)".to_owned())
     /// );
-    /// assert_eq!(derived.description(), Some("Derived from the row as minutes(ts, 15)."));
     /// assert_eq!(partitioned.partition_by()?.len(), 3);
     /// # Ok(())
     /// # }
@@ -1325,17 +1322,7 @@ impl Field {
                 .field(self)?
                 .with_partition(true);
             child.as_transform_mut().set_term(&term)?;
-            let held = children.iter().position(|held| held.name() == name);
-            // A derived column says what it holds as the column it replaces
-            // did, else as the term it is derived by, so a catalog shows
-            // more than a name.
-            if child.description().is_none() {
-                match held.and_then(|index| children[index].description()) {
-                    Some(description) => child.set_description(description.to_owned())?,
-                    None => child.set_description(format!("Derived from the row as {term}."))?,
-                }
-            }
-            match held {
+            match children.iter().position(|held| held.name() == name) {
                 Some(index) => children[index] = child,
                 None => children.push(child),
             }
