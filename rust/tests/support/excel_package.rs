@@ -625,10 +625,10 @@ pub fn normalized(xml: &str, shared: &[(&str, &str)]) -> String {
                 dependent = shared_formula;
                 text.clear();
                 if matches!(event, Event::Empty(_)) {
-                    if dependent {
-                        if let Some((_, formula)) = shared.iter().find(|(at, _)| *at == cell) {
-                            out.push_str(formula);
-                        }
+                    if dependent
+                        && let Some((_, formula)) = shared.iter().find(|(at, _)| *at == cell)
+                    {
+                        out.push_str(formula);
                     }
                     out.push_str(&format!("</{name}>"));
                     dependent = false;
@@ -644,15 +644,17 @@ pub fn normalized(xml: &str, shared: &[(&str, &str)]) -> String {
                 let name = String::from_utf8_lossy(end.name().as_ref()).into_owned();
                 let element = local(end.name().as_ref());
                 let mut held = std::mem::take(&mut text);
-                if element == "v" {
-                    if let Ok(number) = held.trim().parse::<f64>() {
-                        held = format!("{number}");
-                    }
+                if element == "v"
+                    && let Ok(number) = held.trim().parse::<f64>()
+                {
+                    held = format!("{number}");
                 }
-                if element == "f" && dependent && held.is_empty() {
-                    if let Some((_, formula)) = shared.iter().find(|(at, _)| *at == cell) {
-                        held = (*formula).to_owned();
-                    }
+                if element == "f"
+                    && dependent
+                    && held.is_empty()
+                    && let Some((_, formula)) = shared.iter().find(|(at, _)| *at == cell)
+                {
+                    held = (*formula).to_owned();
                 }
                 dependent = false;
                 out.push_str(&held.replace('&', "&amp;").replace('<', "&lt;"));
@@ -1528,7 +1530,7 @@ pub fn named_table_cost_package(table_rows: u32, unrelated_rows: u32) -> Vec<u8>
 pub fn regions_cost_package(rows: u32, regions: u32, restarts: bool) -> Vec<u8> {
     use std::fmt::Write as _;
 
-    assert!(regions > 0 && rows % regions == 0);
+    assert!(regions > 0 && rows.is_multiple_of(regions));
     let height = rows / regions;
     assert!(height > 0 && rows + regions - 1 <= yggdryl::excel::MAX_ROWS);
     let mut data = String::new();
@@ -2602,7 +2604,7 @@ pub fn typed_text_write_cost_book(rows: u32, typed: bool) -> Workbook {
 /// Six criteria paths over native text, explicit empty text, absent cells and numbers.
 /// Aggregate values stay one so averages have an exact result at both sizes.
 pub fn criteria_six_cost_book(rows: u32) -> Workbook {
-    assert!(rows >= 4 && rows % 4 == 0);
+    assert!(rows >= 4 && rows.is_multiple_of(4));
     let mut book = Workbook::new();
     let source = book.add_sheet("Values").unwrap();
     let text = "hit ".repeat(64);

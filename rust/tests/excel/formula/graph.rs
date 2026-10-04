@@ -443,10 +443,12 @@ mod internal {
                     *edge = mask & (1 << (from * 3 + to)) != 0;
                 }
             }
-            for to in 0..3 {
-                let precedents: Vec<_> = (0..3)
-                    .filter(|&from| reaches[from][to])
-                    .map(|from| {
+            for (to, _) in reaches[0].iter().enumerate() {
+                let precedents: Vec<_> = reaches
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, row)| row[to])
+                    .map(|(from, _)| {
                         let cell = CellRef::new(0, from as u32);
                         (sheet, CellRange::new(cell, cell))
                     })

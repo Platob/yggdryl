@@ -3093,13 +3093,13 @@ mod pivot_shared_items_metadata {
                 .collect()
         }
 
-        fn read_cache(
-            xml: &[u8],
-        ) -> (
+        type CacheSnapshot = (
             BTreeMap<String, String>,
             BTreeMap<String, String>,
             Vec<(String, BTreeMap<String, String>)>,
-        ) {
+        );
+
+        fn read_cache(xml: &[u8]) -> CacheSnapshot {
             let source = std::str::from_utf8(xml).unwrap();
             let mut reader = Reader::from_str(source);
             let mut field = None;

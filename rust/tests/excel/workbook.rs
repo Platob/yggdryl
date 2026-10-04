@@ -1521,11 +1521,11 @@ fn assert_only_the_closed_list_changed(
             ),
             part if rewritten_parts.contains(&part) => {
                 let mut stated = stated.to_owned();
-                if let Some((sheet, from, to)) = edited {
-                    if sheet_of(sheet) == part {
-                        assert!(stated.contains(from), "{from} in {part}");
-                        stated = stated.replace(from, to);
-                    }
+                if let Some((sheet, from, to)) = edited
+                    && sheet_of(sheet) == part
+                {
+                    assert!(stated.contains(from), "{from} in {part}");
+                    stated = stated.replace(from, to);
                 }
                 let shared: &[(&str, &str)] = if part == "xl/worksheets/sheet2.xml" {
                     &REPORT_SHARED
@@ -15391,7 +15391,7 @@ fn temporal_serial_native_twelve_cache_observations() {
             assert_eq!(actual.to_bits(), expected, "{}: {}", case["id"], worksheet);
             assert!(
                 workbook
-                    .sheet(&sheet_name)
+                    .sheet(sheet_name)
                     .unwrap()
                     .cell(at(address))
                     .unwrap()
@@ -22028,7 +22028,7 @@ fn full_function_native_oracle_replays_exact_scope_and_explicit_policy_holds() {
                     "behavior" => {
                         behavior += 1;
                         cell.value().as_f64().is_some_and(|number| match id {
-                            "function-rand" => number >= 0.0 && number < 1.0,
+                            "function-rand" => (0.0..1.0).contains(&number),
                             "function-randbetween" => {
                                 number.fract() == 0.0 && (-5.0..=7.0).contains(&number)
                             }

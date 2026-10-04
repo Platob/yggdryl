@@ -2631,10 +2631,8 @@ fn partial_formula_rules(xml: &str) -> Vec<(Vec<CellRange>, Vec<String>)> {
         let recognized = (element.namespace() == Some(NS)
             && matches!(element.local_name(), "formula" | "formula1" | "formula2"))
             || (element.namespace() == Some(XM) && element.local_name() == "f");
-        if recognized {
-            if let Some(text) = element.text() {
-                out.push(text.to_owned());
-            }
+        if recognized && let Some(text) = element.text() {
+            out.push(text.to_owned());
         }
         for child in element.children() {
             formulas(&child, out);

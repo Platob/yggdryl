@@ -62,11 +62,7 @@ fn native_function_fixture(text: &str, count: u64) {
         }
         let report = book.calculate_all().unwrap();
         assert_eq!(
-            (
-                report.evaluated as u64,
-                report.uncomputed,
-                report.circular_count
-            ),
+            (report.evaluated, report.uncomputed, report.circular_count),
             (count / 2, 0, 0)
         );
         for case in cases.iter().filter(|case| case["date_system"] == year) {
@@ -113,7 +109,7 @@ fn native_function_fixture(text: &str, count: u64) {
         }
         let revisions =
             ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision());
-        assert_eq!(book.calculate_all().unwrap().evaluated as u64, count / 2);
+        assert_eq!(book.calculate_all().unwrap().evaluated, count / 2);
         assert_eq!(
             ["Values", "CycleShape", "Cases"].map(|name| book.sheet(name).unwrap().revision()),
             revisions
@@ -150,8 +146,6 @@ mod reference;
 mod shape;
 #[path = "formula/value.rs"]
 mod value;
-
-use std::collections::HashSet;
 
 use yggdryl::Error;
 use yggdryl::excel::{CellRef, Formula};
@@ -217,8 +211,16 @@ fn formulas_that_translate_into_one_another_are_equal_and_hash_alike() {
     let other = Formula::from_file("A1*B2", at("C1"));
     assert_eq!(first, second);
     assert_ne!(first, other);
-    let set: HashSet<Formula> = [first.clone(), second, other].into_iter().collect();
-    assert_eq!(set.len(), 2);
+    // The lazy parse cache is excluded from the shape's Eq/Hash identity.
+    let hash = |formula: &Formula| {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let mut state = DefaultHasher::new();
+        formula.hash(&mut state);
+        state.finish()
+    };
+    assert_eq!(hash(&first), hash(&second));
+    assert_eq!(hash(&first.clone()), hash(&first));
+    assert_eq!(hash(&other.clone()), hash(&other));
     assert_eq!(first.clone(), first);
     // Debug spells the shape the one way that reads the same at every host.
     assert_eq!(format!("{first:?}"), "Formula(\"RC[-2]*RC[-1]\")");
