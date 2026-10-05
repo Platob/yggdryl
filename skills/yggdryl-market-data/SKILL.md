@@ -91,7 +91,8 @@ Hold these facts:
   the type's derivation, and it moves only through its own key - removing it
   removes the type. On a `marketdata` row the cell holds the base keys alone,
   one per type; every other key is side information in `metadata` under its
-  `src:type` spelling, read back into the map of its type. Build one with
+  map's name and its `src:type` spelling (`securityids.ullink:isin`), read
+  back into the map the name says. Build one with
   `Identifier(key, value)` - the key read
   exactly (`"isin"`, `"ullink:isin"`, `"fix:isin"` is `isin`), the value
   held to its type's shape, so `Identifier("isin", code)` takes any twelve

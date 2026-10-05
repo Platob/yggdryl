@@ -589,7 +589,9 @@ fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
         "securityids['isin'] as isin".parse().unwrap(),
         "securityids['cusip'] as cusip".parse().unwrap(),
         "securityids['derived:cusip'] as derived".parse().unwrap(),
-        "metadata['derived:cusip'] as stated".parse().unwrap(),
+        "metadata['securityids.derived:cusip'] as stated"
+            .parse()
+            .unwrap(),
         "securityids['wkn'] as wkn".parse().unwrap(),
     ];
     let out = view(&MarketView::Orders, &lifts);
@@ -610,8 +612,9 @@ fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
     }
     // A United States ISIN states its CUSIP, which the set derives: the cell
     // holds the type's answer under its base key alone, and what derived it
-    // is side information in the metadata cell under `derived:cusip`, never
-    // a second key of the map; no order states a WKN.
+    // is side information in the metadata cell under its map's name,
+    // `securityids.derived:cusip`, never a second key of the map; no order
+    // states a WKN.
     let cusips = texts(column(&out, "cusip"));
     for (code, cusip) in codes.iter().zip(&cusips) {
         let expected = (*code == Some("10:1:O-5")).then_some(&ISIN[2..11]);

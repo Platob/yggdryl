@@ -69,10 +69,10 @@ impl OperationColumn {
             Self::TimeInForce => "How long the operation stands.",
             Self::Tradable => "Whether the operation trades; null where it states nothing.",
             Self::Identifiers => {
-                "The operation's own identifiers, one per type, sorted by key: the type to its value, each with its lineage; what each source stated is side information in metadata under src:type."
+                "The operation's own identifiers, one per type, sorted by key: the type to its value, each with its lineage; what each source stated is side information in metadata under identifiers.src:type."
             }
             Self::PartyIds => {
-                "The parties the operation names, one per role, sorted by key: accounts, traders, firms and users; what each source stated is side information in metadata under src:type."
+                "The parties the operation names, one per role, sorted by key: accounts, traders, firms and users; what each source stated is side information in metadata under partyids.src:type."
             }
         }
     }

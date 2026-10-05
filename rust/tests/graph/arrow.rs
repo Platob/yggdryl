@@ -1014,8 +1014,8 @@ fn with_map_keys(batch: &RecordBatch, name: &str, keys: Vec<&str>) -> RecordBatc
 /// are sorted `map<utf8, utf8>`s from a type's base key to its value, one
 /// per type, null where a row states none; every other key a map holds - a
 /// source's statement, a derivation - is side information, written once
-/// into `metadata` under its `src:type` spelling beside the leaf's own
-/// metadata, and the maps read back as they were.
+/// into `metadata` under its map's name and its `src:type` spelling beside
+/// the leaf's own metadata, and the maps read back as they were.
 #[test]
 fn the_three_identifier_columns_are_sorted_maps_of_base_keys_with_their_side_information_in_metadata()
  {
@@ -1097,14 +1097,19 @@ fn the_three_identifier_columns_are_sorted_maps_of_base_keys_with_their_side_inf
     );
     // What the maps hold beside their answers - the venue's order
     // identifier, the BIC's account, the derived CUSIP - is side
-    // information: in `metadata`, each key once, in key order.
+    // information: in `metadata`, each key once under its map's name, in
+    // key order.
     assert_eq!(
         keys("metadata"),
         [
             Some(
-                ["bic:account", "derived:cusip", "venue:orderid"]
-                    .map(str::to_owned)
-                    .to_vec()
+                [
+                    "identifiers.venue:orderid",
+                    "partyids.bic:account",
+                    "securityids.derived:cusip"
+                ]
+                .map(str::to_owned)
+                .to_vec()
             ),
             None
         ]
@@ -1112,9 +1117,9 @@ fn the_three_identifier_columns_are_sorted_maps_of_base_keys_with_their_side_inf
     assert_eq!(
         map_rows(&batch, "metadata"),
         [
-            "bic:account=ACC-0",
-            "derived:cusip=037833100",
-            "venue:orderid=V-1"
+            "identifiers.venue:orderid=V-1",
+            "partyids.bic:account=ACC-0",
+            "securityids.derived:cusip=037833100"
         ]
     );
     assert_eq!(column_of(&batch, "partyids").null_count(), 1);
@@ -1126,30 +1131,59 @@ fn the_three_identifier_columns_are_sorted_maps_of_base_keys_with_their_side_inf
     );
 }
 
-/// A leaf whose own metadata spells an identifier its maps would hold - a
-/// `src:type` key of a security type, or of any type on an operation - is
+/// A leaf whose own metadata spells the side information its row files - a
+/// `src:type` key under the name of a map holding that identifier - is
 /// refused where its row is written, located on the key: the identifier is
-/// stated in its map, never beside it.
+/// stated in its map, never beside it. A bare `src:type` key is the leaf's
+/// own metadata - a bridge field whose lift the parser refused keeps its
+/// spelling - filed and read back as it is.
 #[test]
-fn a_metadata_key_spelling_an_identifier_of_the_row_is_refused_where_it_is_written() {
+fn a_metadata_key_spelling_the_side_information_of_the_row_is_refused_where_it_is_written() {
     let venue: IdSource = "venue".parse().unwrap();
+    let mut plain = order(1, "O-1");
+    plain
+        .insert_identifier(
+            Identifier::new(IdKey::new(venue.clone(), IdType::OrderId), "V-1").unwrap(),
+        )
+        .unwrap();
+    let mut metadata = yggdryl::graph::Metadata::new();
+    metadata.insert("venue:orderid".into(), "V-2".into());
+    metadata.insert("plain".into(), "kept".into());
+    plain.set_metadata(Some(metadata), true);
+    plain.finalize();
+    let expected = vec![MarketData::from(plain)];
+    let batch = written(expected.clone());
+    assert_eq!(
+        map_rows(&batch, "metadata"),
+        [
+            "identifiers.venue:orderid=V-1",
+            "plain=kept",
+            "venue:orderid=V-2"
+        ],
+        "the leaf's own key beside the side information, each under its spelling"
+    );
+    assert_eq!(
+        read(batch_reader(batch.schema(), [batch])).unwrap(),
+        expected
+    );
+
     let mut stated = order(1, "O-1");
     stated
         .insert_identifier(Identifier::new(IdKey::new(venue, IdType::OrderId), "V-1").unwrap())
         .unwrap();
     let mut metadata = yggdryl::graph::Metadata::new();
-    metadata.insert("venue:orderid".into(), "V-2".into());
-    metadata.insert("plain".into(), "kept".into());
+    metadata.insert("identifiers.venue:orderid".into(), "V-2".into());
     stated.set_metadata(Some(metadata), true);
     stated.finalize();
     let mut reader = MarketData::arrow_reader([MarketData::from(stated)], None, None).unwrap();
     let error = reader
         .next()
         .expect("the refusal")
-        .expect_err("a metadata key spelling an identifier of the row is refused")
+        .expect_err("a metadata key spelling the row's side information is refused")
         .to_string();
     assert!(
-        error.contains("$[0].metadata['venue:orderid']") && error.contains("state it in its map"),
+        error.contains("$[0].metadata['identifiers.venue:orderid']")
+            && error.contains("state it in its map"),
         "{error}"
     );
     assert!(reader.next().is_none(), "fused after the refusal");

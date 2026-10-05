@@ -701,11 +701,11 @@ An element that states where it came from but not what it is now is what it came
 
 | Key | Rule |
 | --- | --- |
-| `Identifiers::dtype()` | a sorted map `map<entries: struct<key: utf8 not null, value: utf8 not null>, keys_sorted = true>`: the key is its `IdKey`'s text - `src:type`, the type alone for the base source - and the value the identifier's; one datatype for the `securityids`, `identifiers` and `partyids` columns of every generated row ([Row schemas](schemas.md)) - a market-data row's cell holding the base keys alone, its other keys [side information](market-data.md#side-information) in `metadata` |
+| `Identifiers::dtype()` | a sorted map `map<entries: struct<key: utf8 not null, value: utf8 not null>, keys_sorted = true>`: the key is its `IdKey`'s text - `src:type`, the type alone for the base source - and the value the identifier's; one datatype for the `securityids`, `identifiers` and `partyids` columns of every generated row ([Row schemas](schemas.md)) - a market-data row's cell holding the base keys alone, its other keys [side information](market-data.md#side-information) in `metadata` under the map's name, `securityids.ullink:isin` |
 | Writing | `into_scalar` lays the map out as a `Scalar::SortedMap` of the key text and the value, in key order; a key of two member words is a static string, so a row writes no key text it has to build; a column is null where the map is empty |
 | Reading | `from_scalar` reads a `Map` or a `SortedMap` in any order, or a sequence of such maps - their union - each key read exactly as `IdKey` reads one, then closes the map ([The base key](#the-base-key)); it refuses, located on the key (`$['fix:']`, `$[1]['account']`), a key that reads as none, a value that states nothing or that its type refuses, two spellings of one key with two values (`isin` and `BASE:ISIN`), and a key or a value that is not text, a struct included. The Arrow readers of the [`marketdata` row](schemas.md#the-marketdata-row) and of the [fixed FIX row](schemas.md#the-fix-row) read and refuse the same way, located on the column (`$.identifiers['fix:']`), caching each key text they read - `FixMsg::from_row` refuses the row and `FixCodec::messages` leaves it out with a warning |
 | A binding | an `Identifier` crosses the scalar boundary as the one-entry map of its key, an `Identifiers` as its sorted map; Python `from_dict`/`into_dict` and JavaScript `fromObject`/`intoObject` are the map as a `dict` or a plain object of key text to value |
-| A lift | a [view](market-data.md#views) reaches one value by its key with the path grammar's map segment: `identifiers['clordid'] as clordid`, and a source's statement where the row files it, `metadata['ullink:isin'] as ullinkisin` - the key as stored, lower case; the `isincode` column carries a market row's ISIN |
+| A lift | a [view](market-data.md#views) reaches one value by its key with the path grammar's map segment: `identifiers['clordid'] as clordid`, and a source's statement where the row files it, under its map's name, `metadata['securityids.ullink:isin'] as ullinkisin` - the key as stored, lower case; the `isincode` column carries a market row's ISIN |
 
 === "Rust"
 
@@ -749,7 +749,7 @@ An element that states where it came from but not what it is now is what it came
         ("cusip", "037833100"),
         ("isin", "US0378331005"),
     ]
-    assert table.column("metadata").to_pylist()[0] == [("derived:cusip", "037833100")]
+    assert table.column("metadata").to_pylist()[0] == [("securityids.derived:cusip", "037833100")]
     ```
 
 === "JavaScript"
