@@ -9,9 +9,9 @@
     {
       "name": "yggdryl",
       "source": "./",
-      "description": "Agent skills for using the yggdryl package from Rust, Python and Node.js.",
+      "description": "Agent skills for using the yggdryl package from Rust, Python and Node.js: types, Arrow columns, storage and HTTP serving, warehouses, record media (Parquet, Iceberg, Excel, XMLA), documents, expressions, hashing, FIX, market data and logging.",
       "category": "development",
-      "tags": ["arrow", "parquet", "iceberg", "fix", "rust", "python", "nodejs"]
+      "tags": ["arrow", "parquet", "iceberg", "excel", "xmla", "warehouse", "fix", "market-data", "logging", "rust", "python", "nodejs"]
     }
   ]
 }

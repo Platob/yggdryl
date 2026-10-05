@@ -53,7 +53,7 @@ Install and cross-language conventions are in `yggdryl`.
 | scope (cache metadata) | `open()?` ... `close()?` | `with IOBase(p) as h:` | `h.open()` ... `h.close()` |
 | page cache | `h.buffered(BufferedOptions::default())` | `h.buffered(page_size=, max_bytes=, ttl=)` (spends `h`) | `h.buffered({ pageSize, maxBytes, ttlMs })` (returns `h`) |
 | count calls | `Counted::new(h)`, `calls().get(Call::Pread)`, `counts()` | Rust only | Rust only |
-| write a log through a handle | `yggdryl::logging::FileHandler::new(h)`: one `append_bytes` per publish, `with_capacity(n)` over a remote store, `logging::shutdown()` before exit | `yggdryl.logging.FileHandler(location, capacity=0)`, a `logging.Handler` | `new logging.FileHandler(location, { capacity })` |
+| write a log through a handle | `yggdryl::logging::FileHandler::new(h)`: one `append_bytes` per publish, `with_capacity(n)` over a remote store, `logging::shutdown()` before exit | `yggdryl.logging.FileHandler(location, capacity=0)`, a `logging.Handler` | `new logging.FileHandler(location, { capacity })`; handlers, levels and formatters in `yggdryl-logging` |
 | object store (`s3` feature) | `s3::file(url)?`, `s3::file_with(url, S3Options)?`, `s3::file_at(Provider::Aws, bucket, key)?` | `IOBase("gs://b/k")`, `S3File(url)`, `S3File(bucket, key, provider="s3", options={...})` | `new IOBase('az://c@acct.blob.core.windows.net/k')` |
 | an Amazon S3 Tables table bucket (`s3tables` feature) | no byte backend: `Holder::from_url(location, &props)?` is what it names - the catalog, a namespace or the Iceberg table (`yggdryl-warehouse`) - and `Catalog::from_url(&bucket_arn, &props)?` the catalog; a table's files are `s3://<id>--table-s3` objects written with `PutObject`, never listed or deleted: its `ls` is refused, its `remove` one `DeleteTable` | `IOBase("s3tables://b/ns/t")`, `Catalog.from_url(arn, profile=...)` | `new IOBase('s3tables://b/ns/t')`, `warehouse.Catalog.fromUrl(arn, { profile })` |
 | HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
@@ -269,7 +269,7 @@ Install and cross-language conventions are in `yggdryl`.
 - Signing other AWS services: https://platob.github.io/yggdryl/holder/#signing-other-services
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
 - Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/compression/
-- Logging through any handle: https://platob.github.io/yggdryl/logging/
+- Logging through any handle: https://platob.github.io/yggdryl/logging/ (skill: `yggdryl-logging`)
 - Charsets: https://platob.github.io/yggdryl/media/charsets/
 - Sibling skills: `yggdryl-records` (rows on a handle, partitions), `yggdryl-uri`
   (URLs, globs, Hive paths), `yggdryl-documents` (JSON/YAML/TOML/XML),

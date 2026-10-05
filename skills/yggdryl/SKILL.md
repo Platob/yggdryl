@@ -1,6 +1,6 @@
 ---
 name: yggdryl
-description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S)), warehouses (catalogs, namespaces and tables resolved by dotted path), record media (Arrow IPC, Parquet, Avro, CSV, Excel, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
+description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure, HTTP(S), and serving them over HTTP), warehouses (catalogs, namespaces and tables resolved by dotted path, Iceberg and S3 Tables catalogs, XML for Analysis serving), record media (Arrow IPC, Parquet, Avro, CSV, Excel, XMLA rowsets, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX, market data and logging. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
 ---
 
 # Yggdryl
@@ -17,15 +17,15 @@ and Python, `camelCase` in JavaScript).
 | --- | --- | --- | --- |
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
 | minimum | Rust 1.94 | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
-| optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
-| extras | Arrow is `arrow-*` 59 | the `yggdryl` CLI ships in the wheel | - |
+| optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`), `s3tables` (implies `s3` and `iceberg`) | every feature: the core is built with `http3`, `iceberg`, `s3` and `s3tables`, which imply the rest | the same as the wheel |
+| extras | Arrow is `arrow-*` 59 | the `yggdryl` command (`fix`, `xmla serve`, `market serve`) ships in the wheel only | no `yggdryl` command: `require('yggdryl/book')` runs `YGGDRYL_BIN`, else the `yggdryl` on `PATH` |
 
 A Rust build that reads or writes Parquet or Iceberg, touches an object
-store, or reaches a bare `http://`/`https://` resource, must enable that
-feature - object stores need `s3` (which implies `aws`, which implies
-`http`) and a plain HTTP(S) `Holder` needs `http` directly, or the build
-refuses it at runtime naming the missing feature; the bindings already
-carry all of them via `http3`.
+store or an Amazon S3 Tables bucket, or reaches a bare `http://`/`https://`
+resource, must enable that feature - object stores need `s3` (which implies
+`aws`, which implies `http`), an `s3tables://` location or a table bucket's
+ARN needs `s3tables`, and a plain HTTP(S) `Holder` needs `http` directly, or
+the build refuses it at runtime naming the missing feature.
 
 ## The model
 
@@ -51,17 +51,18 @@ answers the task.
 
 | Task | Skill |
 | --- | --- |
-| declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata, codes (`ccy`, `forex`) and enums (`side`, `marketdatakind`, `state`) | `yggdryl-types` |
-| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping and windows of equal keys (`window_by`) | `yggdryl-arrow` |
-| open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
-| a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url` | `yggdryl-warehouse` |
+| declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata; every family - temporals and `interval`, string and byte leaves, `version`, geometry/geography (WKB), the Parquet `variant`, serie/map/union/run-end; codes (`ccy`, `forex`, CFI classification) and enums (`side`, `marketdatakind`, `marketdatatype`, `state`, `timeinforce`) with their FIX wire readings; a struct from a log regex's named captures (`from_regex`) | `yggdryl-types` |
+| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts, sorting, grouping, windows of equal keys (`window_by`), joins (`join_with`), spilling to disk (`spill`), byte sizes (`memory_size`) | `yggdryl-arrow` |
+| open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, serving a handle or folder over HTTP (`http.Server`, `mount`, traces, behind a reverse proxy), `message/http` (`.http`) files, SigV4 for any AWS service (Rust), gzip/zlib/zstd, charsets | `yggdryl-storage` |
+| a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url`; namespaces and tables created in an Iceberg folder or an Amazon S3 Tables bucket; catalogs served to Excel / Power Query over XML for Analysis (`xmla::Service`, `yggdryl xmla serve`) | `yggdryl-warehouse` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
-| read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
-| JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |
-| filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
-| xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
-| FIX messages, dictionaries, captures, the `yggdryl fix` CLI | `yggdryl-fix` |
-| orders, quotes, executions, order books, candles, market data, the book display (`yggdryl market serve`) | `yggdryl-market-data` |
+| read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), XML for Analysis rowsets (`.xmla`), text (as rows, or `TextLine`s through `read_text_lines`), Iceberg (scans, tags and branches, snapshot expiry, compaction, inspection); a file's schema or row count; pandas/polars frames to or from a file; partitions, what an overwrite replaces and `clear`; merge/upsert | `yggdryl-records` |
+| JSON, JSON Lines, YAML, TOML, XML documents to and from values; XML by namespace (`xml::Element`) and SOAP 1.1 envelopes (`soap::Envelope`), Rust only | `yggdryl-documents` |
+| filters, selections, SQL-like plans and their joins (`from t left join v using (k)`), predicate pushdown, field paths, `time_bucket` and the epoch periods (`years` ... `minutes(ts, n)`) | `yggdryl-expressions` |
+| xxHash digests of bytes, handles (`read_digest`) and values, stable hashes, row-digest holders (`DIGEST:by`), TxHash and UUIDv7 keys | `yggdryl-hashing` |
+| FIX messages, dictionaries, captures, FIX tables kept on series (`parse_text_serie`, `lifecycle_serie`, `book_serie`; Rust and Python) and books (`book_arrow_reader`), the `yggdryl fix` CLI | `yggdryl-fix` |
+| orders, quotes, executions, order books, a table of books read back as deltas (`deltas_serie`), candles, market data, the instrument registry (`IsinRegistry`, the process's own through `from_env` and `YGGDRYL_ISIN_REGISTRY_URI`), the book display (`yggdryl market serve`; `BookService`, Rust) | `yggdryl-market-data` |
+| configure logging, log to a file or a bucket (`FileHandler`), the terminal line, quiet, raise, filter or deduplicate yggdryl's own records and warnings, Python's `logging` hosting the core, shutdown before exit | `yggdryl-logging` |
 
 ## Cross-language conventions
 
@@ -93,14 +94,6 @@ leaves the value unchanged), `with_*` returns an updated copy. There is no
 `to_*`. Record options are one `RecordOptions` object, and every read or write
 also takes its properties by name: `read_arrow_reader(rowheader=...)` in
 Python, `readArrowReader({ rowheader })` in JavaScript.
-
-The logging row writes the core's terminal line on standard error -
-`2026-10-03 14:05:09,123 • INFO     [main] trades.feed open:42 › opened 3 venues`:
-the time, the level's glyph and name, the thread (`MainThread` in Python),
-the logger, the call site, the message - coloured by the core's rule
-(`NO_COLOR` off, else `FORCE_COLOR` or `CLICOLOR_FORCE` on, else `TERM=dumb`
-off, else on for a terminal). Rust and JavaScript write the same line for a
-warning no handler takes.
 
 ## Rules for fast, correct use
 
@@ -143,9 +136,9 @@ warning no handler takes.
 - Expecting `list<...>` back: the serie family displays as `serie`
   (`DataType("list<int64>")` reads and prints `serie(field("item",int64,...))`).
   The old `list` spellings are accepted on input only.
-- Enabling nothing in `Cargo.toml` and then calling Parquet, Iceberg, HTTP(S)
-  or object-store APIs: they do not exist without their feature (`parquet`,
-  `iceberg`, `http`/`http2`/`http3`, `aws`/`s3`).
+- Enabling nothing in `Cargo.toml` and then calling Parquet, Iceberg, HTTP(S),
+  object-store or S3 Tables APIs: they do not exist without their feature
+  (`parquet`, `iceberg`, `http`/`http2`/`http3`, `aws`/`s3`, `s3tables`).
 - Python: a `str` given to a structured-text loader is document content, not
   a path - pass `pathlib.Path`. Passing `None` to an optional `RecordOptions`
   property clears it back to its default; leave it out to keep the current
@@ -171,24 +164,16 @@ warning no handler takes.
   reading `Arrow schema error: External error: TypeError: ...` with
   `code: 'GenericFailure'`. Arrow JS interop copies through IPC - cross the
   boundary in whole batches, not per row.
-- Rust: the process ends without dropping what a static holds, so the records
-  a `logging::FileHandler` keeps under a `with_capacity` (the default publishes
-  each record at once) are lost unless something publishes them. An
-  application calls `yggdryl::logging::shutdown()` before `main` returns (a
-  handler's own `flush()` and a drop publish too); Python runs
-  `logging.shutdown` at exit and the Node addon at the main thread's process
-  exit (a worker ending closes nothing).
 
 ## Language references
 
-- `references/rust.md` - features, imports, error types, logging, a runnable end-to-end example.
-- `references/python.md` - package layout and typing, arguments (`...` vs `None`), errors, record classes, logging, a runnable end-to-end example; pandas/polars/pyarrow columns are `yggdryl-arrow`, and pandas/polars frames to or from a file are `yggdryl-records`.
-- `references/javascript.md` - CommonJS/TypeScript, `bigint`, `Buffer`, Arrow JS, errors, logging, a runnable end-to-end example.
+- `references/rust.md` - features, imports, error types, a runnable end-to-end example.
+- `references/python.md` - package layout and typing, arguments (`...` vs `None`), errors, record classes, a runnable end-to-end example; pandas/polars/pyarrow columns are `yggdryl-arrow`, and pandas/polars frames to or from a file are `yggdryl-records`.
+- `references/javascript.md` - CommonJS/TypeScript, `bigint`, `Buffer`, Arrow JS, errors, a runnable end-to-end example.
 
 ## Deeper
 
 - Site: https://platob.github.io/yggdryl/ (every example there runs in CI, in all three languages).
 - Getting started: https://platob.github.io/yggdryl/getting-started/
 - Architecture and shared rules: https://platob.github.io/yggdryl/architecture/
-- Logging: https://platob.github.io/yggdryl/logging/
 - Rust API: https://docs.rs/yggdryl

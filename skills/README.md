@@ -31,23 +31,26 @@ and let it follow the links. Every skill is plain Markdown with a `name` and
 
 | Skill | Teaches |
 | --- | --- |
-| [`yggdryl`](yggdryl/SKILL.md) | install, the model (`DataType`, `Field`, `Scalar`, `Serie`, `IOBase`), cross-language conventions, which skill answers a task - load first |
-| [`yggdryl-types`](yggdryl-types/SKILL.md) | datatype expressions, fields and metadata, the value door, every datatype family, record classes |
-| [`yggdryl-arrow`](yggdryl-arrow/SKILL.md) | `Serie`, `ChunkedSerie`, `SerieReader`, `ArrowCastPlan`; pyarrow, pandas, polars, NumPy and Arrow JS in and out |
-| [`yggdryl-storage`](yggdryl-storage/SKILL.md) | `IOBase` handles and bytes, local, ZIP and object-store backends, compression, charsets, call counts |
-| [`yggdryl-warehouse`](yggdryl-warehouse/SKILL.md) | catalogs, namespaces and tables: `Warehouse`, `SystemWarehouse`, folder and memory catalogs, `MediaTable`, dotted paths, properties, the views |
+| [`yggdryl`](yggdryl/SKILL.md) | install and features, the model (`DataType`, `Field`, `Scalar`, `Serie`, `IOBase`), cross-language conventions, which skill answers a task - load first |
+| [`yggdryl-types`](yggdryl-types/SKILL.md) | datatype expressions, fields and metadata, the value door, every datatype family (geospatial, `variant`, `version`, `interval` and run-end included), codes and enums with their FIX wire values, record classes |
+| [`yggdryl-arrow`](yggdryl-arrow/SKILL.md) | `Serie`, `ChunkedSerie`, `SerieReader`, `ArrowCastPlan`; pyarrow, pandas, polars, NumPy and Arrow JS in and out; sorting, windows of equal keys, joins, spilling, byte sizes |
+| [`yggdryl-storage`](yggdryl-storage/SKILL.md) | `IOBase` handles and bytes, local, Arrow filesystems, ZIP and S3 / GCS / Azure backends with the AWS identity chain, the HTTP(S) client and serving a handle (`http.Server`), page caches, compression, charsets, call counts |
+| [`yggdryl-warehouse`](yggdryl-warehouse/SKILL.md) | catalogs, namespaces and tables: `Warehouse`, `SystemWarehouse`, memory, folder, Iceberg and Amazon S3 Tables catalogs, `MediaTable`, dotted paths, properties, the views, the XML for Analysis provider (`yggdryl xmla serve`) |
 | [`yggdryl-uri`](yggdryl-uri/SKILL.md) | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, hive partitions |
-| [`yggdryl-records`](yggdryl-records/SKILL.md) | record reads and writes, `RecordOptions`, Arrow IPC, Parquet, Avro, CSV, text, Iceberg, partitions |
-| [`yggdryl-documents`](yggdryl-documents/SKILL.md) | JSON, JSON Lines, YAML, TOML and XML over `Scalar` |
-| [`yggdryl-expressions`](yggdryl-expressions/SKILL.md) | terms, filters, selectors, plans, evaluation and pushdown |
-| [`yggdryl-hashing`](yggdryl-hashing/SKILL.md) | xxHash digests, stable hashes, row digests, TxHash |
-| [`yggdryl-fix`](yggdryl-fix/SKILL.md) | FIX decode and encode, the registry and store, Arrow rows, captures, lifecycle, `yggdryl fix` |
-| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books, candles, market data views, the book display (`yggdryl market serve`) |
+| [`yggdryl-records`](yggdryl-records/SKILL.md) | record reads and writes, `RecordOptions`, Arrow IPC, Parquet, Avro, CSV, Excel, XML for Analysis rowsets, text lines, Iceberg (refs, expiry, compaction, inspection), partitions and what an overwrite replaces |
+| [`yggdryl-documents`](yggdryl-documents/SKILL.md) | JSON, JSON Lines, YAML, TOML and XML over `Scalar`; namespace-aware XML and SOAP 1.1 envelopes (Rust) |
+| [`yggdryl-expressions`](yggdryl-expressions/SKILL.md) | terms, filters, selectors, plans and their joins, `time_bucket`, evaluation and pushdown |
+| [`yggdryl-hashing`](yggdryl-hashing/SKILL.md) | xxHash digests of bytes, handles and values, stable hashes, row-digest holders, TxHash and UUIDv7 keys |
+| [`yggdryl-fix`](yggdryl-fix/SKILL.md) | FIX decode and encode, the registry and store, Arrow rows and serie faces, captures, lifecycle, books, `yggdryl fix` |
+| [`yggdryl-market-data`](yggdryl-market-data/SKILL.md) | orders, quotes, executions, trades, order books and their deltas as rows, candles, the instrument registry, market data views, the book display (`yggdryl market serve`, `BookService`) |
+| [`yggdryl-logging`](yggdryl-logging/SKILL.md) | the logger tree and levels, the terminal line, `FileHandler` through any handle, formatters, deduplication, the `log` facade, Python's `logging` hosting the core, the JavaScript namespace, shutdown, where the core's warnings land |
 
 Each skill is a `SKILL.md` - the decision table, the rules, the pitfalls -
 and `references/rust.md`, `references/python.md` and
 `references/javascript.md` with runnable recipes, so an agent reads only the
-language it writes.
+language it writes; a layer with a vocabulary of its own adds one topic
+reference (`spellings.md`, `cast-rules.md`, `backends.md`, `formats.md`,
+`grammar.md`, `cli.md`).
 
 ## Kept true
 
