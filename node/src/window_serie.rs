@@ -29,14 +29,14 @@ use yggdryl::{Serie, SerieWindows, WindowSerie, WindowSerieMut};
 use crate::datatype::JsDataType;
 use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
-use crate::napi_error;
 use crate::serie::{
-    JsSerie, JsSerieIterator, OrderingsInput, count, groups, orderings_of, position, rows_of,
-    sort_options, static_record,
+    JsSerie, JsSerieIterator, OrderingsInput, count, groups, orderings_of, rows_of, sort_options,
+    static_record,
 };
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
+use crate::{exact_usize, napi_error};
 
 /// A window over a serie: `length` rows from `offset`, read and written
 /// through the serie at each call, moving nothing.
@@ -202,7 +202,7 @@ impl JsWindowSerie {
     #[napi]
     pub fn is_null(&self, index: f64) -> Result<bool> {
         self.window()?
-            .is_null(position(index, "index")?)
+            .is_null(exact_usize(index, "index")?)
             .map_err(napi_error)
     }
 
@@ -210,7 +210,7 @@ impl JsWindowSerie {
     #[napi]
     pub fn scalar(&self, index: f64) -> Result<JsScalar> {
         self.window()?
-            .scalar(position(index, "index")?)
+            .scalar(exact_usize(index, "index")?)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
@@ -220,7 +220,7 @@ impl JsWindowSerie {
     pub fn at(&self, index: f64) -> Result<Option<JsScalar>> {
         Ok(self
             .window()?
-            .get(position(index, "index")?)
+            .get(exact_usize(index, "index")?)
             .map(|row| JsScalar::from_core(row.into_owned())))
     }
 
@@ -351,7 +351,10 @@ impl JsWindowSerie {
         let (offset, len) = {
             let narrower = self
                 .window()?
-                .window(position(offset, "offset")?, position(length, "length")?)
+                .window(
+                    exact_usize(offset, "offset")?,
+                    exact_usize(length, "length")?,
+                )
                 .map_err(napi_error)?;
             (narrower.offset(), narrower.len())
         };
@@ -474,7 +477,7 @@ impl JsWindowSerie {
     /// Overwrite window row `index` with an already-converted value.
     #[napi(js_name = "_setNative", skip_typescript)]
     pub fn set_native(&mut self, index: f64, value: &JsScalar) -> Result<()> {
-        let index = position(index, "index")?;
+        let index = exact_usize(index, "index")?;
         self.window_mut()?
             .set(index, value.inner.clone())
             .map_err(napi_error)
@@ -491,7 +494,7 @@ impl JsWindowSerie {
     /// Swap window rows `left` and `right`.
     #[napi]
     pub fn swap(&mut self, left: f64, right: f64) -> Result<()> {
-        let (left, right) = (position(left, "left")?, position(right, "right")?);
+        let (left, right) = (exact_usize(left, "left")?, exact_usize(right, "right")?);
         self.window_mut()?.swap(left, right).map_err(napi_error)
     }
 
@@ -532,7 +535,7 @@ impl JsWindowSerie {
         end: f64,
         rows: Vec<ClassInstance<'_, JsScalar>>,
     ) -> Result<()> {
-        let range = position(start, "start")?..position(end, "end")?;
+        let range = exact_usize(start, "start")?..exact_usize(end, "end")?;
         self.window_mut()?
             .splice(range, rows_of(&rows))
             .map_err(napi_error)

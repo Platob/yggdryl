@@ -13,6 +13,7 @@ use napi::bindgen_prelude::{
 use yggdryl::{DataType, DataTypeId, Field as CoreField, Scalar, TimeUnit, i256};
 
 use crate::napi_error;
+use crate::text::codec::{bigint_from_i256, required_property};
 use crate::version::JsVersion;
 
 /// The JavaScript constructor category a datatype projects into.
@@ -552,15 +553,11 @@ fn union_to_js<'env>(
 }
 
 fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar, scale: i8) -> Result<Unknown<'env>> {
-    let encoded = value
+    let unscaled = value
         .decimal256_unscaled_at(scale)
         .or_else(|| value.as_i128().map(i256::from_i128))
-        .map(|unscaled| unscaled.to_string())
         .ok_or_else(|| napi_error("invalid native decimal256 record value"))?;
-    let global = env.get_global()?;
-    let bigint: Function<'_, FnArgs<(String,)>, Unknown<'_>> =
-        global.get_named_property("BigInt")?;
-    bigint.call((encoded,).into())
+    bigint_from_i256(unscaled).into_unknown(env)
 }
 
 fn map_to_js<'env>(
@@ -597,13 +594,4 @@ fn map_to_js<'env>(
         set.apply(object, (key, value).into())?;
     }
     map_value.into_unknown(env)
-}
-
-fn required_property<T>(object: &Object<'_>, name: &str) -> Result<T>
-where
-    T: napi::bindgen_prelude::FromNapiValue,
-{
-    object
-        .get::<T>(name)?
-        .ok_or_else(|| napi_error(format!("missing JavaScript property {name:?}")))
 }

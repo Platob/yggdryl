@@ -43,13 +43,13 @@ use crate::expression::{JsSelector, SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
 use crate::join::{JoinOptionsInput, join_kind, join_options};
-use crate::napi_error;
 use crate::spill::{JsSpillOptions, spill_bound};
 use crate::text::codec::{
     JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
 use crate::text::line::JsFieldPath;
 use crate::window_serie::JsWindowSerie;
+use crate::{exact_usize, napi_error};
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
 /// class `_leafNative` names, so the leaf is the one it asks for.
@@ -98,11 +98,15 @@ impl JsSerie {
     }
 }
 
-/// Read a JavaScript index as a row position.
-pub(crate) fn position(index: f64, name: &str) -> Result<usize> {
-    let index = crate::exact_u64(index, name)?;
-    usize::try_from(index)
-        .map_err(|_| napi_error(format!("{name} {index} exceeds this platform's range")))
+/// The field a cast lands under: a `Field` as it is, a `DataType` as its
+/// required `value` field.
+pub(crate) fn cast_target(
+    target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
+) -> CoreField {
+    match target {
+        Either::A(field) => field.inner.clone(),
+        Either::B(dtype) => dtype.inner.clone().required_field("value"),
+    }
 }
 
 /// The core values of already-converted rows.
@@ -316,7 +320,7 @@ impl JsSerie {
     /// The empty column of `field`, with room for `rows` rows.
     #[napi(factory, js_name = "_withCapacityNative", skip_typescript)]
     pub fn with_capacity(field: ClassInstance<'_, JsField>, rows: f64) -> Result<Self> {
-        Serie::with_capacity(field.inner.clone(), position(rows, "rows")?)
+        Serie::with_capacity(field.inner.clone(), exact_usize(rows, "rows")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -333,7 +337,7 @@ impl JsSerie {
         Serie::lit(
             field.inner.clone(),
             value.inner.clone(),
-            position(length, "length")?,
+            exact_usize(length, "length")?,
         )
         .map(Self::from_core)
         .map_err(napi_error)
@@ -342,7 +346,7 @@ impl JsSerie {
     /// `rows` copies of `field`'s canonical default.
     #[napi(factory, js_name = "_fromDefaultNative", skip_typescript)]
     pub fn from_default_native(field: ClassInstance<'_, JsField>, rows: f64) -> Result<Self> {
-        Serie::from_default(field.inner.clone(), position(rows, "rows")?)
+        Serie::from_default(field.inner.clone(), exact_usize(rows, "rows")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -457,7 +461,7 @@ impl JsSerie {
     #[napi]
     pub fn is_null(&self, index: f64) -> Result<bool> {
         self.inner
-            .is_null(position(index, "index")?)
+            .is_null(exact_usize(index, "index")?)
             .map_err(napi_error)
     }
 
@@ -465,7 +469,7 @@ impl JsSerie {
     #[napi]
     pub fn scalar(&self, index: f64) -> Result<JsScalar> {
         self.inner
-            .scalar(position(index, "index")?)
+            .scalar(exact_usize(index, "index")?)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
@@ -475,7 +479,7 @@ impl JsSerie {
     pub fn at(&self, index: f64) -> Result<Option<JsScalar>> {
         Ok(self
             .inner
-            .get(position(index, "index")?)
+            .get(exact_usize(index, "index")?)
             .map(|row| JsScalar::from_core(row.into_owned())))
     }
 
@@ -538,7 +542,10 @@ impl JsSerie {
     #[napi(js_name = "_sliceNative", skip_typescript)]
     pub fn slice(&self, offset: f64, length: f64) -> Result<Self> {
         self.inner
-            .slice(position(offset, "offset")?, position(length, "length")?)
+            .slice(
+                exact_usize(offset, "offset")?,
+                exact_usize(length, "length")?,
+            )
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -554,7 +561,7 @@ impl JsSerie {
     pub fn child_at(&self, index: f64) -> Result<Option<JsSerie>> {
         Ok(self
             .inner
-            .child_at(position(index, "index")?)
+            .child_at(exact_usize(index, "index")?)
             .cloned()
             .map(Self::from_core))
     }
@@ -595,7 +602,7 @@ impl JsSerie {
         end: f64,
         rows: Vec<ClassInstance<'_, JsScalar>>,
     ) -> Result<()> {
-        let range = position(start, "start")?..position(end, "end")?;
+        let range = exact_usize(start, "start")?..exact_usize(end, "end")?;
         self.inner.splice(range, rows_of(&rows)).map_err(napi_error)
     }
 
@@ -603,7 +610,7 @@ impl JsSerie {
     #[napi(js_name = "_setNative", skip_typescript)]
     pub fn set_native(&mut self, index: f64, value: &JsScalar) -> Result<()> {
         self.inner
-            .set(position(index, "index")?, value.inner.clone())
+            .set(exact_usize(index, "index")?, value.inner.clone())
             .map_err(napi_error)
     }
 
@@ -617,7 +624,7 @@ impl JsSerie {
     #[napi(js_name = "_insertNative", skip_typescript)]
     pub fn insert_native(&mut self, index: f64, value: &JsScalar) -> Result<()> {
         self.inner
-            .insert(position(index, "index")?, value.inner.clone())
+            .insert(exact_usize(index, "index")?, value.inner.clone())
             .map_err(napi_error)
     }
 
@@ -625,7 +632,7 @@ impl JsSerie {
     #[napi]
     pub fn remove(&mut self, index: f64) -> Result<JsScalar> {
         self.inner
-            .remove(position(index, "index")?)
+            .remove(exact_usize(index, "index")?)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
@@ -643,7 +650,7 @@ impl JsSerie {
     #[napi]
     pub fn truncate(&mut self, length: f64) -> Result<()> {
         self.inner
-            .truncate(position(length, "length")?)
+            .truncate(exact_usize(length, "length")?)
             .map_err(napi_error)
     }
 
@@ -671,7 +678,7 @@ impl JsSerie {
     #[napi(js_name = "_resizeNative", skip_typescript)]
     pub fn resize_native(&mut self, length: f64, value: &JsScalar) -> Result<()> {
         self.inner
-            .resize(position(length, "length")?, value.inner.clone())
+            .resize(exact_usize(length, "length")?, value.inner.clone())
             .map_err(napi_error)
     }
 
@@ -688,7 +695,7 @@ impl JsSerie {
     pub fn set_cell_native(&mut self, path: String, index: f64, value: &JsScalar) -> Result<()> {
         let path = FieldPath::from_str(&path).map_err(napi_error)?;
         self.inner
-            .set_cell(&path, position(index, "index")?, value.inner.clone())
+            .set_cell(&path, exact_usize(index, "index")?, value.inner.clone())
             .map_err(napi_error)
     }
 
@@ -702,10 +709,7 @@ impl JsSerie {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, representation.as_deref())?;
-        let target = match target {
-            Either::A(field) => field.inner.clone(),
-            Either::B(dtype) => dtype.inner.clone().required_field("value"),
-        };
+        let target = cast_target(target);
         self.inner
             .cast(&target, options)
             .map(Self::from_core)
@@ -1115,8 +1119,8 @@ impl JsSerie {
     ) -> Result<JsWindowSerie> {
         JsWindowSerie::new(
             reference,
-            position(offset, "offset")?,
-            position(length, "length")?,
+            exact_usize(offset, "offset")?,
+            exact_usize(length, "length")?,
         )
     }
 
@@ -1183,7 +1187,7 @@ impl JsSerie {
     /// reads.
     #[napi(js_name = "_rangeNative", skip_typescript)]
     pub fn range_native(&self, index: f64) -> Result<Option<Vec<f64>>> {
-        let index = position(index, "index")?;
+        let index = exact_usize(index, "index")?;
         let serie = &self.inner;
         let range = if let Some(leaf) = serie.as_serie() {
             leaf.range(index)
@@ -1209,7 +1213,7 @@ impl JsSerie {
     /// reads.
     #[napi(js_name = "_rowNative", skip_typescript)]
     pub fn row_native(&self, index: f64) -> Result<Option<JsSerie>> {
-        let index = position(index, "index")?;
+        let index = exact_usize(index, "index")?;
         let serie = &self.inner;
         let row = if let Some(leaf) = serie.as_serie() {
             leaf.row(index)
@@ -1461,10 +1465,7 @@ impl JsSerieReader {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, representation.as_deref())?;
-        let target = match target {
-            Either::A(field) => field.inner.clone(),
-            Either::B(dtype) => dtype.inner.clone().required_field("value"),
-        };
+        let target = cast_target(target);
         let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
         self.taken = true;
         reader

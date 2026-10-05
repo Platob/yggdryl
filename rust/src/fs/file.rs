@@ -141,31 +141,9 @@ impl FsFile {
     }
 
     fn write_stream(mut writer: Box<dyn ByteWriter>, bytes: &[u8]) -> Result<()> {
-        let result = (|| {
-            let mut written = 0;
-            while written < bytes.len() {
-                let count = writer.write(&bytes[written..])?;
-                if count == 0 {
-                    return Err(Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::WriteZero,
-                        "output stream stopped before the complete value was written",
-                    )));
-                }
-                if count > bytes.len() - written {
-                    return Err(Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "output stream reported writing beyond the supplied buffer",
-                    )));
-                }
-                written += count;
-            }
-            Ok(())
-        })();
+        let result = super::write_all(&mut *writer, bytes);
         let close = writer.close();
-        match result {
-            Ok(()) => close,
-            Err(error) => Err(error),
-        }
+        result.and(close)
     }
 }
 

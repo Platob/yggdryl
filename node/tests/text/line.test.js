@@ -76,6 +76,7 @@ test('a line reads itself on the first ask', () => {
   // pairs, and what the line is classified as, resolve on the first ask.
   assert.notEqual(lines[0].entries, null)
   assert.equal(lines[0].getEntryByPath('55').value, 'AAPL')
+  assert.equal(lines[1].getEntryByPath('55').value, 'MSFT')
   assert.equal(lines[0].bodytype, 'text/fix')
 })
 
@@ -144,13 +145,6 @@ test('a line with no body is no line', () => {
   const lines = [...source('alpha\n\nbeta\n').readTextLines(new TextOptions())]
   assert.deepEqual(lines.map((line) => line.body), ['alpha', 'beta'])
   assert.deepEqual(lines.map((line) => line.index), [0n, 2n])
-})
-
-test('the entry tree is built and found by path', () => {
-  const lines = [...source().readTextLines(new TextOptions())]
-  assert.notEqual(lines[0].entries, null)
-  assert.equal(lines[0].getEntryByPath('55').value, 'AAPL')
-  assert.equal(lines[1].getEntryByPath('55').value, 'MSFT')
 })
 
 test('a miss is null and the raising form says which path', () => {

@@ -54,30 +54,6 @@ impl JsRecordOptions {
     }
 }
 
-/// A `commitBatchNum` value as the batch count the core counts: an exact
-/// integer in this platform's range. Zero is kept, so the write preflight
-/// refuses it by name before a one-shot source is touched.
-pub(crate) fn batch_count(batches: f64) -> Result<usize> {
-    let batches = crate::exact_u64(batches, "commitBatchNum")?;
-    usize::try_from(batches).map_err(|_| {
-        napi_error(format!(
-            "commitBatchNum {batches} exceeds this platform's batch-count range"
-        ))
-    })
-}
-
-/// A `numThreads` value as the thread count the core counts: an exact
-/// integer in this platform's range. Zero is kept, so the write preflight
-/// refuses it by name before a one-shot source is touched.
-pub(crate) fn thread_count(threads: f64) -> Result<usize> {
-    let threads = crate::exact_u64(threads, "numThreads")?;
-    usize::try_from(threads).map_err(|_| {
-        napi_error(format!(
-            "numThreads {threads} exceeds this platform's thread-count range"
-        ))
-    })
-}
-
 /// A CSV role byte as the one-character string JavaScript spells it.
 fn byte_text(byte: u8) -> String {
     char::from(byte).to_string()
@@ -330,7 +306,7 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_commit_batch_num(&mut self, commit_batch_num: Option<f64>) -> Result<()> {
         let batches = match commit_batch_num {
-            Some(batches) => Some(crate::media::options::batch_count(batches)?),
+            Some(batches) => Some(crate::exact_usize(batches, "commitBatchNum")?),
             None => None,
         };
         self.inner.set_commit_batch_num(batches);
@@ -358,7 +334,7 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_num_threads(&mut self, num_threads: Option<f64>) -> Result<()> {
         let threads = match num_threads {
-            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            Some(threads) => Some(crate::exact_usize(threads, "numThreads")?),
             None => None,
         };
         self.inner.set_num_threads(threads);
@@ -407,7 +383,7 @@ impl JsRecordOptions {
         // `null` is a value, and clears: no key, so an overwrite or append.
         let merge_by = match merge_by {
             Some(merge_by) => selector_from_input(merge_by)?,
-            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Selector::all(),
         };
         self.inner.set_merge_by(merge_by);
         Ok(())
@@ -442,7 +418,7 @@ impl JsRecordOptions {
         // `null` is a value, and clears: `select *`.
         let select = match select {
             Some(select) => selector_from_input(select)?,
-            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Selector::all(),
         };
         self.inner.set_select(select);
         Ok(())
@@ -471,7 +447,7 @@ impl JsRecordOptions {
         // `null` is a value, and clears: always true.
         let filter = match filter {
             Some(filter) => filter_from_input(filter)?,
-            None => yggdryl::Filter::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Filter::always_true(),
         };
         self.inner.set_filter(filter);
         Ok(())
@@ -503,7 +479,7 @@ impl JsRecordOptions {
         // `null` is a value, and clears: the plan with no section.
         let plan = match plan {
             Some(plan) => plan_from_input(plan)?,
-            None => yggdryl::Plan::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Plan::new(),
         };
         self.inner.set_plan(plan).map_err(napi_error)
     }
@@ -773,12 +749,7 @@ impl JsRecordOptions {
     /// is refused.
     #[napi(setter)]
     pub fn set_infer_row_size(&mut self, infer_row_size: f64) -> Result<()> {
-        let rows = crate::exact_u64(infer_row_size, "inferRowSize")?;
-        let rows = usize::try_from(rows).map_err(|_| {
-            napi_error(format!(
-                "inferRowSize {rows} exceeds this platform's row-count range"
-            ))
-        })?;
+        let rows = crate::exact_usize(infer_row_size, "inferRowSize")?;
         self.inner.set_csv_infer_row_size(rows).map_err(napi_error)
     }
 

@@ -260,6 +260,12 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "XMLA")]
+    fn xmla_constant() -> Self {
+        Self::from_core(CoreMimeType::XMLA)
+    }
+
+    #[classattr]
     #[pyo3(name = "HTTP")]
     fn http_constant() -> Self {
         Self::from_core(CoreMimeType::HTTP)

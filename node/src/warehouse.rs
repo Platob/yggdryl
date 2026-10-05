@@ -27,7 +27,7 @@ use yggdryl::{
 use crate::datatype::{DataTypeInput, dtype_from_input};
 use crate::field::JsField;
 use crate::iceberg::{FieldInput, field_from_input};
-use crate::iobase::{LocationInput, site_from_input};
+use crate::iobase::{LocationInput, safe_js_len, site_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
 use crate::napi_error;
@@ -49,9 +49,6 @@ pub type ObjectOutput = Either3<JsWarehouseCatalog, JsWarehouseNamespace, JsWare
 
 /// A location: a native `Url`, or text read as one.
 pub type UrlInput<'a> = Either<ClassInstance<'a, JsUrl>, String>;
-
-/// Largest integer a JavaScript `number` represents exactly.
-const JS_MAX_SAFE_INTEGER: usize = 9_007_199_254_740_991;
 
 /// The parts a path input names, ready for every core door that takes one.
 ///
@@ -149,12 +146,6 @@ fn update_object_properties(
     object
         .update_properties(&updates, removes.as_slice())
         .map_err(napi_error)
-}
-
-/// A count as a JavaScript number, exact to 2^53 - the same contract
-/// `IOBase.size` publishes.
-fn js_count(value: usize) -> i64 {
-    i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
 }
 
 /// The parts of a path as JavaScript strings.
@@ -1053,7 +1044,7 @@ impl JsWarehouseNamespaces {
         self.parent
             .namespaces()
             .len()
-            .map(js_count)
+            .map(safe_js_len)
             .map_err(napi_error)
     }
 
@@ -1136,7 +1127,11 @@ impl JsWarehouseTables {
     /// listing.
     #[napi(getter)]
     pub fn size(&self) -> Result<i64> {
-        self.parent.tables().len().map(js_count).map_err(napi_error)
+        self.parent
+            .tables()
+            .len()
+            .map(safe_js_len)
+            .map_err(napi_error)
     }
 
     /// Create the named table with `field` as its row schema, a dotted name

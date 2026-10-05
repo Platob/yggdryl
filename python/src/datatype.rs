@@ -755,7 +755,8 @@ impl PyDataType {
         Self::from_validated(CoreDataType::from_str(kind).map_err(value_error)?)
     }
 
-    /// Internal temporal constructor used by the typed fields facade.
+    /// Internal constructor of the `datetime64`, `time32`, `time64` and
+    /// `interval` field factories.
     #[staticmethod]
     #[pyo3(signature = (kind, unit, timezone=None))]
     fn _temporal(kind: &str, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
@@ -766,49 +767,21 @@ impl PyDataType {
             .map(crate::timezone::core_timezone_from_value)
             .transpose()?;
         let unit = CoreTimeUnit::from_str(unit).map_err(value_error)?;
+        // Each constructor refuses a unit its leaf does not take.
         let inner = match kind {
             "datetime64" => {
-                if !unit.is_temporal() {
-                    return Err(PyValueError::new_err(
-                        "datetime64 requires a temporal resolution unit",
-                    ));
-                }
                 CoreDataType::datetime64(unit, timezone.unwrap_or(yggdryl::Timezone::NAIVE))
-                    .map_err(value_error)?
             }
-            "time32" => CoreDataType::time32(unit).map_err(value_error)?,
-            "time64" => CoreDataType::time64(unit).map_err(value_error)?,
-            "duration32" => {
-                if !unit.is_temporal() {
-                    return Err(PyValueError::new_err(
-                        "duration32 requires a temporal resolution unit",
-                    ));
-                }
-                CoreDataType::duration32(unit).map_err(value_error)?
-            }
-            "duration64" => {
-                if !unit.is_temporal() {
-                    return Err(PyValueError::new_err(
-                        "duration64 requires a temporal resolution unit",
-                    ));
-                }
-                CoreDataType::duration64(unit).map_err(value_error)?
-            }
-            "interval" => {
-                if !unit.is_interval() {
-                    return Err(PyValueError::new_err(
-                        "interval requires an interval layout unit",
-                    ));
-                }
-                CoreDataType::interval(unit).map_err(value_error)?
-            }
+            "time32" => CoreDataType::time32(unit),
+            "time64" => CoreDataType::time64(unit),
+            "interval" => CoreDataType::interval(unit),
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a temporal datatype kind"
                 )));
             }
         };
-        Self::from_validated(inner)
+        Self::from_validated(inner.map_err(value_error)?)
     }
 
     /// Internal exact-width decimal constructor used by the typed fields facade.

@@ -3,7 +3,7 @@
 //! [`CoreQuoteEvent`] and [`CoreExecutionEvent`] dated - and of the book
 //! control a market-data entry carries, [`CoreBookRef`].
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
@@ -13,7 +13,7 @@ use yggdryl::graph::{
     Order as CoreOrder, OrderEvent as CoreOrderEvent, OrderKind, Quote as CoreQuote,
     QuoteEvent as CoreQuoteEvent, QuoteKind,
 };
-use yggdryl::{DataType, Decimal, Scalar};
+use yggdryl::{DataType, Decimal};
 
 use super::{decimal_scalar, ellipsis, slot_repr, stated_operation};
 use crate::scalar::{PyScalar, from_py};
@@ -209,16 +209,6 @@ operation_event_class!(
     PyExecution
 );
 
-/// The action a spelling names, or a `ValueError` listing every spelling.
-fn md_update_action_of(text: &str) -> PyResult<CoreMdUpdateAction> {
-    CoreMdUpdateAction::read(text).ok_or_else(|| {
-        PyValueError::new_err(format!(
-            "unknown MdUpdateAction {text:?}; expected one of {:?}",
-            CoreMdUpdateAction::ALL.map(CoreMdUpdateAction::as_str)
-        ))
-    })
-}
-
 /// A value given at a `BookRef` keyword: `None` where it was skipped
 /// (`Ellipsis`) or stated as Python `None`, else the bound value.
 fn stated<'py>(py: Python<'py>, value: &Py<PyAny>) -> Option<Bound<'py, PyAny>> {
@@ -272,7 +262,8 @@ impl PyBookRef {
 impl PyBookRef {
     /// Build a book-control value from its five slots, each defaulting to
     /// `Ellipsis` (not given). `action` is read through
-    /// [`CoreMdUpdateAction::read`], refusing text that names no spelling.
+    /// [`CoreMdUpdateAction`]'s `FromStr`, refusing text that names no
+    /// spelling.
     #[pyo3(signature = (
         action=ellipsis(),
         scope=ellipsis(),
@@ -293,7 +284,7 @@ impl PyBookRef {
         let action = stated(py, &action)
             .map(|value| value.extract::<String>())
             .transpose()?
-            .map(|text| md_update_action_of(&text))
+            .map(|text| text.parse::<CoreMdUpdateAction>().map_err(value_error))
             .transpose()?;
         let scope = stated(py, &scope)
             .map(|value| value.extract::<String>())
@@ -322,7 +313,9 @@ impl PyBookRef {
         entry_px: Option<PyRef<'_, PyScalar>>,
         entry_size: Option<PyRef<'_, PyScalar>>,
     ) -> PyResult<Self> {
-        let action = action.map(md_update_action_of).transpose()?;
+        let action = action
+            .map(|text| text.parse::<CoreMdUpdateAction>().map_err(value_error))
+            .transpose()?;
         let entry_px = entry_px
             .map(|value| {
                 Decimal::from_scalar(&value.inner)
@@ -407,7 +400,7 @@ impl PyBookRef {
 
     /// Hashes over the control's own fields.
     fn __hash__(&self) -> isize {
-        crate::python_hash(book_ref_hash(&self.inner))
+        crate::python_hash(self.inner.stable_hash())
     }
 
     fn __repr__(&self) -> String {
@@ -456,19 +449,4 @@ impl PyBookRef {
             ),
         ))
     }
-}
-
-/// The stable hash of a book control: its five slots as one record
-/// `Scalar` - a slot it states nothing in a null - digested by the crate's
-/// one `stable_hash`, so equal controls hash alike in either language.
-pub(crate) fn book_ref_hash(book: &CoreBookRef) -> u64 {
-    Scalar::from_sequence([
-        book.action
-            .map_or(Scalar::Null, |action| Scalar::from(action.as_str())),
-        book.scope.clone().map_or(Scalar::Null, Scalar::from),
-        book.position.map_or(Scalar::Null, Scalar::from),
-        book.entry_px.map_or(Scalar::Null, Scalar::from),
-        book.entry_size.map_or(Scalar::Null, Scalar::from),
-    ])
-    .stable_hash()
 }

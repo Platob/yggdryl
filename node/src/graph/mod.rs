@@ -24,7 +24,7 @@
 //! is applied to; NAPI merges every block of one class into its prototype.
 
 use napi::bindgen_prelude::{
-    BigInt, ClassInstance, Either, Either11, FromNapiValue, Null, Result, Unknown,
+    ClassInstance, Either, Either11, FromNapiValue, Null, Result, Unknown,
 };
 use napi_derive::napi;
 use yggdryl::graph::{
@@ -34,8 +34,8 @@ use yggdryl::graph::{
 use yggdryl::{Decimal, Identifiers, Scalar, graph};
 
 use crate::fix::JsFixMsg;
+use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::{exact_i64, napi_error};
 
 /// The six facts [`yggdryl::graph::Element`] answers.
 macro_rules! element_getters {
@@ -178,7 +178,8 @@ macro_rules! event_getters {
     };
 }
 
-/// The twenty-seven facts [`yggdryl::graph::Market`] answers.
+/// The facts [`yggdryl::graph::Market`] answers but `marketdatakind`, which
+/// is each leaf's own (`marketdatakind_getter!`).
 macro_rules! market_getters {
     ($class:ident) => {
         #[napi]
@@ -423,7 +424,7 @@ macro_rules! market_getters {
     };
 }
 
-/// The three facts [`yggdryl::graph::Operation`] adds.
+/// The five facts [`yggdryl::graph::Operation`] adds.
 macro_rules! operation_getters {
     ($class:ident) => {
         #[napi]
@@ -689,20 +690,6 @@ pub(crate) fn market_data_from(value: Unknown<'_>) -> Result<CoreMarketData> {
                 "expected MarketData, a market leaf or a FixMsg, got {kind}"
             ))
         })
-}
-
-/// One instant or grid step a caller stated, as a `bigint` or a whole
-/// `number` of at most 2^53, exactly.
-pub(crate) fn instant_of(value: Either<BigInt, f64>, name: &str) -> Result<i64> {
-    match value {
-        Either::A(value) => match value.get_i64() {
-            (value, true) => Ok(value),
-            (_, false) => Err(napi_error(format!(
-                "{name} must fit in a signed 64-bit integer"
-            ))),
-        },
-        Either::B(value) => exact_i64(value, name),
-    }
 }
 
 /// One of the market's numbers, exact, as decimal text; `None` where the

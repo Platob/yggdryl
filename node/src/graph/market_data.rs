@@ -324,9 +324,10 @@ impl JsMarketData {
     /// `10:1:ORD-1`, the exact code of the chain - the one view that takes
     /// one - read ignoring ASCII case, with each lift, a `FieldPath` read
     /// once (`identifiers['clordid'] as clordid`: an identifier column is a
-    /// map from the key's text - `src:type`, the type alone for the base
-    /// source - to the value), appended as a projection after the
-    /// view's own columns. Built structurally; its text reads back as the
+    /// map from a type's base key - the type alone - to the value; a
+    /// source's statement is side information under `metadata`,
+    /// `identifiers.src:type`), appended as a projection after the view's
+    /// own columns. Built structurally; its text reads back as the
     /// same plan.
     #[napi(
         ts_args_type = "view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null"

@@ -16,7 +16,6 @@ use napi_derive::napi;
 use yggdryl::IOMode;
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::http::HttpOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
@@ -35,9 +34,11 @@ use crate::text::codec::{
     DEFAULT_JS_DEPTH, JsScalar, decoded_value_for_field, value_to_transport_for_field,
 };
 use crate::text::options::JsTextOptions;
-use crate::uri::{JsArn, JsUri, JsUrl, JsUrn, PartitionEntry, partition_entries};
+use crate::uri::{
+    JsArn, JsUri, JsUrl, JsUrn, PartitionEntry, borrowed_pairs, partition_entries, partition_pairs,
+};
 use crate::warehouse::{ObjectInput, object_from_input};
-use crate::{exact_u64, napi_error};
+use crate::{exact_u64, exact_usize, napi_error};
 
 /// Resolve the digest algorithm a handle read names, defaulting to XXH3-64.
 ///
@@ -56,22 +57,14 @@ const BYTE_STREAM_BATCH_SIZE: usize = yggdryl::DEFAULT_STREAM_BATCH_SIZE;
 /// Largest integer a JavaScript `number` represents exactly.
 const JS_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
-/// One `length` argument as a byte count, refused rather than rounded.
-///
-/// `offset` is already checked this way; a `u32` parameter would have let
-/// napi coerce `1.5` and `-1` into silent lengths the Python twin rejects.
-fn exact_length(value: f64) -> Result<usize> {
-    let length = exact_u64(value, "length")?;
-    usize::try_from(length).map_err(|_| {
-        napi_error(format!(
-            "length {length} exceeds this platform's byte-count range"
-        ))
-    })
-}
-
 /// Saturate a native count at JavaScript's exact-integer boundary.
 pub(crate) fn safe_js_count(value: u64) -> i64 {
     i64::try_from(value.min(JS_MAX_SAFE_INTEGER)).unwrap_or(i64::MAX)
+}
+
+/// A native length as a JavaScript count, saturated as [`safe_js_count`] is.
+pub(crate) fn safe_js_len(value: usize) -> i64 {
+    safe_js_count(u64::try_from(value).unwrap_or(u64::MAX))
 }
 
 /// A native handle, any identifier naming a location, or location text.
@@ -119,40 +112,6 @@ type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<St
 /// under no properties, which its service describes.
 fn local_holder(location: impl AsRef<yggdryl::Uri>) -> Result<Holder> {
     Holder::from_url(location, std::iter::empty::<(&str, &str)>()).map_err(napi_error)
-}
-
-/// Hold `url` as a container, on the store its scheme selects.
-fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
-    if url.scheme().is_object_store() {
-        return yggdryl::s3::folder(&url.to_string())
-            .map(Holder::S3Folder)
-            .map_err(napi_error);
-    }
-    // An HTTP container is a session over the URL: it lists nothing, and a
-    // path below it is the `GET` of that resource.
-    if url.scheme().is_http() {
-        return yggdryl::http::session_with(HttpOptions::default().with_base_url(url.clone()))
-            .map(Holder::HttpSession)
-            .map_err(napi_error);
-    }
-    non_local_scheme(url)?;
-    Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
-}
-
-/// Refuse a location no byte backend speaks, by the scheme that says so.
-///
-/// A location whose scheme no backend speaks is refused by that scheme, not by
-/// the path conversion it would otherwise fall through to: an Amazon S3 Tables
-/// table names a resource a catalog reads, and saying "only a file URI can be
-/// converted to a platform path" would name the wrong thing entirely.
-fn non_local_scheme(url: &yggdryl::Url) -> Result<()> {
-    if url.is_local() {
-        return Ok(());
-    }
-    Err(napi_error(yggdryl::Error::unsupported(
-        "holding a location of this scheme",
-        url.scheme().as_str(),
-    )))
 }
 
 /// Rebuild a foreign-file-system handle, keeping the file system it stands on,
@@ -262,7 +221,7 @@ pub(crate) fn site_from_input(value: LocationInput<'_>) -> Result<Either<Holder,
 pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
     match location_target(value)? {
         Either::A(handle) => folder_of_handle(&handle),
-        Either::B(url) => folder_holder_for(&url),
+        Either::B(url) => Holder::folder_from_url(&url).map_err(napi_error),
     }
 }
 
@@ -276,7 +235,7 @@ fn folder_of_handle(handle: &JsIOBase) -> Result<Holder> {
         .inner
         .url()
         .ok_or_else(|| napi_error("an in-memory resource cannot contain a table"))?;
-    folder_holder_for(url)
+    Holder::folder_from_url(url).map_err(napi_error)
 }
 
 /// A table door's `root`: a handle, as the container it addresses, or the
@@ -288,6 +247,17 @@ pub(crate) fn table_root_from_input(
         Either::A(handle) => Either::A(folder_of_handle(&handle)?),
         Either::B(identifier) => Either::B(identifier),
     })
+}
+
+/// At most `length` bytes `read` fills, the buffer cut to what it filled.
+fn read_owned(
+    length: u64,
+    read: impl FnOnce(&mut [u8]) -> yggdryl::Result<usize>,
+) -> Result<Uint8Array> {
+    let mut bytes = vec![0; usize::try_from(length).map_err(napi_error)?];
+    let filled = read(&mut bytes).map_err(napi_error)?;
+    bytes.truncate(filled);
+    Ok(Uint8Array::from(bytes))
 }
 
 /// A stateful sequential filesystem input stream.
@@ -309,13 +279,7 @@ impl JsFsByteReader {
         let length = exact_bigint_u64(&length, "length").map_err(napi_error)?;
         match &mut self.inner {
             FsByteReader::Handler(reader) => reader.read_owned(length).map_err(napi_error),
-            FsByteReader::Core(reader) => {
-                let length = usize::try_from(length).map_err(napi_error)?;
-                let mut bytes = vec![0; length];
-                let read = reader.read(&mut bytes).map_err(napi_error)?;
-                bytes.truncate(read);
-                Ok(Uint8Array::from(bytes))
-            }
+            FsByteReader::Core(reader) => read_owned(length, |bytes| reader.read(bytes)),
         }
     }
 
@@ -367,13 +331,7 @@ impl JsFsRandomAccessReader {
         let length = exact_bigint_u64(&length, "length").map_err(napi_error)?;
         match &mut self.inner {
             FsRandomAccessReader::Handler(reader) => reader.read_owned(length).map_err(napi_error),
-            FsRandomAccessReader::Core(reader) => {
-                let length = usize::try_from(length).map_err(napi_error)?;
-                let mut bytes = vec![0; length];
-                let read = reader.read(&mut bytes).map_err(napi_error)?;
-                bytes.truncate(read);
-                Ok(Uint8Array::from(bytes))
-            }
+            FsRandomAccessReader::Core(reader) => read_owned(length, |bytes| reader.read(bytes)),
         }
     }
 
@@ -387,11 +345,7 @@ impl JsFsRandomAccessReader {
                 reader.read_at_owned(offset, length).map_err(napi_error)
             }
             FsRandomAccessReader::Core(reader) => {
-                let length = usize::try_from(length).map_err(napi_error)?;
-                let mut bytes = vec![0; length];
-                let read = reader.read_at(offset, &mut bytes).map_err(napi_error)?;
-                bytes.truncate(read);
-                Ok(Uint8Array::from(bytes))
+                read_owned(length, |bytes| reader.read_at(offset, bytes))
             }
         }
     }
@@ -618,7 +572,7 @@ impl JsIOBase {
     /// Build a container handle for one recorded location.
     pub(crate) fn folder_at(location: &str) -> Result<Self> {
         let url = yggdryl::Url::from_str(location).map_err(napi_error)?;
-        folder_holder_for(&url)
+        Holder::folder_from_url(&url)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -705,27 +659,24 @@ impl JsIOBase {
         Self::over_fs(env, &filesystem, &path, uri)
     }
 
-    /// Hold the resource `uri` names, on the store its scheme selects, under
-    /// that store's properties.
-    ///
-    /// The core's one location door, `Holder::from_url`, for every scheme
-    /// this build holds - a `file:` URL the local role, an object-store URL
+    /// Hold the resource `uri` names on the store its scheme selects, under
+    /// `options`: the core's one location door (`Holder::from_url`), which
+    /// the constructor is under no properties, with no file system handler
+    /// built on the way - a `file:` URL the local role, an object-store URL
     /// the native store, an `http:` one the `GET` of that resource, an
-    /// `s3tables:` one the catalog object it names - with no file system
-    /// handler built on the way; the constructor is this door under no
-    /// properties, and `uri` is read as the constructor reads text. An
-    /// object-store location's query states the store's properties too, in
-    /// the names its reader takes -
-    /// `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`
-    /// - which the core reads beneath `options` and takes off the location
-    /// the handle reports, refusing a parameter no store reads by name.
-    /// `options` is an object of the store's properties in any vocabulary
-    /// the core reads - this crate's own names, `PyIceberg`'s, `PyArrow`'s,
-    /// each store's environment names, the HTTP options' - beside `media_type`
-    /// and `codec`, which every location takes, each winning over the
-    /// query's: a string, a boolean or a number is the property's text,
-    /// `null` leaves it unstated, and any other value is refused by name. A
-    /// property no store reads is ignored, as the core ignores it, and a
+    /// `s3tables:` one the catalog object it names. `uri` is read as the
+    /// constructor reads text.
+    ///
+    /// An object-store URL's query states store properties too
+    /// (`s3://bucket/key?endpoint_override=minio%3A9000&scheme=http`), read
+    /// beneath `options` and taken off the reported location; a parameter
+    /// no store reads is refused by name. `options` takes the store's
+    /// properties in any vocabulary the core reads - this crate's,
+    /// `PyIceberg`'s, `PyArrow`'s, each store's environment names, the HTTP
+    /// options' - beside `media_type` and `codec`, which every location
+    /// takes, each winning over the query's: a string, a boolean or a
+    /// number is the property's text, `null` leaves it unstated, anything
+    /// else is refused by name. A property no store reads is ignored; a
     /// scheme no backend of this build holds is refused by that scheme.
     #[napi(factory)]
     pub fn from_uri(
@@ -902,7 +853,7 @@ impl JsIOBase {
     pub fn column_size(&self) -> Result<i64> {
         self.inner
             .column_size()
-            .map(|columns| safe_js_count(u64::try_from(columns).unwrap_or(u64::MAX)))
+            .map(safe_js_len)
             .map_err(napi_error)
     }
 
@@ -1040,21 +991,11 @@ impl JsIOBase {
         filters: PartitionFilters,
         include_private: Option<bool>,
     ) -> Result<JsListing> {
-        let pairs: Vec<(String, String)> = match filters {
-            Either::A(entries) => entries
-                .into_iter()
-                .map(|entry| (entry.column, entry.value))
-                .collect(),
-            Either::B(values) => values.into_iter().collect(),
-        };
-        let borrowed: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
+        let pairs = partition_pairs(Some(filters));
         Ok(JsListing {
             inner: self
                 .inner
-                .children_where(&borrowed, include_private.unwrap_or(false))
+                .children_where(&borrowed_pairs(&pairs), include_private.unwrap_or(false))
                 .map_err(napi_error)?,
         })
     }
@@ -1161,7 +1102,7 @@ impl JsIOBase {
     #[napi]
     pub fn read_range_bytes(&self, offset: f64, length: f64) -> Result<Buffer> {
         self.inner
-            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_usize(length, "length")?)
             .map(Buffer::from)
             .map_err(napi_error)
     }
@@ -1175,7 +1116,7 @@ impl JsIOBase {
     pub fn read_range_text_native(&self, offset: f64, length: f64) -> Result<String> {
         let bytes = self
             .inner
-            .read_range_bytes(exact_u64(offset, "offset")?, exact_length(length)?)
+            .read_range_bytes(exact_u64(offset, "offset")?, exact_usize(length, "length")?)
             .map_err(napi_error)?;
         String::from_utf8(bytes).map_err(napi_error)
     }
@@ -1234,13 +1175,7 @@ impl JsIOBase {
     ) -> Result<()> {
         let mut options = BufferedOptions::default();
         if let Some(page_size) = page_size {
-            let page_size = exact_u64(page_size, "pageSize")?;
-            let page_size = usize::try_from(page_size).map_err(|_| {
-                napi_error(format!(
-                    "pageSize {page_size} exceeds this platform's byte-count range"
-                ))
-            })?;
-            options = options.with_page_size(page_size);
+            options = options.with_page_size(exact_usize(page_size, "pageSize")?);
         }
         if let Some(max_bytes) = max_bytes {
             options = options.with_max_bytes(exact_u64(max_bytes, "maxBytes")?);
@@ -1382,7 +1317,7 @@ impl JsIOBase {
                 .inner
                 .url()
                 .ok_or_else(|| napi_error("an in-memory resource cannot become a directory"))?;
-            folder_holder_for(url)?
+            Holder::folder_from_url(url).map_err(napi_error)?
         };
         folder.truncate(0).map_err(napi_error)?;
         self.inner = folder;

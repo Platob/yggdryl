@@ -9,8 +9,8 @@ use yggdryl::holder::Buffer as CoreBuffer;
 use yggdryl::{Limits, Scalar};
 
 use crate::field::MetadataEntry;
-use crate::text::codec::JsScalar;
-use crate::{exact_u64, napi_error};
+use crate::napi_error;
+use crate::text::codec::{JsScalar, checked_limit};
 
 /// Resource limits shared by every Avro decode entry point.
 #[napi(object)]
@@ -27,13 +27,13 @@ impl AvroDecodeLimitsInput {
     fn into_core(self) -> Result<Limits> {
         let defaults = Limits::default();
         Ok(Limits::new(
-            exact_limit(self.max_depth, "maxDepth", defaults.max_depth())?,
-            exact_limit(
+            checked_limit(self.max_depth, "maxDepth", defaults.max_depth())?,
+            checked_limit(
                 self.max_input_bytes,
                 "maxInputBytes",
                 defaults.max_input_bytes(),
             )?,
-            exact_limit(self.max_nodes, "maxNodes", defaults.max_nodes())?,
+            checked_limit(self.max_nodes, "maxNodes", defaults.max_nodes())?,
             defaults.max_documents(),
         ))
     }
@@ -41,13 +41,6 @@ impl AvroDecodeLimitsInput {
 
 fn decode_limits(value: Option<AvroDecodeLimitsInput>) -> Result<Limits> {
     value.map_or_else(|| Ok(Limits::default()), AvroDecodeLimitsInput::into_core)
-}
-
-fn exact_limit(value: Option<f64>, name: &str, default: usize) -> Result<usize> {
-    value.map_or(Ok(default), |value| {
-        usize::try_from(exact_u64(value, name)?)
-            .map_err(|_| napi_error(format!("{name} exceeds this platform's usize")))
-    })
 }
 
 /// One parsed Avro schema backed by the native schema graph.

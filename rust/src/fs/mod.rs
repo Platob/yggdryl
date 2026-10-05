@@ -57,6 +57,7 @@ pub use local::LocalFileSystem;
 pub use location::{BoundLocation, BoundLocationIdentity, mask_uri};
 pub use memory::MemoryFileSystem;
 pub use path::FsPath;
+pub(crate) use stream::write_all;
 pub use stream::{ByteReader, ByteWriter, RandomAccessReader};
 pub use system::{FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata};
 pub use transfer::{copy_bound, move_bound};

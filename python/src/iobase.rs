@@ -12,7 +12,7 @@ use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyBool, PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyIterator, PyString, PyTuple, PyType,
+    PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyIterator, PyString, PyTuple, PyType,
 };
 
 use yggdryl::holder::Holder;
@@ -25,11 +25,12 @@ use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::field::{PyField, core_field_from_value};
 use crate::holder::fs::NativeRole;
+use crate::holder::handles::fs_holder;
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
-    core_record_options_from_value, core_root_field_from_value, frame_batch_reader,
-    frame_from_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
+    borrowed_pairs, core_record_options_from_value, core_root_field_from_value, frame_from_reader,
+    frame_reader, frames_batch_reader, frames_from_reader, record_batch_from_value,
 };
 use crate::ioresult::PyIOResult;
 use crate::scalar::{PyScalar, from_py};
@@ -65,13 +66,6 @@ fn consumed() -> PyErr {
     )
 }
 
-/// Rebuild a foreign-filesystem handle, keeping the filesystem it stands on.
-///
-/// `None` for anything else, which [`cloned`] holds again on its own store.
-fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
-    inner.bound_location().cloned().map(yggdryl::fs::located)
-}
-
 /// The plain handle beneath every wrapper: the role that holds the store.
 fn plain(holder: &Holder) -> &Holder {
     match holder {
@@ -97,8 +91,8 @@ fn plain(holder: &Holder) -> &Holder {
 /// declares beyond what its name says is carried across.
 fn cloned(holder: &Holder) -> PyResult<Holder> {
     let holder = plain(holder);
-    if let Some(bound) = rebuilt_arrow_holder(holder) {
-        return Ok(bound);
+    if let Some(bound) = holder.bound_location() {
+        return Ok(yggdryl::fs::located(bound.clone()));
     }
     let mut clone = match holder {
         Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
@@ -170,51 +164,23 @@ pub(crate) fn located_holder(location: impl AsRef<yggdryl::Uri>) -> PyResult<Hol
         .map_err(crate::holder::fs::storage_error)
 }
 
-/// Hold `url` as a container, on the store its scheme selects.
-pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
-    if url.scheme().is_http() {
-        // A container over HTTP is a session whose base URL is the location:
-        // a child is the `GET` of the path below it, and nothing is listed.
-        return yggdryl::http::session_with(
-            yggdryl::http::HttpOptions::default().with_base_url(url.clone()),
-        )
-        .map(Holder::HttpSession)
-        .map_err(crate::holder::fs::storage_error);
+/// Address `holder`'s location as a container on the store it stands on.
+///
+/// A table is a folder, so a location that holds nothing yet still answers a
+/// handle that resolves children; [`Holder::local`] would have decided it was
+/// a file. The store is kept, because a location alone does not say which
+/// store holds it: a bridged filesystem's folder role, an object-store role's
+/// prefix on its own client under its own options, a local role's directory;
+/// only a holder whose location says where it lives - an HTTP resource - is
+/// the container its location names ([`Holder::folder_from_url`]). A wrapper - a
+/// page cache, a coding, a text or record configuration - presents a value,
+/// so the container is asked of the plain handle beneath it ([`plain`]).
+pub(crate) fn container_holder(holder: &Holder) -> PyResult<Holder> {
+    let holder = plain(holder);
+    if let Some(bound) = holder.bound_location() {
+        return Ok(Holder::FsFolder(yggdryl::fs::FsFolder::new(bound.clone())));
     }
-    if url.scheme().is_object_store() {
-        return yggdryl::s3::folder(&url.to_string())
-            .map(Holder::S3Folder)
-            .map_err(crate::holder::fs::storage_error);
-    }
-    if !url.is_local() {
-        return Err(value_error(yggdryl::Error::unsupported(
-            "holding a location of this scheme",
-            url.scheme().as_str(),
-        )));
-    }
-    Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
-}
-
-/// Address a bridged filesystem's location as a container on that filesystem.
-fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
-    inner
-        .bound_location()
-        .cloned()
-        .map(yggdryl::fs::FsFolder::new)
-        .map(Holder::FsFolder)
-}
-
-/// Address `holder`'s location as a container on the store it stands on,
-/// keeping that store: a bridged filesystem's folder role, an object-store
-/// role's prefix on its own client under its own options, a local role's
-/// directory. `None` for a holder whose location alone says where it lives -
-/// a buffer, an HTTP resource. A wrapper is asked through the plain handle
-/// beneath it ([`plain`]), which is what [`PyIOBase::folder_holder`] does.
-pub(crate) fn container_holder(holder: &Holder) -> PyResult<Option<Holder>> {
-    if let Some(bound) = fs_folder_holder(holder) {
-        return Ok(Some(bound));
-    }
-    Ok(Some(match holder {
+    Ok(match holder {
         Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
         Holder::LocalPath(path) => Holder::LocalFolder(path.as_directory().map_err(value_error)?),
         Holder::LocalFile(file) => {
@@ -223,8 +189,13 @@ pub(crate) fn container_holder(holder: &Holder) -> PyResult<Option<Holder>> {
         Holder::S3Folder(folder) => Holder::S3Folder(folder.clone()),
         Holder::S3Path(path) => Holder::S3Folder(path.as_directory().map_err(value_error)?),
         Holder::S3File(file) => Holder::S3Folder(file.as_directory().map_err(value_error)?),
-        _ => return Ok(None),
-    }))
+        other => {
+            let url = other
+                .url()
+                .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
+            return Holder::folder_from_url(url).map_err(crate::holder::fs::storage_error);
+        }
+    })
 }
 
 /// The path a `pyarrow.fs.FileSystem` of this holder's kind would take for
@@ -506,45 +477,44 @@ impl PyIOBase {
         cloned(self.inner()?)
     }
 
-    /// Build a container handle on the same location.
-    ///
-    /// [`Self::container_for`] under the generic verb, for a caller that
-    /// addresses the container rather than acting on it.
+    /// Build a container handle on the same location, on the same store
+    /// ([`container_holder`]).
     pub(crate) fn folder_holder(&self) -> PyResult<Holder> {
-        self.container_for()
+        container_holder(self.inner()?)
     }
 
-    /// Build a container handle on the same location.
-    ///
-    /// A table is a folder, so a caller who names one that does not exist yet
-    /// still gets a handle that can resolve children; [`Holder::local`] would
-    /// have decided it was a file, because nothing is there to look at. The
-    /// container stands on the store this handle stands on - a bridged
-    /// filesystem, an object store's client under its options - because a
-    /// location alone does not say which store holds it. A wrapper - a page
-    /// cache, a coding, a text or record configuration - presents a value, so
-    /// the container is asked of the plain handle beneath it, on that store.
-    fn container_for(&self) -> PyResult<Holder> {
-        let inner = plain(self.inner()?);
-        if let Some(holder) = container_holder(inner)? {
-            return Ok(holder);
-        }
-        let url = inner
-            .url()
-            .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
-        folder_holder_for(url)
+    /// What a bridged filesystem reports of its exact path, asked fresh;
+    /// `None` for a store held natively, which answers through the core.
+    fn bound_info(&self) -> PyResult<Option<yggdryl::fs::FileInfo>> {
+        self.inner()?
+            .bound_location()
+            .map(|bound| {
+                bound
+                    .filesystem()
+                    .file_info(bound.path())
+                    .map_err(crate::holder::fs::storage_error)
+            })
+            .transpose()
     }
 
-    /// Build a handle on `path` over a `pyarrow.fs.FileSystem`, natively
-    /// where this build holds its store and bridged otherwise.
-    fn over_fs(
-        filesystem: &Bound<'_, PyAny>,
-        path: &Bound<'_, PyAny>,
-        uri: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Holder> {
-        let path = crate::uri::path_string_from_value(path)?;
-        let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
-        crate::holder::handles::fs_holder(filesystem, path, uri, NativeRole::Path)
+    /// Open `method` of a bridged filesystem at this handle's exact path,
+    /// with `kwargs`; `None` for a store held natively, which opens a native
+    /// file instead.
+    fn open_bridged<'py>(
+        slf: &Bound<'py, Self>,
+        method: &str,
+        kwargs: Option<&Bound<'py, PyDict>>,
+    ) -> Option<PyResult<Bound<'py, PyAny>>> {
+        let py = slf.py();
+        let (filesystem, path) = slf.borrow().arrow_binding(py)?;
+        let filesystem = filesystem.bind(py);
+        Some(
+            filesystem
+                .call_method(method, (&path,), kwargs)
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                }),
+        )
     }
 
     fn arrow_binding(&self, py: Python<'_>) -> Option<(Py<PyAny>, String)> {
@@ -739,19 +709,64 @@ impl PyIOBase {
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// [`Self::write_reader`] over an Arrow C stream, the GIL released: its
-    /// producer may be a parse whose workers take the GIL to log.
+    /// The one body of the table, record and frame write doors: the options
+    /// resolved and their zero counts refused before the input is read, then
+    /// `batches` reads it - completing the options, as a record door infers
+    /// its class's field - and the core writes with the GIL held, since a
+    /// Python source is pulled as it is written.
+    fn write_rows(
+        &mut self,
+        mode: IOMode,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+        batches: impl FnOnce(&mut RecordOptions) -> PyResult<yggdryl::arrow::BatchReader>,
+    ) -> PyResult<PyIOResult> {
+        let Some(mut options) = self.write_options(mode, options, properties)? else {
+            return Ok(PyIOResult::default());
+        };
+        let batches = batches(&mut options)?;
+        self.write_reader(batches, mode, &options)
+    }
+
+    /// [`Self::write_rows`] for an Arrow C stream, written with the GIL
+    /// released: its producer may be a parse whose workers take the GIL to
+    /// log.
     fn write_stream(
         &mut self,
-        py: Python<'_>,
-        batches: yggdryl::arrow::BatchReader,
+        reader: &Bound<'_, PyAny>,
         mode: IOMode,
-        options: &RecordOptions,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
+        let Some(options) = self.write_options(mode, options, properties)? else {
+            return Ok(PyIOResult::default());
+        };
+        let batches = batch_reader_from_arrow_reader(reader)?;
         let inner = self.inner_mut()?;
-        py.detach(|| inner.write_arrow_reader(batches, mode, options))
+        reader
+            .py()
+            .detach(|| inner.write_arrow_reader(batches, mode, &options))
             .map(PyIOResult::from_core)
             .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// [`Self::write_rows`] for one held `pyarrow.RecordBatch`, written as
+    /// the one batch it is.
+    fn write_batch(
+        &mut self,
+        batch: &Bound<'_, PyAny>,
+        mode: IOMode,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyIOResult> {
+        let Some(options) = self.write_options(mode, options, properties)? else {
+            return Ok(PyIOResult::default());
+        };
+        let batch = record_batch_from_value(batch)?;
+        self.inner_mut()?
+            .write_arrow_batch(batch, mode, &options)
+            .map(PyIOResult::from_core)
+            .map_err(value_error)
     }
 
     /// The one write every `*_serie` method is: the options resolved and
@@ -800,11 +815,9 @@ fn record_options_into_py(py: Python<'_>, options: RecordOptions) -> PyResult<Bo
     })
 }
 
-/// The `(name, value)` text pairs of a properties mapping.
-///
-/// `None` is skipped as not given, a `bool` is spelled `true` or `false`,
-/// anything else as `str()` spells it, so `True` and `30` are as good as
-/// `"true"` and `"30"`.
+/// The `(name, value)` text pairs of a properties mapping: `None` skipped as
+/// not given, a `str`, `bool`, `int` or `float` its property text, any other
+/// value refused by name.
 fn location_properties(options: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(String, String)>> {
     let Some(options) = options else {
         return Ok(Vec::new());
@@ -823,20 +836,17 @@ fn location_properties(options: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(Stri
         if value.is_none() {
             continue;
         }
-        let text = if let Ok(flag) = value.cast::<PyBool>() {
-            if flag.is_true() { "true" } else { "false" }.to_owned()
-        } else if value.is_instance_of::<PyString>()
+        // A `bool` is an `int`.
+        if !(value.is_instance_of::<PyString>()
             || value.is_instance_of::<PyInt>()
-            || value.is_instance_of::<PyFloat>()
+            || value.is_instance_of::<PyFloat>())
         {
-            value.str()?.to_str()?.to_owned()
-        } else {
             return Err(PyTypeError::new_err(format!(
                 "the location property {name:?} must be a str, a bool, an int or a float, got {}",
                 value.get_type().name()?
             )));
-        };
-        pairs.push((name, text));
+        }
+        pairs.push((name, crate::properties::property_text(&value)?));
     }
     Ok(pairs)
 }
@@ -910,7 +920,7 @@ impl PyIOBase {
                     "expected a path on the filesystem as the second argument, got none",
                 )
             })?;
-            return declared(py, Self::over_fs(value, path, None)?);
+            return declared(py, fs_holder(value, path, None, NativeRole::Path)?);
         }
         if let Some(path) = path {
             return Err(PyValueError::new_err(format!(
@@ -1001,7 +1011,7 @@ impl PyIOBase {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        declared(py, Self::over_fs(filesystem, path, uri)?)
+        declared(py, fs_holder(filesystem, path, uri, NativeRole::Path)?)
     }
 
     /// Hold the resource `uri` names, on the store its scheme selects, under
@@ -1161,12 +1171,9 @@ impl PyIOBase {
     /// `close` scope of their own, off the GIL, so an object answers one
     /// `HEAD`; a handle already open keeps what it holds.
     fn info<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let bridged = self.bound_info()?;
         let inner = self.inner_mut()?;
-        let (path, kind, size, mtime_ns) = if let Some(bound) = inner.bound_location() {
-            let info = bound
-                .filesystem()
-                .file_info(bound.path())
-                .map_err(crate::holder::fs::storage_error)?;
+        let (path, kind, size, mtime_ns) = if let Some(info) = bridged {
             (info.path, info.kind, info.size, info.mtime_ns)
         } else {
             let path = native_path(inner)
@@ -1314,28 +1321,20 @@ impl PyIOBase {
     /// A method rather than a property, as every answer that may ask storage
     /// is: a debugger or an IDE evaluates a property to display the object.
     fn size(&self, py: Python<'_>) -> PyResult<u64> {
-        let inner = self.inner()?;
-        if let Some(bound) = inner.bound_location() {
-            return bound
-                .filesystem()
-                .file_info(bound.path())
-                .map(|info| info.size.unwrap_or(0))
-                .map_err(crate::holder::fs::storage_error);
+        if let Some(info) = self.bound_info()? {
+            return Ok(info.size.unwrap_or(0));
         }
+        let inner = self.inner()?;
         Ok(py.detach(|| inner.size()))
     }
 
     /// The exact core storage role: memory, file, directory, table,
     /// namespace, catalog, or unknown.
     fn kind(&self, py: Python<'_>) -> PyResult<&'static str> {
-        let inner = self.inner()?;
-        if let Some(bound) = inner.bound_location() {
-            return bound
-                .filesystem()
-                .file_info(bound.path())
-                .map(|info| info.kind.as_str())
-                .map_err(crate::holder::fs::storage_error);
+        if let Some(info) = self.bound_info()? {
+            return Ok(info.kind.as_str());
         }
+        let inner = self.inner()?;
         Ok(py.detach(|| inner.kind()).as_str())
     }
 
@@ -1395,50 +1394,34 @@ impl PyIOBase {
     /// filesystem-bound handle asks its filesystem directly, so a refusal
     /// such as `PermissionError` is raised rather than read as absence.
     fn exists(&self, py: Python<'_>) -> PyResult<bool> {
-        let inner = self.inner()?;
-        match inner.bound_location() {
-            Some(bound) => bound
-                .filesystem()
-                .file_info(bound.path())
-                .map(|info| info.kind != yggdryl::IOKind::Unknown)
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(py.detach(|| inner.exists())),
+        if let Some(info) = self.bound_info()? {
+            return Ok(info.kind != yggdryl::IOKind::Unknown);
         }
+        let inner = self.inner()?;
+        Ok(py.detach(|| inner.exists()))
     }
 
     /// Return whether this resource contains others, as `Path.is_dir`.
     fn is_dir(&self) -> PyResult<bool> {
-        match self.inner()?.bound_location() {
-            Some(bound) => bound
-                .filesystem()
-                .file_info(bound.path())
-                .map(|info| info.kind == yggdryl::IOKind::Directory)
-                .map_err(crate::holder::fs::storage_error),
-            None => Ok(self.inner()?.is_container()),
+        if let Some(info) = self.bound_info()? {
+            return Ok(info.kind == yggdryl::IOKind::Directory);
         }
+        Ok(self.inner()?.is_container())
     }
 
     /// Return whether this resource holds bytes, as `Path.is_file`.
     fn is_file(&self, py: Python<'_>) -> PyResult<bool> {
-        let inner = self.inner()?;
-        if let Some(bound) = inner.bound_location() {
-            return bound
-                .filesystem()
-                .file_info(bound.path())
-                .map(|info| info.kind == yggdryl::IOKind::File)
-                .map_err(crate::holder::fs::storage_error);
+        if let Some(info) = self.bound_info()? {
+            return Ok(info.kind == yggdryl::IOKind::File);
         }
+        let inner = self.inner()?;
         Ok(py.detach(|| inner.kind()) == yggdryl::IOKind::File)
     }
 
     /// Return whether this handle exposes its byte or record surface.
     fn is_io(&self) -> PyResult<bool> {
-        if let Some(bound) = self.inner()?.bound_location() {
-            bound
-                .filesystem()
-                .file_info(bound.path())
-                .map_err(crate::holder::fs::storage_error)?;
-        }
+        // A bridged filesystem is asked once, so a refusal raises.
+        self.bound_info()?;
         Ok(self.inner()?.is_io())
     }
 
@@ -1448,12 +1431,8 @@ impl PyIOBase {
     /// resource; `is_tabular` names the record surface instead. A container
     /// holding neither answers `False` to both.
     fn is_atomic(&self) -> PyResult<bool> {
-        if let Some(bound) = self.inner()?.bound_location() {
-            bound
-                .filesystem()
-                .file_info(bound.path())
-                .map_err(crate::holder::fs::storage_error)?;
-        }
+        // A bridged filesystem is asked once, so a refusal raises.
+        self.bound_info()?;
         Ok(self.inner()?.is_atomic())
     }
 
@@ -1464,12 +1443,8 @@ impl PyIOBase {
     /// record encoding, a folder that reads as the table beneath it, or a
     /// table format's own folder.
     fn is_tabular(&self) -> PyResult<bool> {
-        if let Some(bound) = self.inner()?.bound_location() {
-            bound
-                .filesystem()
-                .file_info(bound.path())
-                .map_err(crate::holder::fs::storage_error)?;
-        }
+        // A bridged filesystem is asked once, so a refusal raises.
+        self.bound_info()?;
         Ok(self.inner()?.is_tabular())
     }
 
@@ -1541,28 +1516,18 @@ impl PyIOBase {
             } else {
                 filters.extract()?
             };
-        let borrowed: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(column, value)| (column.as_str(), value.as_str()))
-            .collect();
         Ok(PyIOBaseIterator {
             entries: self
                 .inner()?
-                .children_where(&borrowed, include_private)
+                .children_where(&borrowed_pairs(&pairs), include_private)
                 .map_err(crate::holder::fs::storage_error)?,
         })
     }
 
     /// Open a random-access native Arrow input file.
     fn open_input_file<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
-        let py = slf.py();
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
-            let filesystem = filesystem.bind(py);
-            return filesystem
-                .call_method1("open_input_file", (&path,))
-                .map_err(|error| {
-                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
-                });
+        if let Some(opened) = Self::open_bridged(slf, "open_input_file", None) {
+            return opened;
         }
         Self::native_python_file(slf, 0, "r")
     }
@@ -1576,21 +1541,10 @@ impl PyIOBase {
     ) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
         let kwargs = PyDict::new(py);
-        match compression {
-            Some(compression) => kwargs.set_item("compression", compression)?,
-            None => kwargs.set_item("compression", py.None())?,
-        }
-        match buffer_size {
-            Some(size) => kwargs.set_item("buffer_size", size)?,
-            None => kwargs.set_item("buffer_size", py.None())?,
-        }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
-            let filesystem = filesystem.bind(py);
-            return filesystem
-                .call_method("open_input_stream", (&path,), Some(&kwargs))
-                .map_err(|error| {
-                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
-                });
+        kwargs.set_item("compression", compression)?;
+        kwargs.set_item("buffer_size", buffer_size)?;
+        if let Some(opened) = Self::open_bridged(slf, "open_input_stream", Some(&kwargs)) {
+            return opened;
         }
         let stream = Self::native_python_file(slf, 0, "r")?;
         py.import("pyarrow")?
@@ -1608,25 +1562,11 @@ impl PyIOBase {
     ) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
         let kwargs = PyDict::new(py);
-        match compression {
-            Some(compression) => kwargs.set_item("compression", compression)?,
-            None => kwargs.set_item("compression", py.None())?,
-        }
-        match buffer_size {
-            Some(size) => kwargs.set_item("buffer_size", size)?,
-            None => kwargs.set_item("buffer_size", py.None())?,
-        }
-        match metadata {
-            Some(metadata) => kwargs.set_item("metadata", metadata)?,
-            None => kwargs.set_item("metadata", py.None())?,
-        }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
-            let filesystem = filesystem.bind(py);
-            return filesystem
-                .call_method("open_output_stream", (&path,), Some(&kwargs))
-                .map_err(|error| {
-                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
-                });
+        kwargs.set_item("compression", compression)?;
+        kwargs.set_item("buffer_size", buffer_size)?;
+        kwargs.set_item("metadata", metadata)?;
+        if let Some(opened) = Self::open_bridged(slf, "open_output_stream", Some(&kwargs)) {
+            return opened;
         }
         if metadata.is_some() {
             return Err(crate::holder::fs::storage_error(
@@ -1661,25 +1601,11 @@ impl PyIOBase {
     ) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
         let kwargs = PyDict::new(py);
-        match compression {
-            Some(compression) => kwargs.set_item("compression", compression)?,
-            None => kwargs.set_item("compression", py.None())?,
-        }
-        match buffer_size {
-            Some(size) => kwargs.set_item("buffer_size", size)?,
-            None => kwargs.set_item("buffer_size", py.None())?,
-        }
-        match metadata {
-            Some(metadata) => kwargs.set_item("metadata", metadata)?,
-            None => kwargs.set_item("metadata", py.None())?,
-        }
-        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
-            let filesystem = filesystem.bind(py);
-            return filesystem
-                .call_method("open_append_stream", (&path,), Some(&kwargs))
-                .map_err(|error| {
-                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
-                });
+        kwargs.set_item("compression", compression)?;
+        kwargs.set_item("buffer_size", buffer_size)?;
+        kwargs.set_item("metadata", metadata)?;
+        if let Some(opened) = Self::open_bridged(slf, "open_append_stream", Some(&kwargs)) {
+            return opened;
         }
         if metadata.is_some() {
             return Err(crate::holder::fs::storage_error(
@@ -1689,13 +1615,8 @@ impl PyIOBase {
         kwargs.del_item("metadata")?;
         let position = {
             let handle = slf.borrow();
-            match handle.inner()?.bound_location() {
-                Some(bound) => bound
-                    .filesystem()
-                    .file_info(bound.path())
-                    .map_err(crate::holder::fs::storage_error)?
-                    .size
-                    .unwrap_or(0),
+            match handle.bound_info()? {
+                Some(info) => info.size.unwrap_or(0),
                 None => handle.inner()?.size(),
             }
         };
@@ -2083,7 +2004,7 @@ impl PyIOBase {
     /// `remove()` on its folder role does: one still holding children refuses.
     fn delete_dir(&mut self, py: Python<'_>) -> PyResult<()> {
         let Some(bound) = self.inner()?.bound_location().cloned() else {
-            let mut folder = self.container_for()?;
+            let mut folder = self.folder_holder()?;
             return py
                 .detach(|| folder.remove(false))
                 .map_err(crate::holder::fs::storage_error);
@@ -2103,7 +2024,7 @@ impl PyIOBase {
     #[pyo3(signature = (missing_dir_ok = false))]
     fn delete_dir_contents(&mut self, py: Python<'_>, missing_dir_ok: bool) -> PyResult<()> {
         let Some(bound) = self.inner()?.bound_location().cloned() else {
-            let mut folder = self.container_for()?;
+            let mut folder = self.folder_holder()?;
             return match py.detach(|| folder.clear()) {
                 Err(error) if missing_dir_ok && error.is_absent() => Ok(()),
                 cleared => cleared.map_err(crate::holder::fs::storage_error),
@@ -2160,7 +2081,7 @@ impl PyIOBase {
         // The container stands on the store this handle stands on - a bridged
         // filesystem, an object store's client - because a location alone does
         // not say which store holds it.
-        let mut folder = self.container_for()?;
+        let mut folder = self.folder_holder()?;
         if let Some(bound) = folder.bound_location() {
             bound
                 .filesystem()
@@ -2198,13 +2119,7 @@ impl PyIOBase {
     /// uses; unlike `pathlib`'s, a resource that is not there is not an error,
     /// because absence is a no-op success everywhere on this handle.
     fn unlink(&mut self, py: Python<'_>) -> PyResult<()> {
-        if self.inner()?.bound_location().is_some() {
-            self.delete_file(py)
-        } else {
-            let inner = self.inner_mut()?;
-            py.detach(|| inner.remove(false))
-                .map_err(crate::holder::fs::storage_error)
-        }
+        self.delete_file(py)
     }
 
     /// Empty the contents, keeping the resource.
@@ -2583,13 +2498,7 @@ impl PyIOBase {
     /// and `tell` move and report it, and two cursors advance independently.
     #[pyo3(signature = (position = 0))]
     fn cursor(slf: &Bound<'_, Self>, position: u64) -> PyIOCursor {
-        PyIOCursor {
-            handle: slf.clone().unbind(),
-            position: std::sync::atomic::AtomicU64::new(position),
-            closed: std::sync::atomic::AtomicBool::new(false),
-            reader: std::sync::Mutex::new(None),
-            close_failure: std::sync::Mutex::new(None),
-        }
+        Self::native_cursor(slf, position)
     }
 
     /// The record settings for the encoding this handle's media type names.
@@ -2729,11 +2638,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Overwrite, &options)
+        self.write_stream(reader, IOMode::Overwrite, options, properties)
     }
 
     /// Append the batches `reader` yields after this resource's stored rows.
@@ -2744,11 +2649,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Append, &options)
+        self.write_stream(reader, IOMode::Append, options, properties)
     }
 
     /// Merge the batches `reader` yields by the non-empty match key.
@@ -2759,11 +2660,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, IOMode::Merge, &options)
+        self.write_stream(reader, IOMode::Merge, options, properties)
     }
 
     /// Write the batches `reader` yields using an explicit mode.
@@ -2778,11 +2675,7 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_reader(reader)?;
-        self.write_stream(reader.py(), batches, mode, &options)
+        self.write_stream(reader, mode, options, properties)
     }
 
     /// Replace this resource from exactly one `pyarrow.Table`.
@@ -2793,11 +2686,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_table(table)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |_| {
+            batch_reader_from_arrow_table(table)
+        })
     }
 
     /// Append exactly one `pyarrow.Table` after this resource's rows.
@@ -2808,11 +2699,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_table(table)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |_| {
+            batch_reader_from_arrow_table(table)
+        })
     }
 
     /// Merge exactly one `pyarrow.Table` by `merge_by_names`.
@@ -2823,11 +2712,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_table(table)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |_| {
+            batch_reader_from_arrow_table(table)
+        })
     }
 
     /// Write exactly one `pyarrow.Table` using an explicit mode.
@@ -2840,11 +2727,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_arrow_table(table)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |_| {
+            batch_reader_from_arrow_table(table)
+        })
     }
 
     /// Replace this resource from one held `pyarrow.RecordBatch`.
@@ -2855,14 +2740,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batch = record_batch_from_value(batch)?;
-        self.inner_mut()?
-            .write_arrow_batch(batch, IOMode::Overwrite, &options)
-            .map(PyIOResult::from_core)
-            .map_err(value_error)
+        self.write_batch(batch, IOMode::Overwrite, options, properties)
     }
 
     /// Append one held `pyarrow.RecordBatch` after this resource's rows.
@@ -2873,14 +2751,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batch = record_batch_from_value(batch)?;
-        self.inner_mut()?
-            .write_arrow_batch(batch, IOMode::Append, &options)
-            .map(PyIOResult::from_core)
-            .map_err(value_error)
+        self.write_batch(batch, IOMode::Append, options, properties)
     }
 
     /// Merge one held `pyarrow.RecordBatch` by `merge_by_names`.
@@ -2891,14 +2762,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batch = record_batch_from_value(batch)?;
-        self.inner_mut()?
-            .write_arrow_batch(batch, IOMode::Merge, &options)
-            .map(PyIOResult::from_core)
-            .map_err(value_error)
+        self.write_batch(batch, IOMode::Merge, options, properties)
     }
 
     /// Write exactly one `pyarrow.RecordBatch` using an explicit mode.
@@ -2911,14 +2775,7 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batch = record_batch_from_value(batch)?;
-        self.inner_mut()?
-            .write_arrow_batch(batch, mode, &options)
-            .map(PyIOResult::from_core)
-            .map_err(value_error)
+        self.write_batch(batch, mode, options, properties)
     }
 
     /// Lazily yield this resource as plain mappings or dataclass instances.
@@ -2996,11 +2853,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(mut options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_records(records, &mut options)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |options| {
+            batch_reader_from_records(records, options)
+        })
     }
 
     /// Append an iterable of Python row records after this resource's rows.
@@ -3011,11 +2866,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(mut options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_records(records, &mut options)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |options| {
+            batch_reader_from_records(records, options)
+        })
     }
 
     /// Merge an iterable of Python row records by `merge_by_names`.
@@ -3026,11 +2879,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(mut options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_records(records, &mut options)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |options| {
+            batch_reader_from_records(records, options)
+        })
     }
 
     /// Write an iterable of Python row records using an explicit mode.
@@ -3043,11 +2894,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(mut options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = batch_reader_from_records(records, &mut options)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |options| {
+            batch_reader_from_records(records, options)
+        })
     }
 
     /// Read this resource's rows as a lazy iterator of `pandas` frames.
@@ -3102,11 +2951,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Pandas, options)
+        })
     }
 
     /// Append a stream of `pandas` frames after this resource's rows.
@@ -3117,11 +2964,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Pandas, options)
+        })
     }
 
     /// Merge a stream of `pandas` frames by `merge_by_names`.
@@ -3132,11 +2977,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Pandas, options)
+        })
     }
 
     /// Write a stream of pandas frames using an explicit mode.
@@ -3149,11 +2992,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Pandas, options)
+        })
     }
 
     /// Replace this resource with exactly one `pandas` frame.
@@ -3164,11 +3005,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Pandas)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |_| {
+            frame_reader(frame, Frames::Pandas)
+        })
     }
 
     /// Append exactly one `pandas` frame after this resource's rows.
@@ -3179,11 +3018,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Pandas)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |_| {
+            frame_reader(frame, Frames::Pandas)
+        })
     }
 
     /// Merge exactly one `pandas` frame by `merge_by_names`.
@@ -3194,11 +3031,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Pandas)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |_| {
+            frame_reader(frame, Frames::Pandas)
+        })
     }
 
     /// Write exactly one pandas frame using an explicit mode.
@@ -3211,11 +3046,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Pandas)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |_| {
+            frame_reader(frame, Frames::Pandas)
+        })
     }
 
     /// Read this resource's rows as a lazy iterator of `polars` frames.
@@ -3330,11 +3163,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Polars, options)
+        })
     }
 
     /// Append a stream of `polars` frames after this resource's rows.
@@ -3345,11 +3176,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Polars, options)
+        })
     }
 
     /// Merge a stream of `polars` frames by `merge_by_names`.
@@ -3360,11 +3189,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Polars, options)
+        })
     }
 
     /// Write a stream of polars frames using an explicit mode.
@@ -3377,11 +3204,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |options| {
+            frames_batch_reader(frames, Frames::Polars, options)
+        })
     }
 
     /// Replace this resource with exactly one `polars` frame.
@@ -3392,11 +3217,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Polars)?;
-        self.write_reader(batches, IOMode::Overwrite, &options)
+        self.write_rows(IOMode::Overwrite, options, properties, |_| {
+            frame_reader(frame, Frames::Polars)
+        })
     }
 
     /// Append exactly one `polars` frame after this resource's rows.
@@ -3407,11 +3230,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Polars)?;
-        self.write_reader(batches, IOMode::Append, &options)
+        self.write_rows(IOMode::Append, options, properties, |_| {
+            frame_reader(frame, Frames::Polars)
+        })
     }
 
     /// Merge exactly one `polars` frame by `merge_by_names`.
@@ -3422,11 +3243,9 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
-        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Polars)?;
-        self.write_reader(batches, IOMode::Merge, &options)
+        self.write_rows(IOMode::Merge, options, properties, |_| {
+            frame_reader(frame, Frames::Polars)
+        })
     }
 
     /// Write exactly one polars frame using an explicit mode.
@@ -3439,11 +3258,9 @@ impl PyIOBase {
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<PyIOResult> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options, properties)? else {
-            return Ok(PyIOResult::default());
-        };
-        let batches = frame_batch_reader(frame, Frames::Polars)?;
-        self.write_reader(batches, mode, &options)
+        self.write_rows(mode, options, properties, |_| {
+            frame_reader(frame, Frames::Polars)
+        })
     }
 
     /// The location as text, so `str(handle)` names it.
@@ -3654,6 +3471,27 @@ impl PyIOCursor {
             .map_err(|_| PyValueError::new_err("cursor reader lock is poisoned"))
     }
 
+    /// The bridged filesystem's reader the cursor reads through, opened at
+    /// the cursor's position on first use and kept until a write or `close`.
+    fn bound_reader(
+        &self,
+        bound: &yggdryl::fs::BoundLocation,
+    ) -> PyResult<std::sync::MutexGuard<'_, Option<Box<dyn yggdryl::fs::RandomAccessReader>>>> {
+        let mut slot = self.reader()?;
+        if slot.is_none() {
+            let mut reader = bound
+                .filesystem()
+                .open_input_file(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+            if let Err(error) = reader.seek(std::io::SeekFrom::Start(self.load())) {
+                let _ = reader.close();
+                return Err(crate::holder::fs::storage_error(error));
+            }
+            *slot = Some(reader);
+        }
+        Ok(slot)
+    }
+
     fn close_failure(
         &self,
     ) -> PyResult<std::sync::MutexGuard<'_, Option<crate::holder::fs::StickyFailure>>> {
@@ -3679,18 +3517,7 @@ impl PyIOCursor {
         })?;
         buffer.resize(wanted, 0);
         let read = if let Some(bound) = bound {
-            let mut slot = self.reader()?;
-            if slot.is_none() {
-                let mut reader = bound
-                    .filesystem()
-                    .open_input_file(bound.path())
-                    .map_err(crate::holder::fs::storage_error)?;
-                if let Err(error) = reader.seek(std::io::SeekFrom::Start(position)) {
-                    let _ = reader.close();
-                    return Err(crate::holder::fs::storage_error(error));
-                }
-                *slot = Some(reader);
-            }
+            let mut slot = self.bound_reader(&bound)?;
             let reader = slot
                 .as_mut()
                 .ok_or_else(|| PyValueError::new_err("cursor reader was not initialized"))?;
@@ -3843,18 +3670,7 @@ impl PyIOCursor {
             handle.inner()?.bound_location().cloned()
         };
         if let Some(bound) = bound {
-            let mut slot = self.reader()?;
-            if slot.is_none() {
-                let mut reader = bound
-                    .filesystem()
-                    .open_input_file(bound.path())
-                    .map_err(crate::holder::fs::storage_error)?;
-                if let Err(error) = reader.seek(std::io::SeekFrom::Start(self.load())) {
-                    let _ = reader.close();
-                    return Err(crate::holder::fs::storage_error(error));
-                }
-                *slot = Some(reader);
-            }
+            let mut slot = self.bound_reader(&bound)?;
             let reader = slot
                 .as_mut()
                 .ok_or_else(|| PyValueError::new_err("cursor reader was not initialized"))?;
@@ -3864,15 +3680,11 @@ impl PyIOCursor {
             self.store(target);
             return Ok(target);
         }
+        // `whence` was read above, so 2 is the one left.
         let origin = match whence {
             0 => 0,
             1 => self.load(),
-            2 => self.handle.borrow(py).inner()?.size(),
-            _ => {
-                return Err(PyValueError::new_err(
-                    "whence must be 0 (start), 1 (current), or 2 (end)",
-                ));
-            }
+            _ => self.handle.borrow(py).inner()?.size(),
         };
         let target = origin
             .checked_add_signed(offset)

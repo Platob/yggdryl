@@ -320,8 +320,9 @@ graph_methods!(PyMarketData, "MarketData"; [
     /// of `enums.MARKET_VIEWS`, read ignoring ASCII case - with each of
     /// `lifts`, a `FieldPath` or its text such as
     /// `"identifiers['clordid'] as clordid"` (an identifier column is a map
-    /// from the key's text - `src:type`, the type alone for the base source
-    /// - to the value), appended after the view's own columns;
+    /// from a type's base key - the type alone - to the value; a source's
+    /// statement is side information under `metadata`,
+    /// `identifiers.src:type`), appended after the view's own columns;
     /// `None` is no lifts. `crosscode` is the stored cross code
     /// (`"10:1:ORD-1"`, the exact code of the chain) the `lifecycle` view
     /// follows: that view needs one and every other view refuses one.

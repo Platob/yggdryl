@@ -76,19 +76,6 @@ pub(crate) fn algorithm_from_str(value: &str) -> Result<DigestAlgorithm> {
     DigestAlgorithm::from_str(value).map_err(napi_error)
 }
 
-/// Render a `u128` as the two's-complement-free `BigInt` JavaScript reads.
-fn bigint_from_u128(value: u128) -> BigInt {
-    let bytes = value.to_le_bytes();
-    let mut low = [0_u8; 8];
-    let mut high = [0_u8; 8];
-    low.copy_from_slice(&bytes[..8]);
-    high.copy_from_slice(&bytes[8..]);
-    BigInt {
-        sign_bit: false,
-        words: vec![u64::from_le_bytes(low), u64::from_le_bytes(high)],
-    }
-}
-
 /// Read an unsigned 64-bit `BigInt`, refusing any wider or negative value.
 pub(crate) fn u64_from_bigint(value: &BigInt, name: &str) -> Result<u64> {
     let (signed, value, lossless) = value.get_u64();
@@ -161,7 +148,7 @@ pub fn xxh128_native(
         .map_err(napi_error)?,
         None => yggdryl::xxhash::xxh128_with_seed(content_bytes(&data), seed),
     };
-    Ok(bigint_from_u128(value))
+    Ok(BigInt::from(value))
 }
 
 /// Digest a complete value, carrying the algorithm with the answer.
@@ -261,7 +248,7 @@ impl JsDigest {
         match self.inner.as_u32() {
             Some(value) => Either::A(value),
             None => Either::B(self.inner.as_u64().map_or_else(
-                || bigint_from_u128(self.inner.as_u128().unwrap_or_default()),
+                || BigInt::from(self.inner.as_u128().unwrap_or_default()),
                 BigInt::from,
             )),
         }

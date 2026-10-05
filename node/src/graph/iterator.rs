@@ -6,8 +6,8 @@ use napi_derive::napi;
 use yggdryl::graph::{EventIterator as CoreEventIterator, MarketData as CoreMarketData};
 
 use super::market_data::JsMarketData;
-use super::{AnyMarketData, instant_of, market_data_of};
-use crate::{Failed, Pulled};
+use super::{AnyMarketData, market_data_of};
+use crate::{Failed, Pulled, exact_i64_input};
 
 /// The values a walk reads, once each pulled item is unwrapped to the
 /// native value it holds.
@@ -53,7 +53,7 @@ impl JsEventIterator {
         snapshot_ns: Option<Either<BigInt, f64>>,
     ) -> Result<Self> {
         let snapshot_ns = snapshot_ns
-            .map(|value| instant_of(value, "snapshotNs"))
+            .map(|value| exact_i64_input(value, "snapshotNs"))
             .transpose()?;
         let pulled = Pulled::new(env, pull)?;
         let failed = pulled.failed.clone();

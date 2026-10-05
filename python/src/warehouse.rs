@@ -263,12 +263,7 @@ fn set_property(
         properties.remove(&name);
         return Ok(());
     }
-    let text = if let Ok(flag) = value.cast::<PyBool>() {
-        (if flag.is_true() { "true" } else { "false" }).to_owned()
-    } else {
-        value.str()?.to_str()?.to_owned()
-    };
-    properties.set(name, text);
+    properties.set(name, crate::properties::property_text(value)?);
     Ok(())
 }
 

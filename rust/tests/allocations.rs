@@ -7116,7 +7116,7 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         yggdryl::IOBase::write_all_bytes(&mut source, bridge_lines(rows).as_bytes())
             .expect("the lines");
         let expected = yggdryl::IOBase::url(&source)
-            .expect("a buffer identity")
+            .expect("a located file")
             .to_string();
         let held = read_text_lines(&source, &TextOptions::new())
             .expect("a reader")

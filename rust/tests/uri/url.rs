@@ -391,6 +391,38 @@ mod encoding {
         assert!(hidden.remove_extension());
         assert_eq!(hidden.to_string(), "file:///lake/.env");
     }
+
+    /// `pathlib`'s suffix: the dot optional, an empty one removing the
+    /// extension, a refused one leaving the location as it was.
+    #[test]
+    fn a_suffix_replaces_the_final_extension_with_its_dot_optional() {
+        let mut url = Url::from_str("s3://lake/trades.csv.gz").unwrap();
+        url.set_suffix(".zst").unwrap();
+        assert_eq!(url.to_string(), "s3://lake/trades.csv.zst");
+        url.set_suffix("bz2").unwrap();
+        assert_eq!(url.to_string(), "s3://lake/trades.csv.bz2");
+        for empty in ["", "."] {
+            let mut stripped = url.clone();
+            stripped.set_suffix(empty).unwrap();
+            assert_eq!(stripped.to_string(), "s3://lake/trades.csv", "{empty:?}");
+        }
+
+        // A name with no extension takes one, and an empty suffix keeps it.
+        let mut bare = Url::from_str("file:///lake/README").unwrap();
+        bare.set_suffix("").unwrap();
+        assert_eq!(bare.to_string(), "file:///lake/README");
+        bare.set_suffix(".md").unwrap();
+        assert_eq!(bare.to_string(), "file:///lake/README.md");
+
+        // A suffix no extension spells, or a location naming no file, is
+        // refused and changes nothing.
+        let before = url.clone();
+        assert!(url.set_suffix("a/b").is_err());
+        assert_eq!(url, before);
+        let mut folder = Url::from_str("s3://lake/").unwrap();
+        assert!(folder.set_suffix(".csv").is_err());
+        assert_eq!(folder.to_string(), "s3://lake/");
+    }
 }
 
 mod reference {

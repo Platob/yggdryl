@@ -2494,13 +2494,13 @@ impl BookEvent {
     /// operations and controls first replace only their declared book scope.
     /// A book folds an [`OrderEvent`](super::OrderEvent), a
     /// [`QuoteEvent`](super::QuoteEvent) and a [`SnapshotEvent`], each
-    /// applied order or quote recorded as a delta in the order applied.
-    /// Every input of a kind
-    /// [`MarketDataKind::is_booked`](crate::MarketDataKind::is_booked) does
-    /// not admit - an [`ExecutionEvent`](super::ExecutionEvent), a
-    /// [`TradeEvent`](super::TradeEvent) - is pruned first, so a group of
-    /// nothing else changes nothing: the instant does not advance and the
-    /// deltas stand.
+    /// applied order or quote recorded as a delta in the order applied. An
+    /// [`ExecutionEvent`](super::ExecutionEvent) is recorded among the
+    /// deltas too, moving no side. Every input of a kind
+    /// [`MarketDataKind::is_recorded`](crate::MarketDataKind::is_recorded)
+    /// does not admit - a [`TradeEvent`](super::TradeEvent) - is pruned
+    /// first, so a group of nothing else changes nothing: the instant does
+    /// not advance and the deltas stand.
     ///
     /// An order or a quote rests on every side it states a leg for, as one
     /// entry: an order on the side it takes, a quote - which holds a bid and

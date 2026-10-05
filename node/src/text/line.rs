@@ -233,12 +233,7 @@ impl JsTextEntries {
     /// One entry by position, counting back from the end when negative.
     #[napi(ts_return_type = "TextEntry | null")]
     pub fn at(&self, index: i32) -> Option<JsTextEntry> {
-        let len = self.inner.len();
-        let at = if index < 0 {
-            len.checked_sub(index.unsigned_abs() as usize)?
-        } else {
-            usize::try_from(index).ok()?
-        };
+        let at = crate::array_index(index, self.inner.len())?;
         self.inner
             .as_slice()
             .get(at)

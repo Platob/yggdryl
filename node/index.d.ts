@@ -5064,27 +5064,24 @@ export declare class IOBase {
    */
   static fromFs(filesystem: FileSystemInput, path: string, uri?: string | undefined | null): IOBase
   /**
-   * Hold the resource `uri` names, on the store its scheme selects, under
-   * that store's properties.
-   *
-   * The core's one location door, `Holder::from_url`, for every scheme
-   * this build holds - a `file:` URL the local role, an object-store URL
+   * Hold the resource `uri` names on the store its scheme selects, under
+   * `options`: the core's one location door (`Holder::from_url`), which
+   * the constructor is under no properties, with no file system handler
+   * built on the way - a `file:` URL the local role, an object-store URL
    * the native store, an `http:` one the `GET` of that resource, an
-   * `s3tables:` one the catalog object it names - with no file system
-   * handler built on the way; the constructor is this door under no
-   * properties, and `uri` is read as the constructor reads text. An
-   * object-store location's query states the store's properties too, in
-   * the names its reader takes -
-   * `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`
-   * - which the core reads beneath `options` and takes off the location
-   * the handle reports, refusing a parameter no store reads by name.
-   * `options` is an object of the store's properties in any vocabulary
-   * the core reads - this crate's own names, `PyIceberg`'s, `PyArrow`'s,
-   * each store's environment names, the HTTP options' - beside `media_type`
-   * and `codec`, which every location takes, each winning over the
-   * query's: a string, a boolean or a number is the property's text,
-   * `null` leaves it unstated, and any other value is refused by name. A
-   * property no store reads is ignored, as the core ignores it, and a
+   * `s3tables:` one the catalog object it names. `uri` is read as the
+   * constructor reads text.
+   *
+   * An object-store URL's query states store properties too
+   * (`s3://bucket/key?endpoint_override=minio%3A9000&scheme=http`), read
+   * beneath `options` and taken off the reported location; a parameter
+   * no store reads is refused by name. `options` takes the store's
+   * properties in any vocabulary the core reads - this crate's,
+   * `PyIceberg`'s, `PyArrow`'s, each store's environment names, the HTTP
+   * options' - beside `media_type` and `codec`, which every location
+   * takes, each winning over the query's: a string, a boolean or a
+   * number is the property's text, `null` leaves it unstated, anything
+   * else is refused by name. A property no store reads is ignored; a
    * scheme no backend of this build holds is refused by that scheme.
    */
   static fromUri(uri: string, options?: Record<string, any> | undefined | null): IOBase
@@ -5885,9 +5882,10 @@ export declare class MarketData {
    * `10:1:ORD-1`, the exact code of the chain - the one view that takes
    * one - read ignoring ASCII case, with each lift, a `FieldPath` read
    * once (`identifiers['clordid'] as clordid`: an identifier column is a
-   * map from the key's text - `src:type`, the type alone for the base
-   * source - to the value), appended as a projection after the
-   * view's own columns. Built structurally; its text reads back as the
+   * map from a type's base key - the type alone - to the value; a
+   * source's statement is side information under `metadata`,
+   * `identifiers.src:type`), appended as a projection after the view's
+   * own columns. Built structurally; its text reads back as the
    * same plan.
    */
   static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
@@ -11605,8 +11603,8 @@ export interface BookLimit {
  */
 export interface BookRefInput {
   /**
-   * The update action, read through `MdUpdateAction::read`, refusing text
-   * that names no spelling.
+   * The update action, read through `MdUpdateAction`'s `FromStr`,
+   * refusing text that names no spelling.
    */
   action?: string | null
   /** The book scope this control belongs to. */

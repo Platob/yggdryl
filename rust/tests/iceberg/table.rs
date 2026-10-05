@@ -283,6 +283,48 @@ mod iceberg {
         yggdryl::arrow::batch_reader(batch.schema(), [batch])
     }
 
+    #[test]
+    fn per_call_options_shadow_the_override_for_the_call_alone() {
+        let path = root("call-options");
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let retries = |table: &IcebergTable<LocalFolder>| {
+            table
+                .explicit_options()
+                .and_then(IcebergOptions::commit_retries_option)
+        };
+
+        // None runs the call as the table stands, with no override at all.
+        assert_eq!(table.with_call_options(None, |table| retries(table)), None);
+
+        // An override the table had is shadowed for the call, then put back,
+        // whatever the call answered.
+        table.set_options(IcebergOptions::new().with_commit_retries(2));
+        let seen = table.with_call_options(
+            Some(IcebergOptions::new().with_commit_retries(5)),
+            |table| (retries(table), table.options().unwrap().commit_retries()),
+        );
+        assert_eq!(seen, (Some(5), 5));
+        assert_eq!(retries(&table), Some(2));
+        let failed: Result<(), &str> = table
+            .with_call_options(Some(IcebergOptions::new().with_commit_retries(9)), |_| {
+                Err("refused")
+            });
+        assert_eq!(failed, Err("refused"));
+        assert_eq!(retries(&table), Some(2));
+
+        // A table with no override is left with none.
+        table.clear_options();
+        table.with_call_options(Some(IcebergOptions::new().with_commit_retries(5)), |_| ());
+        assert!(table.explicit_options().is_none());
+        std::fs::remove_dir_all(&path).unwrap();
+    }
+
     fn order_by_symbol() -> &'static SortOrder {
         use std::sync::OnceLock;
         static ORDER: OnceLock<SortOrder> = OnceLock::new();

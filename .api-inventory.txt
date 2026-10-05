@@ -1483,10 +1483,12 @@ pub enum MdUpdateAction { New = 0, Change = 1, Delete = 2, DeleteThru = 3, Delet
   pub const ALL: [Self; 7] = [ Self::New, Self::Change, Self::Delete, Self::DeleteThru, Self::DeleteFrom, Self::Overlay, Self::Snapshot, ]
   pub const fn as_str(self) -> &'static str  (the FIX code, or `snapshot`)
   pub fn read(text: &str) -> Option<Self>  (the code, the code set's name folded, or the legacy `SNAPSHOT`)
+  impl FromStr: fn from_str(text: &str) -> Result<Self>  (`read`, refusing text naming no action with `Error::Parse` - `unknown MdUpdateAction "9"; expected one of ["0", ..., "snapshot"]`)
   pub const fn is_range_delete(self) -> bool  (delete-through or delete-from)
   pub const fn is_partial(self) -> bool  (a change or an overlay, which inherits what it leaves unstated)
 pub struct BookRef { pub action: Option<MdUpdateAction>, pub scope: Option<SmolStr>, pub position: Option<u32>, pub entry_px: Option<Decimal>, pub entry_size: Option<Decimal> }  (the typed book-control facts a market-data entry carries - the update action, the scope, `MDEntryPositionNo(290)`, and `MDEntryPx(270)` and `MDEntrySize(271)` as stated, so a partial update still knows what it stated - never an identifier: the entry's own and referenced identifiers are the operation's `mdentryid` and `mdentryrefid` identifiers. the scope, the action and the position are row columns (`bookscope`, `bookaction`, `bookposition`), which a book's deltas replay by, and only the scope feeds the operation's digest; Clone, Debug, Default, Eq, PartialEq)
   pub fn is_stated(&self) -> bool  (whether any control fact is stated)
+  pub fn stable_hash(&self) -> u64  (the five slots - the action's stored spelling, the scope, the position, the two decimals - as one sequence `Scalar`, an unstated slot null, digested by `Scalar::stable_hash`; what both bindings' hashes answer)
 pub struct OperationElement<K: OperationKind>  (one operation with no instant: the element, market and operation facts; Clone, Debug, PartialEq, Default)
   pub fn new() -> Self  (stating nothing, not yet finalized)
   pub const fn kind(&self) -> MarketKind  (`K::KIND`)
@@ -2629,6 +2631,7 @@ pub enum Holder
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn from_url<K, V>(location: impl AsRef<Uri>, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where  (a Url, or an identifier read once through `Uri::locator` - a relative path, URN, ARN; the scheme picks the backend: `file:` a LocalPath or ZIP member, an object store under `s3`, `http:`/`https:` under `http`, under `s3tables` an `s3tables://<bucket>[/<namespace>[/<table>]]` location or S3 Tables ARN as the catalog or namespace it names at no request, or the table at 1 `GetTableMetadataLocation` after the 1 `ListTableBuckets` per page a location stating neither the bucket's ARN nor its account pays (a table's ARN 1 `GetTable`), deeper refused at `$.url`; `media_type` and `codec` read for a byte backend)
+  pub fn folder_from_url(url: &Url) -> Result<Self>  (`url` held as a container, touching nothing: `http:`/`https:` an `HttpSession` whose base URL is the location under `http`, an object-store URL its `S3Folder` under `s3`, a `file:` URL its `LocalFolder`; any other scheme - or one this build has no backend for - `Error::Unsupported` naming it)
   pub fn zip(handle: Self) -> Self
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
@@ -2834,7 +2837,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn applied_codec(&self) -> Codec  (the coding a decoded view applies; identity for stored bytes, what `compress_into`/`decompress_into` refuse otherwise)
   fn uri(&self) -> Option<&Uri>
   fn url(&self) -> Option<&Url>
-  fn local_url(&self) -> Option<&Url>  (the `file:` URL of bare local storage - a `Holder` holding a `LocalFile` or a `LocalPath` - `None` for every other handle, a wrapper over one included; what `move_into` reads to rename rather than copy)
+  fn local_url(&self) -> Option<&Url>  (the `file:` URL of bare local storage - a `LocalFile` or a `LocalPath`, and a `Holder` holding one bare or under a text or record configuration, which passes the bytes through unchanged; `None` for a cache, a coding or any other backend, since a rename beneath a cache or a coding would bypass it; what `move_into` reads to rename rather than copy)
   fn mtime(&self) -> Option<i64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>
@@ -3400,6 +3403,7 @@ pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
 pub fn set_options(&mut self, options: IcebergOptions)
   pub fn explicit_options(&self) -> Option<&IcebergOptions>
   pub fn clear_options(&mut self) -> Option<IcebergOptions>
+  pub fn with_call_options<R>(&mut self, options: Option<IcebergOptions>, operation: impl FnOnce(&mut Self) -> R) -> R  (`operation` under `options` as the explicit override, the override the table had put back whatever it answered; `None` runs it as the table stands)
   pub fn options(&self) -> Result<IcebergOptions>
   pub fn write_staging(&self) -> Result<WriteStaging>
   pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
@@ -7579,6 +7583,7 @@ pub struct Authority(SmolStr);
   pub fn set_file_name(&mut self, value: &str) -> Result<()>
   pub fn set_stem(&mut self, value: &str) -> Result<()>
   pub fn set_extension(&mut self, value: &str) -> Result<()>
+  pub fn set_suffix(&mut self, value: &str) -> Result<()>  (pathlib's `with_suffix`: the leading dot optional, an empty suffix or a lone dot removing the final extension; otherwise `set_extension`, an error leaving the URL unchanged)
   pub fn set_extensions<I, S>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
   pub fn set_mime_type(&mut self, value: MimeType) -> Result<()>
   pub fn set_media_type(&mut self, value: MediaType) -> Result<()>

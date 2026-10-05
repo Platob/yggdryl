@@ -647,6 +647,7 @@ KNOWN_MIME_TYPES = {
     "CSS": "text/css",
     "JAVASCRIPT": "text/javascript",
     "XML": "application/xml",
+    "XMLA": "application/xmla+xml",
     "HTTP": "message/http",
     "PDF": "application/pdf",
     "CBOR": "application/cbor",
@@ -690,7 +691,7 @@ KNOWN_MIME_TYPES = {
 
 
 def test_mime_type_complete_known_constants_and_default() -> None:
-    assert len(KNOWN_MIME_TYPES) == 62
+    assert len(KNOWN_MIME_TYPES) == 63
     assert MimeType() == MimeType.OCTET_STREAM
     values = []
     for name, canonical in KNOWN_MIME_TYPES.items():
@@ -725,6 +726,7 @@ def test_mime_type_native_parsing_views_and_value_protocols(
     assert custom.is_structured()
 
     assert MimeType.from_extension(".json") == MimeType.JSON
+    assert MimeType.from_extension(".xmla") == MimeType.XMLA
     assert MimeType.from_extension(".puffin") == MimeType.PUFFIN
     assert MimeType.PUFFIN.extension == "puffin"
     assert MimeType.PUFFIN.is_binary()

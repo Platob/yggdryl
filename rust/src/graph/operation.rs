@@ -16,14 +16,15 @@
 //! [`ExecutionEvent`].
 
 use std::marker::PhantomData;
+use std::str::FromStr;
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::element::Staged;
 use super::facts::{OperationEventFacts, OperationFacts};
 use super::kind::MarketKind;
 use super::{Element, Event, Market, Operation};
-use crate::{Decimal, Uuid};
+use crate::{Decimal, Error, Scalar, Uuid};
 
 mod sealed {
     pub trait Sealed {}
@@ -125,7 +126,8 @@ impl MdUpdateAction {
     }
 
     /// The action a spelling names: the code, the name folded, or the
-    /// legacy `SNAPSHOT`; `None` for any other text.
+    /// legacy `SNAPSHOT`; `None` for any other text. [`FromStr`] is the
+    /// same reading, refusing what this answers `None` for.
     #[must_use]
     pub fn read(text: &str) -> Option<Self> {
         let text = text.trim();
@@ -146,6 +148,23 @@ impl MdUpdateAction {
     #[must_use]
     pub const fn is_partial(self) -> bool {
         matches!(self, Self::Change | Self::Overlay)
+    }
+}
+
+impl FromStr for MdUpdateAction {
+    type Err = Error;
+
+    /// [`MdUpdateAction::read`], refusing text that names no action with
+    /// every stored spelling.
+    fn from_str(text: &str) -> crate::Result<Self> {
+        Self::read(text).ok_or_else(|| Error::Parse {
+            target: "MdUpdateAction",
+            position: 0,
+            reason: format_smolstr!(
+                "unknown MdUpdateAction {text:?}; expected one of {:?}",
+                Self::ALL.map(Self::as_str)
+            ),
+        })
     }
 }
 
@@ -183,6 +202,23 @@ impl BookRef {
             || self.position.is_some()
             || self.entry_px.is_some()
             || self.entry_size.is_some()
+    }
+
+    /// The control's own stable hash: its five slots - the action as its
+    /// stored spelling, the scope, the position and the two decimals - as
+    /// one sequence `Scalar`, a slot it states nothing in a null, digested
+    /// by [`Scalar::stable_hash`], so equal controls share it.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        Scalar::from_sequence([
+            self.action
+                .map_or(Scalar::Null, |action| Scalar::from(action.as_str())),
+            self.scope.clone().map_or(Scalar::Null, Scalar::from),
+            self.position.map_or(Scalar::Null, Scalar::from),
+            self.entry_px.map_or(Scalar::Null, Scalar::from),
+            self.entry_size.map_or(Scalar::Null, Scalar::from),
+        ])
+        .stable_hash()
     }
 
     /// Feeds the one control fact a row states, the scope.

@@ -116,7 +116,6 @@ const handle: IOBase = IOBase.fromFs(
   'bucket/v=a%2Fb.arrows',
   's3://bucket/v=a%2Fb.arrows',
 )
-const local: IOBase = IOBase.fromUri('file:///tmp/key.bin')
 const filesystem: object | null = handle.filesystem
 const rawPath: string | null = handle.path
 const boundUri: string | null = handle.boundUri
@@ -141,7 +140,6 @@ const imprecise: ArrowFileInfo = { path: 'x', kind: 'file', size: 12 }
 
 void kind
 void info
-void local
 void filesystem
 void rawPath
 void boundUri

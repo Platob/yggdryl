@@ -21,13 +21,13 @@ use crate::expression::{SelectorInput, selector_from_input};
 use crate::field::JsField;
 use crate::iomedia::JsBatchReader;
 use crate::join::{JoinOptionsInput, join_kind, join_options};
-use crate::napi_error;
 use crate::serie::{
-    JsSerie, JsSerieIterator, OrderingsInput, arrow_arrays_ipc, arrow_batches, count, orderings_of,
-    position, sort_options, spelled_orderings,
+    JsSerie, JsSerieIterator, OrderingsInput, arrow_arrays_ipc, arrow_batches, cast_target, count,
+    orderings_of, sort_options, spelled_orderings,
 };
 use crate::spill::{JsSpillOptions, spill_bound};
 use crate::text::codec::{JsScalar, checked_depth, value_to_transport_with_field};
+use crate::{exact_usize, napi_error};
 
 /// Many columns under one field, held apart: a chunked array, or a table.
 ///
@@ -200,7 +200,7 @@ impl JsChunkedSerie {
     pub fn chunk_native(&self, index: f64) -> Result<Option<JsSerie>> {
         Ok(self
             .inner
-            .chunk(position(index, "index")?)
+            .chunk(exact_usize(index, "index")?)
             .cloned()
             .map(JsSerie::from_core))
     }
@@ -221,7 +221,7 @@ impl JsChunkedSerie {
     #[napi]
     pub fn is_null(&self, index: f64) -> Result<bool> {
         self.inner
-            .is_null(position(index, "index")?)
+            .is_null(exact_usize(index, "index")?)
             .map_err(napi_error)
     }
 
@@ -229,7 +229,7 @@ impl JsChunkedSerie {
     #[napi]
     pub fn scalar(&self, index: f64) -> Result<JsScalar> {
         self.inner
-            .scalar(position(index, "index")?)
+            .scalar(exact_usize(index, "index")?)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
@@ -239,7 +239,7 @@ impl JsChunkedSerie {
     pub fn at(&self, index: f64) -> Result<Option<JsScalar>> {
         Ok(self
             .inner
-            .get(position(index, "index")?)
+            .get(exact_usize(index, "index")?)
             .map(JsScalar::from_core))
     }
 
@@ -273,7 +273,10 @@ impl JsChunkedSerie {
     #[napi]
     pub fn slice(&self, offset: f64, length: f64) -> Result<Self> {
         self.inner
-            .slice(position(offset, "offset")?, position(length, "length")?)
+            .slice(
+                exact_usize(offset, "offset")?,
+                exact_usize(length, "length")?,
+            )
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -290,7 +293,7 @@ impl JsChunkedSerie {
     pub fn child_at(&self, index: f64) -> Result<Option<JsChunkedSerie>> {
         Ok(self
             .inner
-            .child_at(position(index, "index")?)
+            .child_at(exact_usize(index, "index")?)
             .map(Self::from_core))
     }
 
@@ -353,10 +356,7 @@ impl JsChunkedSerie {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, representation.as_deref())?;
-        let target = match target {
-            Either::A(field) => field.inner.clone(),
-            Either::B(dtype) => dtype.inner.clone().required_field("value"),
-        };
+        let target = cast_target(target);
         self.inner
             .cast(&target, options)
             .map(Self::from_core)

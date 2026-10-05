@@ -14,9 +14,8 @@
 //! bound once when the plan is compiled, evaluated once per batch into a
 //! column landed beside the batch's own, and fed from there like any column. That exhaustiveness is
 //! the compiler's: [`DataType`] is matched arm by arm, so a datatype added to
-//! the model cannot reach a digest without a decision here. `variant` is the
-//! one datatype a column refuses, because its binary encoding lands with the
-//! Iceberg v3 layer and the boundary has no value to feed.
+//! the model cannot reach a digest without a decision here. A `variant`
+//! column feeds the values it decodes to, never the bytes it is stored as.
 
 use std::collections::HashSet;
 use std::hash::Hasher;

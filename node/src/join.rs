@@ -80,10 +80,7 @@ pub(crate) fn join_options(options: Option<JoinOptionsInput<'_>>) -> Result<Join
         joined = joined.with_spill(spill.inner.clone());
     }
     if let Some(keys) = optional(options.pushdown_keys) {
-        let keys = crate::exact_u64(keys, "pushdownKeys")?;
-        joined = joined.with_pushdown_keys(usize::try_from(keys).map_err(|_| {
-            napi_error(format!("pushdownKeys {keys} exceeds this platform's range"))
-        })?);
+        joined = joined.with_pushdown_keys(crate::exact_usize(keys, "pushdownKeys")?);
     }
     Ok(joined)
 }

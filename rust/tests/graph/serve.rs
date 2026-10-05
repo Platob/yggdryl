@@ -629,6 +629,7 @@ fn an_iceberg_table_a_capture_landed_in_answers_every_route() {
 /// data file, cut to nothing, is never read for a key alive at the instant,
 /// while the same lookup with no grid stated reads the key's rows whole and
 /// fails on it.
+#[cfg(feature = "iceberg")]
 #[test]
 fn a_book_under_the_grid_opens_the_partitions_of_its_window_alone() {
     use yggdryl::iceberg::{FormatVersion, IcebergTable, PartitionSpec, assign_field_ids};
@@ -702,6 +703,7 @@ fn a_book_under_the_grid_opens_the_partitions_of_its_window_alone() {
 }
 
 /// Every file below `folder`, recursively.
+#[cfg(feature = "iceberg")]
 fn walkdir(folder: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
     let mut pending = vec![folder.to_path_buf()];

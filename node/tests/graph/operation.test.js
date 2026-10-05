@@ -269,7 +269,10 @@ test('BookRef: every slot reads back typed', () => {
   assert.ok(control.isStated() && control.isPartial())
   assert.ok(!control.isRangeDelete())
   assert.ok(!new graph.BookRef().isStated())
-  assert.throws(() => new graph.BookRef({ action: '9' }), /unknown MdUpdateAction/)
+  assert.throws(
+    () => new graph.BookRef({ action: '9' }),
+    /unknown MdUpdateAction "9"; expected one of \["0", "1", "2", "3", "4", "5", "snapshot"\]/,
+  )
 })
 
 test('BookRef: a slot crosses the same door a fact does', () => {

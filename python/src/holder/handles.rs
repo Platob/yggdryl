@@ -121,10 +121,12 @@ fn local_holder(
 /// bridged as a bound location, `uri` the caller's spelling of it.
 pub(crate) fn fs_holder(
     filesystem: &Bound<'_, PyAny>,
-    path: String,
-    uri: Option<String>,
+    path: &Bound<'_, PyAny>,
+    uri: Option<&Bound<'_, PyAny>>,
     role: NativeRole,
 ) -> PyResult<Holder> {
+    let path = crate::uri::path_string_from_value(path)?;
+    let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
     if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
         return Err(PyValueError::new_err(format!(
             "expected a pyarrow.fs.FileSystem, got {}",
@@ -150,19 +152,6 @@ pub(crate) fn fs_holder(
         NativeRole::File => Holder::FsFile(yggdryl::fs::FsFile::new(bound)),
         NativeRole::Folder => Holder::FsFolder(yggdryl::fs::FsFolder::new(bound)),
     })
-}
-
-/// Describe the role `fs_holder` answers for the three explicit spellings.
-fn fs_role(
-    py: Python<'_>,
-    filesystem: &Bound<'_, PyAny>,
-    path: &Bound<'_, PyAny>,
-    uri: Option<&Bound<'_, PyAny>>,
-    role: NativeRole,
-) -> PyResult<Py<PyAny>> {
-    let path = crate::uri::path_string_from_value(path)?;
-    let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
-    crate::iobase::describe(py, fs_holder(filesystem, path, uri, role)?)
 }
 
 #[pymethods]
@@ -284,7 +273,7 @@ impl PyFsPath {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        fs_role(py, filesystem, path, uri, NativeRole::Path)
+        crate::iobase::describe(py, fs_holder(filesystem, path, uri, NativeRole::Path)?)
     }
 
     /// Read this foreign-filesystem location as a stream-backed file.
@@ -324,7 +313,7 @@ impl PyFsFile {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        fs_role(py, filesystem, path, uri, NativeRole::File)
+        crate::iobase::describe(py, fs_holder(filesystem, path, uri, NativeRole::File)?)
     }
 }
 
@@ -341,7 +330,7 @@ impl PyFsFolder {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        fs_role(py, filesystem, path, uri, NativeRole::Folder)
+        crate::iobase::describe(py, fs_holder(filesystem, path, uri, NativeRole::Folder)?)
     }
 }
 
@@ -389,31 +378,21 @@ fn s3_holder(
     )))
 }
 
-/// Read an options mapping in whichever vocabulary it is written in.
-///
-/// `PyIceberg`'s `s3.*`, `gcs.*` and `adls.*` property names, `PyArrow`'s
-/// filesystem arguments, and each store's own environment names are all read;
-/// anything else is ignored, so a catalog's properties can be handed over
-/// whole. Values are taken as their text, so `True` and `30` are as good as
-/// `"true"` and `"30"`.
-/// The store options `options` - a mapping in any vocabulary the core reads,
-/// its unknown names ignored as a catalog's whole bag carries them - and
-/// then `properties`, the same knobs by keyword, a name no knob owns skipped
-/// with an `UnknownPropertyWarning`.
+/// The store options `options` states - a mapping in any vocabulary the core
+/// reads: `PyIceberg`'s `s3.*`, `gcs.*` and `adls.*` names, `PyArrow`'s
+/// filesystem arguments, each store's own environment names, any other name
+/// ignored, so a catalog's properties can be handed over whole - and then
+/// `properties`, the same knobs by keyword, a name no knob owns skipped with
+/// an `UnknownPropertyWarning`. A value is taken as its text, so `True` and
+/// `30` are as good as `"true"` and `"30"`.
 fn s3_options(
     options: Option<&Bound<'_, pyo3::types::PyDict>>,
     properties: Option<&Bound<'_, pyo3::types::PyDict>>,
 ) -> PyResult<S3Options> {
-    let mut pairs: Vec<(String, String)> = Vec::new();
-    if let Some(options) = options {
-        pairs.reserve(options.len());
-        for (name, value) in options {
-            if value.is_none() {
-                continue;
-            }
-            pairs.push((name.str()?.extract()?, value.str()?.extract()?));
-        }
-    }
+    let mut pairs = match options {
+        Some(options) => crate::properties::mapping_pairs(options.as_any())?,
+        None => Vec::new(),
+    };
     pairs.extend(crate::properties::property_pairs(
         "S3Options",
         properties,

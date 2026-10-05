@@ -105,14 +105,45 @@ fn edit_distance(left: &str, right: &str) -> usize {
     previous[right.len()]
 }
 
+/// The text a property value is stated as: a `bool` spelled `true` or
+/// `false`, anything else as `str()` spells it, so `True` and `30` are as
+/// good as `"true"` and `"30"`.
+pub(crate) fn property_text(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    if let Ok(flag) = value.cast::<pyo3::types::PyBool>() {
+        return Ok(if flag.is_true() { "true" } else { "false" }.to_owned());
+    }
+    Ok(value.str()?.to_str()?.to_owned())
+}
+
+/// The `(name, value)` text pairs of an options mapping, or of an iterable
+/// of pairs: `None` skipped as not given, each value its [`property_text`].
+/// Every name crosses - a store reader ignores one it does not know, as a
+/// catalog's whole bag carries them.
+pub(crate) fn mapping_pairs(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
+    let items = if value.hasattr("items")? {
+        value.call_method0("items")?
+    } else {
+        value.clone()
+    };
+    let mut pairs = Vec::new();
+    for item in items.try_iter()? {
+        let (name, member): (Bound<'_, PyAny>, Bound<'_, PyAny>) = item?.extract()?;
+        if member.is_none() {
+            continue;
+        }
+        pairs.push((name.str()?.to_str()?.to_owned(), property_text(&member)?));
+    }
+    Ok(pairs)
+}
+
 /// The `(name, value)` text pairs a string-keyed options door reads out of
 /// `properties`, the keywords beside its mapping.
 ///
-/// `...` and `None` are skipped as not given, a `bool` is spelled `true` or
-/// `false`, anything else as `str()` spells it; a name `is_property` answers
-/// `false` for is skipped with an `UnknownPropertyWarning` naming the closest
-/// of `candidates`. The core reads the pairs, so what a name means - and
-/// every refusal of a value - stays the core's.
+/// `...` and `None` are skipped as not given, a value is its
+/// [`property_text`]; a name `is_property` answers `false` for is skipped
+/// with an `UnknownPropertyWarning` naming the closest of `candidates`. The
+/// core reads the pairs, so what a name means - and every refusal of a value
+/// - stays the core's.
 pub(crate) fn property_pairs(
     owner: &str,
     properties: Option<&Bound<'_, PyDict>>,
@@ -134,12 +165,7 @@ pub(crate) fn property_pairs(
         if value.is(&ellipsis) || value.is_none() {
             continue;
         }
-        let text = if let Ok(flag) = value.cast::<pyo3::types::PyBool>() {
-            if flag.is_true() { "true" } else { "false" }.to_owned()
-        } else {
-            value.str()?.to_str()?.to_owned()
-        };
-        pairs.push((name.to_owned(), text));
+        pairs.push((name.to_owned(), property_text(&value)?));
     }
     Ok(pairs)
 }

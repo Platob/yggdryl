@@ -7,18 +7,18 @@
 //! cell: the walk is the core's, the row the core's field, the JSON the
 //! core's codec under that field.
 
-use napi::bindgen_prelude::{BigInt, ClassInstance, Either, Either4, Env, Function, Result};
+use napi::bindgen_prelude::{BigInt, ClassInstance, Either4, Env, Function, Result};
 use napi_derive::napi;
 use yggdryl::graph::{
     BookEvent as CoreBookEvent, Candle as CoreCandle, CandleIterator as CoreCandleIterator,
     CandleOptions as CoreCandleOptions, Ohlc,
 };
 
-use super::{AnyMarketData, decimal_text, instant_of, market_data_of};
+use super::{AnyMarketData, decimal_text, market_data_of};
 use crate::field::JsField;
 use crate::text::codec::JsScalar;
 use crate::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
-use crate::{Failed, Pulled, exact_f64, javascript_failure, napi_error};
+use crate::{Failed, Pulled, exact_bigint, exact_f64, exact_i64, javascript_failure, napi_error};
 
 /// One reading's open, high, low and close over a bucket, each as decimal
 /// text: the plain object a candle's `bid`, `ask`, `mid` and `spread` are.
@@ -248,8 +248,8 @@ pub(crate) fn candle_options_from_input(
     let options = match value {
         Either4::A(options) => return Ok(options.inner.clone()),
         Either4::B(spelling) => CoreCandleOptions::from_spelling(&spelling),
-        Either4::C(count) => CoreCandleOptions::new(instant_of(Either::A(count), "interval")?),
-        Either4::D(count) => CoreCandleOptions::new(instant_of(Either::B(count), "interval")?),
+        Either4::C(count) => CoreCandleOptions::new(exact_bigint(&count, "interval")?),
+        Either4::D(count) => CoreCandleOptions::new(exact_i64(count, "interval")?),
     };
     options.map_err(napi_error)
 }

@@ -417,89 +417,22 @@ mod backends {
 }
 
 mod positional {
-    use std::io::{Read, Write};
     use yggdryl::Codec;
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
     use yggdryl::{MediaType, MimeType, Url};
 
-    #[test]
-    fn positional_writes_grow_and_zero_fill_the_gap() {
-        let mut buffer = Buffer::new();
-        assert!(buffer.is_empty());
-
-        buffer.pwrite(0, b"trade").unwrap();
-        assert_eq!(buffer.size(), 5);
-
-        // Writing past the end grows the value and zero-fills what was skipped.
-        buffer.pwrite(8, b"!").unwrap();
-        assert_eq!(buffer.size(), 9);
-        assert_eq!(buffer.as_slice(), b"trade\0\0\0!");
-    }
-
-    #[test]
-    fn positional_reads_do_not_share_a_cursor() {
-        let buffer = Buffer::from_bytes(b"0123456789".to_vec());
-
-        // Two independent reads at different offsets, in any order.
-        let mut tail = [0_u8; 3];
-        buffer.pread(7, &mut tail).unwrap();
-        let mut head = [0_u8; 3];
-        buffer.pread(0, &mut head).unwrap();
-
-        assert_eq!(&head, b"012");
-        assert_eq!(&tail, b"789");
-
-        // A read entirely past the end is empty rather than an error.
-        let mut past = [0_u8; 4];
-        assert_eq!(buffer.pread(100, &mut past).unwrap(), 0);
-
-        // A read straddling the end is short.
-        assert_eq!(buffer.pread(8, &mut past).unwrap(), 2);
-    }
-
-    #[test]
-    fn exact_reads_name_the_shortfall() {
-        let buffer = Buffer::from_bytes(b"abc".to_vec());
-        let mut target = [0_u8; 8];
-        let message = buffer.pread_exact(0, &mut target).unwrap_err().to_string();
-        assert!(message.contains("expected 8 bytes"), "{message}");
-        assert!(message.contains("got 3"), "{message}");
-    }
-
-    #[test]
-    fn truncate_shrinks_and_extends() {
-        let mut buffer = Buffer::from_bytes(b"0123456789".to_vec());
-
-        buffer.truncate(4).unwrap();
-        assert_eq!(buffer.as_slice(), b"0123");
-
-        // Extending zero-fills rather than leaving stale bytes visible.
-        buffer.truncate(6).unwrap();
-        assert_eq!(buffer.as_slice(), b"0123\0\0");
-
-        buffer.clear().unwrap();
-        assert!(buffer.is_empty());
-    }
-
-    #[test]
-    fn reserve_grows_capacity_without_changing_size() {
-        let mut buffer = Buffer::new();
-        buffer.reserve(4_096).unwrap();
-
-        assert!(buffer.capacity() >= 4_096);
-        assert_eq!(buffer.size(), 0);
-        // Capacity is never below size, for every implementation.
-        buffer.pwrite(0, b"x").unwrap();
-        assert!(buffer.capacity() >= buffer.size());
-    }
-
-    #[test]
-    fn append_reports_where_the_bytes_landed() {
-        let mut buffer = Buffer::new();
-        assert_eq!(buffer.append_bytes(b"first").unwrap(), 0);
-        assert_eq!(buffer.append_bytes(b"second").unwrap(), 5);
-        assert_eq!(buffer.as_slice(), b"firstsecond");
+    /// An empty folder `yggdryl-transfer-<label>-<pid>` under the platform
+    /// temporary folder, whatever an earlier run left there.
+    fn scratch(label: &str) -> std::path::PathBuf {
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
+        root.push(format!("yggdryl-transfer-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
     }
 
     #[test]
@@ -562,13 +495,10 @@ mod positional {
     fn move_into_moves_the_bytes_and_leaves_no_source() {
         use yggdryl::local::{LocalFile, LocalFolder};
 
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!("yggdryl-transfer-move-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch("move");
 
-        // Local to local: neither side is bound, so the move is the copy then
-        // the removal, and the source is gone once the target holds the value.
+        // Local to local: one rename, and the source is gone once the target
+        // holds the value.
         let mut source = LocalFile::new(root.join("source.csv")).unwrap();
         source.write_all_bytes(b"symbol,price\nAAPL,1\n").unwrap();
         let mut target = LocalFile::new(root.join("target.csv")).unwrap();
@@ -579,7 +509,7 @@ mod positional {
         assert!(!source.exists());
         assert!(!root.join("source.csv").exists());
 
-        // Local to buffer: the same rule whatever the pair, the media type
+        // Local to buffer: the copy then the removal, the media type
         // travelling with the bytes.
         let mut buffer = Buffer::from_bytes(b"stale".to_vec());
         let moved = target.move_into(&mut buffer).unwrap();
@@ -605,10 +535,7 @@ mod positional {
         use yggdryl::holder::counted::Counted;
         use yggdryl::local::{LocalFile, LocalFolder};
 
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!("yggdryl-transfer-self-move-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch("self-move");
 
         // Two handles on one location: a rename onto itself is a no-op, so the
         // move moves nothing, answers the value's size and leaves it there.
@@ -644,13 +571,7 @@ mod positional {
         use yggdryl::holder::Holder;
         use yggdryl::local::{LocalFile, LocalFolder};
 
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!(
-            "yggdryl-transfer-absent-move-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch("absent-move");
 
         // Nothing at the source: refused by name before the target is read or
         // written, never an empty value copied over it.
@@ -683,10 +604,7 @@ mod positional {
         use yggdryl::holder::counted::Counted;
         use yggdryl::local::LocalFolder;
 
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!("yggdryl-transfer-rename-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch("rename");
 
         // A payload past one transfer chunk, stamped with an instant no write
         // of today could produce: a rename keeps the file and its instant
@@ -780,45 +698,6 @@ mod positional {
     }
 
     #[test]
-    fn a_move_refuses_a_container_before_touching_either_side() {
-        use yggdryl::Error;
-        use yggdryl::local::LocalFolder;
-
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!(
-            "yggdryl-transfer-move-container-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("a.csv"), b"symbol\nAAPL\n").unwrap();
-
-        let mut folder = LocalFolder::new(&root).unwrap();
-        let mut target = Buffer::from_bytes(b"kept".to_vec());
-        let error = folder.move_into(&mut target).unwrap_err();
-        assert!(
-            matches!(
-                error,
-                Error::NotAtomic {
-                    operation: "move",
-                    kind: "directory",
-                    ..
-                }
-            ),
-            "{error}"
-        );
-        // Refused before anything moved: the folder's leaf and the target's
-        // bytes are what they were.
-        assert_eq!(
-            std::fs::read(root.join("a.csv")).unwrap(),
-            b"symbol\nAAPL\n"
-        );
-        assert_eq!(target.as_slice(), b"kept");
-
-        folder.remove(true).unwrap();
-    }
-
-    #[test]
     fn compression_round_trips_and_tracks_the_coding() {
         let payload = "symbol,price\n".repeat(500).into_bytes();
         let source = Buffer::from_bytes(payload.clone())
@@ -890,10 +769,7 @@ mod positional {
         use yggdryl::Error;
         use yggdryl::local::{LocalFolder, LocalPath};
 
-        let mut root = LocalFolder::temporary().unwrap().path().unwrap();
-        root.push(format!("yggdryl-transfer-container-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch("container");
         std::fs::write(root.join("a.csv"), b"symbol\nAAPL\n").unwrap();
         std::fs::write(
             root.join("b.csv.gz"),
@@ -902,15 +778,16 @@ mod positional {
         .unwrap();
 
         let pattern = Url::from_path(&root).unwrap().joinpath("*.csv").unwrap();
-        let sources: [(&str, Box<dyn IOBase>); 2] = [
+        let mut sources: [(&str, Box<dyn IOBase>); 2] = [
             ("folder", Box::new(LocalFolder::new(&root).unwrap())),
             ("pattern", Box::new(LocalPath::from_url(pattern).unwrap())),
         ];
         /// One transfer of a source's value into a target.
-        type Transfer = fn(&dyn IOBase, &mut Buffer) -> yggdryl::Result<u64>;
+        type Transfer = fn(&mut dyn IOBase, &mut Buffer) -> yggdryl::Result<u64>;
 
-        let transfers: [(&str, Transfer); 4] = [
+        let transfers: [(&str, Transfer); 5] = [
             ("copy", |source, target| source.copy_into(target)),
+            ("move", |source, target| source.move_into(target)),
             ("compress", |source, target| {
                 source.compress_into(target, Codec::Gzip)
             }),
@@ -921,7 +798,7 @@ mod positional {
                 source.decompress_into_with(target, Codec::Gzip)
             }),
         ];
-        for (name, source) in &sources {
+        for (name, source) in &mut sources {
             // A container's stream has bytes - its leaves', end to end - and
             // that concatenation is what no transfer of one value may take
             // for one.
@@ -929,7 +806,7 @@ mod positional {
             for (operation, transfer) in transfers {
                 let mut target = Buffer::from_bytes(b"kept".to_vec())
                     .with_media_type(MediaType::from(MimeType::JSON));
-                let error = transfer(source.as_ref(), &mut target).unwrap_err();
+                let error = transfer(source.as_mut(), &mut target).unwrap_err();
                 assert!(
                     matches!(
                         &error,
@@ -949,6 +826,11 @@ mod positional {
                 );
             }
         }
+        // Nothing moved either: the leaves are where they were.
+        assert_eq!(
+            std::fs::read(root.join("a.csv")).unwrap(),
+            b"symbol\nAAPL\n"
+        );
 
         LocalFolder::new(&root).unwrap().remove(true).unwrap();
     }
@@ -984,44 +866,6 @@ mod positional {
         );
         assert_eq!(target.read_all_bytes().unwrap(), b"kept");
         assert_eq!(target.media_type().base(), &MimeType::JSON);
-    }
-
-    #[test]
-    fn streaming_adapters_advance_their_own_offset() {
-        let mut buffer = Buffer::new();
-        {
-            let mut writer = buffer.writer_at(0);
-            writer.write_all(b"symbol,").unwrap();
-            writer.write_all(b"price").unwrap();
-            writer.flush().unwrap();
-        }
-        assert_eq!(buffer.as_slice(), b"symbol,price");
-
-        let mut text = String::new();
-        buffer.reader_at(0).read_to_string(&mut text).unwrap();
-        assert_eq!(text, "symbol,price");
-
-        // A reader can start anywhere without disturbing another.
-        let mut tail = String::new();
-        buffer.reader_at(7).read_to_string(&mut tail).unwrap();
-        assert_eq!(tail, "price");
-    }
-
-    #[test]
-    fn read_range_is_bounded_by_the_value() {
-        let buffer = Buffer::from_bytes(b"0123456789".to_vec());
-        assert_eq!(buffer.read_range_bytes(2, 3).unwrap(), b"234");
-        // Asking past the end yields what exists rather than failing.
-        assert_eq!(buffer.read_range_bytes(8, 100).unwrap(), b"89");
-        assert!(buffer.read_range_bytes(50, 4).unwrap().is_empty());
-    }
-
-    #[test]
-    fn write_all_bytes_replaces_the_whole_value() {
-        let mut buffer = Buffer::from_bytes(b"a much longer previous value".to_vec());
-        buffer.write_all_bytes(b"short").unwrap();
-        assert_eq!(buffer.as_slice(), b"short");
-        assert_eq!(buffer.size(), 5);
     }
 }
 

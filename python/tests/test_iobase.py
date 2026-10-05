@@ -428,6 +428,12 @@ class TestUrlPathlibParity:
         assert Url(url).with_suffix(".parquet").name == "part-0.parquet"
         assert Url(url).with_suffix("parquet").name == "part-0.parquet"
         assert Url(url).with_suffix("").name == "part-0"
+        # The core's one suffix rule: a lone dot removes the extension too,
+        # a name with none keeps it, and a refused suffix is a ValueError.
+        assert Url(url).with_suffix(".").name == "part-0"
+        assert Url("file:///lake/README").with_suffix("").name == "README"
+        with pytest.raises(ValueError):
+            Url(url).with_suffix("a/b")
 
     def test_matching_follows_the_gitignore_rule(self) -> None:
         url = Url("file:///lake/year=2024/part-0.parquet")

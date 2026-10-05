@@ -414,6 +414,27 @@ fn remember<T>(failure: &mut Option<StickyFailure>, result: Result<T>) -> Result
     }
 }
 
+/// Read up to `buffer.len()` bytes through one read method of a `PyArrow`
+/// stream, `call` given the length asked for, copying what it answers into
+/// `buffer`.
+fn read_into(
+    stream: &Py<PyAny>,
+    operation: &'static str,
+    buffer: &mut [u8],
+    call: impl for<'py> FnOnce(&Bound<'py, PyAny>, usize) -> PyResult<Bound<'py, PyAny>>,
+) -> Result<usize> {
+    Python::attach(|py| {
+        let failed = |error: PyErr| foreign(py, &error, operation, "<stream>", "pyarrow");
+        let bytes = call(stream.bind(py), buffer.len())
+            .map_err(failed)?
+            .extract::<Vec<u8>>()
+            .map_err(failed)?;
+        let count = bytes.len().min(buffer.len());
+        buffer[..count].copy_from_slice(&bytes[..count]);
+        Ok(count)
+    })
+}
+
 fn close_python_stream(
     stream: &Py<PyAny>,
     close_attempted: &mut bool,
@@ -455,30 +476,17 @@ impl PyInputStream {
             failure: None,
         }
     }
-
-    fn read_inner(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        require_stream_open(self.close_attempted, self.failure.as_ref(), "input stream")?;
-        let result = Python::attach(|py| {
-            let value = self
-                .stream
-                .bind(py)
-                .call_method1("read", (buffer.len(),))
-                .map_err(|error| foreign(py, &error, "read", "<stream>", "pyarrow"))?;
-            let bytes = value
-                .extract::<Vec<u8>>()
-                .map_err(|error| foreign(py, &error, "read", "<stream>", "pyarrow"))?;
-            let count = bytes.len().min(buffer.len());
-            buffer[..count].copy_from_slice(&bytes[..count]);
-            self.position = self.position.saturating_add(count as u64);
-            Ok(count)
-        });
-        remember(&mut self.failure, result)
-    }
 }
 
 impl ByteReader for PyInputStream {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize> {
-        self.read_inner(buffer)
+        require_stream_open(self.close_attempted, self.failure.as_ref(), "input stream")?;
+        let result = read_into(&self.stream, "read", buffer, |stream, len| {
+            stream.call_method1("read", (len,))
+        });
+        let count = remember(&mut self.failure, result)?;
+        self.position = self.position.saturating_add(count as u64);
+        Ok(count)
     }
 
     fn tell(&self) -> u64 {
@@ -527,21 +535,12 @@ impl PyRandomAccessFile {
 impl ByteReader for PyRandomAccessFile {
     fn read(&mut self, buffer: &mut [u8]) -> Result<usize> {
         self.require_open()?;
-        let result = Python::attach(|py| {
-            let value = self
-                .stream
-                .bind(py)
-                .call_method1("read", (buffer.len(),))
-                .map_err(|error| foreign(py, &error, "read", "<stream>", "pyarrow"))?;
-            let bytes = value
-                .extract::<Vec<u8>>()
-                .map_err(|error| foreign(py, &error, "read", "<stream>", "pyarrow"))?;
-            let count = bytes.len().min(buffer.len());
-            buffer[..count].copy_from_slice(&bytes[..count]);
-            self.position = self.position.saturating_add(count as u64);
-            Ok(count)
+        let result = read_into(&self.stream, "read", buffer, |stream, len| {
+            stream.call_method1("read", (len,))
         });
-        remember(&mut self.failure, result)
+        let count = remember(&mut self.failure, result)?;
+        self.position = self.position.saturating_add(count as u64);
+        Ok(count)
     }
 
     fn tell(&self) -> u64 {
@@ -568,18 +567,8 @@ impl ByteReader for PyRandomAccessFile {
 impl RandomAccessReader for PyRandomAccessFile {
     fn read_at(&mut self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
         self.require_open()?;
-        let result = Python::attach(|py| {
-            let value = self
-                .stream
-                .bind(py)
-                .call_method1("read_at", (buffer.len(), offset))
-                .map_err(|error| foreign(py, &error, "read_at", "<stream>", "pyarrow"))?;
-            let bytes = value
-                .extract::<Vec<u8>>()
-                .map_err(|error| foreign(py, &error, "read_at", "<stream>", "pyarrow"))?;
-            let count = bytes.len().min(buffer.len());
-            buffer[..count].copy_from_slice(&bytes[..count]);
-            Ok(count)
+        let result = read_into(&self.stream, "read_at", buffer, |stream, len| {
+            stream.call_method1("read_at", (len, offset))
         });
         remember(&mut self.failure, result)
     }
@@ -936,11 +925,7 @@ pub(crate) fn native_redirect(
             }
         }
         "s3" | "gcs" | "abfs" => {
-            let provider = match name.as_str() {
-                "s3" => Provider::Aws,
-                "gcs" => Provider::Google,
-                _ => Provider::Azure,
-            };
+            let provider = name.parse::<Provider>().map_err(crate::value_error)?;
             match store_role(provider, filesystem, path, role)? {
                 Some(held) => held,
                 None => return Ok(None),
@@ -1081,10 +1066,8 @@ fn option_text(value: &Bound<'_, PyAny>) -> PyResult<Option<String>> {
         return Ok(None);
     }
     // A `bool` is an `int`, so it is read first.
-    if let Ok(flag) = value.cast::<PyBool>() {
-        return Ok(Some(
-            if flag.is_true() { "true" } else { "false" }.to_owned(),
-        ));
+    if value.is_instance_of::<PyBool>() {
+        return crate::properties::property_text(value).map(Some);
     }
     if let Ok(mapping) = value.cast::<PyDict>() {
         return proxy_url(mapping);

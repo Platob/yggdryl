@@ -51,8 +51,8 @@ sorted named Records; JavaScript `Map` remains a Mapping.
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
 whenever the Rust value has those semantics. JavaScript has no object hash
 protocol, so `stableHash()` is the explicit deterministic `bigint`; JavaScript
-`===` remains reference identity. `Expression` and `Statement` expose the
-same native total structural order rather than a binding-side approximation.
+`===` remains reference identity. `Expression` exposes the same native total
+structural order rather than a binding-side approximation.
 `RecordOptions` exposes the same four methods over its encoding variant and
 every current core setting; a clone is detached, so later mutation changes
 only that copy's equality, order, and hash.
@@ -320,8 +320,8 @@ const written = file.overwriteArrowTable(rows)
 console.assert(written.toString() === 'read 2 rows, wrote 2, skipped 0')
 console.assert(file.readArrowReader().intoTable().numRows === 2)
 console.assert(file.isIo())
-console.assert(file.rowSize === 2)
-console.assert(file.columnSize === 2)
+console.assert(file.rowSize() === 2)
+console.assert(file.columnSize() === 2)
 
 // An Iceberg table is a folder, and a folder is all it ever touches.
 const table = iceberg.IcebergTable.create(path.join(root, 'trades'), schema, ['venue'])
@@ -365,8 +365,8 @@ one - counting the rows it read (`readRows`), wrote (`writtenRows`) and skipped
 several commits answers their sum, as `add` sums two results.
 
 `isIo()` is the general capability check: byte values and tabular media return
-true, while a container holding neither returns false. `rowSize` and
-`columnSize` are lazy metadata getters for the whole logical media, independent
+true, while a container holding neither returns false. `rowSize()` and
+`columnSize()` are lazy metadata methods for the whole logical media, independent
 of projections and read limits. Successful answers are cached by the Rust core
 only while a handle is open, invalidated by writes through that handle, and
 computed fresh after `close()`; JavaScript keeps no parallel count or schema.

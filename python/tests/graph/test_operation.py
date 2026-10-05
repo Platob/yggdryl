@@ -300,13 +300,20 @@ class TestBookRef:
         assert not graph.BookRef().is_stated()
 
     def test_an_unknown_action_is_refused_listing_every_spelling(self) -> None:
-        with pytest.raises(ValueError, match="unknown MdUpdateAction"):
+        # The core's `MdUpdateAction` reading, its refusal text included.
+        with pytest.raises(
+            ValueError,
+            match=r'unknown MdUpdateAction "9"; expected one of '
+            r'\["0", "1", "2", "3", "4", "5", "snapshot"\]',
+        ):
             graph.BookRef(action="9")
 
     def test_equality_hash_repr_copy_pickle(self) -> None:
         control = graph.BookRef(action="snapshot", scope="S")
         assert pickle.loads(pickle.dumps(control)) == control
         assert hash(pickle.loads(pickle.dumps(control))) == hash(control)
+        # The core's `BookRef::stable_hash`: another slot is another hash.
+        assert hash(graph.BookRef(action="snapshot", scope="T")) != hash(control)
         assert copy.copy(control) == control and copy.deepcopy(control) == control
         assert repr(control) == (
             'BookRef(action="snapshot", scope="S", position=None, entry_px=None, entry_size=None)'

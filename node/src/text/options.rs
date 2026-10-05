@@ -139,7 +139,7 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_commit_batch_num(&mut self, value: Option<f64>) -> Result<()> {
         let batches = match value {
-            Some(batches) => Some(crate::media::options::batch_count(batches)?),
+            Some(batches) => Some(crate::exact_usize(batches, "commitBatchNum")?),
             None => None,
         };
         self.inner.set_commit_batch_num(batches);
@@ -158,7 +158,7 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_num_threads(&mut self, value: Option<f64>) -> Result<()> {
         let threads = match value {
-            Some(threads) => Some(crate::media::options::thread_count(threads)?),
+            Some(threads) => Some(crate::exact_usize(threads, "numThreads")?),
             None => None,
         };
         self.inner.set_num_threads(threads);
@@ -261,7 +261,7 @@ impl JsTextOptions {
         // `null` is a value, and clears: no key, so an overwrite or append.
         let merge_by = match merge_by {
             Some(merge_by) => selector_from_input(merge_by)?,
-            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Selector::all(),
         };
         self.inner.set_merge_by(merge_by);
         Ok(())
@@ -295,7 +295,7 @@ impl JsTextOptions {
         // `null` is a value, and clears: `select *`.
         let select = match select {
             Some(select) => selector_from_input(select)?,
-            None => yggdryl::Selector::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Selector::all(),
         };
         self.inner.set_select(select);
         Ok(())
@@ -323,7 +323,7 @@ impl JsTextOptions {
         // `null` is a value, and clears: always true.
         let filter = match filter {
             Some(filter) => filter_from_input(filter)?,
-            None => yggdryl::Filter::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Filter::always_true(),
         };
         self.inner.set_filter(filter);
         Ok(())
@@ -353,7 +353,7 @@ impl JsTextOptions {
         // `null` is a value, and clears: the plan with no section.
         let plan = match plan {
             Some(plan) => plan_from_input(plan)?,
-            None => yggdryl::Plan::from_scalar(&yggdryl::Scalar::Null).map_err(napi_error)?,
+            None => yggdryl::Plan::new(),
         };
         self.inner.set_plan(plan).map_err(napi_error)
     }

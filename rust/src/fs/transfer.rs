@@ -9,7 +9,7 @@ use crate::{Error, IOKind, Result};
 
 use super::{BoundLocation, ByteReader, ByteWriter};
 
-const CHUNK: usize = 64 * 1024;
+const CHUNK: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 static TEMPORARY: AtomicU64 = AtomicU64::new(0);
 
 /// Copy between bound locations, using the backend operation when possible.
@@ -105,26 +105,7 @@ fn transfer(reader: &mut dyn ByteReader, writer: &mut dyn ByteWriter) -> Result<
                 ),
             )));
         }
-        let mut written = 0;
-        while written < read {
-            let count = writer.write(&buffer[written..read])?;
-            if count == 0 {
-                return Err(Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::WriteZero,
-                    "cross-filesystem copy output stream stopped",
-                )));
-            }
-            if count > read - written {
-                return Err(Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!(
-                        "cross-filesystem output stream reported {count} bytes for a {}-byte buffer",
-                        read - written
-                    ),
-                )));
-            }
-            written += count;
-        }
+        super::write_all(writer, &buffer[..read])?;
         copied = copied.checked_add(read as u64).ok_or_else(|| {
             Error::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

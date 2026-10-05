@@ -65,6 +65,35 @@ pub trait ByteWriter: Send {
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
+/// Write all of `bytes` to `writer`, refusing a writer that stops short or
+/// reports writing more than it was handed.
+///
+/// # Errors
+///
+/// Returns the writer's own failure, [`std::io::ErrorKind::WriteZero`] when it
+/// stops before the last byte, and [`std::io::ErrorKind::InvalidData`] when it
+/// reports more than it was handed.
+pub(crate) fn write_all(writer: &mut dyn ByteWriter, bytes: &[u8]) -> Result<()> {
+    let mut written = 0;
+    while written < bytes.len() {
+        let count = writer.write(&bytes[written..])?;
+        if count == 0 {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "output stream stopped before the complete value was written",
+            )));
+        }
+        if count > bytes.len() - written {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "output stream reported writing beyond the supplied buffer",
+            )));
+        }
+        written += count;
+    }
+    Ok(())
+}
+
 /// A repeatable stream failure. `std::io::Error` is not cloneable, so a
 /// writer retains the typed fields that affect boundary translation rather
 /// than dropping a write or close failure after reporting it once.

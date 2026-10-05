@@ -1,6 +1,6 @@
 //! One local location, whatever it turns out to be.
 
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use super::LocalFile;
 use super::LocalFolder;
@@ -138,8 +138,7 @@ impl LocalPath {
     ///
     /// # Errors
     ///
-    /// Returns an error when the URL is not local, or when this build has no
-    /// local leaf implementation.
+    /// Returns an error when the URL is not local.
     pub fn as_file(&self) -> Result<LocalFile> {
         let mut file = LocalFile::new(self.path()?)?;
         if let Some(media_type) = &self.declared {
@@ -148,22 +147,23 @@ impl LocalPath {
         Ok(file)
     }
 
-    /// Build the leaf implementation this build provides.
-    fn leaf(&self) -> Result<Resolved> {
-        Ok(Resolved::File(self.as_file()?))
+    /// Lock the resolved implementation, reporting a poisoned lock rather
+    /// than panicking.
+    fn lock_resolved(&self) -> Result<MutexGuard<'_, Option<Resolved>>> {
+        self.resolved.lock().map_err(|_| {
+            Error::Io(std::io::Error::other(
+                "the resolved handle lock was poisoned",
+            ))
+        })
     }
 
     /// Run `read` against the resolved implementation, or report absence.
     fn with_resolved<T>(&self, absent: T, read: impl FnOnce(&dyn IOBase) -> T) -> Result<T> {
-        let mut slot = self.resolved.lock().map_err(|_| {
-            Error::Io(std::io::Error::other(
-                "the resolved handle lock was poisoned",
-            ))
-        })?;
+        let mut slot = self.lock_resolved()?;
         if slot.is_none() {
             *slot = match self.kind() {
                 IOKind::Directory => Some(Resolved::Directory(self.as_directory()?)),
-                IOKind::File => Some(self.leaf()?),
+                IOKind::File => Some(Resolved::File(self.as_file()?)),
                 _ => None,
             };
         }
@@ -178,15 +178,11 @@ impl LocalPath {
     ///
     /// A write is what decides an undecided location: it becomes a file.
     fn with_resolved_mut<T>(&self, write: impl FnOnce(&mut dyn IOBase) -> T) -> Result<T> {
-        let mut slot = self.resolved.lock().map_err(|_| {
-            Error::Io(std::io::Error::other(
-                "the resolved handle lock was poisoned",
-            ))
-        })?;
+        let mut slot = self.lock_resolved()?;
         if slot.is_none() {
             *slot = Some(match self.kind() {
                 IOKind::Directory => Resolved::Directory(self.as_directory()?),
-                _ => self.leaf()?,
+                _ => Resolved::File(self.as_file()?),
             });
         }
         let resolved = slot.as_mut().ok_or_else(|| {
@@ -379,11 +375,7 @@ impl IOBase for LocalPath {
     /// location has nothing to empty.
     fn clear(&mut self) -> Result<()> {
         {
-            let mut resolved = self.resolved.lock().map_err(|_| {
-                Error::Io(std::io::Error::other(
-                    "the resolved handle lock was poisoned",
-                ))
-            })?;
+            let mut resolved = self.lock_resolved()?;
             if let Some(resolved) = resolved.as_mut() {
                 // Clear the retained mapping itself: a fresh LocalFile would
                 // not own its mapping state, and its later close could restore

@@ -13,7 +13,9 @@ use yggdryl::graph::{
     MdUpdateAction, Operation, OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote,
     QuoteEvent, QuoteKind,
 };
-use yggdryl::{Ccy, Cfi, Decimal, IdType, Identifier, Side, State, TimeInForce, Unit, Uuid};
+use yggdryl::{
+    Ccy, Cfi, Decimal, IdType, Identifier, Scalar, Side, State, TimeInForce, Unit, Uuid,
+};
 
 /// One identifier of a plain holder: a value of `kind` from `fix`.
 fn identifier(kind: IdType, value: &str) -> Identifier {
@@ -311,7 +313,58 @@ fn every_update_action_lists_itself_once_in_declaration_order_and_round_trips() 
     );
     for action in MdUpdateAction::ALL {
         assert_eq!(MdUpdateAction::read(action.as_str()), Some(action));
+        assert_eq!(action.as_str().parse::<MdUpdateAction>().ok(), Some(action));
     }
+}
+
+#[test]
+fn an_update_action_parsed_from_text_naming_none_is_refused_with_every_spelling() {
+    assert_eq!(
+        "Overlay".parse::<MdUpdateAction>().ok(),
+        Some(MdUpdateAction::Overlay)
+    );
+    let refused = "9".parse::<MdUpdateAction>().unwrap_err().to_string();
+    assert!(
+        refused.contains(
+            r#"unknown MdUpdateAction "9"; expected one of ["0", "1", "2", "3", "4", "5", "snapshot"]"#
+        ),
+        "{refused}"
+    );
+    assert!("".parse::<MdUpdateAction>().is_err());
+}
+
+#[test]
+fn a_book_control_hashes_its_five_slots_as_one_sequence() {
+    let control = BookRef {
+        action: Some(MdUpdateAction::Change),
+        scope: Some(SmolStr::new("S")),
+        position: Some(3),
+        entry_px: Some(Decimal::from_int(2)),
+        entry_size: Some(Decimal::from_int(5)),
+    };
+    assert_eq!(
+        control.stable_hash(),
+        Scalar::from_sequence([
+            Scalar::from("1"),
+            Scalar::from(SmolStr::new("S")),
+            Scalar::from(3_u32),
+            Scalar::from(Decimal::from_int(2)),
+            Scalar::from(Decimal::from_int(5)),
+        ])
+        .stable_hash()
+    );
+    assert_eq!(control.clone().stable_hash(), control.stable_hash());
+    let unstated = BookRef::default();
+    assert_eq!(
+        unstated.stable_hash(),
+        Scalar::from_sequence(std::iter::repeat_n(Scalar::Null, 5)).stable_hash()
+    );
+    assert_ne!(unstated.stable_hash(), control.stable_hash());
+    let rescoped = BookRef {
+        scope: Some(SmolStr::new("T")),
+        ..control.clone()
+    };
+    assert_ne!(rescoped.stable_hash(), control.stable_hash());
 }
 
 #[test]

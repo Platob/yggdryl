@@ -438,6 +438,73 @@ impl Holder {
         Ok(held)
     }
 
+    /// Hold `url` as a container, on the store its scheme selects, without
+    /// touching it.
+    ///
+    /// A folder is asked for by name rather than discovered, because a
+    /// location that holds nothing yet reads as a leaf: [`Self::from_url`]
+    /// cannot tell a directory that does not exist from a file that does
+    /// not exist, and a table root has to be the former before anything is
+    /// written into it. An `http:` or `https:` URL is a
+    /// [`Self::HttpSession`] whose base URL is the location - a child the
+    /// `GET` of the path below it, nothing listed - through the `http`
+    /// feature; an object-store URL the [`Self::S3Folder`] its prefix names,
+    /// through the `s3` feature; a `file:` URL the [`Self::LocalFolder`] at
+    /// its path. Nothing is read and no request is sent.
+    ///
+    /// ```
+    /// use yggdryl::holder::Holder;
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let folder = Holder::folder_from_url(&Url::from_str("file:///lake/trades")?)?;
+    /// assert!(matches!(folder, Holder::LocalFolder(_)));
+    /// assert!(Holder::folder_from_url(&Url::from_str("ftp://host/lake")?).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Unsupported`](crate::Error::Unsupported) naming the
+    /// scheme when no backend of this build holds a container there, and the
+    /// backend's own refusal when the location names no container it can
+    /// hold.
+    pub fn folder_from_url(url: &Url) -> Result<Self> {
+        if url.scheme().is_http() {
+            #[cfg(feature = "http")]
+            return crate::http::session_with(
+                crate::http::HttpOptions::default().with_base_url(url.clone()),
+            )
+            .map(Self::HttpSession);
+            #[cfg(not(feature = "http"))]
+            return Err(crate::Error::unsupported(
+                "holding an HTTP location without the http feature",
+                url.scheme().as_str(),
+            ));
+        }
+        if url.scheme().is_object_store() {
+            #[cfg(feature = "s3")]
+            return crate::s3::folder(&url.to_string()).map(Self::S3Folder);
+            #[cfg(not(feature = "s3"))]
+            return Err(crate::Error::unsupported(
+                "holding an object store location without the s3 feature",
+                url.scheme().as_str(),
+            ));
+        }
+        if !url.is_local() {
+            // Refused by the scheme, not by the path conversion it would
+            // otherwise fall through to: an S3 Tables location names an
+            // object a catalog reads, and "only a file URI converts to a
+            // platform path" would name the wrong thing.
+            return Err(crate::Error::unsupported(
+                "holding a location of this scheme",
+                url.scheme().as_str(),
+            ));
+        }
+        Self::folder(url.clone().into_path()?)
+    }
+
     /// Whether `name` is a property the backend `url` selects reads for
     /// itself - who signs, where the store is, how it is addressed: the
     /// object store options' under `s3`, the HTTP options' under `http`, none
@@ -511,10 +578,8 @@ impl Holder {
     /// an error.
     #[must_use]
     pub fn into_media(self) -> Self {
-        {
-            let base = self.media_type().base().clone();
-            self.into_media_base(&base)
-        }
+        let base = self.media_type().base().clone();
+        self.into_media_base(&base)
     }
 
     /// Retain the content coding *and* record implementation this handle's

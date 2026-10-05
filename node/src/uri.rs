@@ -1,6 +1,8 @@
 //! Node.js views of the native URI, URL, URN, and ARN domain.
 
-use napi::bindgen_prelude::{ClassInstance, Either5, Error, Result};
+use std::collections::HashMap;
+
+use napi::bindgen_prelude::{ClassInstance, Either, Either5, Error, Result};
 use napi_derive::napi;
 use yggdryl::{Arn as CoreArn, Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
 
@@ -30,6 +32,29 @@ pub(crate) fn partition_entries(pairs: Vec<(String, String)>) -> Vec<PartitionEn
     pairs
         .into_iter()
         .map(|(column, value)| PartitionEntry { column, value })
+        .collect()
+}
+
+/// Partition filters - entries, or one mapping - as owned `(column, value)`
+/// pairs; none given, none.
+pub(crate) fn partition_pairs(
+    filters: Option<Either<Vec<PartitionEntry>, HashMap<String, String>>>,
+) -> Vec<(String, String)> {
+    match filters {
+        None => Vec::new(),
+        Some(Either::A(entries)) => entries
+            .into_iter()
+            .map(|entry| (entry.column, entry.value))
+            .collect(),
+        Some(Either::B(values)) => values.into_iter().collect(),
+    }
+}
+
+/// Borrow owned pairs as the `(column, value)` slices the core takes.
+pub(crate) fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.as_str()))
         .collect()
 }
 
@@ -68,10 +93,6 @@ impl Clone for JsUri {
 impl JsUri {
     pub(crate) fn from_core(inner: CoreUri) -> Self {
         Self { inner }
-    }
-
-    fn path_segment_at(&self, index: usize) -> Option<String> {
-        self.inner.path_segments().nth(index).map(ToOwned::to_owned)
     }
 }
 
@@ -391,12 +412,8 @@ impl JsUri {
     /// Return a path segment at an Array-compatible positive or negative index.
     #[napi]
     pub fn at(&self, index: i32) -> Option<String> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.path_segment_at(index))
+        let at = crate::array_index(index, self.inner.path_segments().count())?;
+        self.inner.path_segments().nth(at).map(ToOwned::to_owned)
     }
 
     /// Exact normalized native equality.
@@ -477,10 +494,6 @@ impl Clone for JsUrl {
 impl JsUrl {
     pub(crate) fn from_core(inner: CoreUrl) -> Self {
         Self { inner }
-    }
-
-    fn path_segment_at(&self, index: usize) -> Option<String> {
-        self.inner.path_segments().nth(index).map(ToOwned::to_owned)
     }
 }
 
@@ -770,12 +783,8 @@ impl JsUrl {
     /// Return a path segment at an Array-compatible positive or negative index.
     #[napi]
     pub fn at(&self, index: i32) -> Option<String> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.path_segment_at(index))
+        let at = crate::array_index(index, self.inner.path_segments().count())?;
+        self.inner.path_segments().nth(at).map(ToOwned::to_owned)
     }
 
     /// The location this identifier names, as a `Url`.
@@ -886,12 +895,7 @@ impl JsUrl {
     #[napi]
     pub fn with_suffix(&self, value: String) -> Result<Self> {
         let mut renamed = self.inner.clone();
-        let suffix = value.strip_prefix('.').unwrap_or(&value);
-        if suffix.is_empty() {
-            renamed.remove_extension();
-        } else {
-            renamed.set_extension(suffix).map_err(napi_error)?;
-        }
+        renamed.set_suffix(&value).map_err(napi_error)?;
         Ok(Self::from_core(renamed))
     }
 
@@ -1080,10 +1084,6 @@ impl Clone for JsUrn {
 impl JsUrn {
     fn from_core(inner: CoreUrn) -> Self {
         Self { inner }
-    }
-
-    fn path_segment_at(&self, index: usize) -> Option<String> {
-        self.inner.path_segments().nth(index).map(ToOwned::to_owned)
     }
 }
 
@@ -1298,12 +1298,8 @@ impl JsUrn {
     /// Return a path segment at an Array-compatible positive or negative index.
     #[napi]
     pub fn at(&self, index: i32) -> Option<String> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.path_segment_at(index))
+        let at = crate::array_index(index, self.inner.path_segments().count())?;
+        self.inner.path_segments().nth(at).map(ToOwned::to_owned)
     }
 
     /// Normalized URN namespace identifier.
@@ -1443,10 +1439,6 @@ impl Clone for JsArn {
 impl JsArn {
     fn from_core(inner: CoreArn) -> Self {
         Self { inner }
-    }
-
-    fn path_segment_at(&self, index: usize) -> Option<String> {
-        self.inner.path_segments().nth(index).map(ToOwned::to_owned)
     }
 }
 
@@ -1666,12 +1658,8 @@ impl JsArn {
     /// Return a path segment at an Array-compatible positive or negative index.
     #[napi]
     pub fn at(&self, index: i32) -> Option<String> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .and_then(|index| self.path_segment_at(index))
+        let at = crate::array_index(index, self.inner.path_segments().count())?;
+        self.inner.path_segments().nth(at).map(ToOwned::to_owned)
     }
 
     /// The partition: `aws`, `aws-cn`, `aws-us-gov`, or another AWS names.

@@ -25,7 +25,7 @@ use yggdryl::iceberg::{
     schema_from_json, schema_into_json,
 };
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
-use yggdryl::{Catalog, Handle, IOBase as _, Namespace, Table};
+use yggdryl::{Catalog, Handle, Namespace, Table};
 use yggdryl::{Field as CoreField, Scalar};
 
 use crate::datatype::core_dtype_from_value;
@@ -34,7 +34,7 @@ use crate::field::{PyField, core_field_from_value};
 use crate::graph::ellipsis;
 use crate::iobase::PyIOBase;
 use crate::iomedia::{
-    batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow,
+    batch_reader_from_any, batch_reader_from_records, batch_reader_to_pyarrow, borrowed_pairs,
     core_root_field_from_value, string_pairs_from_value,
 };
 use crate::uri::{core_uri_from_value, core_url_from_value};
@@ -236,18 +236,6 @@ fn filter_pairs_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(St
     }
 }
 
-/// Borrow owned filter pairs as the slice of string pairs the core takes.
-///
-/// The owned pairs outlive the call because a filter is read at the boundary
-/// and the core is entered afterwards, so the borrow is taken here rather than
-/// where the pairs are built.
-fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
-    pairs
-        .iter()
-        .map(|(column, value)| (column.as_str(), value.as_str()))
-        .collect()
-}
-
 /// Read a warehouse folder out of what Python names one with.
 ///
 /// A handle is taken as the folder it addresses - the same inference
@@ -259,7 +247,7 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
         return handle.folder_holder();
     }
     let url = core_url_from_value(value)?;
-    crate::iobase::folder_holder_for(&url)
+    Holder::folder_from_url(&url).map_err(crate::holder::fs::storage_error)
 }
 
 /// What a table door's `root` names: a handle, taken as the container it
@@ -413,10 +401,7 @@ fn core_iceberg_options_from_value(value: &Bound<'_, PyAny>) -> PyResult<Iceberg
     }
     Err(PyTypeError::new_err(format!(
         "expected IcebergOptions, got {}",
-        value.get_type().fully_qualified_name().map_or_else(
-            |_| "an unnameable value".to_owned(),
-            |name| name.to_string()
-        ),
+        crate::iomedia::type_name(value)
     )))
 }
 
@@ -467,30 +452,6 @@ fn iceberg_batch_reader(
         return batch_reader_from_records(value, &mut options);
     }
     batch_reader_from_any(value, &options)
-}
-
-/// Run one table operation under per-call options, restoring the handle after.
-///
-/// The override is shadowed for exactly the length of the call, so per-call
-/// options never leak into the handle's own configuration.
-fn with_call_options<R>(
-    table: &mut IcebergTable<Handle>,
-    options: Option<IcebergOptions>,
-    operation: impl FnOnce(&mut IcebergTable<Handle>) -> PyResult<R>,
-) -> PyResult<R> {
-    let Some(options) = options else {
-        return operation(table);
-    };
-    let saved = table.clear_options();
-    table.set_options(options);
-    let result = operation(table);
-    match saved {
-        Some(saved) => table.set_options(saved),
-        None => {
-            table.clear_options();
-        }
-    }
-    result
 }
 
 /// Configuration for one table's commits, writes, and reads.
@@ -1134,22 +1095,16 @@ impl PyIcebergTable {
 
     /// The folder the table lives in.
     ///
-    /// The table's own root holder as a container - a bridged filesystem's
-    /// folder role, an object store's client under its options, a local
-    /// directory - rather than one rebuilt from its recorded location, because
-    /// a location does not say which store holds it.
+    /// The table's own root holder as a container on its store - a bridged
+    /// filesystem's folder role, an object store's client under its options, a
+    /// local directory - rather than one rebuilt from its recorded location,
+    /// because a location does not say which store holds it.
     #[getter]
     fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let slf = slf.borrow();
         let table = held(&slf)?;
         let root = table.root().get().map_err(value_error)?;
-        if let Some(holder) = crate::iobase::container_holder(root)? {
-            return crate::iobase::describe(py, holder);
-        }
-        let url = root
-            .url()
-            .ok_or_else(|| PyValueError::new_err("this table has no location"))?;
-        crate::iobase::describe(py, crate::iobase::folder_holder_for(url)?)
+        crate::iobase::describe(py, crate::iobase::container_holder(root)?)
     }
 
     /// The table's base location, as a URI.
@@ -1361,7 +1316,7 @@ impl PyIcebergTable {
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(table, resolved, |table| {
+        let reader = table.with_call_options(resolved, |table| {
             table.scan(field.as_ref()).map_err(value_error)
         })?;
         batch_reader_to_pyarrow(py, reader)
@@ -1392,7 +1347,7 @@ impl PyIcebergTable {
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(table, resolved, |table| {
+        let reader = table.with_call_options(resolved, |table| {
             table
                 .scan_where(&borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
@@ -1422,7 +1377,7 @@ impl PyIcebergTable {
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(table, resolved, |table| {
+        let reader = table.with_call_options(resolved, |table| {
             table
                 .scan_ref(name, &borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)
@@ -1493,7 +1448,7 @@ impl PyIcebergTable {
         let table = held_mut(&mut slf)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
+        table.with_call_options(resolved, |table| {
             table.commit_append(batches).map_err(value_error)
         })
     }
@@ -1515,7 +1470,7 @@ impl PyIcebergTable {
         let table = held_mut(&mut slf)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
+        table.with_call_options(resolved, |table| {
             table.commit_overwrite(batches).map_err(value_error)
         })
     }
@@ -1543,7 +1498,7 @@ impl PyIcebergTable {
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
+        table.with_call_options(resolved, |table| {
             table
                 .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
                 .map_err(value_error)
@@ -1577,7 +1532,7 @@ impl PyIcebergTable {
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
+        table.with_call_options(resolved, |table| {
             table
                 .commit_merge(batches, &keys, safe)
                 .map_err(value_error)
@@ -1607,7 +1562,7 @@ impl PyIcebergTable {
         let pairs = filter_pairs_from_value(filters)?;
         let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
-        with_call_options(table, resolved, |table| {
+        table.with_call_options(resolved, |table| {
             table
                 .commit_merge_where(&borrowed_pairs(&pairs), batches, &keys, safe)
                 .map_err(value_error)
@@ -1668,7 +1623,7 @@ impl PyIcebergTable {
         let field = schema
             .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
-        let reader = with_call_options(table, resolved, |table| {
+        let reader = table.with_call_options(resolved, |table| {
             table
                 .scan_at(snapshot_id, &borrowed_pairs(&pairs), field.as_ref())
                 .map_err(value_error)

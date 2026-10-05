@@ -266,3 +266,9 @@ void encodedAs
 void encodedAtLevel
 void decoded
 void decodedAs
+
+const heldAtUri: IOBase = IOBase.fromUri('file:///tmp/key.bin')
+const heldAtUriWithOptions: IOBase = IOBase.fromUri('file:///tmp/key.bin', { media_type: 'text/csv' })
+
+void heldAtUri
+void heldAtUriWithOptions

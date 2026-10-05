@@ -614,6 +614,11 @@ test('renaming a URL rewrites only the final component', () => {
   assert.equal(url.withSuffix('.parquet').name, 'part-0.parquet')
   assert.equal(url.withSuffix('parquet').name, 'part-0.parquet')
   assert.equal(url.withSuffix('').name, 'part-0')
+  // The core's one suffix rule: a lone dot removes the extension too, a name
+  // with none keeps it, and a refused suffix throws.
+  assert.equal(url.withSuffix('.').name, 'part-0')
+  assert.equal(Url.fromString('file:///lake/README').withSuffix('').name, 'README')
+  assert.throws(() => url.withSuffix('a/b'))
   assert.equal(url.withName('part-1.arrows').query, 'q=1')
   // A persistent update leaves the source value alone.
   assert.equal(url.name, 'part-0.arrows')

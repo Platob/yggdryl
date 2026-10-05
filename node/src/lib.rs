@@ -201,6 +201,17 @@ pub(crate) fn napi_type_error(env: Env, reason: String) -> Error {
     }
 }
 
+/// Where an Array-compatible `index` - counting back from the end when
+/// negative - falls among `len` items, or `None` past either end.
+pub(crate) fn array_index(index: i32, len: usize) -> Option<usize> {
+    let at = if index < 0 {
+        len.checked_sub(index.unsigned_abs() as usize)?
+    } else {
+        usize::try_from(index).ok()?
+    };
+    (at < len).then_some(at)
+}
+
 pub(crate) fn ordering_value(ordering: Ordering) -> i32 {
     match ordering {
         Ordering::Less => -1,
@@ -260,6 +271,30 @@ pub(crate) fn exact_i64(value: f64, name: &str) -> napi::Result<i64> {
     Ok(value as i64)
 }
 
+/// A `bigint` as the signed 64-bit integer it holds, refused rather than
+/// wrapped past that range.
+pub(crate) fn exact_bigint(value: &napi::bindgen_prelude::BigInt, name: &str) -> napi::Result<i64> {
+    let (value, lossless) = value.get_i64();
+    if !lossless {
+        return Err(Error::from_reason(format!(
+            "{name} must fit in a signed 64-bit integer"
+        )));
+    }
+    Ok(value)
+}
+
+/// A `bigint`, or a whole `number` of at most 2^53, as the signed 64-bit
+/// integer it states exactly.
+pub(crate) fn exact_i64_input(
+    value: napi::bindgen_prelude::Either<napi::bindgen_prelude::BigInt, f64>,
+    name: &str,
+) -> napi::Result<i64> {
+    match value {
+        napi::bindgen_prelude::Either::A(value) => exact_bigint(&value, name),
+        napi::bindgen_prelude::Either::B(value) => exact_i64(value, name),
+    }
+}
+
 pub(crate) fn exact_u64(value: f64, name: &str) -> napi::Result<u64> {
     if !value.is_finite()
         || value.fract() != 0.0
@@ -271,6 +306,14 @@ pub(crate) fn exact_u64(value: f64, name: &str) -> napi::Result<u64> {
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Ok(value as u64)
+}
+
+/// A whole `number` of at most 2^53 as a count or position this platform
+/// holds, refused rather than rounded or wrapped.
+pub(crate) fn exact_usize(value: f64, name: &str) -> napi::Result<usize> {
+    let value = exact_u64(value, name)?;
+    usize::try_from(value)
+        .map_err(|_| Error::from_reason(format!("{name} {value} exceeds this platform's range")))
 }
 
 pub(crate) fn exact_f64(value: u64, name: &str) -> napi::Result<f64> {

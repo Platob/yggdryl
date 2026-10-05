@@ -468,6 +468,38 @@ impl Url {
         self.replace_uri(candidate)
     }
 
+    /// Replace the final URL filename suffix, as `pathlib`'s `with_suffix`
+    /// spells it: the leading dot is optional, and an empty suffix - or a
+    /// lone dot - removes the final extension, a name with none kept as it
+    /// is.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut url = Url::from_str("s3://lake/trades.csv")?;
+    /// url.set_suffix(".parquet")?;
+    /// assert_eq!(url.file_name(), Some("trades.parquet"));
+    /// url.set_suffix("json")?;
+    /// assert_eq!(url.file_name(), Some("trades.json"));
+    /// url.set_suffix("")?;
+    /// assert_eq!(url.file_name(), Some("trades"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::set_extension`]; an error leaves the URL unchanged.
+    pub fn set_suffix(&mut self, value: &str) -> Result<()> {
+        let suffix = value.strip_prefix('.').unwrap_or(value);
+        if suffix.is_empty() {
+            self.remove_extension();
+            return Ok(());
+        }
+        self.set_extension(suffix)
+    }
+
     /// Replace the complete compound URL filename extension chain.
     ///
     /// An error leaves the URL unchanged.

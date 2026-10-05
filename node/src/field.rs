@@ -371,12 +371,7 @@ impl JsField {
     /// Replace the child at an Array-compatible index.
     #[napi]
     pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
-        let len = i64::from(self.field_len());
-        let at = i64::from(index);
-        let resolved = if at < 0 { len + at } else { at };
-        let position = usize::try_from(resolved)
-            .ok()
-            .filter(|at| *at < self.inner.field_len())
+        let position = crate::array_index(index, self.inner.field_len())
             .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
         self.inner
             .set_field_at(position, child.inner.clone())
@@ -411,12 +406,7 @@ impl JsField {
     /// Remove and return the child at an Array-compatible index.
     #[napi]
     pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
-        let len = i64::from(self.field_len());
-        let at = i64::from(index);
-        let resolved = if at < 0 { len + at } else { at };
-        let position = usize::try_from(resolved)
-            .ok()
-            .filter(|at| *at < self.inner.field_len())
+        let position = crate::array_index(index, self.inner.field_len())
             .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
         self.inner
             .remove_field_at(position)
@@ -709,12 +699,7 @@ impl JsField {
     /// Change Arrow IPC dictionary options through the validated core setter.
     #[napi]
     pub fn set_dictionary_options(&mut self, id: BigInt, is_ordered: bool) -> Result<()> {
-        let (id, lossless) = id.get_i64();
-        if !lossless {
-            return Err(Error::from_reason(
-                "dictionary ID must fit in a signed 64-bit integer",
-            ));
-        }
+        let id = crate::exact_bigint(&id, "dictionary ID")?;
         self.inner
             .set_dictionary_options(id, is_ordered)
             .map_err(napi_error)

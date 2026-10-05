@@ -14,9 +14,10 @@ use crate::{IOBase, MediaType, MimeType, Result, Uri, Url};
 ///
 /// A buffer has no persisted location. [`IOBase::url`] reports a synthetic
 /// `mem:` identity naming `localhost` as its host, then this process and the
-/// allocation's address - `mem://localhost/<pid>/<address>` - which is enough
-/// to tell two live buffers on this machine apart, in a log or an error,
-/// without pretending the bytes live anywhere.
+/// buffer's place in a per-process sequence,
+/// `mem://localhost/<pid>/<sequence>`, which tells two buffers on this
+/// machine apart, in a log or an error, without pretending the bytes live
+/// anywhere.
 ///
 /// [`IOBase::media_type`] is lazy: unless one is set explicitly, it is inferred
 /// from the stored bytes' leading signature the first time it is asked for, and

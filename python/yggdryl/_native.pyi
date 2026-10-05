@@ -179,6 +179,7 @@ class MimeType:
     CSS: ClassVar[MimeType]
     JAVASCRIPT: ClassVar[MimeType]
     XML: ClassVar[MimeType]
+    XMLA: ClassVar[MimeType]
     HTTP: ClassVar[MimeType]
     PDF: ClassVar[MimeType]
     CBOR: ClassVar[MimeType]
@@ -3689,14 +3690,14 @@ class IOBase:
     def append_bytes(self, data: bytes) -> int: ...
     def append(self, data: bytes | bytearray | memoryview | str) -> int: ...
     def create_dir(self, recursive: bool = False) -> LocalFolder | FsFolder | S3Folder: ...
-    # On a native store each acts once and answers what the core answers:
-    # `delete_dir` is `remove(False)` on the container, `delete_dir_contents`
-    # its `clear()` - absence is success whatever `missing_dir_ok` says, which
-    # forgives only a clear that itself reports it - and `delete_file` is
-    # `remove(False)` on the plain handle, so absence is success, an empty
-    # directory is removed and a populated one refused as not empty. A bridged
-    # filesystem answers its own verbs, a directory refused. A wrapper is
-    # refused the container verbs: they are asked of the plain handle.
+    # A bridged filesystem answers its own verbs, a directory refused. On a
+    # native store each acts once: `delete_dir` is `remove(False)` on the
+    # container, `delete_dir_contents` its `clear()` - absence is success
+    # whatever `missing_dir_ok` says, which forgives only a clear that itself
+    # reports it - and `delete_file` is `remove(False)` on the plain handle:
+    # absence succeeds, an empty directory goes, a populated one is refused as
+    # not empty. A wrapper's container verbs are asked of the plain handle
+    # beneath it.
     def delete_dir(self) -> None: ...
     def delete_dir_contents(self, missing_dir_ok: bool = False) -> None: ...
     def delete_root_dir_contents(self) -> None: ...
@@ -9413,8 +9414,10 @@ class MarketData:
         ``view`` is one of ``enums.MARKET_VIEWS``, read ignoring ASCII case;
         each lift, a ``FieldPath`` or its text such as
         ``"identifiers['clordid'] as clordid"`` (an identifier column is a
-        map from the key's text, ``src:type`` or the type alone for the base
-        source, to the value), is appended after the view's own columns; ``None`` is no lifts. ``crosscode`` is the stored cross code
+        map from a type's base key, the type alone, to the value; a source's
+        statement is side information under ``metadata``,
+        ``identifiers.src:type``), is appended after the view's own columns;
+        ``None`` is no lifts. ``crosscode`` is the stored cross code
         (``"10:1:ORD-1"``, the exact code of the chain) ``lifecycle``
         follows: that view needs one and every other view refuses one.
         """

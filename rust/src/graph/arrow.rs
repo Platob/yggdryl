@@ -945,28 +945,15 @@ impl<'a> Row<'a> {
                 .min_by(|(_, left_name, left), (_, right_name, right)| {
                     (left_name, left.key()).cmp(&(right_name, right.key()))
                 });
-            match (plain.peek(), side) {
+            // The side entry where it spells first, else the plain one.
+            let next_side = match (plain.peek(), side) {
                 (None, None) => return Ok(any),
-                (Some((key, value)), None) => {
-                    keys.append_value(key.as_str());
-                    values.append_value(value.as_str());
-                    plain.next();
-                }
-                (None, Some((set, name, id))) => {
-                    append_side_id(name, id, keys, values);
-                    sides[set].1.next();
-                }
-                (Some((key, value)), Some((set, name, id))) => {
+                (None, side) => side,
+                (Some(_), None) => None,
+                (Some((key, _)), Some(side @ (_, name, id))) => {
                     match id.key().cmp_text_under(name, key.as_str()) {
-                        std::cmp::Ordering::Less => {
-                            append_side_id(name, id, keys, values);
-                            sides[set].1.next();
-                        }
-                        std::cmp::Ordering::Greater => {
-                            keys.append_value(key.as_str());
-                            values.append_value(value.as_str());
-                            plain.next();
-                        }
+                        std::cmp::Ordering::Less => Some(side),
+                        std::cmp::Ordering::Greater => None,
                         std::cmp::Ordering::Equal => {
                             return Err(invalid(
                                 format_smolstr!(
@@ -979,6 +966,18 @@ impl<'a> Row<'a> {
                                 ),
                             ));
                         }
+                    }
+                }
+            };
+            match next_side {
+                Some((set, name, id)) => {
+                    append_side_id(name, id, keys, values);
+                    sides[set].1.next();
+                }
+                None => {
+                    if let Some((key, value)) = plain.next() {
+                        keys.append_value(key.as_str());
+                        values.append_value(value.as_str());
                     }
                 }
             }
@@ -3342,30 +3341,35 @@ impl Landed {
             return Ok(());
         };
         let metadata = canonical.get_metadata();
-        let securityids = canonical.get_securityids();
-        let (identifiers, partyids) = match sets {
-            Some((identifiers, partyids)) => (Some(identifiers), Some(partyids)),
-            None => (None, None),
-        };
+        let (identifiers, partyids) = sets.unzip();
+        // Each map: its name, what the leaf holds of it, and its own cell.
         let sets = [
-            (MarketColumn::SecurityIds.name(), Some(securityids)),
-            (OperationColumn::Identifiers.name(), identifiers),
-            (OperationColumn::PartyIds.name(), partyids),
-        ];
-        // What the map cells leave out, which the metadata must state.
-        let left_out = |ids: Option<&Identifiers>, cell: Option<&Leaf>| {
-            sourced(ids).filter(|id| !stated_in(cell, row, id)).count()
-        };
-        let len = metadata.len()
-            + left_out(
-                Some(securityids),
+            (
+                MarketColumn::SecurityIds.name(),
+                Some(canonical.get_securityids()),
                 self.market_leaf(MarketColumn::SecurityIds),
-            )
-            + left_out(
+            ),
+            (
+                OperationColumn::Identifiers.name(),
                 identifiers,
                 self.operation_leaf(OperationColumn::Identifiers),
-            )
-            + left_out(partyids, self.operation_leaf(OperationColumn::PartyIds));
+            ),
+            (
+                OperationColumn::PartyIds.name(),
+                partyids,
+                self.operation_leaf(OperationColumn::PartyIds),
+            ),
+        ];
+        // What the map cells leave out, which the metadata must state.
+        let len = metadata.len()
+            + sets
+                .iter()
+                .map(|(_, set, cell)| {
+                    sourced(*set)
+                        .filter(|id| !stated_in(*cell, row, None, id))
+                        .count()
+                })
+                .sum::<usize>();
         check_pairs(
             leaf,
             row,
@@ -3375,7 +3379,7 @@ impl Landed {
                 // map; a key under the name of a map it does not hold - a
                 // party's on a book - is metadata, as every other key is.
                 let mut keys = self.keys.borrow_mut();
-                let side = sets.iter().find_map(|(name, set)| {
+                let side = sets.iter().find_map(|(name, set, _)| {
                     side_key(key, name, &mut keys).map(|read| (read, *set))
                 });
                 match side {
@@ -3460,8 +3464,8 @@ impl Landed {
 /// stated, in the cell or, as side information, in the metadata cell
 /// `side`; the one exception is a base key the row leaves out whose value a
 /// source the row does state holds, which closing the map filled. Each
-/// stated entry is looked
-/// up in place and marked, so the check builds nothing.
+/// stated entry is looked up in place and marked, so the check builds
+/// nothing.
 fn check_ids(
     leaf: &Leaf,
     side: Option<&Leaf>,
@@ -3502,29 +3506,26 @@ fn check_ids(
                         && stated.value() == id.value()
                 })
         };
-        if !is_marked(&matched, at) && !filled() && !stated_as_side(side, row, name, id) {
+        if !is_marked(&matched, at) && !filled() && !stated_in(side, row, Some(name), id) {
             return Err(differs(path, name, held, &format_args!("no {}", id.key())));
         }
     }
     Ok(())
 }
 
-/// Whether the cell `side` states `id` under its key as spelled, beside its
-/// value - a map cell another writer filled with its sourced keys too.
-fn stated_in(side: Option<&Leaf>, row: usize, id: &Identifier) -> bool {
-    side.and_then(|leaf| leaf.pairs(row))
-        .is_some_and(|mut pairs| {
-            pairs.any(|(text, value)| id.key().cmp_text(text).is_eq() && value.trim() == id.value())
-        })
-}
-
-/// Whether the metadata cell `side` states `id` as the side information of
-/// the map `name`: its key spelled under that name, beside its value.
-fn stated_as_side(side: Option<&Leaf>, row: usize, name: &str, id: &Identifier) -> bool {
-    side.and_then(|leaf| leaf.pairs(row))
+/// Whether the cell `cell` states `id` beside its value. With `under` none,
+/// under its key as spelled - a map cell another writer filled with its
+/// sourced keys too; with `under` a map's name, as that map's side
+/// information in the metadata cell, its key spelled under that name.
+fn stated_in(cell: Option<&Leaf>, row: usize, under: Option<&str>, id: &Identifier) -> bool {
+    cell.and_then(|leaf| leaf.pairs(row))
         .is_some_and(|mut pairs| {
             pairs.any(|(text, value)| {
-                id.key().cmp_text_under(name, text).is_eq() && value.trim() == id.value()
+                let order = match under {
+                    Some(name) => id.key().cmp_text_under(name, text),
+                    None => id.key().cmp_text(text),
+                };
+                order.is_eq() && value.trim() == id.value()
             })
         })
 }
@@ -3568,11 +3569,7 @@ fn append_side_id(
 ) {
     std::fmt::Write::write_str(keys, name).expect("a string builder takes any text");
     std::fmt::Write::write_str(keys, ".").expect("a string builder takes any text");
-    id.key()
-        .write_into(keys)
-        .expect("a string builder takes any text");
-    keys.append_value("");
-    values.append_value(id.value());
+    append_id(id, keys, values);
 }
 
 /// Which identifier maps a row's metadata is read beside: the security

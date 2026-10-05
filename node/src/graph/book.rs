@@ -13,9 +13,11 @@ use yggdryl::graph::{
 
 use super::market_data::JsMarketData;
 use super::operation::JsBookRef;
-use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of};
+use super::{AnyMarketData, decimal_text, market_data_from, market_data_of};
 use crate::expression::{JsFilter, JsTerm, filter_from_input};
-use crate::{Failed, Pulled, exact_i64, exact_u64, javascript_failure, napi_error, or_null};
+use crate::{
+    Failed, Pulled, exact_i64, exact_i64_input, exact_u64, javascript_failure, napi_error, or_null,
+};
 
 /// One price level of a book's side, as the plain object JavaScript reads.
 #[napi(object, object_from_js = false)]
@@ -82,7 +84,7 @@ impl JsBookEvent {
     /// `XX0000000000`, the ISIN that states none, and states no ticker.
     #[napi(constructor)]
     pub fn new(currunix: Either<BigInt, f64>, symbol: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
+        let currunix = exact_i64_input(currunix, "currunix")?;
         Ok(Self::from_core(CoreBookEvent::new(currunix, symbol)))
     }
 
@@ -93,7 +95,7 @@ impl JsBookEvent {
     /// rebuilds over with `withPrevious`.
     #[napi(factory)]
     pub fn keyed(currunix: Either<BigInt, f64>, key: String) -> Result<Self> {
-        let currunix = instant_of(currunix, "currunix")?;
+        let currunix = exact_i64_input(currunix, "currunix")?;
         Ok(Self::from_core(CoreBookEvent::keyed(currunix, key)))
     }
 

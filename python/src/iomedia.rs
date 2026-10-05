@@ -623,7 +623,7 @@ fn chain_with_reader(
 /// # Errors
 ///
 /// Returns a `TypeError` naming the library and what arrived instead.
-fn frame_reader(value: &Bound<'_, PyAny>, library: Frames) -> PyResult<BatchReader> {
+pub(crate) fn frame_reader(value: &Bound<'_, PyAny>, library: Frames) -> PyResult<BatchReader> {
     if !library.holds(value) {
         return Err(PyTypeError::new_err(format!(
             "expected one {} frame, got {}",
@@ -1119,18 +1119,6 @@ pub(crate) fn frames_batch_reader(
     chained_reader(&items, options, Some(library))
 }
 
-/// Read a core batch reader out of exactly one of a library's frames.
-///
-/// # Errors
-///
-/// Returns a `TypeError` naming the library when the value is not one frame.
-pub(crate) fn frame_batch_reader(
-    value: &Bound<'_, PyAny>,
-    library: Frames,
-) -> PyResult<BatchReader> {
-    frame_reader(value, library)
-}
-
 /// Hand a core reader to Python as a lazy iterator of one library's frames.
 ///
 /// The iterator is `map` over the `PyArrow` reader, so one batch is converted
@@ -1354,6 +1342,18 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
         pairs.push(item?.extract::<(String, String)>()?);
     }
     Ok(pairs)
+}
+
+/// Borrow owned string pairs as the slice of string pairs the core takes.
+///
+/// The owned pairs outlive the call because they are read at the boundary
+/// and the core is entered afterwards, so the borrow is taken here rather
+/// than where the pairs are built.
+pub(crate) fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
+    pairs
+        .iter()
+        .map(|(column, value)| (column.as_str(), value.as_str()))
+        .collect()
 }
 
 /// Read a `commit_batch_num` or `num_threads` value, `name`: an integer

@@ -118,6 +118,25 @@ mod vocabulary {
     }
 
     #[test]
+    fn a_container_for_a_file_url_is_its_local_folder_and_any_other_scheme_is_refused() {
+        let folder =
+            Holder::folder_from_url(&Url::from_str("file:///lake/trades").unwrap()).unwrap();
+        assert!(matches!(folder, Holder::LocalFolder(_)), "{folder:?}");
+        let error =
+            Holder::folder_from_url(&Url::from_str("ftp://host/lake").unwrap()).unwrap_err();
+        assert!(
+            matches!(error, yggdryl::Error::Unsupported { .. }),
+            "{error:?}"
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(r#""ftp" does not support holding a location of this scheme"#),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn a_coding_and_a_text_base_compose_as_text_over_the_decoded_view() {
         for name in ["trades.txt.gz", "trades.txt.zst", "trades.txt.zz"] {
             let handle = composed(name);
@@ -630,6 +649,15 @@ mod object_store_holders {
     }
 
     #[test]
+    fn a_container_for_an_object_store_url_is_the_prefix_it_names() {
+        let folder = Holder::folder_from_url(&Url::from_str("s3://trades/lake/").unwrap()).unwrap();
+        let Holder::S3Folder(folder) = &folder else {
+            panic!("expected an object-store folder, got {folder:?}");
+        };
+        assert_eq!((folder.bucket(), folder.prefix()), ("trades", "lake/"));
+    }
+
+    #[test]
     fn a_query_states_the_store_beneath_the_properties_and_leaves_the_location() {
         let store = store();
         store.put("trades", "lake/part.bin", b"AAPL");
@@ -686,6 +714,17 @@ mod http_holders {
     use yggdryl::holder::Holder;
     use yggdryl::http::{HttpOptions, Session};
     use yggdryl::{IOBase, IOKind, MimeType, Url};
+
+    #[test]
+    fn a_container_for_an_http_url_is_a_session_over_it() {
+        let url = Url::from_str("https://data.example.com/lake/").unwrap();
+        let folder = Holder::folder_from_url(&url).unwrap();
+        let Holder::HttpSession(session) = &folder else {
+            panic!("expected a session, got {folder:?}");
+        };
+        assert_eq!(session.base_url(), Some(&url));
+        assert_eq!(session.stats().requests, 0, "holding sends nothing");
+    }
 
     #[test]
     fn an_http_url_is_held_as_the_request_that_reads_it() {

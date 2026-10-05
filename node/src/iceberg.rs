@@ -35,7 +35,7 @@ use crate::iobase::{
 use crate::iomedia::JsBatchReader;
 use crate::napi_error;
 use crate::text::codec::JsScalar;
-use crate::uri::PartitionEntry;
+use crate::uri::{PartitionEntry, borrowed_pairs, partition_pairs};
 use crate::warehouse::{
     JsObjectIterator, JsWarehouseCatalog, JsWarehouseNamespace, JsWarehouseNamespaces,
     JsWarehouseTable, JsWarehouseTables, ObjectOptions, ObjectOutput, ObjectPathInput, Stated,
@@ -99,40 +99,6 @@ pub(crate) fn field_from_input(value: FieldInput<'_>) -> Result<CoreField> {
         Either::A(field) => Ok(field.inner.clone()),
         Either::B(text) => CoreField::from_str(&text).map_err(napi_error),
     }
-}
-
-/// Read a snapshot id exactly: a `bigint` as is, a number below 2^53.
-fn snapshot_id_from_input(value: SnapshotIdInput) -> Result<i64> {
-    match value {
-        Either::A(value) => {
-            let (id, lossless) = value.get_i64();
-            if !lossless {
-                return Err(napi_error("snapshotId must fit in a signed 64-bit integer"));
-            }
-            Ok(id)
-        }
-        Either::B(value) => crate::exact_i64(value, "snapshotId"),
-    }
-}
-
-/// Collect scan filters into owned `(column, value)` pairs.
-fn filter_pairs(filters: Option<ScanFilters>) -> Vec<(String, String)> {
-    match filters {
-        None => Vec::new(),
-        Some(Either::A(entries)) => entries
-            .into_iter()
-            .map(|entry| (entry.column, entry.value))
-            .collect(),
-        Some(Either::B(values)) => values.into_iter().collect(),
-    }
-}
-
-/// Borrow owned filter pairs as the `(column, value)` slices the core takes.
-fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
-    pairs
-        .iter()
-        .map(|(column, value)| (column.as_str(), value.as_str()))
-        .collect()
 }
 
 /// The Iceberg option fields, as one JavaScript options object.
@@ -503,31 +469,6 @@ impl JsIcebergOptions {
     pub fn clone_js(&self) -> Self {
         self.clone()
     }
-}
-
-/// Run one table operation under per-call options, restoring the handle after.
-///
-/// The override is shadowed for exactly the length of the call - saved before,
-/// put back after, whatever the operation did - so per-call options never leak
-/// into the handle's own configuration.
-fn with_call_options<R>(
-    table: &mut CoreTable<Handle>,
-    options: Option<CoreIcebergOptions>,
-    operation: impl FnOnce(&mut CoreTable<Handle>) -> Result<R>,
-) -> Result<R> {
-    let Some(options) = options else {
-        return operation(table);
-    };
-    let saved = table.clear_options();
-    table.set_options(options);
-    let result = operation(table);
-    match saved {
-        Some(saved) => table.set_options(saved),
-        None => {
-            table.clear_options();
-        }
-    }
-    result
 }
 
 /// Read the per-call options an optional argument carried.
@@ -1813,7 +1754,7 @@ impl JsTable {
     /// for any snapshot the table still retains.
     #[napi]
     pub fn manifests_at(&self, snapshot_id: SnapshotIdInput) -> Result<Vec<JsManifestFile>> {
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
         let metadata = self.inner.metadata().map_err(napi_error)?;
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
             let retained: Vec<String> = metadata
@@ -1861,9 +1802,11 @@ impl JsTable {
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
         let field = field.map(|field| field.inner.clone());
-        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
-            table.scan(field.as_ref()).map_err(napi_error)
-        })?;
+        let reader = self
+            .inner
+            .with_call_options(call_options(options), |table| {
+                table.scan(field.as_ref()).map_err(napi_error)
+            })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -1930,13 +1873,15 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let pairs = filter_pairs(filters);
+        let pairs = partition_pairs(filters);
         let field = field.map(field_from_input).transpose()?;
-        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .scan_where(&borrowed_pairs(&pairs), field.as_ref())
-                .map_err(napi_error)
-        })?;
+        let reader = self
+            .inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .scan_where(&borrowed_pairs(&pairs), field.as_ref())
+                    .map_err(napi_error)
+            })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -1955,13 +1900,15 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let pairs = filter_pairs(filters);
+        let pairs = partition_pairs(filters);
         let field = field.map(field_from_input).transpose()?;
-        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .scan_ref(&name, &borrowed_pairs(&pairs), field.as_ref())
-                .map_err(napi_error)
-        })?;
+        let reader = self
+            .inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .scan_ref(&name, &borrowed_pairs(&pairs), field.as_ref())
+                    .map_err(napi_error)
+            })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -1975,7 +1922,7 @@ impl JsTable {
     /// than a promise.
     #[napi]
     pub fn plan(&self, filters: Option<ScanFilters>) -> Result<JsScanPlan> {
-        let pairs = filter_pairs(filters);
+        let pairs = partition_pairs(filters);
         let plan = self
             .inner
             .plan(&borrowed_pairs(&pairs))
@@ -1994,8 +1941,8 @@ impl JsTable {
         snapshot_id: SnapshotIdInput,
         filters: Option<ScanFilters>,
     ) -> Result<JsScanPlan> {
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
-        let pairs = filter_pairs(filters);
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
+        let pairs = partition_pairs(filters);
         let plan = self
             .inner
             .plan_at(snapshot_id, &borrowed_pairs(&pairs))
@@ -2015,9 +1962,10 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let batches = batches.take()?;
-        with_call_options(&mut self.inner, call_options(options), |table| {
-            table.commit_append(batches).map_err(napi_error)
-        })
+        self.inner
+            .with_call_options(call_options(options), |table| {
+                table.commit_append(batches).map_err(napi_error)
+            })
     }
 
     /// Replace the partitions `batches` fall in as a new snapshot - every
@@ -2035,9 +1983,10 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let batches = batches.take()?;
-        with_call_options(&mut self.inner, call_options(options), |table| {
-            table.commit_overwrite(batches).map_err(napi_error)
-        })
+        self.inner
+            .with_call_options(call_options(options), |table| {
+                table.commit_overwrite(batches).map_err(napi_error)
+            })
     }
 
     /// Replace only the rows `filters` selects, keeping every other file.
@@ -2060,13 +2009,14 @@ impl JsTable {
         batches: &mut JsBatchReader,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
-        let pairs = filter_pairs(filters);
+        let pairs = partition_pairs(filters);
         let batches = batches.take()?;
-        with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
-                .map_err(napi_error)
-        })
+        self.inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .commit_overwrite_where(&borrowed_pairs(&pairs), batches)
+                    .map_err(napi_error)
+            })
     }
 
     /// Merge `batches` into the stored rows, matching on `mergeBy`: a
@@ -2102,11 +2052,12 @@ impl JsTable {
     ) -> Result<()> {
         let keys = crate::expression::selector_from_input(merge_by)?;
         let batches = batches.take()?;
-        with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .commit_merge(batches, &keys, safe.unwrap_or(true))
-                .map_err(napi_error)
-        })
+        self.inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .commit_merge(batches, &keys, safe.unwrap_or(true))
+                    .map_err(napi_error)
+            })
     }
 
     /// Merge `batches` into the rows `filters` selects, on `mergeBy`.
@@ -2134,19 +2085,20 @@ impl JsTable {
         safe: Option<bool>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
-        let pairs = filter_pairs(filters);
+        let pairs = partition_pairs(filters);
         let keys = crate::expression::selector_from_input(merge_by)?;
         let batches = batches.take()?;
-        with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .commit_merge_where(
-                    &borrowed_pairs(&pairs),
-                    batches,
-                    &keys,
-                    safe.unwrap_or(true),
-                )
-                .map_err(napi_error)
-        })
+        self.inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .commit_merge_where(
+                        &borrowed_pairs(&pairs),
+                        batches,
+                        &keys,
+                        safe.unwrap_or(true),
+                    )
+                    .map_err(napi_error)
+            })
     }
 
     /// Add a schema, make it current, and write a new metadata document.
@@ -2173,14 +2125,16 @@ impl JsTable {
         options: Option<&JsIcebergOptions>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
-        let pairs = filter_pairs(filters);
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
+        let pairs = partition_pairs(filters);
         let schema = schema.map(field_from_input).transpose()?;
-        let reader = with_call_options(&mut self.inner, call_options(options), |table| {
-            table
-                .scan_at(snapshot_id, &borrowed_pairs(&pairs), schema.as_ref())
-                .map_err(napi_error)
-        })?;
+        let reader = self
+            .inner
+            .with_call_options(call_options(options), |table| {
+                table
+                    .scan_at(snapshot_id, &borrowed_pairs(&pairs), schema.as_ref())
+                    .map_err(napi_error)
+            })?;
         Ok(JsBatchReader::from_core(reader, &root_name))
     }
 
@@ -2202,7 +2156,7 @@ impl JsTable {
     /// [`fastForward`](Self::fast_forward).
     #[napi]
     pub fn create_branch(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
         self.inner
             .create_branch(&name, snapshot_id)
             .map_err(napi_error)
@@ -2213,7 +2167,7 @@ impl JsTable {
     /// A tag never moves, so it is what pins a snapshot against expiration.
     #[napi]
     pub fn create_tag(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
         self.inner
             .create_tag(&name, snapshot_id)
             .map_err(napi_error)
@@ -2238,7 +2192,7 @@ impl JsTable {
     /// parent ids, which is what makes a fast-forward unable to lose history.
     #[napi]
     pub fn fast_forward(&mut self, name: String, snapshot_id: SnapshotIdInput) -> Result<()> {
-        let snapshot_id = snapshot_id_from_input(snapshot_id)?;
+        let snapshot_id = crate::exact_i64_input(snapshot_id, "snapshotId")?;
         self.inner
             .fast_forward_branch(&name, snapshot_id)
             .map_err(napi_error)
@@ -2260,15 +2214,12 @@ impl JsTable {
             .map(|value| crate::exact_i64(value, "olderThanMs"))
             .transpose()?;
         let retain_last = retain_last
-            .map(|value| {
-                usize::try_from(crate::exact_u64(value, "retainLast")?)
-                    .map_err(|_| napi_error("retainLast exceeds this platform's usize"))
-            })
+            .map(|value| crate::exact_usize(value, "retainLast"))
             .transpose()?;
         let snapshot_ids = snapshot_ids
             .unwrap_or_default()
             .into_iter()
-            .map(snapshot_id_from_input)
+            .map(|id| crate::exact_i64_input(id, "snapshotId"))
             .collect::<Result<Vec<_>>>()?;
         Ok(self
             .inner

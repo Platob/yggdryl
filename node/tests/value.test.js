@@ -10,7 +10,6 @@ const { pathToFileURL } = require('node:url')
 
 const { Field, IOBase, Scalar, codec, json, toml, yaml } = require('yggdryl')
 
-const f16 = new Field('value', 'float16', false)
 const u64 = new Field('value', 'uint64', false)
 
 test('codec loads can return the exact native Scalar', () => {

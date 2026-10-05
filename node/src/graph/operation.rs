@@ -13,9 +13,9 @@ use yggdryl::graph::{
 };
 use yggdryl::{DataType, Decimal, Scalar};
 
-use super::{decimal_text, instant_of, stated_operation};
-use crate::napi_error;
+use super::{decimal_text, stated_operation};
 use crate::text::codec::JsScalar;
+use crate::{exact_i64_input, napi_error};
 
 /// An undated order: the element, market and operation facts of one order
 /// with no instant. Immutable: every verb answers a new value.
@@ -107,7 +107,7 @@ macro_rules! operation_element_class {
             /// finalized.
             #[napi]
             pub fn at(&self, unix: Either<BigInt, f64>) -> Result<$event> {
-                let unix = instant_of(unix, "unix")?;
+                let unix = exact_i64_input(unix, "unix")?;
                 Ok($event::from_core(self.inner.clone().at(unix)))
             }
         }
@@ -147,7 +147,7 @@ macro_rules! operation_event_class {
                 facts: Option<&JsScalar>,
                 book: Option<&JsBookRef>,
             ) -> Result<Self> {
-                let currunix = instant_of(currunix, "currunix")?;
+                let currunix = exact_i64_input(currunix, "currunix")?;
                 let mut event = stated_operation::<$kind>($name, currunix, facts, false)?;
                 if let Some(book) = book {
                     event.set_book(Some(book.inner.clone()));
@@ -250,16 +250,6 @@ operation_event_class!(
     JsExecution
 );
 
-/// The action a spelling names, or an error listing every spelling.
-fn md_update_action_of(text: &str) -> Result<CoreMdUpdateAction> {
-    CoreMdUpdateAction::read(text).ok_or_else(|| {
-        napi_error(format!(
-            "unknown MdUpdateAction {text:?}; expected one of {:?}",
-            CoreMdUpdateAction::ALL.map(CoreMdUpdateAction::as_str)
-        ))
-    })
-}
-
 /// A stated decimal slot, checked through the same `DataType::scalar` door
 /// every other decimal slot in the graph binding crosses, so a value this
 /// slot refuses is refused the same way theirs is.
@@ -347,8 +337,8 @@ fn slot_value(value: Option<String>) -> Either<String, Null> {
 #[napi(object)]
 #[derive(Clone, Default)]
 pub struct BookRefInput {
-    /// The update action, read through `MdUpdateAction::read`, refusing text
-    /// that names no spelling.
+    /// The update action, read through `MdUpdateAction`'s `FromStr`,
+    /// refusing text that names no spelling.
     #[napi(ts_type = "string | null")]
     pub action: Option<Either<String, Null>>,
     /// The book scope this control belongs to.
@@ -395,8 +385,9 @@ impl JsBookRef {
         )?;
         let action = text_slot("BookRef", "action", &action)?
             .as_deref()
-            .map(md_update_action_of)
-            .transpose()?;
+            .map(str::parse::<CoreMdUpdateAction>)
+            .transpose()
+            .map_err(napi_error)?;
         let position = match position {
             Scalar::Null => None,
             value => Some(
@@ -484,7 +475,7 @@ impl JsBookRef {
     /// record; equal controls share it.
     #[napi]
     pub fn stable_hash(&self) -> BigInt {
-        BigInt::from(book_ref_hash(&self.inner))
+        BigInt::from(self.inner.stable_hash())
     }
 
     /// A cheap native clone.
@@ -524,19 +515,4 @@ impl JsBookRef {
             entry_size: Some(slot_value(self.entry_size())),
         }
     }
-}
-
-/// The stable hash of a book control: its five slots as one record
-/// `Scalar` - a slot it states nothing in a null - digested by the crate's
-/// one `stable_hash`, so equal controls hash alike in either language.
-pub(crate) fn book_ref_hash(book: &CoreBookRef) -> u64 {
-    Scalar::from_sequence([
-        book.action
-            .map_or(Scalar::Null, |action| Scalar::from(action.as_str())),
-        book.scope.clone().map_or(Scalar::Null, Scalar::from),
-        book.position.map_or(Scalar::Null, Scalar::from),
-        book.entry_px.map_or(Scalar::Null, Scalar::from),
-        book.entry_size.map_or(Scalar::Null, Scalar::from),
-    ])
-    .stable_hash()
 }

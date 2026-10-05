@@ -23,12 +23,14 @@ const knownMimeTypes = Object.freeze({
   ULLINK: 'text/ullink',
   FIX: 'text/fix',
   FIXUL: 'text/fixul',
+  KEYVALUE: 'text/key-value',
   FIXML: 'text/fixml',
   MARKDOWN: 'text/markdown',
   HTML: 'text/html',
   CSS: 'text/css',
   JAVASCRIPT: 'text/javascript',
   XML: 'application/xml',
+  XMLA: 'application/xmla+xml',
   HTTP: 'message/http',
   PDF: 'application/pdf',
   CBOR: 'application/cbor',
@@ -68,10 +70,12 @@ const knownMimeTypes = Object.freeze({
   SEVEN_ZIP: 'application/x-7z-compressed',
   RAR: 'application/vnd.rar',
   TAR: 'application/x-tar',
+  DIRECTORY: 'inode/directory',
+  FILE: 'inode/file',
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 62)
+  assert.equal(Object.keys(knownMimeTypes).length, 66)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {

@@ -158,6 +158,8 @@ This page owns the path as a sequence of names: segments, filenames, media type,
     assert.equal(uri.toString(), unchanged)
     ```
 
+A `Url` also takes `pathlib`'s suffix: `Url::set_suffix(".parquet")` replaces the final extension with the leading dot optional, and an empty suffix (or a lone dot) removes it, a name with none kept as it is; a refusal leaves the URL unchanged. Python's `Url.with_suffix` and JavaScript's `url.withSuffix` answer a new location through it.
+
 ## Media type in the name
 
 [`MediaType`](../types/scalar.md) splits the chain into base plus encodings, as `Content-Type` plus `Content-Encoding` do.

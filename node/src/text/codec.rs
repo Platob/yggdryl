@@ -203,7 +203,7 @@ impl JsScalar {
     #[napi(factory)]
     pub fn duration(count: Either<BigInt, f64>, unit: String) -> Result<Self> {
         Scalar::from_duration(
-            exact_i64_input(count, "count")?,
+            crate::exact_i64_input(count, "count")?,
             time_unit(&unit)?,
             yggdryl::Timezone::NAIVE,
         )
@@ -272,7 +272,7 @@ impl JsScalar {
         unit: String,
         timezone: Option<TimezoneInput<'_>>,
     ) -> Result<Self> {
-        let count = exact_i64(&count, "count")?;
+        let count = crate::exact_bigint(&count, "count")?;
         let unit = time_unit(&unit)?;
         let zone = timezone_or_naive(timezone)?;
         let inner = match DataTypeId::from_str(&id).map_err(napi_error)? {
@@ -339,9 +339,7 @@ impl JsScalar {
     /// Look up one non-negative sequence index without projecting its value.
     #[napi]
     pub fn at(&self, index: f64) -> Result<Option<JsScalar>> {
-        let index = crate::exact_u64(index, "index")?;
-        let index = usize::try_from(index)
-            .map_err(|_| napi_error(format!("index {index} exceeds this platform's range")))?;
+        let index = crate::exact_usize(index, "index")?;
         Ok(self
             .inner
             .get(index)
@@ -698,23 +696,6 @@ fn timezone_or_naive(value: Option<TimezoneInput<'_>>) -> Result<Timezone> {
     value.map_or(Ok(Timezone::NAIVE), timezone_from_input)
 }
 
-fn exact_i64(value: &BigInt, name: &str) -> Result<i64> {
-    let (value, lossless) = value.get_i64();
-    if !lossless {
-        return Err(napi_error(format!(
-            "{name} must fit in a signed 64-bit integer"
-        )));
-    }
-    Ok(value)
-}
-
-fn exact_i64_input(value: Either<BigInt, f64>, name: &str) -> Result<i64> {
-    match value {
-        Either::A(value) => exact_i64(&value, name),
-        Either::B(value) => crate::exact_i64(value, name),
-    }
-}
-
 /// Assemble the read-side options from the boundary's two switches.
 ///
 /// Substitution is on when the caller supplied variables *or* asked for the
@@ -743,6 +724,104 @@ fn loading_from(
         None => yggdryl::text::Placeholders::new(),
     };
     Ok(loading.with_placeholders(variables.with_environment(environment)))
+}
+
+/// Decode one YAML, TOML or XML document from bytes or text under the
+/// loading the limits, `field` and the placeholders state.
+fn loads_with(
+    format: Format,
+    input: Either<Buffer, String>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value = match &input {
+        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), format, &loading),
+        Either::B(value) => text::from_utf8_with(value, format, &loading),
+    }
+    .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
+/// Decode one YAML, TOML or XML document from a path, as [`loads_with`]
+/// decodes one in hand.
+fn load_path_with(
+    format: Format,
+    path: &str,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value =
+        text::from_reader_with(open_path(path, limits.max_input_bytes())?, format, &loading)
+            .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
+/// One JavaScript value crossed once for a write of `format`: the indent
+/// read, the depth checked and, for TOML and XML, the value checked against
+/// what the format can write before a byte is.
+fn encoded_for<'env>(
+    env: Env,
+    format: Format,
+    value: Unknown<'env>,
+    max_depth: Option<u32>,
+    indent: &str,
+    native_wrapper_prototypes: &Array<'env>,
+    native_intrinsics: &Array<'env>,
+) -> Result<(Scalar, Formatting)> {
+    let formatting = checked_formatting(indent)?;
+    let max_depth = checked_depth(max_depth)?;
+    let value = encode_js_value(
+        env,
+        value,
+        max_depth,
+        native_wrapper_prototypes,
+        native_intrinsics,
+    )?;
+    match format {
+        Format::Toml => toml::validate_for_write_with_limits(&value, limits_with_depth(max_depth)),
+        Format::Xml => xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth)),
+        Format::Json | Format::JsonLines | Format::Yaml => Ok(()),
+    }
+    .map_err(napi_error)?;
+    Ok((value, formatting))
+}
+
+/// Write one encoded value of `format` to a file at `path`.
+fn dump_path(value: &Scalar, path: &str, format: Format, formatting: Formatting) -> Result<()> {
+    let mut writer = create_path(path)?;
+    text::into_writer_with_formatting(value, &mut writer, format, formatting)
+        .map_err(napi_error)?;
+    writer.flush().map_err(napi_error)
 }
 
 /// Decode one JSON value without generic format parsing or dispatch.
@@ -791,23 +870,14 @@ pub fn yaml_loads_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
+    loads_with(
+        Format::Yaml,
+        input,
         limits,
-        field.as_ref(),
+        field,
         placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = match &input {
-        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Yaml, &loading),
-        Either::B(value) => text::from_utf8_with(value, Format::Yaml, &loading),
-    }
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        environment,
+        native_scalar,
     )
 }
 
@@ -821,23 +891,14 @@ pub fn toml_loads_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
+    loads_with(
+        Format::Toml,
+        input,
         limits,
-        field.as_ref(),
+        field,
         placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = match &input {
-        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Toml, &loading),
-        Either::B(value) => text::from_utf8_with(value, Format::Toml, &loading),
-    }
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        environment,
+        native_scalar,
     )
 }
 
@@ -854,23 +915,14 @@ pub fn xml_loads_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
+    loads_with(
+        Format::Xml,
+        input,
         limits,
-        field.as_ref(),
+        field,
         placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = match &input {
-        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Xml, &loading),
-        Either::B(value) => text::from_utf8_with(value, Format::Xml, &loading),
-    }
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        environment,
+        native_scalar,
     )
 }
 
@@ -948,15 +1000,16 @@ pub fn json_dumps_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
-    let formatting = checked_formatting(&indent)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Json,
         value,
-        checked_depth(max_depth)?,
+        max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    json::into_bytes_with_formatting(&value, formatting)
+    text::into_bytes_with_formatting(&value, Format::Json, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -999,7 +1052,7 @@ fn exact_i256(value: &BigInt, name: &str) -> Result<i256> {
     Ok(i256::from_le_bytes(bytes))
 }
 
-fn bigint_from_i256(value: i256) -> BigInt {
+pub(crate) fn bigint_from_i256(value: i256) -> BigInt {
     let sign_bit = value.is_negative();
     let mut bytes = value.into_le_bytes();
     if sign_bit {
@@ -1034,15 +1087,16 @@ pub fn yaml_dumps_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
-    let formatting = checked_formatting(&indent)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Yaml,
         value,
-        checked_depth(max_depth)?,
+        max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    yaml::into_bytes_with_formatting(&value, formatting)
+    text::into_bytes_with_formatting(&value, Format::Yaml, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -1057,18 +1111,16 @@ pub fn toml_dumps_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
-    let formatting = checked_formatting(&indent)?;
-    let max_depth = checked_depth(max_depth)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Toml,
         value,
         max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    toml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
-        .map_err(napi_error)?;
-    toml::into_bytes_with_formatting(&value, formatting)
+    text::into_bytes_with_formatting(&value, Format::Toml, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -1083,18 +1135,16 @@ pub fn xml_dumps_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<Buffer> {
-    let formatting = checked_formatting(&indent)?;
-    let max_depth = checked_depth(max_depth)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Xml,
         value,
         max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
-        .map_err(napi_error)?;
-    xml::into_bytes_with_formatting(&value, formatting)
+    text::into_bytes_with_formatting(&value, Format::Xml, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
 }
@@ -1183,24 +1233,14 @@ pub fn yaml_load_path_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
-        limits,
-        field.as_ref(),
-        placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = text::from_reader_with(
-        open_path(&path, limits.max_input_bytes())?,
+    load_path_with(
         Format::Yaml,
-        &loading,
-    )
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        &path,
+        limits,
+        field,
+        placeholders,
+        environment,
+        native_scalar,
     )
 }
 
@@ -1214,24 +1254,14 @@ pub fn toml_load_path_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
-        limits,
-        field.as_ref(),
-        placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = text::from_reader_with(
-        open_path(&path, limits.max_input_bytes())?,
+    load_path_with(
         Format::Toml,
-        &loading,
-    )
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        &path,
+        limits,
+        field,
+        placeholders,
+        environment,
+        native_scalar,
     )
 }
 
@@ -1245,24 +1275,14 @@ pub fn xml_load_path_native(
     environment: Option<bool>,
     native_scalar: Option<bool>,
 ) -> Result<Either<JsScalar, JsonValue>> {
-    let limits = checked_limits(limits)?;
-    let loading = loading_from(
-        limits,
-        field.as_ref(),
-        placeholders,
-        environment.unwrap_or(false),
-    )?;
-    let value = text::from_reader_with(
-        open_path(&path, limits.max_input_bytes())?,
+    load_path_with(
         Format::Xml,
-        &loading,
-    )
-    .map_err(napi_error)?;
-    decoded_value_for_field(
-        value,
-        field.as_ref().map(|field| &field.inner),
-        limits.max_depth(),
-        native_scalar.unwrap_or(false),
+        &path,
+        limits,
+        field,
+        placeholders,
+        environment,
+        native_scalar,
     )
 }
 
@@ -1328,17 +1348,16 @@ pub fn json_dump_path_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
-    let formatting = checked_formatting(&indent)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Json,
         value,
-        checked_depth(max_depth)?,
+        max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    let mut writer = create_path(&path)?;
-    json::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
-    writer.flush().map_err(napi_error)
+    dump_path(&value, &path, Format::Json, formatting)
 }
 
 /// Encode one JavaScript value directly to a YAML file writer.
@@ -1352,17 +1371,16 @@ pub fn yaml_dump_path_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
-    let formatting = checked_formatting(&indent)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Yaml,
         value,
-        checked_depth(max_depth)?,
+        max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    let mut writer = create_path(&path)?;
-    yaml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
-    writer.flush().map_err(napi_error)
+    dump_path(&value, &path, Format::Yaml, formatting)
 }
 
 /// Encode one JavaScript value directly to a TOML file writer.
@@ -1376,20 +1394,16 @@ pub fn toml_dump_path_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
-    let formatting = checked_formatting(&indent)?;
-    let max_depth = checked_depth(max_depth)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Toml,
         value,
         max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    toml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
-        .map_err(napi_error)?;
-    let mut writer = create_path(&path)?;
-    toml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
-    writer.flush().map_err(napi_error)
+    dump_path(&value, &path, Format::Toml, formatting)
 }
 
 /// Encode one JavaScript value directly to an XML file writer.
@@ -1403,20 +1417,16 @@ pub fn xml_dump_path_native(
     native_wrapper_prototypes: Array<'_>,
     native_intrinsics: Array<'_>,
 ) -> Result<()> {
-    let formatting = checked_formatting(&indent)?;
-    let max_depth = checked_depth(max_depth)?;
-    let value = encode_js_value(
+    let (value, formatting) = encoded_for(
         env,
+        Format::Xml,
         value,
         max_depth,
+        &indent,
         &native_wrapper_prototypes,
         &native_intrinsics,
     )?;
-    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
-        .map_err(napi_error)?;
-    let mut writer = create_path(&path)?;
-    xml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
-    writer.flush().map_err(napi_error)
+    dump_path(&value, &path, Format::Xml, formatting)
 }
 
 /// Encode JavaScript values directly to a JSON Lines file writer.
@@ -1597,13 +1607,9 @@ fn limits_with_depth(max_depth: usize) -> Limits {
     )
 }
 
-fn checked_limit(value: Option<f64>, name: &str, default: usize) -> Result<usize> {
-    let Some(value) = value else {
-        return Ok(default);
-    };
-    let value = crate::exact_u64(value, name)?;
-    usize::try_from(value)
-        .map_err(|_| napi_error(format!("{name} {value} exceeds this platform's range")))
+/// An optional count as the limit it states, `default` where none was given.
+pub(crate) fn checked_limit(value: Option<f64>, name: &str, default: usize) -> Result<usize> {
+    value.map_or(Ok(default), |value| crate::exact_usize(value, name))
 }
 
 fn checked_limits(input: Option<CodecLimitsInput>) -> Result<Limits> {
@@ -2273,7 +2279,7 @@ fn required_array_string_function<'env>(
         .ok_or_else(|| napi_error(format!("missing native {name} accessor")))
 }
 
-fn required_property<T>(object: &Object<'_>, name: &str) -> Result<T>
+pub(crate) fn required_property<T>(object: &Object<'_>, name: &str) -> Result<T>
 where
     T: napi::bindgen_prelude::FromNapiValue,
 {

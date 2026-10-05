@@ -543,6 +543,20 @@ impl StreamState {
             }
         }
     }
+
+    /// Close the stream through `close` once; every close answers the
+    /// failure the stream holds, the first close's own included.
+    fn close(&mut self, close: &FunctionRef<(), ()>) -> Result<()> {
+        if !self.closed {
+            self.closed = true;
+            let env = self.env()?;
+            let result = close.borrow_back(&env).and_then(|close| close.call(()));
+            self.remember(env, result)?;
+        }
+        self.failure.as_ref().map_or(Ok(()), |error| {
+            Err(Error::Io(std::io::Error::other(error.clone())))
+        })
+    }
 }
 
 pub(crate) struct JsByteReader {
@@ -611,21 +625,7 @@ impl ByteReader for JsByteReader {
     }
 
     fn close(&mut self) -> Result<()> {
-        if self.state.closed {
-            return self.state.failure.as_ref().map_or(Ok(()), |error| {
-                Err(Error::Io(std::io::Error::other(error.clone())))
-            });
-        }
-        self.state.closed = true;
-        let env = self.state.env()?;
-        let result = self
-            .close
-            .borrow_back(&env)
-            .and_then(|close| close.call(()));
-        self.state.remember(env, result)?;
-        self.state.failure.as_ref().map_or(Ok(()), |error| {
-            Err(Error::Io(std::io::Error::other(error.clone())))
-        })
+        self.state.close(&self.close)
     }
 
     fn closed(&self) -> bool {
@@ -835,21 +835,7 @@ impl ByteWriter for JsByteWriter {
     }
 
     fn close(&mut self) -> Result<()> {
-        if self.state.closed {
-            return self.state.failure.as_ref().map_or(Ok(()), |error| {
-                Err(Error::Io(std::io::Error::other(error.clone())))
-            });
-        }
-        self.state.closed = true;
-        let env = self.state.env()?;
-        let result = self
-            .close
-            .borrow_back(&env)
-            .and_then(|close| close.call(()));
-        self.state.remember(env, result)?;
-        self.state.failure.as_ref().map_or(Ok(()), |error| {
-            Err(Error::Io(std::io::Error::other(error.clone())))
-        })
+        self.state.close(&self.close)
     }
 
     fn closed(&self) -> bool {

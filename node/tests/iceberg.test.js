@@ -1651,6 +1651,13 @@ test('a catalog and a namespace carry properties, transactionally', (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
   const catalog = new iceberg.IcebergCatalog('lake', path.join(root, 'warehouse'))
+  // A created catalog's folder is the container the core holds for the
+  // location (`Holder::folder_from_url`): a scheme no backend holds is
+  // refused by that scheme.
+  assert.throws(
+    () => iceberg.IcebergCatalog.create('lake', 'ftp://host/lake'),
+    /"ftp" does not support holding a location of this scheme/,
+  )
 
   // Absent means empty, and a call given nothing writes nothing.
   assert.deepEqual(catalog.properties, {})

@@ -4170,6 +4170,7 @@ declare module './index' {
     const CSS: MimeType
     const JAVASCRIPT: MimeType
     const XML: MimeType
+    const XMLA: MimeType
     const HTTP: MimeType
     const PDF: MimeType
     const CBOR: MimeType
@@ -4209,6 +4210,8 @@ declare module './index' {
     const SEVEN_ZIP: MimeType
     const RAR: MimeType
     const TAR: MimeType
+    const DIRECTORY: MimeType
+    const FILE: MimeType
   }
   interface MediaType extends Iterable<MimeType> {
     /** Atomically replace encodings from one single-pass iterable. */

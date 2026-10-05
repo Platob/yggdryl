@@ -56,16 +56,6 @@ impl JsDataType {
             .map(JsField::from_core)
     }
 
-    /// Resolve an Array-compatible index, counting from the end when negative.
-    fn resolve_index(&self, index: i32) -> Option<usize> {
-        let len = i64::from(self.length());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved)
-            .ok()
-            .filter(|at| *at < self.inner.field_len())
-    }
-
     fn fields(&self) -> impl Iterator<Item = &CoreField> {
         (0..self.inner.field_len()).filter_map(|index| self.inner.get_field_at(index))
     }
@@ -94,12 +84,13 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Internal direct temporal constructor for typed Field factories.
+    /// Internal direct temporal constructor for typed Field factories; the
+    /// core constructor refuses a unit its datatype does not take.
     #[napi(factory, js_name = "_temporal", skip_typescript)]
     pub fn temporal(kind: String, unit: String, timezone: Option<String>) -> Result<Self> {
         let unit = CoreTimeUnit::from_str(&unit).map_err(napi_error)?;
         let inner = match kind.as_str() {
-            "datetime64" if unit.is_temporal() => CoreDataType::datetime64(
+            "datetime64" => CoreDataType::datetime64(
                 unit,
                 // The zone is canonicalized by the core, so an alias or a
                 // differently cased spelling names the same datatype.
@@ -108,34 +99,19 @@ impl JsDataType {
                     .transpose()
                     .map_err(napi_error)?
                     .unwrap_or(yggdryl::Timezone::NAIVE),
-            )
-            .map_err(napi_error)?,
-            "time32" => CoreDataType::time32(unit).map_err(napi_error)?,
-            "time64" => CoreDataType::time64(unit).map_err(napi_error)?,
-            "duration32" if unit.is_temporal() => {
-                CoreDataType::duration32(unit).map_err(napi_error)?
-            }
-            "duration64" if unit.is_temporal() => {
-                CoreDataType::duration64(unit).map_err(napi_error)?
-            }
-            "interval" if unit.is_interval() => CoreDataType::interval(unit).map_err(napi_error)?,
-            "datetime64" | "duration32" | "duration64" => {
-                return Err(Error::from_reason(format!(
-                    "{kind} requires a temporal resolution unit"
-                )));
-            }
-            "interval" => {
-                return Err(Error::from_reason(
-                    "interval requires an interval layout unit",
-                ));
-            }
+            ),
+            "time32" => CoreDataType::time32(unit),
+            "time64" => CoreDataType::time64(unit),
+            "duration32" => CoreDataType::duration32(unit),
+            "duration64" => CoreDataType::duration64(unit),
+            "interval" => CoreDataType::interval(unit),
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a temporal datatype kind"
                 )));
             }
         };
-        Ok(Self::from_core(inner))
+        inner.map(Self::from_core).map_err(napi_error)
     }
 
     /// Creates the physical time-of-day type selected by its resolution.
@@ -626,7 +602,7 @@ impl JsDataType {
     /// Return the child at an Array-compatible index, or `null`.
     #[napi]
     pub fn get_field_at(&self, index: i32) -> Option<JsField> {
-        self.resolve_index(index).and_then(|at| self.child_at(at))
+        crate::array_index(index, self.inner.field_len()).and_then(|at| self.child_at(at))
     }
 
     /// Return the child a path names, or `null`.
@@ -679,8 +655,7 @@ impl JsDataType {
     /// Replace the child at an Array-compatible index.
     #[napi]
     pub fn set_field_at(&mut self, index: i32, child: ClassInstance<'_, JsField>) -> Result<()> {
-        let at = self
-            .resolve_index(index)
+        let at = crate::array_index(index, self.inner.field_len())
             .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
         self.inner
             .set_field_at(at, child.inner.clone())
@@ -715,8 +690,7 @@ impl JsDataType {
     /// Remove and return the child at an Array-compatible index.
     #[napi]
     pub fn remove_field_at(&mut self, index: i32) -> Result<JsField> {
-        let at = self
-            .resolve_index(index)
+        let at = crate::array_index(index, self.inner.field_len())
             .ok_or_else(|| napi_error(format_args!("no child at position {index}")))?;
         self.inner
             .remove_field_at(at)

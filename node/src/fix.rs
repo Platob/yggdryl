@@ -1125,11 +1125,6 @@ pub struct FixEntryView {
     pub entries: Vec<FixEntryView>,
 }
 
-/// One instant as JavaScript reads it: nanoseconds since the epoch.
-fn instant(unix: i64) -> BigInt {
-    BigInt::from(unix)
-}
-
 /// One core entry and everything under it, as the object JavaScript reads.
 fn entry_view(entry: &FixEntry) -> FixEntryView {
     FixEntryView {
@@ -1213,7 +1208,7 @@ fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
                 .map(|held| exact_f64(held, "msgseqnum"))
                 .transpose()?,
         ),
-        sendingtime: instant(header.sendingtime()),
+        sendingtime: BigInt::from(header.sendingtime()),
         possdupflag: or_null(header.possdupflag()),
         msgdirection: or_null(header.msgdirection().map(ToOwned::to_owned)),
         // Every `i32` is a JavaScript number exactly, so a length needs no
@@ -1519,7 +1514,7 @@ impl JsFixMsg {
     /// When the event happened, nanoseconds since the Unix epoch, UTC.
     #[napi(getter)]
     pub fn currunix(&self) -> BigInt {
-        instant(self.inner.get_currunix())
+        BigInt::from(self.inner.get_currunix())
     }
 
     /// The order state the message reached, ranked: `UNKNOWN` where it
@@ -1547,38 +1542,38 @@ impl JsFixMsg {
     /// When the order this message belongs to was created, where known.
     #[napi(getter)]
     pub fn creaunix(&self) -> Option<BigInt> {
-        self.inner.get_creaunix().map(instant)
+        self.inner.get_creaunix().map(BigInt::from)
     }
 
     /// The latest execution instant the lifecycle reached, where known.
     #[napi(getter)]
     pub fn execunix(&self) -> Option<BigInt> {
-        self.inner.get_execunix().map(instant)
+        self.inner.get_execunix().map(BigInt::from)
     }
 
     /// When the message was recorded, where stated.
     #[napi(getter)]
     pub fn recdunix(&self) -> Option<BigInt> {
-        self.inner.get_recdunix().map(instant)
+        self.inner.get_recdunix().map(BigInt::from)
     }
 
     /// When the order expires, where it has an expiry.
     #[napi(getter)]
     pub fn exprunix(&self) -> Option<BigInt> {
-        self.inner.get_exprunix().map(instant)
+        self.inner.get_exprunix().map(BigInt::from)
     }
 
     /// When the message this one follows happened, where it follows one.
     #[napi(getter)]
     pub fn prevunix(&self) -> Option<BigInt> {
-        self.inner.get_prevunix().map(instant)
+        self.inner.get_prevunix().map(BigInt::from)
     }
 
     /// The grid step a walk read this message as the snapshot of, where one
     /// did.
     #[napi(getter)]
     pub fn snapunix(&self) -> Option<BigInt> {
-        self.inner.get_snapunix().map(instant)
+        self.inner.get_snapunix().map(BigInt::from)
     }
 
     /// The sorted unique identities of the elements this one was read from:

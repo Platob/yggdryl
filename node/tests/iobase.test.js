@@ -300,6 +300,7 @@ test('a missing location is empty rather than an error', (t) => {
   // Reads skip, so probing a location needs no existence check first.
   assert.equal(absent.readBytes().length, 0)
   assert.equal(absent.size(), 0)
+  assert.equal(absent.readArrowReader().intoTable().numRows, 0)
 })
 
 test('buffered adds one reconfigurable native cache without changing identity', () => {
@@ -1449,4 +1450,26 @@ test('fromUri reads an object store query as the store properties and takes it o
     IOBase.fromUri('http://127.0.0.1:9/lake/key.bin?version=3').url.toString(),
     'http://127.0.0.1:9/lake/key.bin?version=3',
   )
+})
+
+test('fromUri holds every S3 URI form natively without a request and names no secret', () => {
+  // Every S3 spelling is the native store's: holding sends nothing, the
+  // query is read as the store's properties and taken off the location, and
+  // a credential written into the URL never comes back out of the handle.
+  for (const uri of [
+    's3://bucket/v=a%2Fb',
+    's3a://bucket/key',
+    's3n://bucket/key',
+    's3://key:secret@bucket/key',
+    's3://key:secret@minio:9000/bucket/key',
+    's3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1',
+    's3://bucket.s3.eu-west-1.amazonaws.com/key',
+  ]) {
+    const handle = IOBase.fromUri(uri)
+    assert.equal(handle.url.query, null, uri)
+    assert.ok(!handle.toString().includes('secret'), uri)
+    assert.ok(!handle.url.toString().includes('secret'), uri)
+  }
+  // A parameter no store reads is refused by name before anything is held.
+  assert.throws(() => IOBase.fromUri('s3://bucket/key?versionId=3'), /versionId/)
 })

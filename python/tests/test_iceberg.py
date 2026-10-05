@@ -1132,6 +1132,13 @@ class TestCatalog:
             IcebergCatalog.create("lake", tmp_path / "lake")
         assert IcebergCatalog.open_or_create("lake", tmp_path / "lake") == lake
         pond = IcebergCatalog.open_or_create("pond", tmp_path / "pond")
+        # The folder is the container the core holds for the location
+        # (`Holder::folder_from_url`): a scheme no backend holds is refused
+        # by that scheme.
+        with pytest.raises(
+            ValueError, match='"ftp" does not support holding a location of this scheme'
+        ):
+            IcebergCatalog.create("lake", "ftp://host/lake")
 
         warehouse = Warehouse()
         warehouse.register(lake)

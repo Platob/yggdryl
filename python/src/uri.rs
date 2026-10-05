@@ -928,12 +928,7 @@ impl PyUrl {
     /// The leading dot is optional, and an empty suffix removes the extension.
     fn with_suffix(slf: &Bound<'_, Self>, value: &str) -> PyResult<Py<Self>> {
         let mut renamed = url_of(&slf.as_super().borrow())?;
-        let suffix = value.strip_prefix('.').unwrap_or(value);
-        if suffix.is_empty() {
-            renamed.remove_extension();
-        } else {
-            renamed.set_extension(suffix).map_err(value_error)?;
-        }
+        renamed.set_suffix(value).map_err(value_error)?;
         url_object(slf.py(), renamed)
     }
 

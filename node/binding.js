@@ -469,6 +469,7 @@ const knownMimeNames = Object.freeze([
   'CSS',
   'JAVASCRIPT',
   'XML',
+  'XMLA',
   'HTTP',
   'PDF',
   'CBOR',
@@ -508,6 +509,8 @@ const knownMimeNames = Object.freeze([
   'SEVEN_ZIP',
   'RAR',
   'TAR',
+  'DIRECTORY',
+  'FILE',
 ])
 const nativeKnownMime = NativeMimeType._known.bind(NativeMimeType)
 for (const name of knownMimeNames) {
@@ -712,6 +715,23 @@ const nativeIntrinsics = Object.freeze([
   (value) => Reflect.apply(regexpFlagsGetter, value, []),
 ])
 
+// Refuse an option of `names` stated as anything but a whole count; an
+// `undefined` or `null` one is left unstated.
+function checkCounts(options, names) {
+  for (const name of names) {
+    const value = options[name]
+    if (
+      value !== undefined &&
+      value !== null &&
+      (!Number.isSafeInteger(value) || value < 0)
+    ) {
+      throw new RangeError(
+        `${name} must be a non-negative safe integer or null`,
+      )
+    }
+  }
+}
+
 function checkedOptions(options) {
   if (options == null) return {}
   if (typeof options !== 'object' || Array.isArray(options)) {
@@ -743,18 +763,7 @@ function checkedOptions(options) {
       `maxDepth must be an integer between 1 and ${MAX_DEPTH}`,
     )
   }
-  for (const name of ['maxInputBytes', 'maxNodes', 'maxDocuments']) {
-    const value = options[name]
-    if (
-      value !== undefined &&
-      value !== null &&
-      (!Number.isSafeInteger(value) || value < 0)
-    ) {
-      throw new RangeError(
-        `${name} must be a non-negative safe integer or null`,
-      )
-    }
-  }
+  checkCounts(options, ['maxInputBytes', 'maxNodes', 'maxDocuments'])
   if (
     options.indent !== undefined &&
     options.indent !== null &&
@@ -4537,18 +4546,7 @@ function checkedBufferedOptions(options) {
   if (!isPlainObject(options)) {
     throw new TypeError('buffered options must be an object')
   }
-  for (const name of ['pageSize', 'maxBytes', 'ttlMs']) {
-    const value = options[name]
-    if (
-      value !== undefined &&
-      value !== null &&
-      (!Number.isSafeInteger(value) || value < 0)
-    ) {
-      throw new RangeError(
-        `${name} must be a non-negative safe integer or null`,
-      )
-    }
-  }
+  checkCounts(options, ['pageSize', 'maxBytes', 'ttlMs'])
   return options
 }
 

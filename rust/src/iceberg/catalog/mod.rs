@@ -372,14 +372,9 @@ fn folder_role(child: Holder) -> Result<Holder> {
         Holder::LocalPath(path) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
             path.url().clone(),
         )?)),
-        Holder::LocalFile(file) => match file.url() {
-            Some(url) => Ok(Holder::LocalFolder(crate::local::LocalFolder::from_url(
-                url.clone(),
-            )?)),
-            None => Err(invalid(SmolStr::new_static(
-                "expected a located folder for a catalog name, got a handle with no URL",
-            ))),
-        },
+        Holder::LocalFile(file) => Ok(Holder::LocalFolder(crate::local::LocalFolder::new(
+            file.path(),
+        )?)),
         Holder::FsPath(path) => Ok(Holder::FsFolder(crate::fs::FsFolder::new(
             path.bound().clone(),
         ))),

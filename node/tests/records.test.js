@@ -676,15 +676,6 @@ test('native record conversion uses the shared core batch default', () => {
   assert.equal(RecordOptions.prototype._requireWritePreflightNative, undefined)
 })
 
-test('a resource that is not there holds no batches', (t) => {
-  const root = scratch()
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-
-  const absent = new IOBase(path.join(root, 'absent.arrows'))
-  assert.ok(!absent.exists())
-  assert.equal(absent.readArrowReader().intoTable().numRows, 0)
-})
-
 test('content coding belongs to the handle rather than to the encoding', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

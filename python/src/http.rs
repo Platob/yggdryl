@@ -241,28 +241,6 @@ fn body_bytes(value: &Bound<'_, PyAny>) -> PyResult<Option<Vec<u8>>> {
     Ok(None)
 }
 
-/// Read a mapping of option names to values, each value taken as its text,
-/// `None` skipped: `HttpOptions::from_properties` reads the names.
-fn property_pairs(value: &Bound<'_, PyAny>) -> PyResult<Vec<(String, String)>> {
-    let items = if value.hasattr("items")? {
-        value.call_method0("items")?
-    } else {
-        value.clone()
-    };
-    let mut pairs = Vec::new();
-    for item in items.try_iter()? {
-        let (name, member): (Bound<'_, PyAny>, Bound<'_, PyAny>) = item?.extract()?;
-        if member.is_none() {
-            continue;
-        }
-        pairs.push((
-            name.str()?.to_str()?.to_owned(),
-            member.str()?.to_str()?.to_owned(),
-        ));
-    }
-    Ok(pairs)
-}
-
 /// The `HttpOptions` a mapping of property names and the same properties
 /// by keyword beside it read as, the keywords over the mapping.
 ///
@@ -274,7 +252,7 @@ fn http_options(
     properties: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<HttpOptions> {
     let mut pairs = match options {
-        Some(mapping) => property_pairs(mapping)?,
+        Some(mapping) => crate::properties::mapping_pairs(mapping)?,
         None => Vec::new(),
     };
     pairs.extend(crate::properties::property_pairs(

@@ -1070,8 +1070,9 @@ impl<H: IOBase> IcebergTable<H> {
     /// Borrow the explicit options override, when one is stored.
     ///
     /// This is only what [`Self::set_options`] stored - the property layer and
-    /// the defaults are not consulted - so a binding can save and restore the
-    /// override around a call that shadows it.
+    /// the defaults are not consulted - so a caller can build a per-call
+    /// override on top of it; [`Self::with_call_options`] is what shadows the
+    /// override for one call and puts it back.
     pub fn explicit_options(&self) -> Option<&IcebergOptions> {
         self.options.as_ref()
     }
@@ -1081,6 +1082,45 @@ impl<H: IOBase> IcebergTable<H> {
     /// Every field then resolves property-then-default again.
     pub fn clear_options(&mut self) -> Option<IcebergOptions> {
         self.options.take()
+    }
+
+    /// Run `operation` on this table under `options` as its explicit
+    /// override, then put back the override it had - whatever the
+    /// operation answered - so per-call options never leak into the
+    /// handle's own configuration. `None` runs the operation as the table
+    /// stands.
+    ///
+    /// ```
+    /// use yggdryl::iceberg::{IcebergOptions, IcebergTable};
+    /// use yggdryl::{DataType, Properties, StructType, Url};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let folder = std::env::temp_dir().join(format!("yggdryl-call-options-doc-{}", std::process::id()));
+    /// let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
+    ///     .required_field("row");
+    /// let location = Url::from_path(&folder)?;
+    /// let mut table = IcebergTable::create_from_url(&location, &Properties::new(), None, schema, None)?;
+    ///
+    /// let once = Some(IcebergOptions::new().with_commit_retries(7));
+    /// let retries = table.with_call_options(once, |table| table.options().map(|options| options.commit_retries()))?;
+    /// assert_eq!(retries, 7);
+    /// assert!(table.explicit_options().is_none());
+    /// # std::fs::remove_dir_all(&folder)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_call_options<R>(
+        &mut self,
+        options: Option<IcebergOptions>,
+        operation: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let Some(options) = options else {
+            return operation(self);
+        };
+        let saved = self.options.replace(options);
+        let answer = operation(self);
+        self.options = saved;
+        answer
     }
 
     /// Resolve this table's effective options, field by field.

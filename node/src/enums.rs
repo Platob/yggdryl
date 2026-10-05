@@ -108,6 +108,7 @@ impl JsMimeType {
             "CSS" => CoreMimeType::CSS,
             "JAVASCRIPT" => CoreMimeType::JAVASCRIPT,
             "XML" => CoreMimeType::XML,
+            "XMLA" => CoreMimeType::XMLA,
             "HTTP" => CoreMimeType::HTTP,
             "PDF" => CoreMimeType::PDF,
             "CBOR" => CoreMimeType::CBOR,
@@ -147,6 +148,8 @@ impl JsMimeType {
             "SEVEN_ZIP" => CoreMimeType::SEVEN_ZIP,
             "RAR" => CoreMimeType::RAR,
             "TAR" => CoreMimeType::TAR,
+            "DIRECTORY" => CoreMimeType::DIRECTORY,
+            "FILE" => CoreMimeType::FILE,
             _ => return Err(napi::Error::from_reason("unknown native MIME constant")),
         };
         Ok(Self::from_core(value))
@@ -587,15 +590,11 @@ impl JsMediaType {
     /// Get one encoding by Array-compatible positive or negative index.
     #[napi]
     pub fn at(&self, index: i32) -> Option<JsMimeType> {
-        let len = i64::from(self.encoding_len());
-        let index = i64::from(index);
-        let resolved = if index < 0 { len + index } else { index };
-        usize::try_from(resolved).ok().and_then(|index| {
-            self.inner
-                .get_encoding(index)
-                .cloned()
-                .map(JsMimeType::from_core)
-        })
+        let at = crate::array_index(index, self.inner.encoding_len())?;
+        self.inner
+            .get_encoding(at)
+            .cloned()
+            .map(JsMimeType::from_core)
     }
 
     /// Test whether the ordered encoding collection contains a MIME value.
