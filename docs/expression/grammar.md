@@ -217,7 +217,7 @@ Settled against Iceberg's bound/unbound split, Substrait's reference model, Arro
 
 | Refused | Because |
 | --- | --- |
-| subqueries in `where`, joins, aggregates, windows | each needs a second relation; a plan's `from (plan)` is the one nesting there is |
+| subqueries in `where`, aggregates, windows | each needs a second relation; a plan's `from (plan)` and its [joins](plans.md#joins) are the ones there are |
 | regular expressions (`~`, `rlike`, `similar to`) | a regex engine is a dependency this workspace does not add |
 | `element_at` | engines disagree about 0-based or 1-based, so the operation is spelled `get` |
 | a per-row `like` pattern | a different operation, and it makes the vectorized tier slower than the scalar one |

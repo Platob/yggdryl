@@ -1297,7 +1297,6 @@ The build side is hashed on Arrow's row format where every key's buffers order a
 A stream is joined without being collected: `SerieReader::join_with(other, by, how, options)` builds the held side - or, of two streams, drains the right one - before a batch is pulled, then each probe batch answers its own output batches as it is pulled. In Python `SerieReader.join_with` takes a `Serie`, a `ChunkedSerie`, another `SerieReader` or any columnar object `Serie.from_` reads; in JavaScript `reader.joinWith(other, by, how?, options?)` takes the three classes. The [plan's `join` clause](../expression/plans.md#joins) runs the same engine over two targets, pushing the build keys into the probe's read.
 
 ## Children
-## Children
 
 A record column is made of child columns, and Arrow already holds each one separately. Reaching one is a borrow, replacing or dropping one moves pointers and never a row, and writing one cell descends the record levels by name to the leaf that proves the value. No child is handed out mutably: that is what keeps every child at exactly `len` rows, and what lets the Arrow array assemble without a refusal clause.
 
