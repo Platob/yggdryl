@@ -298,6 +298,204 @@ mod iceberg {
     }
 
     #[test]
+    fn declared_text_filter_cannot_be_pruned_as_stored_integer() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let path = root("declared-type-pruning");
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        // Separate files prove both pruning safety and residual filtering.
+        table
+            .commit_append(rows(&[1], &["GOOG"], &["XNAS"]))
+            .unwrap();
+        table
+            .commit_append(rows(&[2], &["AAPL"], &["XNAS"]))
+            .unwrap();
+        table
+            .commit_append(rows(&[11], &["MSFT"], &["XNYS"]))
+            .unwrap();
+        table
+            .commit_append(rows(&[0], &["META"], &["XNYS"]))
+            .unwrap();
+
+        let mut declared = schema();
+        let text_id = declared
+            .field_at(0)
+            .unwrap()
+            .clone()
+            .try_with_dtype(DataType::utf8())
+            .unwrap();
+        declared.set_field_at(0, text_id).unwrap();
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(declared)
+            .with_select("id")
+            .unwrap()
+            .with_filter("id > '10'")
+            .unwrap();
+
+        let field = IOMedia::read_arrow_field(&table, &options).unwrap();
+        assert_eq!(field.fields()[0].dtype(), &DataType::utf8());
+        let reader = IOMedia::read_arrow_reader(&table, &options).unwrap();
+        assert_eq!(field.into_arrow_schema().unwrap(), reader.schema());
+        let mut values: Vec<String> = reader
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                ids.iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        values.sort();
+        // After declaration these are text values: both "11" and "2" exceed "10".
+        assert_eq!(values, ["11", "2"]);
+        let all = options.clone().with_select("*").unwrap();
+        let mut values: Vec<String> = IOMedia::read_serie(&table, Some(&all))
+            .unwrap()
+            .into_arrow_reader()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                ids.iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        values.sort();
+        assert_eq!(values, ["11", "2"]);
+        // An OR containing a cast-sensitive operand cannot push only its
+        // unchanged venue operand: that would discard the matching XNYS row.
+        let disjunction = options
+            .clone()
+            .with_filter("id > '10' or venue = 'XNAS'")
+            .unwrap();
+        let mut values: Vec<String> = IOMedia::read_arrow_reader(&table, &disjunction)
+            .unwrap()
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                ids.iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        values.sort();
+        assert_eq!(values, ["1", "11", "2"]);
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn empty_table_projects_metadata_field_without_opening_a_data_file() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let path = root("result-field-metadata-only");
+        let table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_select("symbol as ticker")
+            .unwrap();
+        let field = IOMedia::read_arrow_field(&table, &options).unwrap();
+        assert_eq!(field.field_len(), 1);
+        assert_eq!(field.fields()[0].name(), "ticker");
+        assert_eq!(field.fields()[0].dtype(), &DataType::utf8());
+        assert_eq!(IOMedia::column_size(&table).unwrap(), 3);
+        assert_eq!(
+            field.into_arrow_schema().unwrap(),
+            IOMedia::read_arrow_reader(&table, &options)
+                .unwrap()
+                .schema()
+        );
+        let absent = IOMedia::record_options(&table)
+            .unwrap()
+            .with_select("missing")
+            .unwrap();
+        let error = IOMedia::read_arrow_field(&table, &absent)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("missing"), "{error}");
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
+    fn declared_subset_makes_colliding_filter_alias_bind_after_projection() {
+        use yggdryl::IOMedia;
+        use yggdryl::media::IORecordOptions;
+
+        let path = root("result-field-alias-collision");
+        let mut table = IcebergTable::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_append(rows(&[1, 2], &["AAPL", "MSFT"], &["XNAS", "XNYS"]))
+            .unwrap();
+
+        // Stored metadata has `id`; the declared pre-select root does not.
+        // `symbol as id` makes the filter's `id` refer to the string alias.
+        let declared = schema().without_fields(&["id"]).unwrap();
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(declared)
+            .with_select("symbol as id")
+            .unwrap()
+            .with_filter("id = 'MSFT'")
+            .unwrap();
+        let reader = IOMedia::read_arrow_reader(&table, &options).unwrap();
+        let result_schema = reader.schema();
+        let values: Vec<String> = reader
+            .flat_map(|batch| {
+                let batch = batch.unwrap();
+                let ids = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                ids.iter()
+                    .map(|value| value.unwrap().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        // This assertion is deliberately before read_arrow_field, so an
+        // independent early-filter bug remains red after schema shaping.
+        assert_eq!(values, ["MSFT"]);
+
+        let field = IOMedia::read_arrow_field(&table, &options).unwrap();
+        assert_eq!(field.fields()[0].name(), "id");
+        assert_eq!(field.fields()[0].dtype(), &DataType::utf8());
+        assert_eq!(field.into_arrow_schema().unwrap(), result_schema);
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    #[test]
     fn a_schema_update_replays_onto_the_schema_a_rival_committed() {
         use yggdryl::iceberg::SchemaUpdate;
 

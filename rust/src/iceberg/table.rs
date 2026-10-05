@@ -1868,10 +1868,11 @@ impl<H: IOBase> IcebergTable<H> {
     /// it.
     ///
     /// This is the one door every options-driven read takes: the `where`
-    /// clause and `scope` - the partition a folder handle addresses - are
-    /// pushed into the scan plan whole, so a range, an `in` list or a null test
-    /// prunes manifests and files exactly as an equality does; the scan reads only the columns the clauses need; and
-    /// the selector and the limit wrap what comes back. A `where` that names
+    /// clause and `scope` - the partition a folder handle addresses - prune
+    /// manifests and files when stored metadata describes the values being
+    /// compared. A declared cast that changes a referenced field leaves the
+    /// user predicate on the resulting rows. The scan reads the columns the
+    /// clauses need; the selector and limit wrap what comes back. A `where` that names
     /// a column only the `select` publishes cannot prune - the scan does not
     /// know the name - so it runs after the projection, as DuckDB lets a
     /// `where` read an alias.
@@ -1881,6 +1882,14 @@ impl<H: IOBase> IcebergTable<H> {
         options: &RecordOptions,
     ) -> Result<BatchReader> {
         let (rows, late) = self.read_rows(scope, options)?;
+        Self::shape_rows(rows, late, options)
+    }
+
+    fn shape_rows(
+        rows: super::scan::Partitions,
+        late: bool,
+        options: &RecordOptions,
+    ) -> Result<BatchReader> {
         let reader = rows.into_arrow_reader()?;
         if late {
             return options.limit_arrow_reader(options.apply_arrow_expressions(reader)?);
@@ -1919,19 +1928,56 @@ impl<H: IOBase> IcebergTable<H> {
     ) -> Result<(super::scan::Partitions, bool)> {
         let stored = self.schema()?.clone();
         let filter = options.filter();
-        let late = crate::expression::filter_after_select(
-            filter,
-            options.select(),
-            stored.fields().iter().map(Field::name),
-        );
+        let select = options.select();
+        let declared = options.field();
+        let mut late = false;
+        let mut pushed = vec![scope];
+        // A cast-sensitive conjunct stays after declaration; independent
+        // value-preserving conjuncts still prune. Field IDs and other metadata
+        // do not change comparison values. An OR remains one whole conjunct.
+        for predicate in filter.conjuncts() {
+            let after_select = crate::expression::filter_after_select(
+                &predicate,
+                select,
+                declared
+                    .as_ref()
+                    .unwrap_or(&stored)
+                    .fields()
+                    .iter()
+                    .map(Field::name),
+            );
+            let source_equivalent = declared.as_ref().is_none_or(|declared| {
+                predicate.columns().iter().all(|name| {
+                    let mut stored_matches = stored
+                        .fields()
+                        .iter()
+                        .filter(|field| field.name().eq_ignore_ascii_case(name));
+                    let mut declared_matches = declared
+                        .fields()
+                        .iter()
+                        .filter(|field| field.name().eq_ignore_ascii_case(name));
+                    match (
+                        stored_matches.next(),
+                        stored_matches.next(),
+                        declared_matches.next(),
+                        declared_matches.next(),
+                    ) {
+                        (Some(stored), None, Some(declared), None) => {
+                            stored.dtype() == declared.dtype()
+                                && stored.is_nullable() == declared.is_nullable()
+                        }
+                        _ => false,
+                    }
+                })
+            });
+            if after_select || !source_equivalent {
+                late = true;
+            } else {
+                pushed.push(predicate);
+            }
+        }
         let (landing, given) = self.read_landing(options)?;
-        let pushed = if late {
-            scope
-        } else if scope.is_always_true() {
-            filter.clone()
-        } else {
-            Filter::all([scope, filter.clone()])
-        };
+        let pushed = Filter::all(pushed);
         let metadata = &self.opened()?.metadata;
         let spec = metadata.default_spec()?;
         let order = metadata.default_sort_order()?;
@@ -3789,7 +3835,7 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         Ok(RecordOptions::Parquet(crate::parquet::ParquetOptions::new()))
     }
 
-    /// The stored schema as the metadata declares it, no data file opened.
+    /// The result schema over this table's metadata, no data file opened.
     ///
     /// A declared schema is returned as it stands, as on every handle, but
     /// for its `SORT:by`. Otherwise the answer is [`IcebergTable::schema`]
@@ -3807,7 +3853,10 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
             Some(field) => field,
             None => self.schema()?.clone().with_name(options.name()),
         };
-        super::scan::declaring(root.with_metadata_removed("SORT:by"), proven)
+        super::scan::declaring(
+            options.result_field(root)?.with_metadata_removed("SORT:by"),
+            proven,
+        )
     }
 
     /// Scan the current snapshot, the whole `where` clause answered by the plan.
@@ -3844,13 +3893,11 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         let bounded = options.max_row_size().is_some()
             || options.max_byte_size().is_some()
             || options.row_offset().is_some_and(|rows| rows != 0);
-        // Under `*` the whole `where` clause was pushed into the plan, so the
-        // rows need nothing past what the read itself yields.
-        if options.select().is_all() && !bounded {
-            return Ok(self
-                .read_rows(Filter::always_true(), options)?
-                .0
-                .into_serie_reader()?);
+        let (rows, late) = self.read_rows(Filter::always_true(), options)?;
+        // The raw stream suffices only when the predicate was pushed into the
+        // plan; a declared cast can leave it for the resulting rows.
+        if options.select().is_all() && !bounded && !late {
+            return Ok(rows.into_serie_reader()?);
         }
         // The selector, a `where` after it and the bounds are Arrow's, so
         // what they shape lands once, under its root without the order, and
@@ -3859,7 +3906,7 @@ impl<H: IOBase> crate::IOMedia for IcebergTable<H> {
         // them - its keys are the ones the selector publishes unchanged
         // (`proven_order`) - and a `where` keeps its rows in their order, a
         // bound a run of them.
-        let shaped = self.read_scoped(Filter::always_true(), options)?;
+        let shaped = Self::shape_rows(rows, late, options)?;
         let declared = crate::arrow::field_from_arrow_schema(
             crate::media::DEFAULT_ROOT_NAME,
             shaped.schema().as_ref(),

@@ -5,6 +5,7 @@
 use std::cmp::Ordering;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
+use yggdryl::RecordHeader;
 
 use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 
@@ -93,10 +94,10 @@ fn cell(text: &str) -> CellRef {
 #[test]
 fn new_addresses_the_first_worksheet_with_a_header_row_over_the_whole_sheet() {
     let options = ExcelOptions::new();
-    assert_eq!(options.sheet, None);
-    assert!(options.header);
-    assert_eq!(options.range, None);
-    assert_eq!(options.cells(), CellRange::all());
+    assert_eq!(options.sheet(), None);
+    assert_eq!(options.header, RecordHeader::Source);
+    assert_eq!(options.range(), None);
+    assert_eq!(options.cells().unwrap(), CellRange::all());
 }
 
 #[test]
@@ -137,40 +138,43 @@ fn with_sheet_with_header_and_with_range_each_replace_only_their_own_setting() {
     let range: CellRange = "B2:D9".parse().unwrap();
 
     let sheet = ExcelOptions::new().with_sheet("Trades");
-    assert_eq!(sheet.sheet.as_deref(), Some("Trades"));
-    assert!(sheet.header);
-    assert_eq!(sheet.range, None);
+    assert_eq!(sheet.sheet(), Some("Trades"));
+    assert_eq!(sheet.header, RecordHeader::Source);
+    assert_eq!(sheet.range(), None);
 
-    let header = ExcelOptions::new().with_header(false);
-    assert_eq!(header.sheet, None);
-    assert!(!header.header);
-    assert_eq!(header.range, None);
+    let header = ExcelOptions::new().with_header(RecordHeader::None);
+    assert_eq!(header.sheet(), None);
+    assert_eq!(header.header, RecordHeader::None);
+    assert_eq!(header.range(), None);
 
     let ranged = ExcelOptions::new().with_range(range);
-    assert_eq!(ranged.sheet, None);
-    assert!(ranged.header);
-    assert_eq!(ranged.range, Some(range));
+    assert_eq!(ranged.sheet(), None);
+    assert_eq!(ranged.header, RecordHeader::Source);
+    assert_eq!(ranged.range(), Some(range));
 
     // A later call replaces the earlier one, and the rest is untouched.
     let replaced = ExcelOptions::new()
         .with_sheet("Trades")
-        .with_header(false)
+        .with_header(RecordHeader::None)
         .with_range(range)
         .with_sheet("Quotes")
-        .with_header(true);
-    assert_eq!(replaced.sheet.as_deref(), Some("Quotes"));
-    assert!(replaced.header);
-    assert_eq!(replaced.range, Some(range));
+        .with_header(RecordHeader::Source);
+    assert_eq!(replaced.sheet(), Some("Quotes"));
+    assert_eq!(replaced.header, RecordHeader::Source);
+    assert_eq!(replaced.range(), Some(range));
     assert_eq!(replaced.name(), DEFAULT_ROOT_NAME);
     assert_eq!(replaced.field(), None);
 }
 
 #[test]
 fn cells_are_the_range_when_one_is_stated_and_the_whole_grid_otherwise() {
-    assert_eq!(ExcelOptions::new().cells(), CellRange::all());
-    assert_eq!(ExcelOptions::new().cells().start(), CellRef::new(0, 0));
+    assert_eq!(ExcelOptions::new().cells().unwrap(), CellRange::all());
     assert_eq!(
-        ExcelOptions::new().cells().end(),
+        ExcelOptions::new().cells().unwrap().start(),
+        CellRef::new(0, 0)
+    );
+    assert_eq!(
+        ExcelOptions::new().cells().unwrap().end(),
         CellRef::new(
             yggdryl::excel::MAX_ROWS - 1,
             yggdryl::excel::MAX_COLUMNS - 1
@@ -179,9 +183,9 @@ fn cells_are_the_range_when_one_is_stated_and_the_whole_grid_otherwise() {
 
     let open: CellRange = "A3:F".parse().unwrap();
     let options = ExcelOptions::new().with_range(open);
-    assert_eq!(options.cells(), open);
-    assert_eq!(options.cells().start(), CellRef::new(2, 0));
-    assert_eq!(options.cells().to_string(), "A3:F");
+    assert_eq!(options.cells().unwrap(), open);
+    assert_eq!(options.cells().unwrap().start(), CellRef::new(2, 0));
+    assert_eq!(options.cells().unwrap().to_string(), "A3:F");
 }
 
 #[test]
@@ -196,7 +200,7 @@ fn the_workbook_settings_are_part_of_the_value_its_order_and_its_hash() {
 
     for changed in [
         base.clone().with_sheet("Quotes"),
-        base.clone().with_header(false),
+        base.clone().with_header(RecordHeader::None),
         base.clone().with_range("A1:B5".parse().unwrap()),
         ExcelOptions::new().with_range("A1:B4".parse().unwrap()),
     ] {
@@ -219,10 +223,12 @@ fn declaring_a_field_names_the_root_and_stores_it_non_null() {
     assert_eq!(options.require_field().unwrap().name(), "trade");
 
     // The workbook settings are not the declaration's and survive it.
-    let mut kept = ExcelOptions::new().with_sheet("Trades").with_header(false);
+    let mut kept = ExcelOptions::new()
+        .with_sheet("Trades")
+        .with_header(RecordHeader::None);
     kept.set_field(declared);
-    assert_eq!(kept.sheet.as_deref(), Some("Trades"));
-    assert!(!kept.header);
+    assert_eq!(kept.sheet(), Some("Trades"));
+    assert_eq!(kept.header, RecordHeader::None);
 }
 
 #[test]
@@ -290,7 +296,7 @@ fn the_properties_are_the_sections_of_one_plan_and_the_workbook_settings_are_not
     let range: CellRange = "B2:C".parse().unwrap();
     let options = ExcelOptions::new()
         .with_sheet("Trades")
-        .with_header(false)
+        .with_header(RecordHeader::None)
         .with_range(range)
         .with_plan("create trade (id int64 not null) select id where id > 1 limit 5")
         .unwrap();
@@ -308,14 +314,14 @@ fn the_properties_are_the_sections_of_one_plan_and_the_workbook_settings_are_not
     );
 
     // A plan leaves the sheet, the header and the range as they were.
-    assert_eq!(options.sheet.as_deref(), Some("Trades"));
-    assert!(!options.header);
-    assert_eq!(options.range, Some(range));
+    assert_eq!(options.sheet(), Some("Trades"));
+    assert_eq!(options.header, RecordHeader::None);
+    assert_eq!(options.range(), Some(range));
 
     // The composed plan reads back as the same options.
     let respelled = ExcelOptions::new()
         .with_sheet("Trades")
-        .with_header(false)
+        .with_header(RecordHeader::None)
         .with_range(range)
         .with_plan(options.plan())
         .unwrap();
@@ -372,7 +378,7 @@ fn the_xlsx_media_type_names_the_excel_variant() {
 fn the_options_convert_into_the_excel_variant_unchanged() {
     let options = ExcelOptions::new()
         .with_sheet("Trades")
-        .with_header(false)
+        .with_header(RecordHeader::None)
         .with_range("C3:D".parse().unwrap())
         .with_field(schema())
         .with_max_row_size(9);
@@ -382,7 +388,7 @@ fn the_options_convert_into_the_excel_variant_unchanged() {
     assert_eq!(record.name(), "row");
     assert_eq!(record.max_row_size(), Some(9));
     assert_eq!(record.excel_sheet(), Some("Trades"));
-    assert_eq!(record.header(), Some(false));
+    assert_eq!(record.header(), Some(RecordHeader::None));
     assert_eq!(record.excel_range(), Some("C3:D".parse().unwrap()));
     let RecordOptions::Excel(inner) = record else {
         panic!("Excel options convert into the Excel variant");
@@ -394,22 +400,22 @@ fn the_options_convert_into_the_excel_variant_unchanged() {
 fn the_variant_reads_and_writes_the_workbook_settings() {
     let mut options = RecordOptions::from(ExcelOptions::new());
     assert_eq!(options.excel_sheet(), None);
-    assert_eq!(options.header(), Some(true));
+    assert_eq!(options.header(), Some(RecordHeader::Source));
     assert_eq!(options.excel_range(), None);
 
     let range: CellRange = "B2:C9".parse().unwrap();
     options.set_excel_sheet(Some("Trades")).unwrap();
-    options.set_header(false).unwrap();
+    options.set_header(RecordHeader::None).unwrap();
     options.set_excel_range(Some(range)).unwrap();
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.header(), Some(false));
+    assert_eq!(options.header(), Some(RecordHeader::None));
     assert_eq!(options.excel_range(), Some(range));
     assert_eq!(
         options,
         RecordOptions::Excel(
             ExcelOptions::new()
                 .with_sheet("Trades")
-                .with_header(false)
+                .with_header(RecordHeader::None)
                 .with_range(range)
         )
     );
@@ -417,7 +423,7 @@ fn the_variant_reads_and_writes_the_workbook_settings() {
     // `None` clears the sheet and the range back to the defaults.
     options.set_excel_sheet(None).unwrap();
     options.set_excel_range(None).unwrap();
-    options.set_header(true).unwrap();
+    options.set_header(RecordHeader::Source).unwrap();
     assert_eq!(options, RecordOptions::Excel(ExcelOptions::new()));
 }
 
@@ -469,17 +475,25 @@ fn another_encoding_answers_no_workbook_setting_and_refuses_to_set_one() {
     assert_eq!(options.header(), None);
     assert_eq!(options.excel_range(), None);
 
-    for (error, path, setting) in [
+    for (error, path, encoding, setting) in [
         (
             options.set_excel_sheet(Some("Trades")).unwrap_err(),
             "$.sheet",
+            "Excel",
             "a worksheet",
+        ),
+        (
+            options.set_header(RecordHeader::None).unwrap_err(),
+            "$.header",
+            "CSV or Excel",
+            "a header",
         ),
         (
             options
                 .set_excel_range(Some("A1:B2".parse().unwrap()))
                 .unwrap_err(),
             "$.range",
+            "Excel",
             "a cell range",
         ),
     ] {
@@ -487,7 +501,7 @@ fn another_encoding_answers_no_workbook_setting_and_refuses_to_set_one() {
         assert!(message.contains(path), "{message}");
         assert!(
             message.contains(&format!(
-                "expected Excel options to set {setting}, got application/vnd.apache.arrow.stream options"
+                "expected {encoding} options to set {setting}, got application/vnd.apache.arrow.stream options"
             )),
             "{message}"
         );
@@ -504,7 +518,7 @@ fn the_encoding_and_every_workbook_setting_are_part_of_the_stable_hash() {
     );
     let changed = [
         RecordOptions::from(ExcelOptions::new().with_sheet("Trades")),
-        RecordOptions::from(ExcelOptions::new().with_header(false)),
+        RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::None)),
         RecordOptions::from(ExcelOptions::new().with_range("A1:C3".parse().unwrap())),
         RecordOptions::from(ExcelOptions::new().with_range("A1:C4".parse().unwrap())),
     ];
@@ -610,6 +624,33 @@ fn the_sheet_a_read_or_write_addresses_is_compared_without_case() {
 }
 
 #[test]
+fn a_directly_constructed_invalid_sheet_name_is_refused_before_declared_read() {
+    let handle = xlsx();
+    let options = RecordOptions::from(ExcelOptions::new().with_sheet("Q1/Q2")).with_field(schema());
+    let error = handle.read_arrow_field(&options).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located sheet-name refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.sheet");
+    assert!(reason.contains("Q1/Q2"), "{reason}");
+    assert_eq!(handle.size(), 0);
+}
+
+#[test]
+fn a_directly_constructed_invalid_range_is_refused_before_declared_read() {
+    let handle = xlsx();
+    let outside = CellRange::new(CellRef::new(1_048_576, 0), CellRef::new(1_048_576, 0));
+    let options = RecordOptions::from(ExcelOptions::new().with_range(outside)).with_field(schema());
+    let error = handle.read_arrow_field(&options).unwrap_err();
+    let yggdryl::Error::InvalidRecord { path, reason } = error else {
+        panic!("expected located range refusal, got {error}");
+    };
+    assert_eq!(path.as_str(), "$.range");
+    assert!(reason.contains("1048576"), "{reason}");
+    assert_eq!(handle.size(), 0);
+}
+
+#[test]
 fn a_sheet_name_excel_refuses_is_refused_by_the_write_that_would_add_it() {
     let mut handle = xlsx();
     let options =
@@ -628,19 +669,19 @@ fn a_sheet_name_excel_refuses_is_refused_by_the_write_that_would_add_it() {
 
 #[test]
 fn without_a_header_the_first_row_is_data_and_the_columns_are_named_by_their_letters() {
-    let handle = written(ExcelOptions::new().with_header(false));
+    let handle = written(ExcelOptions::new().with_header(RecordHeader::None));
     let sheet = opened(&handle);
     let sheet = sheet.sheet(DEFAULT_SHEET_NAME).unwrap();
     assert_eq!(sheet.scalar(cell("B1")), Scalar::from("AAPL"));
     assert_eq!(sheet.scalar(cell("B2")), Scalar::Null);
     assert_eq!(sheet.scalar(cell("B3")), Scalar::from("MSFT"));
 
-    let options = RecordOptions::from(ExcelOptions::new().with_header(false));
+    let options = RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::None));
     let field = handle.read_arrow_field(&options).unwrap();
     let names: Vec<&str> = field.fields().iter().map(Field::name).collect();
     assert_eq!(names, vec!["A", "B"]);
     assert_eq!(handle.row_size().unwrap(), 2);
-    let headerless = RecordOptions::from(ExcelOptions::new().with_header(false));
+    let headerless = RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::None));
     let batches: Vec<RecordBatch> = handle
         .read_arrow_reader(&headerless)
         .unwrap()
@@ -796,4 +837,295 @@ fn a_write_published_in_commits_holds_every_row_in_order() {
         symbols,
         vec![Some("AAPL".to_owned()), None, Some("MSFT".to_owned())]
     );
+}
+
+#[test]
+fn named_table_selection_is_one_fact_replaced_by_each_selection_builder() {
+    use yggdryl::excel::ExcelSelection;
+    let range = "B2:C4".parse().unwrap();
+    let table = ExcelOptions::new()
+        .with_sheet("Data")
+        .with_range(range)
+        .with_table("Names");
+    assert_eq!(
+        table.selection,
+        ExcelSelection::Table {
+            name: "Names".into()
+        }
+    );
+    assert_eq!(table.sheet(), None);
+    assert_eq!(table.range(), None);
+    assert!(table.cells().is_err());
+    assert_eq!(
+        table.clone().with_sheet("Other").selection,
+        ExcelSelection::Worksheet {
+            sheet: Some("Other".into()),
+            range: None
+        }
+    );
+    assert_eq!(
+        table.with_range(range).selection,
+        ExcelSelection::Worksheet {
+            sheet: None,
+            range: Some(range)
+        }
+    );
+    let mut options = RecordOptions::from(ExcelOptions::new().with_table("Names"));
+    assert_eq!(options.excel_table(), Some("Names"));
+    let before = options.clone();
+    assert!(options.set_excel_table(Some("")).is_err());
+    assert_eq!(options, before);
+    options.set_excel_table(None).unwrap();
+    assert_eq!(options, RecordOptions::from(ExcelOptions::new()));
+}
+
+fn selection_scalar(json: &str) -> Scalar {
+    yggdryl::from_json_scalar(json).unwrap()
+}
+
+#[test]
+fn selection_scalar_constructor_accepts_null_and_both_worksheet_properties() {
+    use yggdryl::excel::ExcelSelection;
+    let default = ExcelSelection::Worksheet {
+        sheet: None,
+        range: None,
+    };
+    assert_eq!(ExcelSelection::from_scalar(&Scalar::Null).unwrap(), default);
+    assert_eq!(
+        ExcelSelection::from_scalar(&selection_scalar("{}")).unwrap(),
+        default
+    );
+    let expected = ExcelSelection::Worksheet {
+        sheet: Some("Data".into()),
+        range: Some("B2:C4".parse().unwrap()),
+    };
+    for json in [
+        r#"{"sheet":"Data","range":"B2:C4"}"#,
+        r#"{"range":"B2:C4","sheet":"Data"}"#,
+    ] {
+        assert_eq!(
+            ExcelSelection::from_scalar(&selection_scalar(json)).unwrap(),
+            expected
+        );
+    }
+    assert_eq!(
+        ExcelSelection::from_scalar(&selection_scalar(r#"{"table":"Orders"}"#)).unwrap(),
+        ExcelSelection::Table {
+            name: "Orders".into()
+        }
+    );
+}
+
+#[test]
+fn selection_scalar_update_preserves_absent_members_and_clears_only_active_ones() {
+    use yggdryl::excel::ExcelSelection;
+    let range = "B2:C4".parse().unwrap();
+    let mut selected = ExcelSelection::Worksheet {
+        sheet: Some("Data".into()),
+        range: Some(range),
+    };
+    let original = selected.clone();
+    selected.set_from_scalar(&selection_scalar("{}")).unwrap();
+    assert_eq!(selected, original);
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"sheet":"Other"}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: Some("Other".into()),
+            range: Some(range),
+        }
+    );
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"table":null}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: Some("Other".into()),
+            range: Some(range),
+        }
+    );
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"sheet":null}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: None,
+            range: Some(range)
+        }
+    );
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"table":"Orders"}"#))
+        .unwrap();
+    selected.set_from_scalar(&selection_scalar("{}")).unwrap();
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"range":null}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Table {
+            name: "Orders".into()
+        }
+    );
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"range":"C3:D8"}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: None,
+            range: Some("C3:D8".parse().unwrap()),
+        }
+    );
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"table":"Orders"}"#))
+        .unwrap();
+    selected
+        .set_from_scalar(&selection_scalar(r#"{"table":null}"#))
+        .unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: None,
+            range: None
+        }
+    );
+    selected.set_from_scalar(&Scalar::Null).unwrap();
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: None,
+            range: None
+        }
+    );
+}
+
+#[test]
+fn selection_scalar_conflicts_and_bad_members_are_located_and_atomic() {
+    use yggdryl::excel::ExcelSelection;
+    let original = ExcelSelection::Table {
+        name: "Orders".into(),
+    };
+    for (json, paths) in [
+        (
+            r#"{"table":"Orders","sheet":"Data"}"#,
+            vec!["$.selection.table", "$.selection.sheet"],
+        ),
+        (
+            r#"{"table":"Orders","range":"A1:B2"}"#,
+            vec!["$.selection.table", "$.selection.range"],
+        ),
+        (
+            r#"{"table":"Orders","sheet":"Data","range":"A1:B2"}"#,
+            vec![
+                "$.selection.table",
+                "$.selection.sheet",
+                "$.selection.range",
+            ],
+        ),
+        (r#"{"sheet":"History"}"#, vec!["$.selection.sheet"]),
+        (r#"{"range":"bad"}"#, vec!["$.selection.range"]),
+        (r#"{"table":""}"#, vec!["$.selection.table"]),
+        (r#"{"sheet":7}"#, vec!["$.selection.sheet"]),
+        (r#"{"range":false}"#, vec!["$.selection.range"]),
+        (r#"{"detect":true}"#, vec!["$.selection.detect"]),
+    ] {
+        let mut selected = original.clone();
+        let message = selected
+            .set_from_scalar(&selection_scalar(json))
+            .unwrap_err()
+            .to_string();
+        for path in paths {
+            assert!(message.contains(path), "{json}: {message}");
+        }
+        assert_eq!(selected, original, "{json}");
+    }
+    for json in [r#""Data""#, "[]", "true"] {
+        let message = ExcelSelection::from_scalar(&selection_scalar(json))
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("$.selection"), "{json}: {message}");
+    }
+}
+
+#[test]
+fn header_scalar_intake_resolves_source_none_and_explicit_null() {
+    for (value, expected) in [
+        (Scalar::from("source"), RecordHeader::Source),
+        (Scalar::from("none"), RecordHeader::None),
+        (Scalar::from("infer"), RecordHeader::Infer),
+        (Scalar::Null, RecordHeader::None),
+        (Scalar::from(true), RecordHeader::Source),
+        (Scalar::from(false), RecordHeader::None),
+        (Scalar::from(1_i64), RecordHeader::Rows(1)),
+        (Scalar::from(2_i64), RecordHeader::Rows(2)),
+    ] {
+        assert_eq!(RecordHeader::from_scalar(&value).unwrap(), expected);
+    }
+}
+
+#[test]
+fn header_scalar_intake_refuses_other_spellings_and_kinds_at_header() {
+    for literal in ["[]", "{}", "\"\"", "\"Source\"", "\"rows\""] {
+        let value = yggdryl::from_json_scalar(literal).unwrap();
+        let error = RecordHeader::from_scalar(&value).unwrap_err();
+        let yggdryl::Error::InvalidRecord { path, reason } = error else {
+            panic!("expected a located header refusal for {literal}, got {error}");
+        };
+        assert_eq!(path.as_str(), "$.header");
+        assert!(
+            reason.contains("source") && reason.contains("none") && reason.contains("null"),
+            "{reason}"
+        );
+    }
+}
+
+#[test]
+fn header_scalar_intake_refuses_nonpositive_or_out_of_u32_rows() {
+    for count in [0_i64, 4_294_967_296_i64] {
+        let error = RecordHeader::from_scalar(&Scalar::from(count)).unwrap_err();
+        let yggdryl::Error::InvalidRecord { path, reason } = error else {
+            panic!("expected a located Rows refusal, got {error}");
+        };
+        assert_eq!(path.as_str(), "$.header");
+        assert!(reason.contains("1 to 4294967295"), "{reason}");
+    }
+    assert_eq!(
+        RecordHeader::from_scalar(&Scalar::from(1_048_577_i64)).unwrap(),
+        RecordHeader::Rows(1_048_577)
+    );
+}
+
+#[test]
+fn excel_grid_bound_refuses_a_typed_header_before_source_io() {
+    let handle = xlsx();
+    let options =
+        RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::Rows(1_048_577)));
+    let error = handle.read_arrow_field(&options).unwrap_err().to_string();
+    assert!(
+        error.contains("$.header") && error.contains("1 to 1048576"),
+        "{error}"
+    );
+}
+
+#[test]
+fn infer_write_refuses_with_explicit_policy_choices() {
+    let mut handle = xlsx();
+    let options = RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::Infer))
+        .with_field(schema());
+    let error = handle
+        .overwrite_arrow_batch(batch(), &options)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("$.header")
+            && error.contains("read-only")
+            && error.contains("Source")
+            && error.contains("Rows(n)"),
+        "{error}"
+    );
+    assert_eq!(handle.size(), 0);
 }

@@ -1,0 +1,1274 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_date_item_native",
+  "execution_only": true,
+  "rust_equivalence_checked": false,
+  "refresh_save_reopen_equal": true,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036
+  },
+  "epochs": [
+    {
+      "epoch": "1900",
+      "input_sha256": "e12c18a5391f466e63b36d61d15923a733ef667577bac9e53283826c0d2c6d78",
+      "manifest_sha256": "d7405b34666bfcab0a41f37a5d6404936fa09ff2a97076eaabbdeb44b8f22961",
+      "report_sha256": "07902a8334dd995a8a987d172d9aeb56d4f0f929b8c758261ea231cf6836c7cb",
+      "saved_sha256": "254baad93e2ec87530ca905fd291de460255ed6d4d491c53ba392cddadceb1ba",
+      "source_rows": [
+        [
+          "Group",
+          "Value"
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          59,
+          16
+        ],
+        [
+          59,
+          32
+        ],
+        [
+          60,
+          64
+        ],
+        [
+          60,
+          128
+        ],
+        [
+          60.5,
+          256
+        ],
+        [
+          60.5,
+          512
+        ],
+        [
+          61,
+          1024
+        ],
+        [
+          61,
+          2048
+        ]
+      ],
+      "source_group_cells": [
+        {
+          "ref": "A2",
+          "kind": "n",
+          "style": null,
+          "serial": "0"
+        },
+        {
+          "ref": "A3",
+          "kind": "n",
+          "style": "1",
+          "serial": "0"
+        },
+        {
+          "ref": "A4",
+          "kind": "n",
+          "style": null,
+          "serial": "1"
+        },
+        {
+          "ref": "A5",
+          "kind": "n",
+          "style": "1",
+          "serial": "1"
+        },
+        {
+          "ref": "A6",
+          "kind": "n",
+          "style": null,
+          "serial": "59"
+        },
+        {
+          "ref": "A7",
+          "kind": "n",
+          "style": "1",
+          "serial": "59"
+        },
+        {
+          "ref": "A8",
+          "kind": "n",
+          "style": null,
+          "serial": "60"
+        },
+        {
+          "ref": "A9",
+          "kind": "n",
+          "style": "1",
+          "serial": "60"
+        },
+        {
+          "ref": "A10",
+          "kind": "n",
+          "style": null,
+          "serial": "60.5"
+        },
+        {
+          "ref": "A11",
+          "kind": "n",
+          "style": "1",
+          "serial": "60.5"
+        },
+        {
+          "ref": "A12",
+          "kind": "n",
+          "style": null,
+          "serial": "61"
+        },
+        {
+          "ref": "A13",
+          "kind": "n",
+          "style": "1",
+          "serial": "61"
+        }
+      ],
+      "cache_group_attributes": {
+        "containsSemiMixedTypes": "0",
+        "containsDate": "1",
+        "containsString": "0",
+        "containsMixedTypes": "1",
+        "minDate": "1899-12-31T00:00:00",
+        "maxDate": "1900-03-02T00:00:00",
+        "count": "12"
+      },
+      "cache_group_items": [
+        {
+          "kind": "n",
+          "value": "0"
+        },
+        {
+          "kind": "d",
+          "value": "1899-12-30T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "1"
+        },
+        {
+          "kind": "d",
+          "value": "1899-12-31T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "59"
+        },
+        {
+          "kind": "d",
+          "value": "1900-02-27T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "60"
+        },
+        {
+          "kind": "d",
+          "value": "1900-02-28T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "60.5"
+        },
+        {
+          "kind": "d",
+          "value": "1900-02-28T12:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "61"
+        },
+        {
+          "kind": "d",
+          "value": "1900-03-01T00:00:00"
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "8"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "16"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "32"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "6"
+          },
+          {
+            "kind": "n",
+            "value": "64"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "128"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "8"
+          },
+          {
+            "kind": "n",
+            "value": "256"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "9"
+          },
+          {
+            "kind": "n",
+            "value": "512"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1024"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "2048"
+          }
+        ]
+      ],
+      "table_range2": "$A$3:$B$16",
+      "row_labels": [
+        {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 59.0,
+          "hex": "0x1.d800000000000p+5",
+          "ieee754_hex": "404d800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.5,
+          "hex": "0x1.e400000000000p+5",
+          "ieee754_hex": "404e400000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 61.0,
+          "hex": "0x1.e800000000000p+5",
+          "ieee754_hex": "404e800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 59.0,
+          "hex": "0x1.d800000000000p+5",
+          "ieee754_hex": "404d800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.5,
+          "hex": "0x1.e400000000000p+5",
+          "ieee754_hex": "404e400000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 61.0,
+          "hex": "0x1.e800000000000p+5",
+          "ieee754_hex": "404e800000000000",
+          "classification": "finite"
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "Value Sum"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 59.0,
+            "hex": "0x1.d800000000000p+5",
+            "ieee754_hex": "404d800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 16.0,
+            "hex": "0x1.0000000000000p+4",
+            "ieee754_hex": "4030000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.0,
+            "hex": "0x1.e000000000000p+5",
+            "ieee754_hex": "404e000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 64.0,
+            "hex": "0x1.0000000000000p+6",
+            "ieee754_hex": "4050000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.5,
+            "hex": "0x1.e400000000000p+5",
+            "ieee754_hex": "404e400000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 256.0,
+            "hex": "0x1.0000000000000p+8",
+            "ieee754_hex": "4070000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 61.0,
+            "hex": "0x1.e800000000000p+5",
+            "ieee754_hex": "404e800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1024.0,
+            "hex": "0x1.0000000000000p+10",
+            "ieee754_hex": "4090000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 59.0,
+            "hex": "0x1.d800000000000p+5",
+            "ieee754_hex": "404d800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 32.0,
+            "hex": "0x1.0000000000000p+5",
+            "ieee754_hex": "4040000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.0,
+            "hex": "0x1.e000000000000p+5",
+            "ieee754_hex": "404e000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 128.0,
+            "hex": "0x1.0000000000000p+7",
+            "ieee754_hex": "4060000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.5,
+            "hex": "0x1.e400000000000p+5",
+            "ieee754_hex": "404e400000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 512.0,
+            "hex": "0x1.0000000000000p+9",
+            "ieee754_hex": "4080000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 61.0,
+            "hex": "0x1.e800000000000p+5",
+            "ieee754_hex": "404e800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2048.0,
+            "hex": "0x1.0000000000000p+11",
+            "ieee754_hex": "40a0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 4095.0,
+            "hex": "0x1.ffe0000000000p+11",
+            "ieee754_hex": "40affe0000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "saved_part_sha256": {
+        "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels": "50932fefa05af7d439305a402207d007de878e1e9b81e5caabca45ee5c4a2508",
+        "xl/pivotCache/pivotCacheDefinition1.xml": "f227e8545c88e053c4a058ff4a718a8891551fc817a557fb7a04dd6ad198d4d0",
+        "xl/pivotCache/pivotCacheRecords1.xml": "df4c13794708ddfe2450e24687f55d435ce14989c307c710fea6b4b156d1d119",
+        "xl/pivotTables/_rels/pivotTable1.xml.rels": "55dcc4ac09f0b4828a5e4138ffe799fad22be0c8e8705431b0c6f79144510605",
+        "xl/pivotTables/pivotTable1.xml": "13e8d9377dcff821ed15c4bb1b414f8dbf8fc95b7529797322ea27038f6a6fa5",
+        "xl/worksheets/_rels/sheet2.xml.rels": "d9ce9dac22a848ed1333d64de9f1b8e804e339906b6d71fe2ba08cc27b7e3928",
+        "xl/worksheets/sheet1.xml": "62c86e4bc19383ea76a36de5675bbd51faf09ece966bb07b87d53cd7c5b6204e",
+        "xl/worksheets/sheet2.xml": "29c844a84b73fe04c54da6641612cd3bfba3364c1ce9203d3f9653254e1dcc7f"
+      }
+    },
+    {
+      "epoch": "1904",
+      "input_sha256": "8660c5d8c3b28676341b10adae85ca42f4e043ea689e13d5bc2cc9ead6e06c8b",
+      "manifest_sha256": "4773bf12920a27a8bb9906ca69e7abbbdf836e3099018d0f1c374baf1c71e71b",
+      "report_sha256": "e68107c4bb6adaede5e3c48ae830d380a751c272367460ba39eba92c9f647401",
+      "saved_sha256": "154009fe13bd23adf01cdcb9f54ca5abb618c96f2052a2e2d123451613c0ba8d",
+      "source_rows": [
+        [
+          "Group",
+          "Value"
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          59,
+          16
+        ],
+        [
+          59,
+          32
+        ],
+        [
+          60,
+          64
+        ],
+        [
+          60,
+          128
+        ],
+        [
+          60.5,
+          256
+        ],
+        [
+          60.5,
+          512
+        ],
+        [
+          61,
+          1024
+        ],
+        [
+          61,
+          2048
+        ]
+      ],
+      "source_group_cells": [
+        {
+          "ref": "A2",
+          "kind": "n",
+          "style": null,
+          "serial": "0"
+        },
+        {
+          "ref": "A3",
+          "kind": "n",
+          "style": "1",
+          "serial": "0"
+        },
+        {
+          "ref": "A4",
+          "kind": "n",
+          "style": null,
+          "serial": "1"
+        },
+        {
+          "ref": "A5",
+          "kind": "n",
+          "style": "1",
+          "serial": "1"
+        },
+        {
+          "ref": "A6",
+          "kind": "n",
+          "style": null,
+          "serial": "59"
+        },
+        {
+          "ref": "A7",
+          "kind": "n",
+          "style": "1",
+          "serial": "59"
+        },
+        {
+          "ref": "A8",
+          "kind": "n",
+          "style": null,
+          "serial": "60"
+        },
+        {
+          "ref": "A9",
+          "kind": "n",
+          "style": "1",
+          "serial": "60"
+        },
+        {
+          "ref": "A10",
+          "kind": "n",
+          "style": null,
+          "serial": "60.5"
+        },
+        {
+          "ref": "A11",
+          "kind": "n",
+          "style": "1",
+          "serial": "60.5"
+        },
+        {
+          "ref": "A12",
+          "kind": "n",
+          "style": null,
+          "serial": "61"
+        },
+        {
+          "ref": "A13",
+          "kind": "n",
+          "style": "1",
+          "serial": "61"
+        }
+      ],
+      "cache_group_attributes": {
+        "containsSemiMixedTypes": "0",
+        "containsDate": "1",
+        "containsString": "0",
+        "containsMixedTypes": "1",
+        "minDate": "1904-01-01T00:00:00",
+        "maxDate": "1904-03-03T00:00:00",
+        "count": "12"
+      },
+      "cache_group_items": [
+        {
+          "kind": "n",
+          "value": "0"
+        },
+        {
+          "kind": "d",
+          "value": "1904-01-01T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "1"
+        },
+        {
+          "kind": "d",
+          "value": "1904-01-02T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "59"
+        },
+        {
+          "kind": "d",
+          "value": "1904-02-29T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "60"
+        },
+        {
+          "kind": "d",
+          "value": "1904-03-01T00:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "60.5"
+        },
+        {
+          "kind": "d",
+          "value": "1904-03-01T12:00:00"
+        },
+        {
+          "kind": "n",
+          "value": "61"
+        },
+        {
+          "kind": "d",
+          "value": "1904-03-02T00:00:00"
+        }
+      ],
+      "cache_records": [
+        [
+          {
+            "kind": "x",
+            "value": "0"
+          },
+          {
+            "kind": "n",
+            "value": "1"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "1"
+          },
+          {
+            "kind": "n",
+            "value": "2"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "2"
+          },
+          {
+            "kind": "n",
+            "value": "4"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "3"
+          },
+          {
+            "kind": "n",
+            "value": "8"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "4"
+          },
+          {
+            "kind": "n",
+            "value": "16"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "5"
+          },
+          {
+            "kind": "n",
+            "value": "32"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "6"
+          },
+          {
+            "kind": "n",
+            "value": "64"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "7"
+          },
+          {
+            "kind": "n",
+            "value": "128"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "8"
+          },
+          {
+            "kind": "n",
+            "value": "256"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "9"
+          },
+          {
+            "kind": "n",
+            "value": "512"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "10"
+          },
+          {
+            "kind": "n",
+            "value": "1024"
+          }
+        ],
+        [
+          {
+            "kind": "x",
+            "value": "11"
+          },
+          {
+            "kind": "n",
+            "value": "2048"
+          }
+        ]
+      ],
+      "table_range2": "$A$3:$B$16",
+      "row_labels": [
+        {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 59.0,
+          "hex": "0x1.d800000000000p+5",
+          "ieee754_hex": "404d800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.5,
+          "hex": "0x1.e400000000000p+5",
+          "ieee754_hex": "404e400000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 61.0,
+          "hex": "0x1.e800000000000p+5",
+          "ieee754_hex": "404e800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 59.0,
+          "hex": "0x1.d800000000000p+5",
+          "ieee754_hex": "404d800000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 60.5,
+          "hex": "0x1.e400000000000p+5",
+          "ieee754_hex": "404e400000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 61.0,
+          "hex": "0x1.e800000000000p+5",
+          "ieee754_hex": "404e800000000000",
+          "classification": "finite"
+        }
+      ],
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "Value Sum"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 59.0,
+            "hex": "0x1.d800000000000p+5",
+            "ieee754_hex": "404d800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 16.0,
+            "hex": "0x1.0000000000000p+4",
+            "ieee754_hex": "4030000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.0,
+            "hex": "0x1.e000000000000p+5",
+            "ieee754_hex": "404e000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 64.0,
+            "hex": "0x1.0000000000000p+6",
+            "ieee754_hex": "4050000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.5,
+            "hex": "0x1.e400000000000p+5",
+            "ieee754_hex": "404e400000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 256.0,
+            "hex": "0x1.0000000000000p+8",
+            "ieee754_hex": "4070000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 61.0,
+            "hex": "0x1.e800000000000p+5",
+            "ieee754_hex": "404e800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1024.0,
+            "hex": "0x1.0000000000000p+10",
+            "ieee754_hex": "4090000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 59.0,
+            "hex": "0x1.d800000000000p+5",
+            "ieee754_hex": "404d800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 32.0,
+            "hex": "0x1.0000000000000p+5",
+            "ieee754_hex": "4040000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.0,
+            "hex": "0x1.e000000000000p+5",
+            "ieee754_hex": "404e000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 128.0,
+            "hex": "0x1.0000000000000p+7",
+            "ieee754_hex": "4060000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 60.5,
+            "hex": "0x1.e400000000000p+5",
+            "ieee754_hex": "404e400000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 512.0,
+            "hex": "0x1.0000000000000p+9",
+            "ieee754_hex": "4080000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "float",
+            "value": 61.0,
+            "hex": "0x1.e800000000000p+5",
+            "ieee754_hex": "404e800000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2048.0,
+            "hex": "0x1.0000000000000p+11",
+            "ieee754_hex": "40a0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 4095.0,
+            "hex": "0x1.ffe0000000000p+11",
+            "ieee754_hex": "40affe0000000000",
+            "classification": "finite"
+          }
+        ]
+      ],
+      "saved_part_sha256": {
+        "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels": "50932fefa05af7d439305a402207d007de878e1e9b81e5caabca45ee5c4a2508",
+        "xl/pivotCache/pivotCacheDefinition1.xml": "2bd54bd660bac06a30350a9a3dda0e3d0d3712c8a9e662d7020b369f81087736",
+        "xl/pivotCache/pivotCacheRecords1.xml": "df4c13794708ddfe2450e24687f55d435ce14989c307c710fea6b4b156d1d119",
+        "xl/pivotTables/_rels/pivotTable1.xml.rels": "55dcc4ac09f0b4828a5e4138ffe799fad22be0c8e8705431b0c6f79144510605",
+        "xl/pivotTables/pivotTable1.xml": "63819cff0ba4a162911c7d402f9fb3e50324aad6041e71b152577f2eacc31b6b",
+        "xl/worksheets/_rels/sheet2.xml.rels": "d9ce9dac22a848ed1333d64de9f1b8e804e339906b6d71fe2ba08cc27b7e3928",
+        "xl/worksheets/sheet1.xml": "62c86e4bc19383ea76a36de5675bbd51faf09ece966bb07b87d53cd7c5b6204e",
+        "xl/worksheets/sheet2.xml": "29c844a84b73fe04c54da6641612cd3bfba3364c1ce9203d3f9653254e1dcc7f"
+      }
+    }
+  ]
+}

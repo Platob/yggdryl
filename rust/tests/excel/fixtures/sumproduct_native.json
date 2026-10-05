@@ -1,0 +1,4543 @@
+{
+  "schema_version": 1,
+  "kind": "p5_sumproduct_native_evidence",
+  "report": "rust/target/excel-desktop/p5-sumproduct-native/results.json",
+  "report_sha256": "9c556879bdaba112a74efdf461520deee0bf923b0630a23b567bdce27027f65b",
+  "manifest": ".scratch/p5-sumproduct-inputs/cases.json",
+  "manifest_sha256": "a03ee956aaf72a7ebb93a7b7db7f97a2c291967c9af92211f8675ed91b3bf770",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_cache_equal": 152,
+  "source_cells": {
+    "Values": {
+      "A1": 1,
+      "A2": 2,
+      "A3": -3,
+      "A4": 4,
+      "A5": 0,
+      "A6": 0,
+      "B1": 2,
+      "B2": 3,
+      "B3": 4,
+      "B4": -5,
+      "B5": 6,
+      "C1": 0,
+      "C2": true,
+      "C3": "3",
+      "C4": "abc",
+      "E1": 1e+16,
+      "E2": 1,
+      "E3": -1e+16,
+      "F1": 1,
+      "F2": 1,
+      "F3": 1,
+      "F4": 1,
+      "F5": 1,
+      "G1": 0.1,
+      "G2": 0.2,
+      "G3": 0.3,
+      "H1": 0.3,
+      "H2": 0.2,
+      "H3": 0.1,
+      "I1": 9e+307,
+      "I2": -9e+307,
+      "J1": 1.5,
+      "J2": 1.5,
+      "K1": 1,
+      "K2": 1.00000000000001,
+      "K3": 1.00000000000002
+    }
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "4ccbb496d853b7cd74c22fb58a1c0ef2dd4f65e286397fc43e0ec11f439700b9",
+      "cases": 38,
+      "physical_formula_cells": 38
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "bd1f1dbb74b0db4ce5d3a7eca7161a56d4c85291c4a523fce509e4368cf0b90e",
+      "cases": 38,
+      "physical_formula_cells": 38
+    }
+  ],
+  "cases": [
+    {
+      "id": "source-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "B6",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-empty-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "C6",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "C6",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-one-range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "one-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "SUMPRODUCT(Values!A1:A5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-two-ranges-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "two-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-reversed-ranges-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "reversed-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-three-ranges-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "three-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-two-rectangles-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "two-rectangles"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "value2": {
+          "variant": "float",
+          "value": 43.0,
+          "hex": "0x1.5800000000000p+5",
+          "ieee754_hex": "4045800000000000",
+          "classification": "finite"
+        },
+        "display": "43",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "value2": {
+          "variant": "float",
+          "value": 43.0,
+          "hex": "0x1.5800000000000p+5",
+          "ieee754_hex": "4045800000000000",
+          "classification": "finite"
+        },
+        "display": "43",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "43",
+        "formula_text": "SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-height-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-height"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-width-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-width"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-rectangle-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-rectangle"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-empty-range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SUMPRODUCT(Values!D1:D8)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "empty-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!D1:D8)",
+        "formula2": "=SUMPRODUCT(Values!D1:D8)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!D1:D8)",
+        "formula2": "=SUMPRODUCT(Values!D1:D8)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!D1:D8)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-ref-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-ref"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-ref-alone-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SUMPRODUCT(Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-ref-alone"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-three-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-three"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-source-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "source-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula2": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula2": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-zero-times-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SUMPRODUCT(Values!A6,Values!B6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "zero-times-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(Values!A6,Values!B6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-formula-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SUMPRODUCT(Values!A6,Values!C6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "formula-empty"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A6,Values!C6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-cancel-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "order",
+        "label": "cancel"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-cancel-reverse-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "order",
+        "label": "cancel-reverse"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula2": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula2": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-decimals-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "decimals"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula2": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula2": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.1",
+        "formula_text": "SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-close-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "close"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0000000000000298,
+          "hex": "0x1.8000000000043p+1",
+          "ieee754_hex": "4008000000000043",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0000000000000298,
+          "hex": "0x1.8000000000043p+1",
+          "ieee754_hex": "4008000000000043",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0000000000000298",
+        "formula_text": "SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-large-cancel-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "large-cancel"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-large-product-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "large-product"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-one-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "SUMPRODUCT(2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-one"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(2)",
+        "formula2": "=SUMPRODUCT(2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(2)",
+        "formula2": "=SUMPRODUCT(2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SUMPRODUCT(2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-two-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "SUMPRODUCT(2,3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-two"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(2,3)",
+        "formula2": "=SUMPRODUCT(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(2,3)",
+        "formula2": "=SUMPRODUCT(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "SUMPRODUCT(2,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "SUMPRODUCT(0,3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-zero"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(0,3)",
+        "formula2": "=SUMPRODUCT(0,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(0,3)",
+        "formula2": "=SUMPRODUCT(0,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(0,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-boolean-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "SUMPRODUCT(TRUE,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-boolean"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(TRUE,2)",
+        "formula2": "=SUMPRODUCT(TRUE,2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(TRUE,2)",
+        "formula2": "=SUMPRODUCT(TRUE,2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(TRUE,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-text-number-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "SUMPRODUCT(\"2\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-text-number"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"2\",3)",
+        "formula2": "=SUMPRODUCT(\"2\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"2\",3)",
+        "formula2": "=SUMPRODUCT(\"2\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"2\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-text-other-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "SUMPRODUCT(\"abc\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-text-other"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"abc\",3)",
+        "formula2": "=SUMPRODUCT(\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"abc\",3)",
+        "formula2": "=SUMPRODUCT(\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-empty-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "SUMPRODUCT(\"\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-empty"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"\",3)",
+        "formula2": "=SUMPRODUCT(\"\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"\",3)",
+        "formula2": "=SUMPRODUCT(\"\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "SUMPRODUCT(1/0,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "scalar-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(1/0,2)",
+        "formula2": "=SUMPRODUCT(1/0,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(1/0,2)",
+        "formula2": "=SUMPRODUCT(1/0,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(1/0,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-plus-range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "scalar-plus-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,2)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,2)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-single-reference-plus-range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "single-reference-plus-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-range-product-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "range-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-grouped-product-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "grouped-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula2": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula2": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-range-add-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "range-add-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 14.0,
+          "hex": "0x1.c000000000000p+3",
+          "ieee754_hex": "402c000000000000",
+          "classification": "finite"
+        },
+        "display": "14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 14.0,
+          "hex": "0x1.c000000000000p+3",
+          "ieee754_hex": "402c000000000000",
+          "classification": "finite"
+        },
+        "display": "14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "14",
+        "formula_text": "SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-product-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "mixed-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-coerced-mixed-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "coerced-mixed-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "B6",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-empty-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "C6",
+      "wire_formula": "IF(TRUE,\"\",1)",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,\"\",1)",
+        "formula2": "=IF(TRUE,\"\",1)",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "IF(TRUE,\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "C6",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-one-range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "one-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "SUMPRODUCT(Values!A1:A5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-two-ranges-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "two-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-reversed-ranges-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "reversed-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula2": "=SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!B1:B5,Values!A1:A5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-three-ranges-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "three-ranges"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B5,Values!F1:F5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-two-rectangles-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "two-rectangles"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "value2": {
+          "variant": "float",
+          "value": 43.0,
+          "hex": "0x1.5800000000000p+5",
+          "ieee754_hex": "4045800000000000",
+          "classification": "finite"
+        },
+        "display": "43",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "value2": {
+          "variant": "float",
+          "value": 43.0,
+          "hex": "0x1.5800000000000p+5",
+          "ieee754_hex": "4045800000000000",
+          "classification": "finite"
+        },
+        "display": "43",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "43",
+        "formula_text": "SUMPRODUCT(Values!A1:B3,Values!A1:B3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-height-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-height"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-width-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-width"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-unequal-rectangle-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "unequal-rectangle"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula2": "=SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:B3,Values!A1:B4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-empty-range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SUMPRODUCT(Values!D1:D8)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "empty-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!D1:D8)",
+        "formula2": "=SUMPRODUCT(Values!D1:D8)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!D1:D8)",
+        "formula2": "=SUMPRODUCT(Values!D1:D8)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!D1:D8)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-ref-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-ref"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-ref-alone-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SUMPRODUCT(Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-ref-alone"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-three-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "mixed-three"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!C1:C5,Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-source-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "source-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula2": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula2": "=SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(Values!A1:A6,Values!B1:B6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-zero-times-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SUMPRODUCT(Values!A6,Values!B6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "zero-times-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!B6)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(Values!A6,Values!B6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-formula-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SUMPRODUCT(Values!A6,Values!C6)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "reference",
+        "label": "formula-empty"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "formula2": "=SUMPRODUCT(Values!A6,Values!C6)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!A6,Values!C6)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-cancel-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "order",
+        "label": "cancel"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!E1:E3,Values!F1:F3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-cancel-reverse-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "order",
+        "label": "cancel-reverse"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula2": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula2": "=SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!F1:F3,Values!E1:E3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-decimals-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "decimals"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula2": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula2": "=SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.1,
+          "hex": "0x1.999999999999ap-4",
+          "ieee754_hex": "3fb999999999999a",
+          "classification": "finite"
+        },
+        "display": "0.1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.1",
+        "formula_text": "SUMPRODUCT(Values!G1:G3,Values!H1:H3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-close-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "close"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0000000000000298,
+          "hex": "0x1.8000000000043p+1",
+          "ieee754_hex": "4008000000000043",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula2": "=SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0000000000000298,
+          "hex": "0x1.8000000000043p+1",
+          "ieee754_hex": "4008000000000043",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.0000000000000298",
+        "formula_text": "SUMPRODUCT(Values!K1:K3,Values!F1:F3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-large-cancel-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "large-cancel"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!I1:I2,Values!F1:F2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-large-product-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "precision",
+        "label": "large-product"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula2": "=SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(Values!I1:I2,Values!J1:J2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-one-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "SUMPRODUCT(2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-one"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(2)",
+        "formula2": "=SUMPRODUCT(2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(2)",
+        "formula2": "=SUMPRODUCT(2)",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "SUMPRODUCT(2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-two-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "SUMPRODUCT(2,3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-two"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(2,3)",
+        "formula2": "=SUMPRODUCT(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(2,3)",
+        "formula2": "=SUMPRODUCT(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 6.0,
+          "hex": "0x1.8000000000000p+2",
+          "ieee754_hex": "4018000000000000",
+          "classification": "finite"
+        },
+        "display": "6",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "6",
+        "formula_text": "SUMPRODUCT(2,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "SUMPRODUCT(0,3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-zero"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(0,3)",
+        "formula2": "=SUMPRODUCT(0,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(0,3)",
+        "formula2": "=SUMPRODUCT(0,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(0,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-boolean-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "SUMPRODUCT(TRUE,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-boolean"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(TRUE,2)",
+        "formula2": "=SUMPRODUCT(TRUE,2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(TRUE,2)",
+        "formula2": "=SUMPRODUCT(TRUE,2)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(TRUE,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-text-number-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "SUMPRODUCT(\"2\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-text-number"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"2\",3)",
+        "formula2": "=SUMPRODUCT(\"2\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"2\",3)",
+        "formula2": "=SUMPRODUCT(\"2\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"2\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-text-other-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "SUMPRODUCT(\"abc\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-text-other"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"abc\",3)",
+        "formula2": "=SUMPRODUCT(\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"abc\",3)",
+        "formula2": "=SUMPRODUCT(\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-empty-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "SUMPRODUCT(\"\",3)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "direct",
+        "label": "scalar-empty"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(\"\",3)",
+        "formula2": "=SUMPRODUCT(\"\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(\"\",3)",
+        "formula2": "=SUMPRODUCT(\"\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUMPRODUCT(\"\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "SUMPRODUCT(1/0,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "error",
+        "label": "scalar-error"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(1/0,2)",
+        "formula2": "=SUMPRODUCT(1/0,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(1/0,2)",
+        "formula2": "=SUMPRODUCT(1/0,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "SUMPRODUCT(1/0,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-scalar-plus-range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,2)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "scalar-plus-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,2)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,2)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-single-reference-plus-range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,Values!B1)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "shape",
+        "label": "single-reference-plus-range"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,Values!B1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-range-product-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "range-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT(Values!A1:A5*Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-grouped-product-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "grouped-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula2": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula2": "=SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "value2": {
+          "variant": "float",
+          "value": -24.0,
+          "hex": "-0x1.8000000000000p+4",
+          "ieee754_hex": "c038000000000000",
+          "classification": "finite"
+        },
+        "display": "-24",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-24",
+        "formula_text": "SUMPRODUCT((Values!A1:A5)*(Values!B1:B5))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-range-add-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "range-add-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 14.0,
+          "hex": "0x1.c000000000000p+3",
+          "ieee754_hex": "402c000000000000",
+          "classification": "finite"
+        },
+        "display": "14",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "value2": {
+          "variant": "float",
+          "value": 14.0,
+          "hex": "0x1.c000000000000p+3",
+          "ieee754_hex": "402c000000000000",
+          "classification": "finite"
+        },
+        "display": "14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "14",
+        "formula_text": "SUMPRODUCT(Values!A1:A5+Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-mixed-product-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "mixed-product-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula2": "=SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!C1:C5*Values!B1:B5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "sumproduct-coerced-mixed-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+      "shape": {
+        "kind": "sumproduct",
+        "operand_shape": "array_expression",
+        "label": "coerced-mixed-expression"
+      },
+      "actual": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula2": "=SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SUMPRODUCT(Values!A1:A5,--Values!C1:C5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    }
+  ]
+}

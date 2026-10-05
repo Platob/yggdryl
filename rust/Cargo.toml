@@ -95,6 +95,8 @@ md-5 = { version = "0.11", optional = true }
 iceberg-official = { package = "iceberg", version = "=0.10.1", default-features = false, optional = true }
 log.workspace = true
 memmap2 = "0.9"
+# Arrow already compiles this trait; its i256 conversion is the Decimal256 float cast.
+num-traits = { version = "0.2.19", default-features = false }
 # The full engine: literal prefilters and the lazy DFA are what let the line
 # projection outrun CPython's C `re` loop on the same corpus. `memchr` rides
 # in regex's own tree, so naming it for the line scan costs no extra crate.

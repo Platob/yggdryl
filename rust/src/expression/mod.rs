@@ -343,6 +343,42 @@ impl Safety {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Function {
+    /// The non-negative magnitude of a number or duration, preserving its datatype.
+    Abs,
+    /// Square root as a Float64; inputs convert through the bound cast.
+    Sqrt,
+    /// Factorial of an exact integer, returned as Float64.
+    Factorial,
+    /// Greatest common divisor of two exact integers, as UInt64.
+    Gcd,
+    /// Least common multiple of two exact integers, as UInt64.
+    Lcm,
+    /// Float64 power; both operands convert through the bound cast.
+    Pow,
+    /// Native Float64 exponential.
+    Exp,
+    /// Native Float64 natural logarithm.
+    Ln,
+    /// Native Float64 base-10 logarithm.
+    Log10,
+    /// Convert radians to degrees as Float64.
+    Degrees,
+    /// Convert degrees to radians as Float64.
+    Radians,
+    /// Native Float64 cosine in radians.
+    Cos,
+    /// Native Float64 inverse sine, in radians.
+    Asin,
+    /// Native Float64 sine in radians.
+    Sin,
+    /// Native Float64 tangent in radians.
+    Tan,
+    /// Native Float64 inverse cosine in radians.
+    Acos,
+    /// Native Float64 inverse tangent in radians.
+    Atan,
+    /// Coordinate inverse tangent in radians, with arguments (y, x).
+    Atan2,
     /// Lowercased text.
     Lower,
     /// Uppercased text.
@@ -508,7 +544,25 @@ pub enum Function {
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 46] = [
+        Self::Abs,
+        Self::Sqrt,
+        Self::Factorial,
+        Self::Gcd,
+        Self::Lcm,
+        Self::Pow,
+        Self::Exp,
+        Self::Ln,
+        Self::Log10,
+        Self::Degrees,
+        Self::Radians,
+        Self::Cos,
+        Self::Asin,
+        Self::Sin,
+        Self::Tan,
+        Self::Acos,
+        Self::Atan,
+        Self::Atan2,
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -544,6 +598,24 @@ impl Function {
     pub fn as_str(&self) -> &str {
         match self {
             Self::User(reference) => reference.as_str(),
+            Self::Abs => "abs",
+            Self::Sqrt => "sqrt",
+            Self::Factorial => "factorial",
+            Self::Gcd => "gcd",
+            Self::Lcm => "lcm",
+            Self::Pow => "pow",
+            Self::Exp => "exp",
+            Self::Ln => "ln",
+            Self::Log10 => "log10",
+            Self::Degrees => "degrees",
+            Self::Radians => "radians",
+            Self::Cos => "cos",
+            Self::Asin => "asin",
+            Self::Sin => "sin",
+            Self::Tan => "tan",
+            Self::Acos => "acos",
+            Self::Atan => "atan",
+            Self::Atan2 => "atan2",
             Self::Lower => "lower",
             Self::Upper => "upper",
             Self::Length => "length",
@@ -584,6 +656,24 @@ impl Function {
     pub fn from_name(name: &str) -> Option<Self> {
         let lowered = name.to_ascii_lowercase();
         Some(match lowered.as_str() {
+            "abs" => Self::Abs,
+            "sqrt" => Self::Sqrt,
+            "factorial" => Self::Factorial,
+            "gcd" => Self::Gcd,
+            "lcm" => Self::Lcm,
+            "pow" | "power" => Self::Pow,
+            "exp" => Self::Exp,
+            "ln" => Self::Ln,
+            "log10" => Self::Log10,
+            "degrees" => Self::Degrees,
+            "radians" => Self::Radians,
+            "cos" => Self::Cos,
+            "asin" => Self::Asin,
+            "sin" => Self::Sin,
+            "tan" => Self::Tan,
+            "acos" => Self::Acos,
+            "atan" => Self::Atan,
+            "atan2" => Self::Atan2,
             "lower" | "lcase" => Self::Lower,
             "upper" | "ucase" => Self::Upper,
             "length" | "len" | "char_length" | "character_length" => Self::Length,
@@ -635,6 +725,10 @@ impl Function {
             | Self::TimeBucket
             | Self::IfNull
             | Self::Get
+            | Self::Pow
+            | Self::Atan2
+            | Self::Gcd
+            | Self::Lcm
             | Self::Minutes => (2, 2),
             _ => (1, 1),
         }

@@ -13,7 +13,8 @@ use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyIterator, PyList, PyTuple};
 use yggdryl::excel::{
-    Cell, CellKind, CellRange, CellRef, DateSystem, Row, Sheet, SheetState, Workbook,
+    Cell, CellKind, CellRange, CellRef, DateSystem, ExcelError, Formula, Row, Sheet, SheetState,
+    Workbook,
 };
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::{IOBase, Scalar};
@@ -422,8 +423,8 @@ impl PyCell {
             Scalar::from(self.inner.kind().as_str().unwrap_or("n")),
             Scalar::from(self.inner.format().as_str()),
             self.inner.value().clone(),
-            self.inner.formula().map_or(Scalar::Null, Scalar::from),
-            self.inner.error().map_or(Scalar::Null, Scalar::from),
+            self.formula().map_or(Scalar::Null, Scalar::from),
+            self.error().map_or(Scalar::Null, Scalar::from),
         ])
         .stable_hash()
     }
@@ -471,13 +472,14 @@ impl PyCell {
             reference.parse().map_err(value_error)?,
             CellKind::from_attribute(kind).map_err(value_error)?,
             format.parse().map_err(value_error)?,
-            value.inner.clone(),
+            error.map_or_else(|| value.inner.clone(), Scalar::from),
         );
         if let Some(formula) = formula {
+            let formula = Formula::from_file(formula, cell.reference());
             cell = cell.with_formula(formula);
         }
         if let Some(error) = error {
-            cell = cell.with_error(error);
+            cell = cell.with_error(ExcelError::from_text(error));
         }
         Ok(Self::from_inner(cell))
     }
@@ -527,14 +529,16 @@ impl PyCell {
 
     /// The formula the cell carries, when it states one.
     #[getter]
-    fn formula(&self) -> Option<&str> {
-        self.inner.formula()
+    fn formula(&self) -> Option<String> {
+        self.inner
+            .formula()
+            .map(|formula| formula.at(self.inner.reference()).to_string())
     }
 
     /// The error the cell carries, such as `#DIV/0!`, when it is one.
     #[getter]
     fn error(&self) -> Option<&str> {
-        self.inner.error()
+        self.inner.error().map(|_| self.inner.error_text())
     }
 
     /// Whether the cell holds no value.
@@ -548,13 +552,24 @@ impl PyCell {
     }
 
     /// This cell carrying `formula`.
-    fn with_formula(&self, formula: &str) -> Self {
-        Self::from_inner(self.inner.clone().with_formula(formula))
+    fn with_formula(&self, formula: &str) -> PyResult<Self> {
+        let formula = Formula::from_entry(formula, self.inner.reference()).map_err(value_error)?;
+        Ok(Self::from_inner(self.inner.clone().with_formula(formula)))
     }
 
     /// This cell as the error `error`.
     fn with_error(&self, error: &str) -> Self {
-        Self::from_inner(self.inner.clone().with_error(error))
+        let mut cell = Cell::new(
+            self.inner.reference(),
+            self.inner.kind(),
+            self.inner.format(),
+            Scalar::from(error),
+        )
+        .with_style(self.inner.style());
+        if let Some(formula) = self.inner.formula() {
+            cell = cell.with_formula(formula.clone());
+        }
+        Self::from_inner(cell.with_error(ExcelError::from_text(error)))
     }
 
     /// This cell moved to `reference`.
@@ -612,8 +627,8 @@ impl PyCell {
                 self.kind(),
                 self.format(),
                 self.value(),
-                self.inner.formula().map(ToOwned::to_owned),
-                self.inner.error().map(ToOwned::to_owned),
+                self.formula(),
+                self.error().map(ToOwned::to_owned),
             ),
         ))
     }
@@ -682,7 +697,7 @@ impl PyRow {
 /// What a `Sheet` object stands for: a sheet of its own, or a live view of
 /// the one a workbook holds under `name`.
 enum Held {
-    Own(Sheet),
+    Own(Box<Sheet>),
     Shared { workbook: Shared, name: String },
 }
 
@@ -700,7 +715,7 @@ pub(crate) struct PySheet {
 impl PySheet {
     fn own(sheet: Sheet) -> Self {
         Self {
-            held: Held::Own(sheet),
+            held: Held::Own(Box::new(sheet)),
         }
     }
 
@@ -713,7 +728,7 @@ impl PySheet {
     /// Read through to the sheet, wherever it lives.
     fn read<R>(&self, read: impl FnOnce(&Sheet) -> PyResult<R>) -> PyResult<R> {
         match &self.held {
-            Held::Own(sheet) => read(sheet),
+            Held::Own(sheet) => read(sheet.as_ref()),
             Held::Shared { workbook, name } => {
                 let workbook = lock(workbook)?;
                 read(workbook.sheet(name).map_err(excel_error)?)
@@ -724,10 +739,34 @@ impl PySheet {
     /// Write through to the sheet, wherever it lives.
     fn write<R>(&mut self, write: impl FnOnce(&mut Sheet) -> PyResult<R>) -> PyResult<R> {
         match &mut self.held {
-            Held::Own(sheet) => write(sheet),
+            Held::Own(sheet) => write(sheet.as_mut()),
             Held::Shared { workbook, name } => {
                 let mut workbook = lock(workbook)?;
                 write(workbook.sheet_mut(name).map_err(excel_error)?)
+            }
+        }
+    }
+
+    /// Structural edits follow the workbook's package-wide reference graph.
+    fn edit(
+        &mut self,
+        edit: impl FnOnce(&mut Workbook, &str) -> yggdryl::Result<()>,
+    ) -> PyResult<()> {
+        match &mut self.held {
+            Held::Own(sheet) => {
+                let name = sheet.name().to_owned();
+                let mut workbook = Workbook::new();
+                workbook.set_date_system(sheet.date_system());
+                workbook
+                    .insert_sheet(sheet.as_ref().clone())
+                    .map_err(excel_error)?;
+                edit(&mut workbook, &name).map_err(excel_error)?;
+                **sheet = workbook.sheet(&name).map_err(excel_error)?.clone();
+                Ok(())
+            }
+            Held::Shared { workbook, name } => {
+                let mut workbook = lock(workbook)?;
+                edit(&mut workbook, name).map_err(excel_error)
             }
         }
     }
@@ -985,15 +1024,12 @@ impl PySheet {
     /// Open `count` empty rows at the zero-based row `at`, moving the rows
     /// from there down.
     fn insert_rows(&mut self, at: u32, count: u32) -> PyResult<()> {
-        self.write(|sheet| sheet.insert_rows(at, count).map_err(value_error))
+        self.edit(|workbook, name| workbook.insert_rows(name, at, count))
     }
 
     /// Drop the rows from `start` up to `stop`, moving the rows below up.
     fn remove_rows(&mut self, start: u32, stop: u32) -> PyResult<()> {
-        self.write(|sheet| {
-            sheet.remove_rows(start..stop);
-            Ok(())
-        })
+        self.edit(|workbook, name| workbook.remove_rows(name, start..stop))
     }
 
     /// A sheet named `name` laid out from the rows of `value` - anything
@@ -1003,7 +1039,7 @@ impl PySheet {
     #[pyo3(signature = (name, value, *, header = true))]
     fn from_serie(name: &str, value: &Bound<'_, PyAny>, header: bool) -> PyResult<Self> {
         let serie = serie_from(value)?;
-        Sheet::from_serie(name, &serie, header)
+        Sheet::from_serie(name, &serie, header.into())
             .map(Self::own)
             .map_err(value_error)
     }
@@ -1021,7 +1057,7 @@ impl PySheet {
         let serie = serie_from(value)?;
         self.write(|sheet| {
             sheet
-                .write_serie(anchor, &serie, header)
+                .write_serie(anchor, &serie, header.into())
                 .map_err(value_error)
         })
     }
@@ -1053,7 +1089,7 @@ impl PySheet {
             .transpose()?;
         let sheet = self.snapshot()?;
         let serie = py
-            .detach(move || sheet.into_serie(field.as_ref(), header, options))
+            .detach(move || sheet.into_serie(field.as_ref(), header.into(), options))
             .map_err(value_error)?;
         described(py, serie)
     }

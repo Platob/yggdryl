@@ -10,7 +10,7 @@ use napi_derive::napi;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
-use yggdryl::{IOMode, Level};
+use yggdryl::{IOMode, Level, RecordHeader};
 
 use crate::enums::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
@@ -544,19 +544,23 @@ impl JsRecordOptions {
             .map_err(napi_error)
     }
 
-    /// The cells a workbook read or write addresses, `null` for the whole
+    /// The A1 range a workbook read or write addresses, `null` for the whole
     /// sheet - or for another encoding.
     #[napi(getter)]
-    pub fn range(&self) -> Option<crate::excel::JsCellRange> {
-        self.inner
-            .excel_range()
-            .map(|inner| crate::excel::JsCellRange { inner })
+    pub fn range(&self) -> Option<String> {
+        self.inner.excel_range().map(|range| range.to_string())
     }
 
     /// Address the cells of `range`, or the whole sheet for `null`.
     #[napi(setter)]
-    pub fn set_range(&mut self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<()> {
-        let range = range.map(crate::excel::cell_range_from).transpose()?;
+    pub fn set_range(&mut self, range: Option<String>) -> Result<()> {
+        let range = range
+            .map(|range| {
+                range
+                    .parse::<yggdryl::excel::CellRange>()
+                    .map_err(napi_error)
+            })
+            .transpose()?;
         self.inner.set_excel_range(range).map_err(napi_error)
     }
 
@@ -570,7 +574,7 @@ impl JsRecordOptions {
 
     /// These options addressing the cells of `range`.
     #[napi]
-    pub fn with_range(&self, range: Option<crate::excel::CellRangeInput<'_>>) -> Result<Self> {
+    pub fn with_range(&self, range: Option<String>) -> Result<Self> {
         let mut options = self.clone();
         options.set_range(range)?;
         Ok(options)
@@ -718,10 +722,13 @@ impl JsRecordOptions {
     }
 
     /// Whether the first record names the columns - a CSV's first record, a
-    /// workbook's first row; `null` for another encoding.
+    /// workbook row; `null` for an encoding whose columns are named by its
+    /// own schema.
     #[napi(getter)]
     pub fn header(&self) -> Option<bool> {
-        self.inner.header()
+        self.inner
+            .header()
+            .map(|header| header != RecordHeader::None)
     }
 
     /// Set whether the first record names the columns: a CSV's first record,

@@ -11,8 +11,8 @@ use yggdryl::zip::ZipArchive;
 use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
 
 use crate::excel_package::{
-    NS, content_types, one_sheet, package, root_relationships, workbook, workbook_relationships,
-    worksheet,
+    NS, content_types, one_sheet, package, root_relationships, shared_strings, workbook,
+    workbook_relationships, worksheet,
 };
 
 /// The shared strings part holding `items`, each an `si` element as spelled.
@@ -93,10 +93,12 @@ fn written_item(text: &str) -> String {
     format!("<si><t xml:space=\"preserve\">{text}</t></si>")
 }
 
-/// The shared strings part the crate writes for `items` and `count` references.
-fn written_table(count: usize, items: &[&str]) -> String {
+/// The shared strings part the crate creates for `items`: no `count`,
+/// which no save keeps true.
+fn written_table(items: &[&str]) -> String {
     let mut text = format!(
-        "<sst xmlns=\"{NAMESPACE}\" count=\"{count}\" uniqueCount=\"{}\">",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
+         <sst xmlns=\"{NAMESPACE}\" uniqueCount=\"{}\">",
         items.len()
     );
     for item in items {
@@ -404,7 +406,7 @@ fn the_workbook_writer_interns_each_distinct_text_once() {
     let bytes = book.into_bytes().unwrap();
     assert_eq!(
         member(&bytes, "xl/sharedStrings.xml"),
-        written_table(3, &["AAPL", "MSFT"])
+        written_table(&["AAPL", "MSFT"])
     );
     let part = member(&bytes, "xl/worksheets/sheet1.xml");
     assert!(
@@ -430,7 +432,7 @@ fn one_table_serves_every_sheet_of_a_workbook() {
     let bytes = book.into_bytes().unwrap();
     assert_eq!(
         member(&bytes, "xl/sharedStrings.xml"),
-        written_table(2, &["AAPL"])
+        written_table(&["AAPL"])
     );
     for part in ["xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"] {
         let text = member(&bytes, part);
@@ -462,21 +464,18 @@ fn the_workbook_writer_escapes_what_an_item_cannot_carry() {
     ]);
     assert_eq!(
         member(&bytes, "xl/sharedStrings.xml"),
-        written_table(
-            10,
-            &[
-                "a_x000D_b",
-                "_x0001_",
-                "nul_x0000_",
-                "_x000B__x000C__x001F_",
-                "_xFFFE__xFFFF_",
-                "_x005F_x0041_",
-                "a_x005F_x0041_b_x005F_x0042_",
-                "&lt;&amp;&gt;",
-                "  padded  ",
-                "tab\tline\nfeed",
-            ]
-        )
+        written_table(&[
+            "a_x000D_b",
+            "_x0001_",
+            "nul_x0000_",
+            "_x000B__x000C__x001F_",
+            "_xFFFE__xFFFF_",
+            "_x005F_x0041_",
+            "a_x005F_x0041_b_x005F_x0042_",
+            "&lt;&amp;&gt;",
+            "  padded  ",
+            "tab\tline\nfeed",
+        ])
     );
 }
 
@@ -495,7 +494,7 @@ fn text_holding_no_escape_run_is_written_as_is() {
     let bytes = column_workbook(&values);
     assert_eq!(
         member(&bytes, "xl/sharedStrings.xml"),
-        written_table(values.len(), &values)
+        written_table(&values)
     );
     assert_eq!(read_column(bytes, values.len()), texts(&values));
 }
@@ -540,9 +539,13 @@ fn a_rewritten_package_keeps_the_index_of_every_string_it_held() {
     sheet.set_cell("B1".parse().unwrap(), "new").unwrap();
     sheet.set_cell("A3".parse().unwrap(), "AAPL").unwrap();
     let written = book.into_bytes().unwrap();
+    // The table the package stores, extended: every item it held kept as
+    // it stands, the new one appended, `count` gone.
     assert_eq!(
         member(&written, "xl/sharedStrings.xml"),
-        written_table(4, &["id", "AAPL", "x_x0001_", "new"])
+        shared_strings(&["id", "AAPL", "x_x0001_"])
+            .replace(" count=\"3\" uniqueCount=\"3\"", " uniqueCount=\"4\"")
+            .replace("</sst>", &format!("{}</sst>", written_item("new")))
     );
     let part = member(&written, "xl/worksheets/sheet1.xml");
     assert!(
@@ -557,21 +560,110 @@ fn a_rewritten_package_keeps_the_index_of_every_string_it_held() {
 }
 
 #[test]
-fn a_workbook_holding_no_text_writes_an_empty_table() {
+fn a_workbook_holding_no_text_writes_no_table() {
     let mut book = Workbook::new();
     book.add_sheet("Sheet1")
         .unwrap()
         .set_cell("A1".parse().unwrap(), 1.0)
         .unwrap();
     let bytes = book.into_bytes().unwrap();
+    assert!(!has_member(&bytes, "xl/sharedStrings.xml"));
+    // The table is created with the first text a save writes.
+    let mut book = Workbook::from_bytes(bytes).unwrap();
+    book.sheet_mut("Sheet1")
+        .unwrap()
+        .set_cell("B1".parse().unwrap(), "first")
+        .unwrap();
+    let bytes = book.into_bytes().unwrap();
     assert_eq!(
         member(&bytes, "xl/sharedStrings.xml"),
-        written_table(0, &[])
+        written_table(&["first"])
     );
 }
 
 #[test]
-fn the_record_writer_writes_inline_strings_and_leaves_the_table_empty() {
+fn a_saved_table_keeps_rich_phonetic_and_duplicate_items_as_they_stand() {
+    // Item 0 is rich, 1 phonetic, 2 plain, 3 a second plain `plain`.
+    let items = [
+        "<si><r><rPr><b/></rPr><t>be</t></r><r><t>ta</t></r></si>",
+        "<si><t>東京</t><rPh sb=\"0\" eb=\"2\"><t>トウキョウ</t></rPh><phoneticPr fontId=\"1\"/></si>",
+        "<si><t>plain</t></si>",
+        "<si><t>plain</t></si>",
+    ];
+    let original = table(&items);
+    let bytes = package_with(
+        "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"B1\" t=\"s\"><v>1</v></c>\
+         <c r=\"C1\" t=\"s\"><v>2</v></c><c r=\"D1\" t=\"s\"><v>3</v></c></row>",
+        &original,
+    );
+    let mut book = Workbook::from_bytes(bytes).unwrap();
+    let sheet = book.sheet_mut("Sheet1").unwrap();
+    // Typing a rich item's text gains no runs: it is a plain item of its own.
+    sheet.set_cell("A2".parse().unwrap(), "beta").unwrap();
+    // Typing a plain item's text writes that item.
+    sheet.set_cell("B2".parse().unwrap(), "plain").unwrap();
+    let written = book.into_bytes().unwrap();
+    assert_eq!(
+        member(&written, "xl/sharedStrings.xml"),
+        original
+            .replace(" count=\"4\" uniqueCount=\"4\"", " uniqueCount=\"5\"")
+            .replace("</sst>", &format!("{}</sst>", written_item("beta")))
+    );
+    // Every cell read from an item writes that item again, the duplicate
+    // included.
+    let part = member(&written, "xl/worksheets/sheet1.xml");
+    for cell in [
+        "<c r=\"A1\" t=\"s\"><v>0</v></c>",
+        "<c r=\"B1\" t=\"s\"><v>1</v></c>",
+        "<c r=\"C1\" t=\"s\"><v>2</v></c>",
+        "<c r=\"D1\" t=\"s\"><v>3</v></c>",
+        "<c r=\"A2\" t=\"s\"><v>4</v></c>",
+        "<c r=\"B2\" t=\"s\"><v>2</v></c>",
+    ] {
+        assert!(part.contains(cell), "{cell} in {part}");
+    }
+    // A save that appends nothing copies the table as the package stores it.
+    let mut book = Workbook::from_bytes(written.clone()).unwrap();
+    book.sheet_mut("Sheet1")
+        .unwrap()
+        .set_cell("C2".parse().unwrap(), 1.0)
+        .unwrap();
+    let again = book.into_bytes().unwrap();
+    assert_eq!(
+        member(&again, "xl/sharedStrings.xml"),
+        member(&written, "xl/sharedStrings.xml")
+    );
+}
+
+#[test]
+fn a_cell_whose_item_changed_text_interns_its_own() {
+    let bytes = one_sheet(
+        "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>1</v></c></row>",
+        &["x", "x"],
+        &[],
+        &[],
+    );
+    let mut book = Workbook::from_bytes(bytes).unwrap();
+    let sheet = book.sheet_mut("Sheet1").unwrap();
+    // A1 reads the duplicate; overwritten with other text, it names neither.
+    sheet.set_cell("A1".parse().unwrap(), "y").unwrap();
+    sheet.set_cell("A2".parse().unwrap(), "x").unwrap();
+    let written = book.into_bytes().unwrap();
+    let part = member(&written, "xl/worksheets/sheet1.xml");
+    assert!(part.contains("<c r=\"A1\" t=\"s\"><v>2</v></c>"), "{part}");
+    assert!(part.contains("<c r=\"A2\" t=\"s\"><v>0</v></c>"), "{part}");
+}
+
+/// Whether the package `bytes` holds the member `name`.
+fn has_member(bytes: &[u8], name: &str) -> bool {
+    ZipArchive::new(Holder::buffer(Buffer::from_bytes(bytes.to_vec())))
+        .get_entry(name)
+        .unwrap()
+        .is_some()
+}
+
+#[test]
+fn the_record_writer_writes_inline_strings_and_no_table() {
     let field = DataType::from(
         StructType::from_fields([DataType::utf8().nullable_field("sym_x0041_bol")]).unwrap(),
     )
@@ -595,10 +687,7 @@ fn the_record_writer_writes_inline_strings_and_leaves_the_table_empty() {
         .unwrap();
 
     let bytes = handle.read_all_bytes().unwrap();
-    assert_eq!(
-        member(&bytes, "xl/sharedStrings.xml"),
-        written_table(0, &[])
-    );
+    assert!(!has_member(&bytes, "xl/sharedStrings.xml"));
     let part = member(&bytes, "xl/worksheets/sheet1.xml");
     for cell in [
         "<c r=\"A1\" t=\"inlineStr\"><is><t xml:space=\"preserve\">sym_x005F_x0041_bol</t></is></c>",
@@ -621,4 +710,71 @@ fn the_record_writer_writes_inline_strings_and_leaves_the_table_empty() {
         .map(|batch| batch.unwrap())
         .collect();
     assert_eq!(batches, vec![batch]);
+}
+
+#[test]
+fn new_shared_strings_keep_the_workbook_namespace_family() {
+    use yggdryl::excel::{
+        RELATIONSHIPS_NAMESPACE, STRICT_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE,
+    };
+    let types = content_types(1, false, false);
+    let root =
+        root_relationships().replace(RELATIONSHIPS_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE);
+    let relationships = workbook_relationships(1, false, false)
+        .replace(RELATIONSHIPS_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE);
+    let document = workbook(&["Sheet1"], false)
+        .replace(NS, STRICT_NAMESPACE)
+        .replace(RELATIONSHIPS_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE);
+    let sheet = worksheet("")
+        .replace(NS, STRICT_NAMESPACE)
+        .replace(RELATIONSHIPS_NAMESPACE, STRICT_RELATIONSHIPS_NAMESPACE);
+    let mut book = Workbook::from_bytes(package(&[
+        ("[Content_Types].xml", &types),
+        ("_rels/.rels", &root),
+        ("xl/workbook.xml", &document),
+        ("xl/_rels/workbook.xml.rels", &relationships),
+        ("xl/worksheets/sheet1.xml", &sheet),
+    ]))
+    .unwrap();
+    book.sheet_mut("Sheet1")
+        .unwrap()
+        .set_cell("A1".parse().unwrap(), "first")
+        .unwrap();
+    let first = book.into_package().unwrap();
+    book.rebase(first).unwrap();
+    book.sheet_mut("Sheet1")
+        .unwrap()
+        .set_cell("A2".parse().unwrap(), "second")
+        .unwrap();
+    let bytes = book.into_bytes().unwrap();
+    let strings = member(&bytes, "xl/sharedStrings.xml");
+    let xml = yggdryl::xml::from_bytes(strings.as_bytes()).unwrap();
+    assert!(
+        yggdryl::xml::Element::root(&xml)
+            .unwrap()
+            .is(Some(STRICT_NAMESPACE), "sst"),
+        "{strings}"
+    );
+    let relationships = member(&bytes, "xl/_rels/workbook.xml.rels");
+    assert!(
+        relationships.contains(&format!(
+            "Type=\"{STRICT_RELATIONSHIPS_NAMESPACE}/sharedStrings\""
+        )),
+        "{relationships}"
+    );
+    let reopened = Workbook::from_bytes(bytes).unwrap();
+    assert_eq!(
+        reopened
+            .sheet("Sheet1")
+            .unwrap()
+            .scalar("A1".parse().unwrap()),
+        Scalar::from("first")
+    );
+    assert_eq!(
+        reopened
+            .sheet("Sheet1")
+            .unwrap()
+            .scalar("A2".parse().unwrap()),
+        Scalar::from("second")
+    );
 }

@@ -1,0 +1,2991 @@
+{
+  "schema_version": 1,
+  "scope": "attached Excel 11 PivotTable aggregates; observed, not Rust-equivalent",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_sha256": "e5606539d5cb68bb9d51bf43ebab2e620522b1e6a1c478efeea32e6679a31af0",
+  "manifest_sha256": "5d04613f2df56991becbaa0cf443dd3b48522811319fd6ff38515c3136ff2ab5",
+  "native_report_sha256": "a3a54cd1a629612b6489f98143078869071433a1cda1dbe0bd94bccf5540282e",
+  "cleanup_completed": true,
+  "authored_source_tables": [
+    {
+      "sheet": "Data",
+      "range": "A1:B31",
+      "rows": [
+        [
+          "Group",
+          "Metric"
+        ],
+        [
+          "NAOnly",
+          "#N/A"
+        ],
+        [
+          "NAOnly",
+          "#N/A"
+        ],
+        [
+          "DivOnly",
+          "#DIV/0!"
+        ],
+        [
+          "DivOnly",
+          "#DIV/0!"
+        ],
+        [
+          "NAThenNumber",
+          "#N/A"
+        ],
+        [
+          "NAThenNumber",
+          2.0
+        ],
+        [
+          "NumberThenNA",
+          2.0
+        ],
+        [
+          "NumberThenNA",
+          "#N/A"
+        ],
+        [
+          "DivThenNumber",
+          "#DIV/0!"
+        ],
+        [
+          "DivThenNumber",
+          2.0
+        ],
+        [
+          "NumberThenDiv",
+          2.0
+        ],
+        [
+          "NumberThenDiv",
+          "#DIV/0!"
+        ],
+        [
+          "FormulaEmpty",
+          "=\"\""
+        ],
+        [
+          "FormulaEmpty",
+          "=\"\""
+        ],
+        [
+          "PhysicalBlank",
+          null
+        ],
+        [
+          "PhysicalBlank",
+          null
+        ],
+        [
+          "BooleanOnly",
+          true
+        ],
+        [
+          "BooleanOnly",
+          false
+        ],
+        [
+          "NumberControl",
+          2.0
+        ],
+        [
+          "NumberControl",
+          4.0
+        ],
+        [
+          "FormulaEmptyNumber",
+          "=\"\""
+        ],
+        [
+          "FormulaEmptyNumber",
+          2.0
+        ],
+        [
+          "PhysicalBlankNumber",
+          null
+        ],
+        [
+          "PhysicalBlankNumber",
+          2.0
+        ],
+        [
+          "BooleanNumber",
+          true
+        ],
+        [
+          "BooleanNumber",
+          2.0
+        ],
+        [
+          "NAThenDiv",
+          "#N/A"
+        ],
+        [
+          "NAThenDiv",
+          "#DIV/0!"
+        ],
+        [
+          "DivThenNA",
+          "#DIV/0!"
+        ],
+        [
+          "DivThenNA",
+          "#N/A"
+        ]
+      ]
+    }
+  ],
+  "source_xml": {
+    "xl/worksheets/sheet1.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:B31\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Group</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Metric</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>NAOnly</t></is></c><c r=\"B2\" t=\"e\"><v>#N/A</v></c></row><row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>NAOnly</t></is></c><c r=\"B3\" t=\"e\"><v>#N/A</v></c></row><row r=\"4\"><c r=\"A4\" t=\"inlineStr\"><is><t>DivOnly</t></is></c><c r=\"B4\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"5\"><c r=\"A5\" t=\"inlineStr\"><is><t>DivOnly</t></is></c><c r=\"B5\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"6\"><c r=\"A6\" t=\"inlineStr\"><is><t>NAThenNumber</t></is></c><c r=\"B6\" t=\"e\"><v>#N/A</v></c></row><row r=\"7\"><c r=\"A7\" t=\"inlineStr\"><is><t>NAThenNumber</t></is></c><c r=\"B7\" t=\"n\"><v>2</v></c></row><row r=\"8\"><c r=\"A8\" t=\"inlineStr\"><is><t>NumberThenNA</t></is></c><c r=\"B8\" t=\"n\"><v>2</v></c></row><row r=\"9\"><c r=\"A9\" t=\"inlineStr\"><is><t>NumberThenNA</t></is></c><c r=\"B9\" t=\"e\"><v>#N/A</v></c></row><row r=\"10\"><c r=\"A10\" t=\"inlineStr\"><is><t>DivThenNumber</t></is></c><c r=\"B10\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"11\"><c r=\"A11\" t=\"inlineStr\"><is><t>DivThenNumber</t></is></c><c r=\"B11\" t=\"n\"><v>2</v></c></row><row r=\"12\"><c r=\"A12\" t=\"inlineStr\"><is><t>NumberThenDiv</t></is></c><c r=\"B12\" t=\"n\"><v>2</v></c></row><row r=\"13\"><c r=\"A13\" t=\"inlineStr\"><is><t>NumberThenDiv</t></is></c><c r=\"B13\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"14\"><c r=\"A14\" t=\"inlineStr\"><is><t>FormulaEmpty</t></is></c><c r=\"B14\" t=\"str\"><f>\"\"</f><v /></c></row><row r=\"15\"><c r=\"A15\" t=\"inlineStr\"><is><t>FormulaEmpty</t></is></c><c r=\"B15\" t=\"str\"><f>\"\"</f><v /></c></row><row r=\"16\"><c r=\"A16\" t=\"inlineStr\"><is><t>PhysicalBlank</t></is></c></row><row r=\"17\"><c r=\"A17\" t=\"inlineStr\"><is><t>PhysicalBlank</t></is></c></row><row r=\"18\"><c r=\"A18\" t=\"inlineStr\"><is><t>BooleanOnly</t></is></c><c r=\"B18\" t=\"b\"><v>1</v></c></row><row r=\"19\"><c r=\"A19\" t=\"inlineStr\"><is><t>BooleanOnly</t></is></c><c r=\"B19\" t=\"b\"><v>0</v></c></row><row r=\"20\"><c r=\"A20\" t=\"inlineStr\"><is><t>NumberControl</t></is></c><c r=\"B20\" t=\"n\"><v>2</v></c></row><row r=\"21\"><c r=\"A21\" t=\"inlineStr\"><is><t>NumberControl</t></is></c><c r=\"B21\" t=\"n\"><v>4</v></c></row><row r=\"22\"><c r=\"A22\" t=\"inlineStr\"><is><t>FormulaEmptyNumber</t></is></c><c r=\"B22\" t=\"str\"><f>\"\"</f><v /></c></row><row r=\"23\"><c r=\"A23\" t=\"inlineStr\"><is><t>FormulaEmptyNumber</t></is></c><c r=\"B23\" t=\"n\"><v>2</v></c></row><row r=\"24\"><c r=\"A24\" t=\"inlineStr\"><is><t>PhysicalBlankNumber</t></is></c></row><row r=\"25\"><c r=\"A25\" t=\"inlineStr\"><is><t>PhysicalBlankNumber</t></is></c><c r=\"B25\" t=\"n\"><v>2</v></c></row><row r=\"26\"><c r=\"A26\" t=\"inlineStr\"><is><t>BooleanNumber</t></is></c><c r=\"B26\" t=\"b\"><v>1</v></c></row><row r=\"27\"><c r=\"A27\" t=\"inlineStr\"><is><t>BooleanNumber</t></is></c><c r=\"B27\" t=\"n\"><v>2</v></c></row><row r=\"28\"><c r=\"A28\" t=\"inlineStr\"><is><t>NAThenDiv</t></is></c><c r=\"B28\" t=\"e\"><v>#N/A</v></c></row><row r=\"29\"><c r=\"A29\" t=\"inlineStr\"><is><t>NAThenDiv</t></is></c><c r=\"B29\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"30\"><c r=\"A30\" t=\"inlineStr\"><is><t>DivThenNA</t></is></c><c r=\"B30\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"31\"><c r=\"A31\" t=\"inlineStr\"><is><t>DivThenNA</t></is></c><c r=\"B31\" t=\"e\"><v>#N/A</v></c></row></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet10.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet11.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet12.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet2.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet3.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet4.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet5.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet6.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet7.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet8.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet9.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>"
+  },
+  "saved_error_cells": {
+    "xl/worksheets/sheet1.xml": [
+      {
+        "cell": "B2",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B3",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B4",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B10",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B28",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B29",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B30",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B31",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet10.xml": [
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet11.xml": [
+      {
+        "cell": "B4",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B10",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B18",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet12.xml": [
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet2.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet4.xml": [
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet5.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet6.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet7.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet9.xml": [
+      {
+        "cell": "B4",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B8",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B9",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B10",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B11",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B12",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B13",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B15",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B16",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B18",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B19",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "edge_sum",
+      "aggregate": "sum",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "sum Metric",
+        "caption": "sum Metric",
+        "position": 1,
+        "function": -4157
+      },
+      "xml_data_field": {
+        "name": "sum Metric",
+        "subtotal": "sum"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "sum Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_count",
+      "aggregate": "count",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "count Metric",
+        "caption": "count Metric",
+        "position": 1,
+        "function": -4112
+      },
+      "xml_data_field": {
+        "name": "count Metric",
+        "subtotal": "count"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "count Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 27.0,
+            "hex": "0x1.b000000000000p+4",
+            "ieee754_hex": "403b000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_average",
+      "aggregate": "average",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "average Metric",
+        "caption": "average Metric",
+        "position": 1,
+        "function": -4106
+      },
+      "xml_data_field": {
+        "name": "average Metric",
+        "subtotal": "average"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "average Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_max",
+      "aggregate": "max",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "max Metric",
+        "caption": "max Metric",
+        "position": 1,
+        "function": -4136
+      },
+      "xml_data_field": {
+        "name": "max Metric",
+        "subtotal": "max"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "max Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_min",
+      "aggregate": "min",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "min Metric",
+        "caption": "min Metric",
+        "position": 1,
+        "function": -4139
+      },
+      "xml_data_field": {
+        "name": "min Metric",
+        "subtotal": "min"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "min Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_product",
+      "aggregate": "product",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "product Metric",
+        "caption": "product Metric",
+        "position": 1,
+        "function": -4149
+      },
+      "xml_data_field": {
+        "name": "product Metric",
+        "subtotal": "product"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "product Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 8.0,
+            "hex": "0x1.0000000000000p+3",
+            "ieee754_hex": "4020000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_countnumbers",
+      "aggregate": "countNumbers",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "countNumbers Metric",
+        "caption": "countNumbers Metric",
+        "position": 1,
+        "function": 11
+      },
+      "xml_data_field": {
+        "name": "countNumbers Metric",
+        "subtotal": "countNums"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "countNumbers Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_stddev",
+      "aggregate": "stdDev",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "stdDev Metric",
+        "caption": "stdDev Metric",
+        "position": 1,
+        "function": -4155
+      },
+      "xml_data_field": {
+        "name": "stdDev Metric",
+        "subtotal": "stdDev"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "stdDev Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 1.4142135623730951,
+            "hex": "0x1.6a09e667f3bcdp+0",
+            "ieee754_hex": "3ff6a09e667f3bcd",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_stddevp",
+      "aggregate": "stdDevP",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "stdDevP Metric",
+        "caption": "stdDevP Metric",
+        "position": 1,
+        "function": -4156
+      },
+      "xml_data_field": {
+        "name": "stdDevP Metric",
+        "subtotal": "stdDevp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "stdDevP Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_var",
+      "aggregate": "var",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "var Metric",
+        "caption": "var Metric",
+        "position": 1,
+        "function": -4164
+      },
+      "xml_data_field": {
+        "name": "var Metric",
+        "subtotal": "var"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "var Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    },
+    {
+      "id": "edge_varp",
+      "aggregate": "varP",
+      "table_range2": "$A$3:$B$19",
+      "data_field": {
+        "name": "varP Metric",
+        "caption": "varP Metric",
+        "position": 1,
+        "function": -4165
+      },
+      "xml_data_field": {
+        "name": "varP Metric",
+        "subtotal": "varp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "varP Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BooleanOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "DivThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmpty"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "FormulaEmptyNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NAThenNumber"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberControl"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenDiv"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "NumberThenNA"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlank"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "PhysicalBlankNumber"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ]
+      ]
+    }
+  ]
+}

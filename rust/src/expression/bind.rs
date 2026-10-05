@@ -769,8 +769,25 @@ impl Binder<'_> {
             Term::Function(function, arguments) => {
                 let field = term.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(arguments.len());
-                let unified = matches!(function, Function::Coalesce | Function::IfNull)
-                    .then(|| field.dtype().clone());
+                let unified = match function {
+                    Function::Coalesce | Function::IfNull => Some(field.dtype().clone()),
+                    Function::Sqrt
+                    | Function::Factorial
+                    | Function::Pow
+                    | Function::Exp
+                    | Function::Ln
+                    | Function::Log10
+                    | Function::Degrees
+                    | Function::Radians
+                    | Function::Cos
+                    | Function::Asin
+                    | Function::Sin
+                    | Function::Tan
+                    | Function::Acos
+                    | Function::Atan
+                    | Function::Atan2 => Some(DataType::Float64),
+                    _ => None,
+                };
                 for argument in arguments.iter() {
                     lowered.push(self.lower(argument, unified.as_ref())?);
                 }

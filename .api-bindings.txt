@@ -540,7 +540,7 @@
     instance: appendArrowBatch, appendArrowReader, appendArrowTable, appendBytes, appendRecords, appendSerie, buffered, childrenWhere, clear, close, closed, codec, columnSize, compressInto, copyInto, createDir, cursor, decompressInto, deleteDir, deleteDirContents, deleteFile, deleteRootDirContents, exists, filesystem, flush, glob, info, intoPath, intoText, isAtomic, isDir, isFile, isIo, isTabular, iterdir, joinpath, kind, ls, boundUri, maskedUri, mediaType, mergeArrowBatch, mergeArrowReader, mergeArrowTable, mergeRecords, mergeSerie, mkdir, moveInto, name, normalizePath, open, openAppendStream, opened, openInputFile, openInputStream, openOutputStream, overwriteArrowBatch, overwriteArrowReader, overwriteArrowTable, overwriteRecords, overwriteSerie, parent, partitions, path, pstreamBytes, pwrite, readArrowField, readArrowReader, readBytes, readDigest, readParquetGeospatialStatistics, readParquetStatistics, readRange, readRangeBytes, readRangeDigest, readRecords, readScalar, readSerie, readText, readTextLines, recordOptions, remove, rglob, rowSize, sameLocation, size, toString, touch, truncate, unlink, uri, url, writeArrowBatch, writeArrowReader, writeArrowTable, writeBytes, writeRecords, writeScalar, writeSerie, writeText
     uri is the identifier a handle is addressed by and url that identifier when it names a location, while boundUri and maskedUri are a bound handler's own spelling and null on a store held natively; fromUri(uri, options?) is Holder::from_url for every scheme the build holds - an object-store URL's query read by the core as the store's properties beneath the options and taken off the location the handle reports, an option winning over it whatever its spelling and a parameter no store reads refused by name - options a plain object of store, media_type and codec properties - a string, boolean or number the property's text, null unstated, any other value refused by name; moveInto and openInputFile / openInputStream / openOutputStream / openAppendStream are the bridge's own, taking fromFs handles; every location parameter takes IOBase | Url | Uri | Urn | Arn | string, and a name resolves through the core's locator
     properties: every record read and write takes an options value and, beside it, a plain object of option properties - or the plain object alone in the options position - set on a copy by their own setters; undefined is skipped; readRecords(cls?, options?, properties?); readSerie(options?, properties?) answers a SerieReader, absent or null options the handle's own; writeSerie(value, mode = 'overwrite', options?, properties?), overwriteSerie, appendSerie and mergeSerie(value, options?, properties?) take a Serie, a ChunkedSerie, a SerieReader (consumed) or anything BatchReader.from accepts, a run and any other value refused, the options and their zero counts refused before a stream is consumed; recordOptions() answers TextOptions for a plain-text handle
-    dimensions: size(), kind(), rowSize(), columnSize() are methods, never getters - an answer that may ask storage is not computed by an inspector displaying the handle; CellRange.rowSize()/columnSize() and AvroBlock.size() are spelled the same way
+    dimensions: size(), kind(), rowSize(), columnSize() are methods, never getters - an answer that may ask storage is not computed by an inspector displaying the handle; AvroBlock.size() is spelled the same way
   IOResult
     constructor: new IOResult(readRows = 0, writtenRows = 0, skippedRows?) - the core IOResult::new, skippedRows absent or null the read rows less the written, never below zero, stated the count as it is (what a sum of results holds)
     readonly: readRows, writtenRows, skippedRows: number (saturating at Number.MAX_SAFE_INTEGER, as rowSize() does)
@@ -557,7 +557,7 @@
     statics: forMediaType, forMimeType, from
     instance: batchRowSize, blockCodec, clone, comment, commitBatchNum, compare, compression, equals, escape, field, filter, header, header and range read and write the Excel sections - null on every other encoding and an error to set there, inferRowSize, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, nullValues, numThreads, partitionPairs, plan, quote, range, rowOffset, safe, select, separator, sheet, stableHash, syncMarker, timezone, toString, trim, withBatchRowSize, withBlockCodec, withComment, withCommitBatchNum, withCompression, withEscape, withField, withFilter, withHeader, withInferRowSize, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withNullValues, withNumThreads, withPlan, withQuote, withRange, withRowOffset, withSafe, withSelect, withSeparator, withSheet, withSyncMarker, withSyncMarker
     excel sections: sheet, withTrim
-    csv and excel sections: separator, quote, escape, comment, nullValues, trim and inferRowSize read and write the CSV sections, sheet and range the Excel sections, header both - null on every other encoding and an error to set there; range takes a CellRange, its text or a pair of references
+    csv and excel sections: separator, quote, escape, comment, nullValues, trim and inferRowSize read and write the CSV sections, sheet and range the Excel sections, header both - null on every other encoding and an error to set there; range takes an A1 range string parsed by the Rust core
     sections: field, filter, select, mergeBy and plan are read/write properties, the setters taking a Selector | Term | string | Array<Term | string> (filter: Filter | Term | string; plan: Plan | Selector | Filter | Field | string); partitionPairs() answers the equalities the filter pins
     csv dialect: separator, quote, escape, comment (string | null: one character in, handed to the core as its byte and judged there - `$.separator: expected an ASCII byte ...` - the binding refusing text that reaches no byte as `expected one ASCII character for <property>`; null clears quote, escape and comment), header, trim (boolean | null), nullValues (string[] | null), inferRowSize (number | null, a non-negative whole number) - the properties of a text/csv or text/tab-separated-values options value, each null for another encoding and each setter or with* throwing there at its own path (`$.separator: expected CSV options to set a separator, got ... options`); every record read and write takes them by name (readRecords({ separator: ';' }), or beside an options value: readRecords(options, { separator: ';' }))
   TextOptions
@@ -718,32 +718,6 @@
   avro
     statics: Schema, blocks, dumps, dumpsSingle, loads, loadsSingle
     decode limits: maxDepth, maxInputBytes, maxNodes; blocks is a fused lazy iterator
-  CellRef
-    constructor: CellRef(value: CellRefInput) - an A1 text (`$B$2` included), a zero-based [row, column] pair, or another reference
-    statics: columnName, columnIndex
-    instance: row, column, isInGrid, equals, compare, clone, toString, toJSON
-  CellRange
-    constructor: CellRange(value: CellRangeInput) - `A1:C10`, `A:C`, `3:5`, `A3:F`, or two references in any order
-    statics: all
-    instance: start, end, rowSize, columnSize, isRowOpen, isColumnOpen, contains, containsRow, containsColumn, equals, compare, clone, toString, toJSON, Symbol.iterator (every cell, row by row)
-  Cell
-    constructor: Cell(reference: CellRefInput, value: unknown, options?: { dateSystem }) - the value read through Scalar.from, a Date becoming a serial under its number format
-    statics: fromParts
-    instance: reference, row, column, kind, format, value, formula, error, isNull, text, withFormula, withError, at, equals, clone, toString, toJSON
-  ExcelRow
-    instance: index, cells, cell, size
-  Sheet
-    constructor: Sheet(name?: string, options?: { dateSystem, state })
-    statics: fromSerie(name, value, options?: { header }) - a Serie, or an Arrow JS table or record batch
-    instance: name (writable), state (writable), dateSystem, size (the rows holding a cell), isEmpty, dimension, cell, scalar, has, setCell, insertCell, removeCell, rows, row, cells, cellsIn, column, slice, insertRows, removeRows, writeSerie(anchor, value, options?: { header }), extendFromSerie, intoSerie(field?, options?: { header, safe, representation }), equals, clone, toString, Symbol.iterator (the rows)
-    roles: a Sheet handed out by a Workbook is a live view of the sheet inside it; clone detaches one
-  Workbook
-    constructor: Workbook()
-    statics: open(value: WorkbookInput) - an IOBase, a Url, a path or bytes; a located handle reopened at its location, an in-memory one copied; fromBytes(bytes)
-    instance: dateSystem (writable), sheetNames, sheetKind, size, isEmpty, has (a name, compared without case), sheets, sheet, getSheet, sheetAt, addSheet, insertSheet, removeSheet, renameSheet, intoBytes, writeInto, handleReads, toString, Symbol.iterator (live Sheet views in tab order)
-  excel
-    statics: Workbook, Sheet, Row, Cell, CellRef, CellRange
-    constants: MAX_ROWS, MAX_COLUMNS, MAX_CELL_TEXT, MAX_SHEET_NAME, DEFAULT_SHEET_NAME - the grid's bounds and the sheet a new workbook opens with
   fix
     constants: ULBRIDGE_ROWHEADER: string, the row header a ULBridge log writes in front of every line, as a rowheader for a text read - the crate's own text rather than a second copy of it; its clock is mtime, consumed into each line's currunix - a point or a comma before three digits or grouped microseconds, or no fraction - so the header dates its lines and a message stating no SendingTime(52) is read against its line's clock; msgsessionid, msgctxid, msgseqnum and msgpluginid are named for the fields they fill, so the header carries no column of its own, the thread that wrote a line and the level it was logged at matched and lifted into none
     values: FixRegistry, FixMsg, FixCodec, MsgType, FixMessages

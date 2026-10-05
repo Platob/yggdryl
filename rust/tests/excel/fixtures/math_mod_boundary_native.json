@@ -1,0 +1,4559 @@
+{
+  "schema_version": 1,
+  "excel_version": "16.0",
+  "excel_build": "20430.0",
+  "cleanup_completed": true,
+  "native_answer_scope": "252 MOD formulas in three owned, saved runs; operand bits from matching identity controls",
+  "groups": [
+    {
+      "name": "boundary",
+      "report": "rust/target/excel-desktop/p5-mod-boundary-observed/results.json",
+      "report_sha256": "52a92d3bf33a737c413990a10619a54b69c32dc902fb6f133c2f800548f70664",
+      "input_sha256": "113438307b3d70660f64696b2e81a5cb6ffe833a3ce11bd99e83b1912919fdd0",
+      "native_package_sha256": "89b1a3932b0d000e63a736de5708427e9e821e726dda9ee3d0e6ebdd2ee6470f",
+      "case_count": 122
+    },
+    {
+      "name": "threshold",
+      "report": "rust/target/excel-desktop/p5-mod-threshold-observed/results.json",
+      "report_sha256": "b95473a848df53d6da6afdfc57ee7c5afa4a765e5539fdcafa57dab891e65153",
+      "input_sha256": "57e96cc0fe1d38afdb9a4e681ab1c0218a90f07bc7375434d6efa11d9f2a6998",
+      "native_package_sha256": "ed9f7b694440d56ab7ea231ae60e7db6c390364ddb7fc06c86139052d3c5f31f",
+      "case_count": 169
+    },
+    {
+      "name": "threshold-fine",
+      "report": "rust/target/excel-desktop/p5-mod-threshold-fine-observed/results.json",
+      "report_sha256": "c8e33c6a952a0c51396b1b584a28ba2e2f3eadce0cb34f7cb54313e6498e1a29",
+      "input_sha256": "c2bb4ad29e596e9e95aa5b54ae2b426af811b3766218452728017bfb52f8c2e2",
+      "native_package_sha256": "7388bcbceaa2ae901a2e39ade95f8a64800de6a1b7b7956d642a1d3bc8921d5e",
+      "case_count": 138
+    }
+  ],
+  "cases": [
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-0-00",
+      "formula": "MOD(0.3,0.1)",
+      "left_expression": "0.3",
+      "left_bits": "3fd3333333333333",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.09999999999999998,
+        "hex": "0x1.9999999999998p-4",
+        "ieee754_hex": "3fb9999999999998",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.9999999999999978E-2",
+      "native_formula": "MOD(0.3,0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-0-01",
+      "formula": "MOD(0.3,-(0.1))",
+      "left_expression": "0.3",
+      "left_bits": "3fd3333333333333",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -2.7755575615628914e-17,
+        "hex": "-0x1.0000000000000p-55",
+        "ieee754_hex": "bc80000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-2.7755575615628914E-17",
+      "native_formula": "MOD(0.3,-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-0-10",
+      "formula": "MOD(-(0.3),0.1)",
+      "left_expression": "-(0.3)",
+      "left_bits": "bfd3333333333333",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 2.7755575615628914e-17,
+        "hex": "0x1.0000000000000p-55",
+        "ieee754_hex": "3c80000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2.7755575615628914E-17",
+      "native_formula": "MOD(-(0.3),0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-0-11",
+      "formula": "MOD(-(0.3),-(0.1))",
+      "left_expression": "-(0.3)",
+      "left_bits": "bfd3333333333333",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -0.09999999999999998,
+        "hex": "-0x1.9999999999998p-4",
+        "ieee754_hex": "bfb9999999999998",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-9.9999999999999978E-2",
+      "native_formula": "MOD(-(0.3),-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-1-00",
+      "formula": "MOD(0.6,0.2)",
+      "left_expression": "0.6",
+      "left_bits": "3fe3333333333333",
+      "right_expression": "0.2",
+      "right_bits": "3fc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.19999999999999996,
+        "hex": "0x1.9999999999998p-3",
+        "ieee754_hex": "3fc9999999999998",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.19999999999999996",
+      "native_formula": "MOD(0.6,0.2)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-1-01",
+      "formula": "MOD(0.6,-(0.2))",
+      "left_expression": "0.6",
+      "left_bits": "3fe3333333333333",
+      "right_expression": "-(0.2)",
+      "right_bits": "bfc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -5.551115123125783e-17,
+        "hex": "-0x1.0000000000000p-54",
+        "ieee754_hex": "bc90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-5.5511151231257827E-17",
+      "native_formula": "MOD(0.6,-(0.2))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-1-10",
+      "formula": "MOD(-(0.6),0.2)",
+      "left_expression": "-(0.6)",
+      "left_bits": "bfe3333333333333",
+      "right_expression": "0.2",
+      "right_bits": "3fc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 5.551115123125783e-17,
+        "hex": "0x1.0000000000000p-54",
+        "ieee754_hex": "3c90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "5.5511151231257827E-17",
+      "native_formula": "MOD(-(0.6),0.2)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-1-11",
+      "formula": "MOD(-(0.6),-(0.2))",
+      "left_expression": "-(0.6)",
+      "left_bits": "bfe3333333333333",
+      "right_expression": "-(0.2)",
+      "right_bits": "bfc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -0.19999999999999996,
+        "hex": "-0x1.9999999999998p-3",
+        "ieee754_hex": "bfc9999999999998",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-0.19999999999999996",
+      "native_formula": "MOD(-(0.6),-(0.2))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-2-00",
+      "formula": "MOD(1,0.1)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.09999999999999995,
+        "hex": "0x1.9999999999996p-4",
+        "ieee754_hex": "3fb9999999999996",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.999999999999995E-2",
+      "native_formula": "MOD(1,0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-2-01",
+      "formula": "MOD(1,-(0.1))",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -5.551115123125783e-17,
+        "hex": "-0x1.0000000000000p-54",
+        "ieee754_hex": "bc90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-5.5511151231257827E-17",
+      "native_formula": "MOD(1,-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-2-10",
+      "formula": "MOD(-(1),0.1)",
+      "left_expression": "-(1)",
+      "left_bits": "bff0000000000000",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 5.551115123125783e-17,
+        "hex": "0x1.0000000000000p-54",
+        "ieee754_hex": "3c90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "5.5511151231257827E-17",
+      "native_formula": "MOD(-(1),0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-2-11",
+      "formula": "MOD(-(1),-(0.1))",
+      "left_expression": "-(1)",
+      "left_bits": "bff0000000000000",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -0.09999999999999995,
+        "hex": "-0x1.9999999999996p-4",
+        "ieee754_hex": "bfb9999999999996",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-9.999999999999995E-2",
+      "native_formula": "MOD(-(1),-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-3-00",
+      "formula": "MOD(1.2,0.3)",
+      "left_expression": "1.2",
+      "left_bits": "3ff3333333333333",
+      "right_expression": "0.3",
+      "right_bits": "3fd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1.2,0.3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-3-01",
+      "formula": "MOD(1.2,-(0.3))",
+      "left_expression": "1.2",
+      "left_bits": "3ff3333333333333",
+      "right_expression": "-(0.3)",
+      "right_bits": "bfd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1.2,-(0.3))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-3-10",
+      "formula": "MOD(-(1.2),0.3)",
+      "left_expression": "-(1.2)",
+      "left_bits": "bff3333333333333",
+      "right_expression": "0.3",
+      "right_bits": "3fd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(1.2),0.3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-3-11",
+      "formula": "MOD(-(1.2),-(0.3))",
+      "left_expression": "-(1.2)",
+      "left_bits": "bff3333333333333",
+      "right_expression": "-(0.3)",
+      "right_bits": "bfd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(1.2),-(0.3))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-4-00",
+      "formula": "MOD(2.1,0.7)",
+      "left_expression": "2.1",
+      "left_bits": "4000cccccccccccd",
+      "right_expression": "0.7",
+      "right_bits": "3fe6666666666666",
+      "value2": {
+        "variant": "float",
+        "value": 2.220446049250313e-16,
+        "hex": "0x1.0000000000000p-52",
+        "ieee754_hex": "3cb0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2.2204460492503131E-16",
+      "native_formula": "MOD(2.1,0.7)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-4-01",
+      "formula": "MOD(2.1,-(0.7))",
+      "left_expression": "2.1",
+      "left_bits": "4000cccccccccccd",
+      "right_expression": "-(0.7)",
+      "right_bits": "bfe6666666666666",
+      "value2": {
+        "variant": "float",
+        "value": -0.6999999999999997,
+        "hex": "-0x1.6666666666664p-1",
+        "ieee754_hex": "bfe6666666666664",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-0.69999999999999973",
+      "native_formula": "MOD(2.1,-(0.7))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-4-10",
+      "formula": "MOD(-(2.1),0.7)",
+      "left_expression": "-(2.1)",
+      "left_bits": "c000cccccccccccd",
+      "right_expression": "0.7",
+      "right_bits": "3fe6666666666666",
+      "value2": {
+        "variant": "float",
+        "value": 0.6999999999999997,
+        "hex": "0x1.6666666666664p-1",
+        "ieee754_hex": "3fe6666666666664",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.69999999999999973",
+      "native_formula": "MOD(-(2.1),0.7)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-4-11",
+      "formula": "MOD(-(2.1),-(0.7))",
+      "left_expression": "-(2.1)",
+      "left_bits": "c000cccccccccccd",
+      "right_expression": "-(0.7)",
+      "right_bits": "bfe6666666666666",
+      "value2": {
+        "variant": "float",
+        "value": -2.220446049250313e-16,
+        "hex": "-0x1.0000000000000p-52",
+        "ieee754_hex": "bcb0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-2.2204460492503131E-16",
+      "native_formula": "MOD(-(2.1),-(0.7))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-5-00",
+      "formula": "MOD(7.5,0.3)",
+      "left_expression": "7.5",
+      "left_bits": "401e000000000000",
+      "right_expression": "0.3",
+      "right_bits": "3fd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 2.7755575615628914e-16,
+        "hex": "0x1.4000000000000p-52",
+        "ieee754_hex": "3cb4000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2.7755575615628914E-16",
+      "native_formula": "MOD(7.5,0.3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-5-01",
+      "formula": "MOD(7.5,-(0.3))",
+      "left_expression": "7.5",
+      "left_bits": "401e000000000000",
+      "right_expression": "-(0.3)",
+      "right_bits": "bfd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": -0.2999999999999997,
+        "hex": "-0x1.333333333332ep-2",
+        "ieee754_hex": "bfd333333333332e",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-0.29999999999999971",
+      "native_formula": "MOD(7.5,-(0.3))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-5-10",
+      "formula": "MOD(-(7.5),0.3)",
+      "left_expression": "-(7.5)",
+      "left_bits": "c01e000000000000",
+      "right_expression": "0.3",
+      "right_bits": "3fd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": 0.2999999999999997,
+        "hex": "0x1.333333333332ep-2",
+        "ieee754_hex": "3fd333333333332e",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.29999999999999971",
+      "native_formula": "MOD(-(7.5),0.3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-5-11",
+      "formula": "MOD(-(7.5),-(0.3))",
+      "left_expression": "-(7.5)",
+      "left_bits": "c01e000000000000",
+      "right_expression": "-(0.3)",
+      "right_bits": "bfd3333333333333",
+      "value2": {
+        "variant": "float",
+        "value": -2.7755575615628914e-16,
+        "hex": "-0x1.4000000000000p-52",
+        "ieee754_hex": "bcb4000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-2.7755575615628914E-16",
+      "native_formula": "MOD(-(7.5),-(0.3))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-6-00",
+      "formula": "MOD(100.1,0.1)",
+      "left_expression": "100.1",
+      "left_bits": "4059066666666666",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.09999999999998876,
+        "hex": "0x1.9999999999670p-4",
+        "ieee754_hex": "3fb9999999999670",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.9999999999988765E-2",
+      "native_formula": "MOD(100.1,0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-6-01",
+      "formula": "MOD(100.1,-(0.1))",
+      "left_expression": "100.1",
+      "left_bits": "4059066666666666",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -1.124100812432971e-14,
+        "hex": "-0x1.9500000000000p-47",
+        "ieee754_hex": "bd09500000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-1.124100812432971E-14",
+      "native_formula": "MOD(100.1,-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-6-10",
+      "formula": "MOD(-(100.1),0.1)",
+      "left_expression": "-(100.1)",
+      "left_bits": "c059066666666666",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 1.124100812432971e-14,
+        "hex": "0x1.9500000000000p-47",
+        "ieee754_hex": "3d09500000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1.124100812432971E-14",
+      "native_formula": "MOD(-(100.1),0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-6-11",
+      "formula": "MOD(-(100.1),-(0.1))",
+      "left_expression": "-(100.1)",
+      "left_bits": "c059066666666666",
+      "right_expression": "-(0.1)",
+      "right_bits": "bfb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": -0.09999999999998876,
+        "hex": "-0x1.9999999999670p-4",
+        "ieee754_hex": "bfb9999999999670",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-9.9999999999988765E-2",
+      "native_formula": "MOD(-(100.1),-(0.1))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-7-00",
+      "formula": "MOD(7.25,3.5)",
+      "left_expression": "7.25",
+      "left_bits": "401d000000000000",
+      "right_expression": "3.5",
+      "right_bits": "400c000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.25,
+        "hex": "0x1.0000000000000p-2",
+        "ieee754_hex": "3fd0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.25",
+      "native_formula": "MOD(7.25,3.5)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-7-01",
+      "formula": "MOD(7.25,-(3.5))",
+      "left_expression": "7.25",
+      "left_bits": "401d000000000000",
+      "right_expression": "-(3.5)",
+      "right_bits": "c00c000000000000",
+      "value2": {
+        "variant": "float",
+        "value": -3.25,
+        "hex": "-0x1.a000000000000p+1",
+        "ieee754_hex": "c00a000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-3.25",
+      "native_formula": "MOD(7.25,-(3.5))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-7-10",
+      "formula": "MOD(-(7.25),3.5)",
+      "left_expression": "-(7.25)",
+      "left_bits": "c01d000000000000",
+      "right_expression": "3.5",
+      "right_bits": "400c000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 3.25,
+        "hex": "0x1.a000000000000p+1",
+        "ieee754_hex": "400a000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "3.25",
+      "native_formula": "MOD(-(7.25),3.5)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-7-11",
+      "formula": "MOD(-(7.25),-(3.5))",
+      "left_expression": "-(7.25)",
+      "left_bits": "c01d000000000000",
+      "right_expression": "-(3.5)",
+      "right_bits": "c00c000000000000",
+      "value2": {
+        "variant": "float",
+        "value": -0.25,
+        "hex": "-0x1.0000000000000p-2",
+        "ieee754_hex": "bfd0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-0.25",
+      "native_formula": "MOD(-(7.25),-(3.5))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-8-00",
+      "formula": "MOD(0.29,0.07)",
+      "left_expression": "0.29",
+      "left_bits": "3fd28f5c28f5c28f",
+      "right_expression": "0.07",
+      "right_bits": "3fb1eb851eb851ec",
+      "value2": {
+        "variant": "float",
+        "value": 0.009999999999999953,
+        "hex": "0x1.47ae147ae1460p-7",
+        "ieee754_hex": "3f847ae147ae1460",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.9999999999999534E-3",
+      "native_formula": "MOD(0.29,0.07)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-8-01",
+      "formula": "MOD(0.29,-(0.07))",
+      "left_expression": "0.29",
+      "left_bits": "3fd28f5c28f5c28f",
+      "right_expression": "-(0.07)",
+      "right_bits": "bfb1eb851eb851ec",
+      "value2": {
+        "variant": "float",
+        "value": -0.06000000000000005,
+        "hex": "-0x1.eb851eb851ec0p-5",
+        "ieee754_hex": "bfaeb851eb851ec0",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-6.0000000000000053E-2",
+      "native_formula": "MOD(0.29,-(0.07))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-8-10",
+      "formula": "MOD(-(0.29),0.07)",
+      "left_expression": "-(0.29)",
+      "left_bits": "bfd28f5c28f5c28f",
+      "right_expression": "0.07",
+      "right_bits": "3fb1eb851eb851ec",
+      "value2": {
+        "variant": "float",
+        "value": 0.06000000000000005,
+        "hex": "0x1.eb851eb851ec0p-5",
+        "ieee754_hex": "3faeb851eb851ec0",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "6.0000000000000053E-2",
+      "native_formula": "MOD(-(0.29),0.07)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-decimal-8-11",
+      "formula": "MOD(-(0.29),-(0.07))",
+      "left_expression": "-(0.29)",
+      "left_bits": "bfd28f5c28f5c28f",
+      "right_expression": "-(0.07)",
+      "right_bits": "bfb1eb851eb851ec",
+      "value2": {
+        "variant": "float",
+        "value": -0.009999999999999953,
+        "hex": "-0x1.47ae147ae1460p-7",
+        "ieee754_hex": "bf847ae147ae1460",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "-9.9999999999999534E-3",
+      "native_formula": "MOD(-(0.29),-(0.07))"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-0",
+      "formula": "MOD(2^53-1,1)",
+      "left_expression": "2^53-1",
+      "left_bits": "433fffffffffffff",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53-1,1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-0",
+      "formula": "MOD(-(2^53-1),1)",
+      "left_expression": "-(2^53-1)",
+      "left_bits": "c33fffffffffffff",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53-1),1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-1",
+      "formula": "MOD(2^53,1)",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53,1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-1",
+      "formula": "MOD(-(2^53),1)",
+      "left_expression": "-(2^53)",
+      "left_bits": "c340000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53),1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-2",
+      "formula": "MOD(2^53+2,1)",
+      "left_expression": "2^53+2",
+      "left_bits": "4340000000000001",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53+2,1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-2",
+      "formula": "MOD(-(2^53+2),1)",
+      "left_expression": "-(2^53+2)",
+      "left_bits": "c340000000000001",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53+2),1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-3",
+      "formula": "MOD(2^53,3)",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-3",
+      "formula": "MOD(-(2^53),3)",
+      "left_expression": "-(2^53)",
+      "left_bits": "c340000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53),3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-4",
+      "formula": "MOD(2^53+2,3)",
+      "left_expression": "2^53+2",
+      "left_bits": "4340000000000001",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53+2,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-4",
+      "formula": "MOD(-(2^53+2),3)",
+      "left_expression": "-(2^53+2)",
+      "left_bits": "c340000000000001",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53+2),3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-5",
+      "formula": "MOD(2^53-1,3)",
+      "left_expression": "2^53-1",
+      "left_bits": "433fffffffffffff",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53-1,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-5",
+      "formula": "MOD(-(2^53-1),3)",
+      "left_expression": "-(2^53-1)",
+      "left_bits": "c33fffffffffffff",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53-1),3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-6",
+      "formula": "MOD(9E307,3)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(9E+307,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-6",
+      "formula": "MOD(-(9E307),3)",
+      "left_expression": "-(9E307)",
+      "left_bits": "ffe005419221015d",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(9E+307),3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-7",
+      "formula": "MOD(9E307,0.1)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(9E+307,0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-7",
+      "formula": "MOD(-(9E307),0.1)",
+      "left_expression": "-(9E307)",
+      "left_bits": "ffe005419221015d",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(9E+307),0.1)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-8",
+      "formula": "MOD(9E307,9E-308)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "9E-308",
+      "right_bits": "00302de28e3a4bd9",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(9E+307,9E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-8",
+      "formula": "MOD(-(9E307),9E-308)",
+      "left_expression": "-(9E307)",
+      "left_bits": "ffe005419221015d",
+      "right_expression": "9E-308",
+      "right_bits": "00302de28e3a4bd9",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(9E+307),9E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-9",
+      "formula": "MOD(9E307,1E-307)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "1E-307",
+      "right_bits": "0031fa182c40c60d",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(9E+307,1E-307)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-large-negative-9",
+      "formula": "MOD(-(9E307),1E-307)",
+      "left_expression": "-(9E307)",
+      "left_bits": "ffe005419221015d",
+      "right_expression": "1E-307",
+      "right_bits": "0031fa182c40c60d",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(9E+307),1E-307)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-0",
+      "formula": "MOD(3E-308,2.5E-308)",
+      "left_expression": "3E-308",
+      "left_bits": "00159283684dba77",
+      "right_expression": "2.5E-308",
+      "right_bits": "0011fa182c40c60d",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(3E-308,2.5E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-1",
+      "formula": "MOD(2.5E-308,3E-308)",
+      "left_expression": "2.5E-308",
+      "left_bits": "0011fa182c40c60d",
+      "right_expression": "3E-308",
+      "right_bits": "00159283684dba77",
+      "value2": {
+        "variant": "float",
+        "value": 2.5e-308,
+        "hex": "0x1.1fa182c40c60dp-1022",
+        "ieee754_hex": "0011fa182c40c60d",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2.4999999999999998E-308",
+      "native_formula": "MOD(2.5E-308,3E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-2",
+      "formula": "MOD(3E-308-2.5E-308,2E-308)",
+      "left_expression": "3E-308-2.5E-308",
+      "left_bits": "0003986b3c0cf46a",
+      "right_expression": "2E-308",
+      "right_bits": "0000000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826281
+      },
+      "cache_type": "e",
+      "cache_text": "#DIV/0!",
+      "native_formula": "MOD(3E-308-2.5E-308,0)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-3",
+      "formula": "MOD(3E-308,3E-308-2.5E-308)",
+      "left_expression": "3E-308",
+      "left_bits": "00159283684dba77",
+      "right_expression": "3E-308-2.5E-308",
+      "right_bits": "0003986b3c0cf46a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(3E-308,3E-308-2.5E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-4",
+      "formula": "MOD(-3E-308,2.5E-308)",
+      "left_expression": "-3E-308",
+      "left_bits": "80159283684dba77",
+      "right_expression": "2.5E-308",
+      "right_bits": "0011fa182c40c60d",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-3E-308,2.5E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-underflow-5",
+      "formula": "MOD(3E-308,-2.5E-308)",
+      "left_expression": "3E-308",
+      "left_bits": "00159283684dba77",
+      "right_expression": "-2.5E-308",
+      "right_bits": "8011fa182c40c60d",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(3E-308,-2.5E-308)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-0",
+      "formula": "MOD(0,3)",
+      "left_expression": "0",
+      "left_bits": "0000000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(0,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-1",
+      "formula": "MOD(-0,3)",
+      "left_expression": "-0",
+      "left_bits": "0000000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(0,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-2",
+      "formula": "MOD(0,-3)",
+      "left_expression": "0",
+      "left_bits": "0000000000000000",
+      "right_expression": "-3",
+      "right_bits": "c008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(0,-3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-3",
+      "formula": "MOD(-0,-3)",
+      "left_expression": "-0",
+      "left_bits": "0000000000000000",
+      "right_expression": "-3",
+      "right_bits": "c008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(0,-3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-4",
+      "formula": "MOD(6,-3)",
+      "left_expression": "6",
+      "left_bits": "4018000000000000",
+      "right_expression": "-3",
+      "right_bits": "c008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(6,-3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-5",
+      "formula": "MOD(-6,3)",
+      "left_expression": "-6",
+      "left_bits": "c018000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-6,3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-6",
+      "formula": "MOD(-6,-3)",
+      "left_expression": "-6",
+      "left_bits": "c018000000000000",
+      "right_expression": "-3",
+      "right_bits": "c008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-6,-3)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-7",
+      "formula": "MOD(0.6,0.2)",
+      "left_expression": "0.6",
+      "left_bits": "3fe3333333333333",
+      "right_expression": "0.2",
+      "right_bits": "3fc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.19999999999999996,
+        "hex": "0x1.9999999999998p-3",
+        "ieee754_hex": "3fc9999999999998",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.19999999999999996",
+      "native_formula": "MOD(0.6,0.2)"
+    },
+    {
+      "group": "boundary",
+      "id": "mod-boundary-zero-8",
+      "formula": "MOD(-0.6,0.2)",
+      "left_expression": "-0.6",
+      "left_bits": "bfe3333333333333",
+      "right_expression": "0.2",
+      "right_bits": "3fc999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 5.551115123125783e-17,
+        "hex": "0x1.0000000000000p-54",
+        "ieee754_hex": "3c90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "5.5511151231257827E-17",
+      "native_formula": "MOD(-0.6,0.2)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-20-unit",
+      "formula": "MOD(2^20,1)",
+      "left_expression": "2^20",
+      "left_bits": "4130000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^20,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-20-self",
+      "formula": "MOD(2^20,2^20)",
+      "left_expression": "2^20",
+      "left_bits": "4130000000000000",
+      "right_expression": "2^20",
+      "right_bits": "4130000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^20,2^20)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-21-unit",
+      "formula": "MOD(2^21,1)",
+      "left_expression": "2^21",
+      "left_bits": "4140000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^21,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-21-self",
+      "formula": "MOD(2^21,2^21)",
+      "left_expression": "2^21",
+      "left_bits": "4140000000000000",
+      "right_expression": "2^21",
+      "right_bits": "4140000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^21,2^21)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-22-unit",
+      "formula": "MOD(2^22,1)",
+      "left_expression": "2^22",
+      "left_bits": "4150000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^22,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-22-self",
+      "formula": "MOD(2^22,2^22)",
+      "left_expression": "2^22",
+      "left_bits": "4150000000000000",
+      "right_expression": "2^22",
+      "right_bits": "4150000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^22,2^22)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-23-unit",
+      "formula": "MOD(2^23,1)",
+      "left_expression": "2^23",
+      "left_bits": "4160000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^23,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-23-self",
+      "formula": "MOD(2^23,2^23)",
+      "left_expression": "2^23",
+      "left_bits": "4160000000000000",
+      "right_expression": "2^23",
+      "right_bits": "4160000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^23,2^23)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-24-unit",
+      "formula": "MOD(2^24,1)",
+      "left_expression": "2^24",
+      "left_bits": "4170000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^24,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-24-self",
+      "formula": "MOD(2^24,2^24)",
+      "left_expression": "2^24",
+      "left_bits": "4170000000000000",
+      "right_expression": "2^24",
+      "right_bits": "4170000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^24,2^24)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-25-unit",
+      "formula": "MOD(2^25,1)",
+      "left_expression": "2^25",
+      "left_bits": "4180000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^25,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-25-self",
+      "formula": "MOD(2^25,2^25)",
+      "left_expression": "2^25",
+      "left_bits": "4180000000000000",
+      "right_expression": "2^25",
+      "right_bits": "4180000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^25,2^25)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-26-unit",
+      "formula": "MOD(2^26,1)",
+      "left_expression": "2^26",
+      "left_bits": "4190000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^26,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-26-self",
+      "formula": "MOD(2^26,2^26)",
+      "left_expression": "2^26",
+      "left_bits": "4190000000000000",
+      "right_expression": "2^26",
+      "right_bits": "4190000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^26,2^26)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-27-unit",
+      "formula": "MOD(2^27,1)",
+      "left_expression": "2^27",
+      "left_bits": "41a0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^27,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-27-self",
+      "formula": "MOD(2^27,2^27)",
+      "left_expression": "2^27",
+      "left_bits": "41a0000000000000",
+      "right_expression": "2^27",
+      "right_bits": "41a0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^27,2^27)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-28-unit",
+      "formula": "MOD(2^28,1)",
+      "left_expression": "2^28",
+      "left_bits": "41b0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^28,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-28-self",
+      "formula": "MOD(2^28,2^28)",
+      "left_expression": "2^28",
+      "left_bits": "41b0000000000000",
+      "right_expression": "2^28",
+      "right_bits": "41b0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^28,2^28)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-29-unit",
+      "formula": "MOD(2^29,1)",
+      "left_expression": "2^29",
+      "left_bits": "41c0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^29,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-29-self",
+      "formula": "MOD(2^29,2^29)",
+      "left_expression": "2^29",
+      "left_bits": "41c0000000000000",
+      "right_expression": "2^29",
+      "right_bits": "41c0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^29,2^29)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-30-unit",
+      "formula": "MOD(2^30,1)",
+      "left_expression": "2^30",
+      "left_bits": "41d0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^30,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-30-self",
+      "formula": "MOD(2^30,2^30)",
+      "left_expression": "2^30",
+      "left_bits": "41d0000000000000",
+      "right_expression": "2^30",
+      "right_bits": "41d0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^30,2^30)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-31-unit",
+      "formula": "MOD(2^31,1)",
+      "left_expression": "2^31",
+      "left_bits": "41e0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^31,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-31-self",
+      "formula": "MOD(2^31,2^31)",
+      "left_expression": "2^31",
+      "left_bits": "41e0000000000000",
+      "right_expression": "2^31",
+      "right_bits": "41e0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^31,2^31)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-32-unit",
+      "formula": "MOD(2^32,1)",
+      "left_expression": "2^32",
+      "left_bits": "41f0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^32,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-32-self",
+      "formula": "MOD(2^32,2^32)",
+      "left_expression": "2^32",
+      "left_bits": "41f0000000000000",
+      "right_expression": "2^32",
+      "right_bits": "41f0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^32,2^32)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-33-unit",
+      "formula": "MOD(2^33,1)",
+      "left_expression": "2^33",
+      "left_bits": "4200000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^33,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-33-self",
+      "formula": "MOD(2^33,2^33)",
+      "left_expression": "2^33",
+      "left_bits": "4200000000000000",
+      "right_expression": "2^33",
+      "right_bits": "4200000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^33,2^33)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-34-unit",
+      "formula": "MOD(2^34,1)",
+      "left_expression": "2^34",
+      "left_bits": "4210000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^34,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-34-self",
+      "formula": "MOD(2^34,2^34)",
+      "left_expression": "2^34",
+      "left_bits": "4210000000000000",
+      "right_expression": "2^34",
+      "right_bits": "4210000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^34,2^34)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-35-unit",
+      "formula": "MOD(2^35,1)",
+      "left_expression": "2^35",
+      "left_bits": "4220000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^35,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-35-self",
+      "formula": "MOD(2^35,2^35)",
+      "left_expression": "2^35",
+      "left_bits": "4220000000000000",
+      "right_expression": "2^35",
+      "right_bits": "4220000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^35,2^35)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-36-unit",
+      "formula": "MOD(2^36,1)",
+      "left_expression": "2^36",
+      "left_bits": "4230000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^36,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-36-self",
+      "formula": "MOD(2^36,2^36)",
+      "left_expression": "2^36",
+      "left_bits": "4230000000000000",
+      "right_expression": "2^36",
+      "right_bits": "4230000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^36,2^36)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-37-unit",
+      "formula": "MOD(2^37,1)",
+      "left_expression": "2^37",
+      "left_bits": "4240000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^37,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-37-self",
+      "formula": "MOD(2^37,2^37)",
+      "left_expression": "2^37",
+      "left_bits": "4240000000000000",
+      "right_expression": "2^37",
+      "right_bits": "4240000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^37,2^37)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-38-unit",
+      "formula": "MOD(2^38,1)",
+      "left_expression": "2^38",
+      "left_bits": "4250000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^38,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-38-self",
+      "formula": "MOD(2^38,2^38)",
+      "left_expression": "2^38",
+      "left_bits": "4250000000000000",
+      "right_expression": "2^38",
+      "right_bits": "4250000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^38,2^38)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-39-unit",
+      "formula": "MOD(2^39,1)",
+      "left_expression": "2^39",
+      "left_bits": "4260000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^39,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-39-self",
+      "formula": "MOD(2^39,2^39)",
+      "left_expression": "2^39",
+      "left_bits": "4260000000000000",
+      "right_expression": "2^39",
+      "right_bits": "4260000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^39,2^39)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-40-unit",
+      "formula": "MOD(2^40,1)",
+      "left_expression": "2^40",
+      "left_bits": "4270000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-40-self",
+      "formula": "MOD(2^40,2^40)",
+      "left_expression": "2^40",
+      "left_bits": "4270000000000000",
+      "right_expression": "2^40",
+      "right_bits": "4270000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40,2^40)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-41-unit",
+      "formula": "MOD(2^41,1)",
+      "left_expression": "2^41",
+      "left_bits": "4280000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-41-self",
+      "formula": "MOD(2^41,2^41)",
+      "left_expression": "2^41",
+      "left_bits": "4280000000000000",
+      "right_expression": "2^41",
+      "right_bits": "4280000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^41,2^41)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-42-unit",
+      "formula": "MOD(2^42,1)",
+      "left_expression": "2^42",
+      "left_bits": "4290000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^42,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-42-self",
+      "formula": "MOD(2^42,2^42)",
+      "left_expression": "2^42",
+      "left_bits": "4290000000000000",
+      "right_expression": "2^42",
+      "right_bits": "4290000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^42,2^42)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-43-unit",
+      "formula": "MOD(2^43,1)",
+      "left_expression": "2^43",
+      "left_bits": "42a0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^43,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-43-self",
+      "formula": "MOD(2^43,2^43)",
+      "left_expression": "2^43",
+      "left_bits": "42a0000000000000",
+      "right_expression": "2^43",
+      "right_bits": "42a0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^43,2^43)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-44-unit",
+      "formula": "MOD(2^44,1)",
+      "left_expression": "2^44",
+      "left_bits": "42b0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^44,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-44-self",
+      "formula": "MOD(2^44,2^44)",
+      "left_expression": "2^44",
+      "left_bits": "42b0000000000000",
+      "right_expression": "2^44",
+      "right_bits": "42b0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^44,2^44)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-45-unit",
+      "formula": "MOD(2^45,1)",
+      "left_expression": "2^45",
+      "left_bits": "42c0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^45,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-45-self",
+      "formula": "MOD(2^45,2^45)",
+      "left_expression": "2^45",
+      "left_bits": "42c0000000000000",
+      "right_expression": "2^45",
+      "right_bits": "42c0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^45,2^45)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-46-unit",
+      "formula": "MOD(2^46,1)",
+      "left_expression": "2^46",
+      "left_bits": "42d0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^46,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-46-self",
+      "formula": "MOD(2^46,2^46)",
+      "left_expression": "2^46",
+      "left_bits": "42d0000000000000",
+      "right_expression": "2^46",
+      "right_bits": "42d0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^46,2^46)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-47-unit",
+      "formula": "MOD(2^47,1)",
+      "left_expression": "2^47",
+      "left_bits": "42e0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^47,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-47-self",
+      "formula": "MOD(2^47,2^47)",
+      "left_expression": "2^47",
+      "left_bits": "42e0000000000000",
+      "right_expression": "2^47",
+      "right_bits": "42e0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^47,2^47)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-48-unit",
+      "formula": "MOD(2^48,1)",
+      "left_expression": "2^48",
+      "left_bits": "42f0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^48,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-48-self",
+      "formula": "MOD(2^48,2^48)",
+      "left_expression": "2^48",
+      "left_bits": "42f0000000000000",
+      "right_expression": "2^48",
+      "right_bits": "42f0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^48,2^48)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-49-unit",
+      "formula": "MOD(2^49,1)",
+      "left_expression": "2^49",
+      "left_bits": "4300000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^49,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-49-self",
+      "formula": "MOD(2^49,2^49)",
+      "left_expression": "2^49",
+      "left_bits": "4300000000000000",
+      "right_expression": "2^49",
+      "right_bits": "4300000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^49,2^49)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-50-unit",
+      "formula": "MOD(2^50,1)",
+      "left_expression": "2^50",
+      "left_bits": "4310000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^50,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-50-self",
+      "formula": "MOD(2^50,2^50)",
+      "left_expression": "2^50",
+      "left_bits": "4310000000000000",
+      "right_expression": "2^50",
+      "right_bits": "4310000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^50,2^50)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-51-unit",
+      "formula": "MOD(2^51,1)",
+      "left_expression": "2^51",
+      "left_bits": "4320000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^51,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-51-self",
+      "formula": "MOD(2^51,2^51)",
+      "left_expression": "2^51",
+      "left_bits": "4320000000000000",
+      "right_expression": "2^51",
+      "right_bits": "4320000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^51,2^51)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-52-unit",
+      "formula": "MOD(2^52,1)",
+      "left_expression": "2^52",
+      "left_bits": "4330000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^52,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-52-self",
+      "formula": "MOD(2^52,2^52)",
+      "left_expression": "2^52",
+      "left_bits": "4330000000000000",
+      "right_expression": "2^52",
+      "right_bits": "4330000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^52,2^52)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-53-unit",
+      "formula": "MOD(2^53,1)",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-53-self",
+      "formula": "MOD(2^53,2^53)",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "2^53",
+      "right_bits": "4340000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^53,2^53)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-54-unit",
+      "formula": "MOD(2^54,1)",
+      "left_expression": "2^54",
+      "left_bits": "4350000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^54,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-54-self",
+      "formula": "MOD(2^54,2^54)",
+      "left_expression": "2^54",
+      "left_bits": "4350000000000000",
+      "right_expression": "2^54",
+      "right_bits": "4350000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^54,2^54)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-55-unit",
+      "formula": "MOD(2^55,1)",
+      "left_expression": "2^55",
+      "left_bits": "4360000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^55,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-55-self",
+      "formula": "MOD(2^55,2^55)",
+      "left_expression": "2^55",
+      "left_bits": "4360000000000000",
+      "right_expression": "2^55",
+      "right_bits": "4360000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^55,2^55)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-56-unit",
+      "formula": "MOD(2^56,1)",
+      "left_expression": "2^56",
+      "left_bits": "4370000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^56,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-56-self",
+      "formula": "MOD(2^56,2^56)",
+      "left_expression": "2^56",
+      "left_bits": "4370000000000000",
+      "right_expression": "2^56",
+      "right_bits": "4370000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^56,2^56)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-57-unit",
+      "formula": "MOD(2^57,1)",
+      "left_expression": "2^57",
+      "left_bits": "4380000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^57,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-57-self",
+      "formula": "MOD(2^57,2^57)",
+      "left_expression": "2^57",
+      "left_bits": "4380000000000000",
+      "right_expression": "2^57",
+      "right_bits": "4380000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^57,2^57)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-58-unit",
+      "formula": "MOD(2^58,1)",
+      "left_expression": "2^58",
+      "left_bits": "4390000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^58,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-58-self",
+      "formula": "MOD(2^58,2^58)",
+      "left_expression": "2^58",
+      "left_bits": "4390000000000000",
+      "right_expression": "2^58",
+      "right_bits": "4390000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^58,2^58)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-59-unit",
+      "formula": "MOD(2^59,1)",
+      "left_expression": "2^59",
+      "left_bits": "43a0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^59,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-59-self",
+      "formula": "MOD(2^59,2^59)",
+      "left_expression": "2^59",
+      "left_bits": "43a0000000000000",
+      "right_expression": "2^59",
+      "right_bits": "43a0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^59,2^59)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-60-unit",
+      "formula": "MOD(2^60,1)",
+      "left_expression": "2^60",
+      "left_bits": "43b0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^60,1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-60-self",
+      "formula": "MOD(2^60,2^60)",
+      "left_expression": "2^60",
+      "left_bits": "43b0000000000000",
+      "right_expression": "2^60",
+      "right_bits": "43b0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^60,2^60)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-20-third",
+      "formula": "MOD(2^20,3)",
+      "left_expression": "2^20",
+      "left_bits": "4130000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1",
+      "native_formula": "MOD(2^20,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-28-third",
+      "formula": "MOD(2^28,3)",
+      "left_expression": "2^28",
+      "left_bits": "41b0000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1",
+      "native_formula": "MOD(2^28,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-31-third",
+      "formula": "MOD(2^31,3)",
+      "left_expression": "2^31",
+      "left_bits": "41e0000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2",
+      "native_formula": "MOD(2^31,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-32-third",
+      "formula": "MOD(2^32,3)",
+      "left_expression": "2^32",
+      "left_bits": "41f0000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1",
+      "native_formula": "MOD(2^32,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-40-third",
+      "formula": "MOD(2^40,3)",
+      "left_expression": "2^40",
+      "left_bits": "4270000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1",
+      "native_formula": "MOD(2^40,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-48-third",
+      "formula": "MOD(2^48,3)",
+      "left_expression": "2^48",
+      "left_bits": "42f0000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^48,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-50-third",
+      "formula": "MOD(2^50,3)",
+      "left_expression": "2^50",
+      "left_bits": "4310000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^50,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-52-third",
+      "formula": "MOD(2^52,3)",
+      "left_expression": "2^52",
+      "left_bits": "4330000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^52,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-53-third",
+      "formula": "MOD(2^53,3)",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-60-third",
+      "formula": "MOD(2^60,3)",
+      "left_expression": "2^60",
+      "left_bits": "43b0000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^60,3)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-30-negative-left",
+      "formula": "MOD(-(2^30),1)",
+      "left_expression": "-(2^30)",
+      "left_bits": "c1d0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^30),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-30-negative-right",
+      "formula": "MOD(2^30,-(1))",
+      "left_expression": "2^30",
+      "left_bits": "41d0000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^30,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-31-negative-left",
+      "formula": "MOD(-(2^31),1)",
+      "left_expression": "-(2^31)",
+      "left_bits": "c1e0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^31),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-31-negative-right",
+      "formula": "MOD(2^31,-(1))",
+      "left_expression": "2^31",
+      "left_bits": "41e0000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^31,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-32-negative-left",
+      "formula": "MOD(-(2^32),1)",
+      "left_expression": "-(2^32)",
+      "left_bits": "c1f0000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^32),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-32-negative-right",
+      "formula": "MOD(2^32,-(1))",
+      "left_expression": "2^32",
+      "left_bits": "41f0000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^32,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-50-negative-left",
+      "formula": "MOD(-(2^50),1)",
+      "left_expression": "-(2^50)",
+      "left_bits": "c310000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^50),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-50-negative-right",
+      "formula": "MOD(2^50,-(1))",
+      "left_expression": "2^50",
+      "left_bits": "4310000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^50,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-52-negative-left",
+      "formula": "MOD(-(2^52),1)",
+      "left_expression": "-(2^52)",
+      "left_bits": "c330000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^52),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-52-negative-right",
+      "formula": "MOD(2^52,-(1))",
+      "left_expression": "2^52",
+      "left_bits": "4330000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^52,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-53-negative-left",
+      "formula": "MOD(-(2^53),1)",
+      "left_expression": "-(2^53)",
+      "left_bits": "c340000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^53),1)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-power-53-negative-right",
+      "formula": "MOD(2^53,-(1))",
+      "left_expression": "2^53",
+      "left_bits": "4340000000000000",
+      "right_expression": "-(1)",
+      "right_bits": "bff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^53,-(1))"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-0",
+      "formula": "MOD(2^-1022,2^-1022)",
+      "left_expression": "2^-1022",
+      "left_bits": "0010000000000000",
+      "right_expression": "2^-1022",
+      "right_bits": "0010000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^-1022,2^-1022)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-1",
+      "formula": "MOD(2^-1022,2^-1021)",
+      "left_expression": "2^-1022",
+      "left_bits": "0010000000000000",
+      "right_expression": "2^-1021",
+      "right_bits": "0020000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 2.2250738585072014e-308,
+        "hex": "0x1.0000000000000p-1022",
+        "ieee754_hex": "0010000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2.2250738585072014E-308",
+      "native_formula": "MOD(2^-1022,2^-1021)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-2",
+      "formula": "MOD(2^-1021,2^-1022)",
+      "left_expression": "2^-1021",
+      "left_bits": "0020000000000000",
+      "right_expression": "2^-1022",
+      "right_bits": "0010000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^-1021,2^-1022)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-3",
+      "formula": "MOD(2^-1022,2^-1023)",
+      "left_expression": "2^-1022",
+      "left_bits": "0010000000000000",
+      "right_expression": "2^-1023",
+      "right_bits": "0000000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826281
+      },
+      "cache_type": "e",
+      "cache_text": "#DIV/0!",
+      "native_formula": "MOD(2^-1022,2^-1023)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-4",
+      "formula": "MOD(1,2^-20)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-20",
+      "right_bits": "3eb0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1,2^-20)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-5",
+      "formula": "MOD(1,2^-100)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-100",
+      "right_bits": "39b0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(1,2^-100)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-6",
+      "formula": "MOD(1,2^-500)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-500",
+      "right_bits": "20b0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(1,2^-500)"
+    },
+    {
+      "group": "threshold",
+      "id": "mod-boundary-tiny-7",
+      "formula": "MOD(1,2^-1000)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-1000",
+      "right_bits": "0170000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(1,2^-1000)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-0",
+      "formula": "MOD(2^40-2,1)",
+      "left_expression": "2^40-2",
+      "left_bits": "426fffffffffc000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40-2,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-0",
+      "formula": "MOD(-(2^40-2),1)",
+      "left_expression": "-(2^40-2)",
+      "left_bits": "c26fffffffffc000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40-2),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-1",
+      "formula": "MOD(2^40-1,1)",
+      "left_expression": "2^40-1",
+      "left_bits": "426fffffffffe000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40-1,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-1",
+      "formula": "MOD(-(2^40-1),1)",
+      "left_expression": "-(2^40-1)",
+      "left_bits": "c26fffffffffe000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40-1),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-2",
+      "formula": "MOD(2^40,1)",
+      "left_expression": "2^40",
+      "left_bits": "4270000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-2",
+      "formula": "MOD(-(2^40),1)",
+      "left_expression": "-(2^40)",
+      "left_bits": "c270000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-3",
+      "formula": "MOD(2^40+1,1)",
+      "left_expression": "2^40+1",
+      "left_bits": "4270000000001000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40+1,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-3",
+      "formula": "MOD(-(2^40+1),1)",
+      "left_expression": "-(2^40+1)",
+      "left_bits": "c270000000001000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40+1),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-4",
+      "formula": "MOD(2^40+2,1)",
+      "left_expression": "2^40+2",
+      "left_bits": "4270000000002000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40+2,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-4",
+      "formula": "MOD(-(2^40+2),1)",
+      "left_expression": "-(2^40+2)",
+      "left_bits": "c270000000002000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40+2),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-5",
+      "formula": "MOD(2^40+1024,1)",
+      "left_expression": "2^40+1024",
+      "left_bits": "4270000000400000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40+1024,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-5",
+      "formula": "MOD(-(2^40+1024),1)",
+      "left_expression": "-(2^40+1024)",
+      "left_bits": "c270000000400000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40+1024),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-6",
+      "formula": "MOD(2^40+2^20,1)",
+      "left_expression": "2^40+2^20",
+      "left_bits": "4270000100000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40+2^20,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-6",
+      "formula": "MOD(-(2^40+2^20),1)",
+      "left_expression": "-(2^40+2^20)",
+      "left_bits": "c270000100000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40+2^20),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-7",
+      "formula": "MOD(2^40+2^30,1)",
+      "left_expression": "2^40+2^30",
+      "left_bits": "4270040000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^40+2^30,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-7",
+      "formula": "MOD(-(2^40+2^30),1)",
+      "left_expression": "-(2^40+2^30)",
+      "left_bits": "c270040000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(2^40+2^30),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-8",
+      "formula": "MOD(2^40+2^39,1)",
+      "left_expression": "2^40+2^39",
+      "left_bits": "4278000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^40+2^39,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-8",
+      "formula": "MOD(-(2^40+2^39),1)",
+      "left_expression": "-(2^40+2^39)",
+      "left_bits": "c278000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^40+2^39),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-9",
+      "formula": "MOD(2^41-2,1)",
+      "left_expression": "2^41-2",
+      "left_bits": "427fffffffffe000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41-2,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-9",
+      "formula": "MOD(-(2^41-2),1)",
+      "left_expression": "-(2^41-2)",
+      "left_bits": "c27fffffffffe000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^41-2),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-10",
+      "formula": "MOD(2^41-1,1)",
+      "left_expression": "2^41-1",
+      "left_bits": "427ffffffffff000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41-1,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-10",
+      "formula": "MOD(-(2^41-1),1)",
+      "left_expression": "-(2^41-1)",
+      "left_bits": "c27ffffffffff000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^41-1),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-11",
+      "formula": "MOD(2^41,1)",
+      "left_expression": "2^41",
+      "left_bits": "4280000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-11",
+      "formula": "MOD(-(2^41),1)",
+      "left_expression": "-(2^41)",
+      "left_bits": "c280000000000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^41),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-12",
+      "formula": "MOD(2^41+1,1)",
+      "left_expression": "2^41+1",
+      "left_bits": "4280000000000800",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41+1,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-12",
+      "formula": "MOD(-(2^41+1),1)",
+      "left_expression": "-(2^41+1)",
+      "left_bits": "c280000000000800",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^41+1),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-13",
+      "formula": "MOD(2^41+2,1)",
+      "left_expression": "2^41+2",
+      "left_bits": "4280000000001000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^41+2,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-13",
+      "formula": "MOD(-(2^41+2),1)",
+      "left_expression": "-(2^41+2)",
+      "left_bits": "c280000000001000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2^41+2),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-14",
+      "formula": "MOD(1E12,1)",
+      "left_expression": "1E12",
+      "left_bits": "426d1a94a2000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1000000000000,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-14",
+      "formula": "MOD(-(1E12),1)",
+      "left_expression": "-(1E12)",
+      "left_bits": "c26d1a94a2000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-(1000000000000),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-15",
+      "formula": "MOD(1.5E12,1)",
+      "left_expression": "1.5E12",
+      "left_bits": "4275d3ef79800000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(1500000000000,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-15",
+      "formula": "MOD(-(1.5E12),1)",
+      "left_expression": "-(1.5E12)",
+      "left_bits": "c275d3ef79800000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(1500000000000),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-16",
+      "formula": "MOD(2E12,1)",
+      "left_expression": "2E12",
+      "left_bits": "427d1a94a2000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2000000000000,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-16",
+      "formula": "MOD(-(2E12),1)",
+      "left_expression": "-(2E12)",
+      "left_bits": "c27d1a94a2000000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(-(2000000000000),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-17",
+      "formula": "MOD(2^40-0.5,1)",
+      "left_expression": "2^40-0.5",
+      "left_bits": "426ffffffffff000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.5,
+        "hex": "0x1.0000000000000p-1",
+        "ieee754_hex": "3fe0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.5",
+      "native_formula": "MOD(2^40-0.5,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-17",
+      "formula": "MOD(-(2^40-0.5),1)",
+      "left_expression": "-(2^40-0.5)",
+      "left_bits": "c26ffffffffff000",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.5,
+        "hex": "0x1.0000000000000p-1",
+        "ieee754_hex": "3fe0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.5",
+      "native_formula": "MOD(-(2^40-0.5),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-18",
+      "formula": "MOD(2^40+0.5,1)",
+      "left_expression": "2^40+0.5",
+      "left_bits": "4270000000000800",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.5,
+        "hex": "0x1.0000000000000p-1",
+        "ieee754_hex": "3fe0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.5",
+      "native_formula": "MOD(2^40+0.5,1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-quotient-near-negative-18",
+      "formula": "MOD(-(2^40+0.5),1)",
+      "left_expression": "-(2^40+0.5)",
+      "left_bits": "c270000000000800",
+      "right_expression": "1",
+      "right_bits": "3ff0000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.5,
+        "hex": "0x1.0000000000000p-1",
+        "ieee754_hex": "3fe0000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0.5",
+      "native_formula": "MOD(-(2^40+0.5),1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-0",
+      "formula": "MOD(2^41,2)",
+      "left_expression": "2^41",
+      "left_bits": "4280000000000000",
+      "right_expression": "2",
+      "right_bits": "4000000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^41,2)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-1",
+      "formula": "MOD(2^41+2,2)",
+      "left_expression": "2^41+2",
+      "left_bits": "4280000000001000",
+      "right_expression": "2",
+      "right_bits": "4000000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(2^41+2,2)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-2",
+      "formula": "MOD(2^42,2)",
+      "left_expression": "2^42",
+      "left_bits": "4290000000000000",
+      "right_expression": "2",
+      "right_bits": "4000000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^42,2)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-3",
+      "formula": "MOD(2^41,3)",
+      "left_expression": "2^41",
+      "left_bits": "4280000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "2",
+      "native_formula": "MOD(2^41,3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-4",
+      "formula": "MOD(2^42,3)",
+      "left_expression": "2^42",
+      "left_bits": "4290000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(2^42,3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-5",
+      "formula": "MOD(1,2^-39)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-39",
+      "right_bits": "3d80000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1,2^-39)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-6",
+      "formula": "MOD(1,2^-40)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-40",
+      "right_bits": "3d70000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(1,2^-40)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-7",
+      "formula": "MOD(1,2^-41)",
+      "left_expression": "1",
+      "left_bits": "3ff0000000000000",
+      "right_expression": "2^-41",
+      "right_bits": "3d60000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD(1,2^-41)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-8",
+      "formula": "MOD(9E307,9E307)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "9E307",
+      "right_bits": "7fe005419221015d",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(9E+307,9E+307)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-9",
+      "formula": "MOD(9E307,3E307)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "3E307",
+      "right_bits": "7fc55c576d815726",
+      "value2": {
+        "variant": "float",
+        "value": 9.9792015476736e+291,
+        "hex": "0x1.0000000000000p+970",
+        "ieee754_hex": "7c90000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.9792015476735991E+291",
+      "native_formula": "MOD(9E+307,3E+307)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-10",
+      "formula": "MOD(9E307,4E307)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "4E307",
+      "right_bits": "7fcc7b1f3cac7433",
+      "value2": {
+        "variant": "float",
+        "value": 1.0000000000000006e+307,
+        "hex": "0x1.c7b1f3cac7438p+1019",
+        "ieee754_hex": "7fac7b1f3cac7438",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "1.0000000000000006E+307",
+      "native_formula": "MOD(9E+307,4E+307)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-11",
+      "formula": "MOD(-9E307,9E307)",
+      "left_expression": "-9E307",
+      "left_bits": "ffe005419221015d",
+      "right_expression": "9E307",
+      "right_bits": "7fe005419221015d",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(-9E+307,9E+307)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-ratio-12",
+      "formula": "MOD(9E307,-9E307)",
+      "left_expression": "9E307",
+      "left_bits": "7fe005419221015d",
+      "right_expression": "-9E307",
+      "right_bits": "ffe005419221015d",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD(9E+307,-9E+307)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-0-0p1",
+      "formula": "MOD((2^40-2)*(0.1),0.1)",
+      "left_expression": "(2^40-2)*(0.1)",
+      "left_bits": "4239999999996667",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 3.0517578125111022e-06,
+        "hex": "0x1.99999999a0000p-19",
+        "ieee754_hex": "3ec99999999a0000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "3.0517578125111022E-6",
+      "native_formula": "MOD((2^40-2)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-0-3",
+      "formula": "MOD((2^40-2)*(3),3)",
+      "left_expression": "(2^40-2)*(3)",
+      "left_bits": "4287ffffffffd000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40-2)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-0-2pow500",
+      "formula": "MOD((2^40-2)*(2^500),2^500)",
+      "left_expression": "(2^40-2)*(2^500)",
+      "left_bits": "61afffffffffc000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40-2)*(2^500),2^500)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-1-0p1",
+      "formula": "MOD((2^40)*(0.1),0.1)",
+      "left_expression": "(2^40)*(0.1)",
+      "left_bits": "423999999999999a",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-1-3",
+      "formula": "MOD((2^40)*(3),3)",
+      "left_expression": "(2^40)*(3)",
+      "left_bits": "4288000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-1-2pow500",
+      "formula": "MOD((2^40)*(2^500),2^500)",
+      "left_expression": "(2^40)*(2^500)",
+      "left_bits": "61b0000000000000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40)*(2^500),2^500)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-2-0p1",
+      "formula": "MOD((2^40+2)*(0.1),0.1)",
+      "left_expression": "(2^40+2)*(0.1)",
+      "left_bits": "423999999999cccd",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "float",
+        "value": 0.0999969482421875,
+        "hex": "0x1.9996666666666p-4",
+        "ieee754_hex": "3fb9996666666666",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "9.9996948242187494E-2",
+      "native_formula": "MOD((2^40+2)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-2-3",
+      "formula": "MOD((2^40+2)*(3),3)",
+      "left_expression": "(2^40+2)*(3)",
+      "left_bits": "4288000000003000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40+2)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-2-2pow500",
+      "formula": "MOD((2^40+2)*(2^500),2^500)",
+      "left_expression": "(2^40+2)*(2^500)",
+      "left_bits": "61b0000000002000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "cache_type": "n",
+      "cache_text": "0",
+      "native_formula": "MOD((2^40+2)*(2^500),2^500)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-3-0p1",
+      "formula": "MOD((2^41-2)*(0.1),0.1)",
+      "left_expression": "(2^41-2)*(0.1)",
+      "left_bits": "4249999999998000",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41-2)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-3-3",
+      "formula": "MOD((2^41-2)*(3),3)",
+      "left_expression": "(2^41-2)*(3)",
+      "left_bits": "4297ffffffffe800",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41-2)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-3-2pow500",
+      "formula": "MOD((2^41-2)*(2^500),2^500)",
+      "left_expression": "(2^41-2)*(2^500)",
+      "left_bits": "61bfffffffffe000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41-2)*(2^500),2^500)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-4-0p1",
+      "formula": "MOD((2^41)*(0.1),0.1)",
+      "left_expression": "(2^41)*(0.1)",
+      "left_bits": "424999999999999a",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-4-3",
+      "formula": "MOD((2^41)*(3),3)",
+      "left_expression": "(2^41)*(3)",
+      "left_bits": "4298000000000000",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-4-2pow500",
+      "formula": "MOD((2^41)*(2^500),2^500)",
+      "left_expression": "(2^41)*(2^500)",
+      "left_bits": "61c0000000000000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41)*(2^500),2^500)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-5-0p1",
+      "formula": "MOD((2^41+2)*(0.1),0.1)",
+      "left_expression": "(2^41+2)*(0.1)",
+      "left_bits": "424999999999b334",
+      "right_expression": "0.1",
+      "right_bits": "3fb999999999999a",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41+2)*(0.1),0.1)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-5-3",
+      "formula": "MOD((2^41+2)*(3),3)",
+      "left_expression": "(2^41+2)*(3)",
+      "left_bits": "4298000000001800",
+      "right_expression": "3",
+      "right_bits": "4008000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41+2)*(3),3)"
+    },
+    {
+      "group": "threshold-fine",
+      "id": "mod-boundary-scaled-5-2pow500",
+      "formula": "MOD((2^41+2)*(2^500),2^500)",
+      "left_expression": "(2^41+2)*(2^500)",
+      "left_bits": "61c0000000001000",
+      "right_expression": "2^500",
+      "right_bits": "5f30000000000000",
+      "value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "cache_type": "e",
+      "cache_text": "#NUM!",
+      "native_formula": "MOD((2^41+2)*(2^500),2^500)"
+    }
+  ]
+}

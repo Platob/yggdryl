@@ -2157,28 +2157,38 @@ impl SerieReader {
     }
 }
 
-impl Iterator for SerieReader {
-    type Item = Result<Serie>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl SerieReader {
+    /// Check a raw batch's row count before its cast lands any values. A
+    /// medium with a physical row bound supplies it here; an ordinary reader
+    /// passes the no-op check through `Iterator::next`.
+    pub(crate) fn next_with_preflight(
+        &mut self,
+        check: impl FnOnce(usize) -> Result<()>,
+    ) -> Option<Result<Serie>> {
         let (reader, plan, then) = match self.inner.as_mut()? {
             Source::Stream(reader, plan, then) => (reader, &**plan, then.as_slice()),
             Source::Held(records) => {
-                let next = records.next();
-                if next.is_none() {
+                let next = records
+                    .next()
+                    .map(|record| check(record.len()).map(|_| record));
+                if next.as_ref().is_none_or(|result| result.is_err()) {
                     self.inner = None;
                 }
-                return next.map(Ok);
+                return next;
             }
             Source::Window(part) => {
-                let piece = part.pull(&self.root);
+                let piece = part
+                    .pull(&self.root)
+                    .map(|record| record.and_then(|record| check(record.len()).map(|()| record)));
                 if !matches!(piece, Some(Ok(_))) {
                     self.inner = None;
                 }
                 return piece;
             }
             Source::Lazy(records) => {
-                let next = records.next();
+                let next = records
+                    .next()
+                    .map(|record| record.and_then(|record| check(record.len()).map(|()| record)));
                 if !matches!(next, Some(Ok(_))) {
                     self.inner = None;
                 }
@@ -2187,10 +2197,13 @@ impl Iterator for SerieReader {
         };
         let pulled = reader.next();
         let landed = match pulled {
-            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| {
-                then.iter()
-                    .try_fold(landed, |landed, then| then.apply(&landed))
-            }),
+            Some(Ok(batch)) => check(batch.num_rows())
+                .and_then(|()| plan.cast_batch(batch))
+                .and_then(|landed| {
+                    then.iter()
+                        .try_fold(landed, |landed, then| then.apply(&landed))
+                }),
+
             Some(Err(error)) => Err(from_reader_error(error)),
             None => {
                 self.inner = None;
@@ -2238,6 +2251,14 @@ impl SerieReader {
             self.edge = Some(landed.slice(landed.len() - 1, 1)?);
         }
         Ok(landed)
+    }
+}
+
+impl Iterator for SerieReader {
+    type Item = Result<Serie>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_with_preflight(|_| Ok(()))
     }
 }
 
@@ -2831,5 +2852,13 @@ pub mod internals {
     /// Returns the layout's refusal.
     pub fn from_canonical_rows(field: Arc<Field>, rows: &[&Scalar]) -> crate::Result<Serie> {
         super::from_canonical_rows(field, rows)
+    }
+
+    /// Exercise the crate-private pre-landing check from the mirrored test.
+    pub fn next_with_preflight(
+        reader: &mut crate::SerieReader,
+        check: impl FnOnce(usize) -> crate::arrow::Result<()>,
+    ) -> Option<crate::arrow::Result<crate::Serie>> {
+        reader.next_with_preflight(check)
     }
 }

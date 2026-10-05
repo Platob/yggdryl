@@ -397,7 +397,7 @@ A `.xlsx` handle is a record medium over one worksheet - `set_excel_sheet`, `set
 use yggdryl::excel::{CellRef, Sheet, Workbook};
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, Serie, StructType};
+use yggdryl::{DataType, IOBase, IOMedia, MimeType, RecordHeader, Scalar, Serie, StructType};
 
 let field = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
@@ -426,8 +426,8 @@ let mut workbook = Workbook::from_bytes(handle.read_all_bytes()?)?;
 let sheet = workbook.sheet_mut("Trades")?;
 assert_eq!(sheet.scalar("B2".parse()?), Scalar::from("AAPL"));
 sheet.set_cell(CellRef::new(2, 1), "MSFT")?;
-assert_eq!(sheet.clone().into_serie(Some(&field), true, Default::default())?.len(), 2);
-workbook.insert_sheet(Sheet::from_serie("Copy", &rows, true)?)?;
+assert_eq!(sheet.clone().into_serie(Some(&field), RecordHeader::Source, Default::default())?.len(), 2);
+workbook.insert_sheet(Sheet::from_serie("Copy", &rows, RecordHeader::Source)?)?;
 let reopened = Workbook::from_bytes(workbook.into_bytes()?)?;
 assert_eq!(reopened.sheet_names(), ["Trades", "Copy"]);
 ```

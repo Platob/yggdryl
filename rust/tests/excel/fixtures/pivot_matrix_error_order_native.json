@@ -1,0 +1,1704 @@
+{
+  "schema_version": 1,
+  "scope": "attached Excel 11 PivotTable aggregates; observed, not Rust-equivalent",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_sha256": "9a44dd117f8ec538397b9cc87e20e41ac12e54b44f35bd0446e8680c88e13737",
+  "manifest_sha256": "884af0168c4ddc53bfb99a2f79bcb3e6866cb1f50dcb4ae0969fd67833861006",
+  "native_report_sha256": "fe311a4fb86cb62b227128eb06423a7d8cdc2d13330db211bbeda579954b090f",
+  "cleanup_completed": true,
+  "authored_source_tables": [
+    {
+      "sheet": "Data",
+      "range": "A1:C5",
+      "rows": [
+        [
+          "Group",
+          "Column",
+          "Metric"
+        ],
+        [
+          "B",
+          "A",
+          "#DIV/0!"
+        ],
+        [
+          "A",
+          "Z",
+          "#N/A"
+        ],
+        [
+          "A",
+          "A",
+          2.0
+        ],
+        [
+          "B",
+          "Z",
+          4.0
+        ]
+      ]
+    }
+  ],
+  "source_xml": {
+    "xl/worksheets/sheet1.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:C5\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Group</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Column</t></is></c><c r=\"C1\" t=\"inlineStr\"><is><t>Metric</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>B</t></is></c><c r=\"B2\" t=\"inlineStr\"><is><t>A</t></is></c><c r=\"C2\" t=\"e\"><v>#DIV/0!</v></c></row><row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>A</t></is></c><c r=\"B3\" t=\"inlineStr\"><is><t>Z</t></is></c><c r=\"C3\" t=\"e\"><v>#N/A</v></c></row><row r=\"4\"><c r=\"A4\" t=\"inlineStr\"><is><t>A</t></is></c><c r=\"B4\" t=\"inlineStr\"><is><t>A</t></is></c><c r=\"C4\" t=\"n\"><v>2</v></c></row><row r=\"5\"><c r=\"A5\" t=\"inlineStr\"><is><t>B</t></is></c><c r=\"B5\" t=\"inlineStr\"><is><t>Z</t></is></c><c r=\"C5\" t=\"n\"><v>4</v></c></row></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet10.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet11.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet12.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet2.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet3.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet4.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet5.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet6.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet7.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet8.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet9.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>"
+  },
+  "saved_error_cells": {
+    "xl/worksheets/sheet1.xml": [
+      {
+        "cell": "C2",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C3",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet10.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet11.xml": [
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet12.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet2.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet4.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet5.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet6.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet7.xml": [
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ],
+    "xl/worksheets/sheet9.xml": [
+      {
+        "cell": "B5",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D5",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "D6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "C7",
+        "type": "e",
+        "value": "#N/A"
+      },
+      {
+        "cell": "D7",
+        "type": "e",
+        "value": "#N/A"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "matrix_sum",
+      "aggregate": "sum",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "sum Metric",
+        "caption": "sum Metric",
+        "position": 1,
+        "function": -4157
+      },
+      "xml_data_field": {
+        "name": "sum Metric",
+        "subtotal": "sum"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "sum Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_count",
+      "aggregate": "count",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "count Metric",
+        "caption": "count Metric",
+        "position": 1,
+        "function": -4112
+      },
+      "xml_data_field": {
+        "name": "count Metric",
+        "subtotal": "count"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "count Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_average",
+      "aggregate": "average",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "average Metric",
+        "caption": "average Metric",
+        "position": 1,
+        "function": -4106
+      },
+      "xml_data_field": {
+        "name": "average Metric",
+        "subtotal": "average"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "average Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_max",
+      "aggregate": "max",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "max Metric",
+        "caption": "max Metric",
+        "position": 1,
+        "function": -4136
+      },
+      "xml_data_field": {
+        "name": "max Metric",
+        "subtotal": "max"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "max Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_min",
+      "aggregate": "min",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "min Metric",
+        "caption": "min Metric",
+        "position": 1,
+        "function": -4139
+      },
+      "xml_data_field": {
+        "name": "min Metric",
+        "subtotal": "min"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "min Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_product",
+      "aggregate": "product",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "product Metric",
+        "caption": "product Metric",
+        "position": 1,
+        "function": -4149
+      },
+      "xml_data_field": {
+        "name": "product Metric",
+        "subtotal": "product"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "product Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_countnumbers",
+      "aggregate": "countNumbers",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "countNumbers Metric",
+        "caption": "countNumbers Metric",
+        "position": 1,
+        "function": 11
+      },
+      "xml_data_field": {
+        "name": "countNumbers Metric",
+        "subtotal": "countNums"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "countNumbers Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_stddev",
+      "aggregate": "stdDev",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "stdDev Metric",
+        "caption": "stdDev Metric",
+        "position": 1,
+        "function": -4155
+      },
+      "xml_data_field": {
+        "name": "stdDev Metric",
+        "subtotal": "stdDev"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "stdDev Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_stddevp",
+      "aggregate": "stdDevP",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "stdDevP Metric",
+        "caption": "stdDevP Metric",
+        "position": 1,
+        "function": -4156
+      },
+      "xml_data_field": {
+        "name": "stdDevP Metric",
+        "subtotal": "stdDevp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "stdDevP Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_var",
+      "aggregate": "var",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "var Metric",
+        "caption": "var Metric",
+        "position": 1,
+        "function": -4164
+      },
+      "xml_data_field": {
+        "name": "var Metric",
+        "subtotal": "var"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "var Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    },
+    {
+      "id": "matrix_varp",
+      "aggregate": "varP",
+      "table_range2": "$A$3:$D$7",
+      "data_field": {
+        "name": "varP Metric",
+        "caption": "varP Metric",
+        "position": 1,
+        "function": -4165
+      },
+      "xml_data_field": {
+        "name": "varP Metric",
+        "subtotal": "varp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "varP Metric"
+          },
+          {
+            "variant": "str",
+            "value": "Column"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "str",
+            "value": "Z"
+          },
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "A"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "B"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          },
+          {
+            "variant": "int",
+            "value": -2146826246
+          }
+        ]
+      ]
+    }
+  ]
+}

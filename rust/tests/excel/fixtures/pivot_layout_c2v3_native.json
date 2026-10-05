@@ -1,0 +1,1322 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_layout_c2v3_native",
+  "execution_only": true,
+  "rust_equivalence_checked": false,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036
+  },
+  "input_sha256": "22473eb68f320627791a91d4b9cc868aee579042ae11052080cd2ed086a124f2",
+  "manifest_sha256": "8a2d33721cc9581a041c9090754ec1199ec37ef2fa0a055468c60eb14a381bc8",
+  "report_sha256": "d1c1e09f417f7c5c95ae7c9c7e9cdcd18eb20bef3223d910b71698039c794da3",
+  "saved_sha256": "a5af62fe99be0f026ea037f81e6018c987bc07422df4b00c0d90f87f66cb9c76",
+  "refresh_save_reopen_equal": true,
+  "source_rows": [
+    [
+      "Region",
+      "Product",
+      "Year",
+      "Sales",
+      "Units",
+      "Qty"
+    ],
+    [
+      "West",
+      "Pears",
+      2024,
+      7,
+      3,
+      2
+    ],
+    [
+      "East",
+      "Apples",
+      2023,
+      10,
+      1,
+      4
+    ],
+    [
+      "East",
+      "Pears",
+      2024,
+      5,
+      1,
+      8
+    ],
+    [
+      "West",
+      "Apples",
+      2023,
+      20,
+      2,
+      16
+    ],
+    [
+      "East",
+      "Apples",
+      2024,
+      3,
+      4,
+      32
+    ],
+    [
+      "West",
+      "Pears",
+      2023,
+      11,
+      5,
+      64
+    ],
+    [
+      "East",
+      null,
+      2023,
+      4,
+      1,
+      128
+    ],
+    [
+      null,
+      "Apples",
+      2024,
+      2,
+      1,
+      256
+    ]
+  ],
+  "case_id": "two_column_three_values",
+  "table_range2": "$A$3:$AB$10",
+  "location": {
+    "ref": "A3:AB10",
+    "firstHeaderRow": "1",
+    "firstDataRow": "4",
+    "firstDataCol": "1"
+  },
+  "row_fields": [
+    {
+      "name": "Region",
+      "caption": "Region",
+      "position": 1
+    }
+  ],
+  "column_fields": [
+    {
+      "name": "Product",
+      "caption": "Product",
+      "position": 1
+    },
+    {
+      "name": "Year",
+      "caption": "Year",
+      "position": 2
+    },
+    {
+      "name": "Valeurs",
+      "caption": "Valeurs",
+      "position": 3
+    }
+  ],
+  "data_fields": [
+    {
+      "name": "Sales Sum",
+      "caption": "Sales Sum",
+      "position": 1,
+      "function": -4157
+    },
+    {
+      "name": "Units Sum",
+      "caption": "Units Sum",
+      "position": 2,
+      "function": -4157
+    },
+    {
+      "name": "Qty Sum",
+      "caption": "Qty Sum",
+      "position": 3,
+      "function": -4157
+    }
+  ],
+  "column_item_classes": {
+    "item": 15,
+    "default": 9,
+    "grand": 3
+  },
+  "column_item_count": 27,
+  "row_item_count": 4,
+  "value2": [
+    [
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Product"
+      },
+      {
+        "variant": "str",
+        "value": "Year"
+      },
+      {
+        "variant": "str",
+        "value": "Valeurs"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      }
+    ],
+    [
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Apples"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum Apples"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum Apples"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum Apples"
+      },
+      {
+        "variant": "str",
+        "value": "Pears"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum Pears"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum Pears"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum Pears"
+      },
+      {
+        "variant": "str",
+        "value": "(vide)"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum (vide)"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum (vide)"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum (vide)"
+      },
+      {
+        "variant": "str",
+        "value": "Total Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Total Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Total Qty Sum"
+      }
+    ],
+    [
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2023.0,
+        "hex": "0x1.f9c0000000000p+10",
+        "ieee754_hex": "409f9c0000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2024.0,
+        "hex": "0x1.fa00000000000p+10",
+        "ieee754_hex": "409fa00000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2023.0,
+        "hex": "0x1.f9c0000000000p+10",
+        "ieee754_hex": "409f9c0000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2024.0,
+        "hex": "0x1.fa00000000000p+10",
+        "ieee754_hex": "409fa00000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2023.0,
+        "hex": "0x1.f9c0000000000p+10",
+        "ieee754_hex": "409f9c0000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      }
+    ],
+    [
+      {
+        "variant": "str",
+        "value": "Region"
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "str",
+        "value": "Sales Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Units Sum"
+      },
+      {
+        "variant": "str",
+        "value": "Qty Sum"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      }
+    ],
+    [
+      {
+        "variant": "str",
+        "value": "East"
+      },
+      {
+        "variant": "float",
+        "value": 10.0,
+        "hex": "0x1.4000000000000p+3",
+        "ieee754_hex": "4024000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 32.0,
+        "hex": "0x1.0000000000000p+5",
+        "ieee754_hex": "4040000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 13.0,
+        "hex": "0x1.a000000000000p+3",
+        "ieee754_hex": "402a000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 36.0,
+        "hex": "0x1.2000000000000p+5",
+        "ieee754_hex": "4042000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 128.0,
+        "hex": "0x1.0000000000000p+7",
+        "ieee754_hex": "4060000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 128.0,
+        "hex": "0x1.0000000000000p+7",
+        "ieee754_hex": "4060000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 22.0,
+        "hex": "0x1.6000000000000p+4",
+        "ieee754_hex": "4036000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 172.0,
+        "hex": "0x1.5800000000000p+7",
+        "ieee754_hex": "4065800000000000",
+        "classification": "finite"
+      }
+    ],
+    [
+      {
+        "variant": "str",
+        "value": "West"
+      },
+      {
+        "variant": "float",
+        "value": 20.0,
+        "hex": "0x1.4000000000000p+4",
+        "ieee754_hex": "4034000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 16.0,
+        "hex": "0x1.0000000000000p+4",
+        "ieee754_hex": "4030000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 20.0,
+        "hex": "0x1.4000000000000p+4",
+        "ieee754_hex": "4034000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 16.0,
+        "hex": "0x1.0000000000000p+4",
+        "ieee754_hex": "4030000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 11.0,
+        "hex": "0x1.6000000000000p+3",
+        "ieee754_hex": "4026000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 64.0,
+        "hex": "0x1.0000000000000p+6",
+        "ieee754_hex": "4050000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 7.0,
+        "hex": "0x1.c000000000000p+2",
+        "ieee754_hex": "401c000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 18.0,
+        "hex": "0x1.2000000000000p+4",
+        "ieee754_hex": "4032000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 66.0,
+        "hex": "0x1.0800000000000p+6",
+        "ieee754_hex": "4050800000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 38.0,
+        "hex": "0x1.3000000000000p+5",
+        "ieee754_hex": "4043000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 10.0,
+        "hex": "0x1.4000000000000p+3",
+        "ieee754_hex": "4024000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 82.0,
+        "hex": "0x1.4800000000000p+6",
+        "ieee754_hex": "4054800000000000",
+        "classification": "finite"
+      }
+    ],
+    [
+      {
+        "variant": "str",
+        "value": "(vide)"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 256.0,
+        "hex": "0x1.0000000000000p+8",
+        "ieee754_hex": "4070000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 256.0,
+        "hex": "0x1.0000000000000p+8",
+        "ieee754_hex": "4070000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "empty",
+        "value": null
+      },
+      {
+        "variant": "float",
+        "value": 2.0,
+        "hex": "0x1.0000000000000p+1",
+        "ieee754_hex": "4000000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 256.0,
+        "hex": "0x1.0000000000000p+8",
+        "ieee754_hex": "4070000000000000",
+        "classification": "finite"
+      }
+    ],
+    [
+      {
+        "variant": "str",
+        "value": "Total g\u00e9n\u00e9ral"
+      },
+      {
+        "variant": "float",
+        "value": 30.0,
+        "hex": "0x1.e000000000000p+4",
+        "ieee754_hex": "403e000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 3.0,
+        "hex": "0x1.8000000000000p+1",
+        "ieee754_hex": "4008000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 20.0,
+        "hex": "0x1.4000000000000p+4",
+        "ieee754_hex": "4034000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 288.0,
+        "hex": "0x1.2000000000000p+8",
+        "ieee754_hex": "4072000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 35.0,
+        "hex": "0x1.1800000000000p+5",
+        "ieee754_hex": "4041800000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 8.0,
+        "hex": "0x1.0000000000000p+3",
+        "ieee754_hex": "4020000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 308.0,
+        "hex": "0x1.3400000000000p+8",
+        "ieee754_hex": "4073400000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 11.0,
+        "hex": "0x1.6000000000000p+3",
+        "ieee754_hex": "4026000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 5.0,
+        "hex": "0x1.4000000000000p+2",
+        "ieee754_hex": "4014000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 64.0,
+        "hex": "0x1.0000000000000p+6",
+        "ieee754_hex": "4050000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 12.0,
+        "hex": "0x1.8000000000000p+3",
+        "ieee754_hex": "4028000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 10.0,
+        "hex": "0x1.4000000000000p+3",
+        "ieee754_hex": "4024000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 23.0,
+        "hex": "0x1.7000000000000p+4",
+        "ieee754_hex": "4037000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 9.0,
+        "hex": "0x1.2000000000000p+3",
+        "ieee754_hex": "4022000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 74.0,
+        "hex": "0x1.2800000000000p+6",
+        "ieee754_hex": "4052800000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 128.0,
+        "hex": "0x1.0000000000000p+7",
+        "ieee754_hex": "4060000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 4.0,
+        "hex": "0x1.0000000000000p+2",
+        "ieee754_hex": "4010000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 128.0,
+        "hex": "0x1.0000000000000p+7",
+        "ieee754_hex": "4060000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 62.0,
+        "hex": "0x1.f000000000000p+5",
+        "ieee754_hex": "404f000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 18.0,
+        "hex": "0x1.2000000000000p+4",
+        "ieee754_hex": "4032000000000000",
+        "classification": "finite"
+      },
+      {
+        "variant": "float",
+        "value": 510.0,
+        "hex": "0x1.fe00000000000p+8",
+        "ieee754_hex": "407fe00000000000",
+        "classification": "finite"
+      }
+    ]
+  ],
+  "saved_part_sha256": {
+    "xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels": "50932fefa05af7d439305a402207d007de878e1e9b81e5caabca45ee5c4a2508",
+    "xl/pivotCache/pivotCacheDefinition1.xml": "9240d61444c336f380652957e142266c6b0301cc12522ea8dce0770ece655124",
+    "xl/pivotCache/pivotCacheRecords1.xml": "ab15add3e2cde2cb235fde0cf19cb250f959325bce411f8af6bf86c501d858fc",
+    "xl/pivotTables/_rels/pivotTable1.xml.rels": "55dcc4ac09f0b4828a5e4138ffe799fad22be0c8e8705431b0c6f79144510605",
+    "xl/pivotTables/pivotTable1.xml": "98af63143cb330c49afea6a5d1a717cc2e0a5bbed6a068dfaea15527c34d6eff",
+    "xl/worksheets/_rels/sheet2.xml.rels": "d9ce9dac22a848ed1333d64de9f1b8e804e339906b6d71fe2ba08cc27b7e3928",
+    "xl/worksheets/sheet1.xml": "6d9a3a57f767b56f276f1a8eeda1bd690d1076d8798433ce27c81c894df31e21",
+    "xl/worksheets/sheet2.xml": "d8f0851162669b2b225e7d3b24b3078d142bdef8e38ff08ba7d0ff934023e5e0"
+  }
+}

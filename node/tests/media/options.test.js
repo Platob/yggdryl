@@ -7,6 +7,30 @@ const test = require('node:test')
 
 const { RecordOptions } = require('yggdryl')
 
+test('an XLSX range crosses as A1 text, copied, refused atomically and cleared', () => {
+  const options = RecordOptions.from('inventory.xlsx')
+  assert.equal(options.range, null)
+
+  options.range = '$C$3:$B$2'
+  assert.equal(options.range, 'B2:C3')
+  const copy = options.withRange('D4:F6')
+  assert.equal(copy.range, 'D4:F6')
+  assert.equal(options.range, 'B2:C3')
+  assert.equal(options.equals(copy), false)
+
+  assert.throws(() => {
+    options.range = 'B0'
+  }, /expected a row number/)
+  assert.equal(options.range, 'B2:C3')
+  assert.throws(() => options.withRange('B0'), /expected a row number/)
+  assert.equal(options.range, 'B2:C3')
+
+  assert.equal(copy.withRange(null).range, null)
+  assert.equal(copy.range, 'D4:F6')
+  options.range = null
+  assert.equal(options.range, null)
+})
+
 test('a row offset is a setting of its own, set, carried and cleared', () => {
   const options = RecordOptions.from('trades.parquet')
   assert.equal(options.rowOffset, null)

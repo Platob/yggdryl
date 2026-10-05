@@ -388,9 +388,10 @@ assert_eq!(read, values);
 
 ## Fold a sorted stream into books
 
-`BookIterator` folds sorted orders and quotes into one `BookEvent` per
-instant and book key that moved it - the instrument's ISIN, else its ticker,
-else `XX0000000000` - pruning every execution and trade. A book is complete
+`BookIterator` folds sorted orders and quotes into its sides and records
+executions among its deltas, yielding one `BookEvent` per recorded instant
+and book key - the instrument's ISIN, else its ticker, else `XX0000000000` -
+pruning every trade. A book is complete
 (`is_complete`) only at a snapshot tick; every other book states its deltas
 alone beside the top of book they settled on, and `with_previous` over the
 complete book before it rebuilds it whole. A filter over the `marketdata` row
@@ -603,9 +604,10 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries into the sides and executions among the deltas - and
 `MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
-snapshot input, so its book is complete; the `X` after it states its delta.
+snapshot input, so its book is complete; the `X` after it states the bid's
+change and the execution as its deltas.
 
 ```rust
 use std::sync::Arc;
@@ -802,8 +804,9 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
-  execution, a trade, a batch - is pruned in silence. An operation dated before
+  `BookEvent`); every input `MarketDataKind::is_recorded` refuses - a
+  trade or a batch - is pruned in silence. Executions are recorded among the
+  deltas and move no side. An operation dated before
   its book and a group the book refuses are left out with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
   still counts as the book's delta.

@@ -569,6 +569,130 @@ impl ZipArchive {
         self.write_record(inner, entry, source, codec, stride)
     }
 
+    /// Copy the member `path` of `source` into this archive as it is
+    /// stored: its encoded bytes, its compression method, its CRC-32, both
+    /// sizes and the restart map its record carries. Nothing is decoded and
+    /// nothing is encoded, so the copy costs what moving its encoded bytes
+    /// costs and its digest is the one the source's record states.
+    ///
+    /// The bytes move one stream batch at a time, so a member costs a batch
+    /// rather than its own size: one read of `source` per batch of encoded
+    /// bytes - and the local header read that says where they start, when
+    /// `source` never learned it - and one write here per batch, the first
+    /// carrying the record's header. The member keeps what its record says
+    /// about it beside its content - the modification time, the mode, the
+    /// comment - and replaces a member of the same name here, published by
+    /// the next [`Self::flush`] like every write.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use yggdryl::holder::{Buffer, Holder};
+    /// use yggdryl::zip::ZipArchive;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let source = Arc::new(ZipArchive::new(Holder::buffer(Buffer::new())));
+    /// let original = source.write_member("trades/eu.csv", b"symbol,price\nAAPL,187.23\n")?;
+    ///
+    /// let target = Arc::new(ZipArchive::new(Holder::buffer(Buffer::new())));
+    /// let copied = target.copy_member_from(&source, "trades/eu.csv")?;
+    /// assert_eq!(copied.crc32(), original.crc32());
+    /// assert_eq!(copied.compressed_size(), original.compressed_size());
+    /// target.flush()?;
+    /// assert_eq!(target.read_member("trades/eu.csv")?, b"symbol,price\nAAPL,187.23\n");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Both archives are held for the whole copy, taken in one order
+    /// whichever way a copy runs, so copies between two archives in both
+    /// directions at once wait on each other rather than deadlock. Copying a
+    /// member of this archive into itself answers the member as it stands.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Absent`] naming the member when `source` does not
+    /// hold it, [`Error::Unsupported`] for an encrypted member, a refusal
+    /// when `path` resolves to the archive root, or the read or write
+    /// failure.
+    pub fn copy_member_from(&self, source: &Arc<ZipArchive>, path: &str) -> Result<ZipEntry> {
+        let name = name::resolve("", path)?;
+        if name.is_empty() {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::IsADirectory,
+                format!(
+                    "expected a member to copy, got the archive root {}",
+                    source.member_url_text("")
+                ),
+            )));
+        }
+        if std::ptr::eq(self, Arc::as_ptr(source)) {
+            return source
+                .entry(&name)?
+                .ok_or_else(|| Error::absent("zip member", source.member_url(&name)));
+        }
+        // One order for the two locks, whichever archive is the target.
+        let (mut target, mut from) = if std::ptr::from_ref(self) < Arc::as_ptr(source) {
+            let target = self.locked();
+            (target, source.locked())
+        } else {
+            let from = source.locked();
+            (self.locked(), from)
+        };
+        let Some(stored) = Self::index_of(&mut from)?
+            .entries
+            .get(name.as_str())
+            .cloned()
+        else {
+            return Err(Error::absent("zip member", source.member_url(&name)));
+        };
+        if stored.is_encrypted() {
+            return Err(Error::unsupported(
+                "copying an encrypted zip member",
+                source.member_url_text(&name),
+            ));
+        }
+        let start = Self::member_data(&mut from, &stored)?;
+        let inner = &mut *target;
+        let offset = Self::index_of(inner)?.directory_offset;
+        let entry = ZipEntry::new(name, stored.method(), stored.modified())
+            .with_facts_of(&stored)
+            .with_content(stored.crc32(), stored.compressed_size(), stored.size())
+            .with_restarts(stored.restarts().clone())
+            .with_header_offset(offset);
+        // The header travels with the first batch, because they are one
+        // record; every later batch is one write of its own.
+        let mut pending = std::mem::take(&mut inner.scratch);
+        pending.clear();
+        format::write_local_with(&entry, false, &mut pending);
+        let data = offset + pending.len() as u64;
+        let total = entry.compressed_size();
+        let mut copied = 0_u64;
+        let mut at = offset;
+        let moved = loop {
+            let step = usize::try_from(total - copied)
+                .unwrap_or(COMPACT_CHUNK)
+                .min(COMPACT_CHUNK);
+            let held = pending.len();
+            pending.resize(held + step, 0);
+            if let Err(error) = from.pread_exact(start + copied, &mut pending[held..]) {
+                break Err(error);
+            }
+            copied += step as u64;
+            if let Err(error) = inner.pwrite_all(at, &pending) {
+                break Err(error);
+            }
+            at += pending.len() as u64;
+            pending.clear();
+            if copied == total {
+                break Ok(());
+            }
+        };
+        inner.scratch = pending;
+        moved?;
+        Self::index_record(inner, &entry, data)?;
+        Ok(entry)
+    }
+
     /// Encode `source` into one record and index what it wrote.
     fn write_record(
         &self,

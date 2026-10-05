@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "scope": "Native call-depth eligibility only; no Rust evaluator equality claim. Every input and saved native hash was verified.",
+  "primary_source": "https://support.microsoft.com/en-us/excel/excel-specifications-and-limits",
+  "policy": "Sixty-five simultaneously nested calls accepted, sixty-six refused; SINGLE counts as a call. The separate group/array bound is a core resource policy, not established by this native fixture.",
+  "cases": [
+    {
+      "id": "depth-abs64",
+      "wire_formula": "ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-observed/depth-abs64/results.json",
+      "input_sha256": "c54138300d838e3c817c596aa2c40dd905b0d13a0425788bde21352ac1f72a85",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "b02cac86f47a5daee8760f11f1422d2b0beaa6f55947196ed06578630dc3e8b8"
+    },
+    {
+      "id": "depth-single-abs64",
+      "wire_formula": "_xlfn.SINGLE(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(A1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-observed/depth-single-abs64/results.json",
+      "input_sha256": "a346e060adb0c06db7142c3f51f709da17e02b721d7a7e2717c6e2602cada2a3",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.SINGLE(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(A1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "71e65cbacd16086eaf72cf99b795bd291c458a3a1fb374bef4a32ab30e4d0ecb"
+    },
+    {
+      "id": "depth-single66",
+      "wire_formula": "_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": false,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-observed/depth-single66/results.json",
+      "input_sha256": "e321bf9edaf6e817ebc4678bea5c3149f3db0a0050bd9433ea5e46167b48a1b4",
+      "cleanup_completed": true,
+      "failure_stage": "opening-owned-input",
+      "failures": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ],
+      "refusal_position": 857
+    },
+    {
+      "id": "single2",
+      "wire_formula": "_xlfn.SINGLE(_xlfn.SINGLE(1))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/single2/results.json",
+      "input_sha256": "1ef45b04affaf52ff3820396ea63dde6f6ebf56d7bf4bc92fef96014f8566022",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.SINGLE(_xlfn.SINGLE(1))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "95ff35e224ba2d0b4215bc210a9ffe2e965ee87c9fdebcb745dad9d9c813e01d"
+    },
+    {
+      "id": "single64",
+      "wire_formula": "_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/single64/results.json",
+      "input_sha256": "fd6a42106383f219189265cc94870a8a006c2c2c1db6c0c5e8be43d7989cd374",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "fc9e1f543cdc9eefbf0a9790723b5680162b8842d4eb5b76a41e672e4b91199c"
+    },
+    {
+      "id": "single65",
+      "wire_formula": "_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/single65/results.json",
+      "input_sha256": "c8f2aaf6a8997a7a173ca130b12451da4e6fcf41fbc1c1e6f23cf60285507861",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(_xlfn.SINGLE(1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "93de467be3f10f96a6149238c3e21d80fe35634a60586e07d9d8a3a9c1d3b6cf"
+    },
+    {
+      "id": "single-sum64",
+      "wire_formula": "_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/single-sum64/results.json",
+      "input_sha256": "2fe14b5b42e3ef1223f3518af6dafe6352c1b2308f45bf75be1705ce731c4568",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 65.0,
+        "hex": "0x1.0400000000000p+6",
+        "ieee754_hex": "4050400000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "65",
+        "formula_text": "_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "0beae5d66d17234e518691948bb16a80c11a88914dfb7e6fa8feef83cd406319"
+    },
+    {
+      "id": "single-sum65",
+      "wire_formula": "_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-boundary-followup-v2-observed-1/single-sum65/results.json",
+      "input_sha256": "c28281fb134e539af5c9bc911f5ec66e3b3c9e14ea255a9f27156d73fd68b41d",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 66.0,
+        "hex": "0x1.0800000000000p+6",
+        "ieee754_hex": "4050800000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "66",
+        "formula_text": "_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "fb5ba91e90af0bec3589dd01247d6eb76b58989083662ed8aeb24b9f1f2fbcd1"
+    },
+    {
+      "id": "abs65",
+      "wire_formula": "ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": true,
+      "source_report": "rust/target/excel-desktop/p5-parser-depth-final-observed/abs65/results.json",
+      "input_sha256": "559b51f29838362d449928bec7a763bc38986bd157b3f14830afdb50a3ac7d0f",
+      "cleanup_completed": true,
+      "value2": {
+        "variant": "float",
+        "value": 1.0,
+        "hex": "0x1.0000000000000p+0",
+        "ieee754_hex": "3ff0000000000000",
+        "classification": "finite"
+      },
+      "cached_xml": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+        "formula_attributes": {}
+      },
+      "native_sha256": "86053f69f2d555c2fc128ae7833de1a0dfd778da93a7bc45f96a7d9a32d8c5e9"
+    },
+    {
+      "id": "abs66",
+      "wire_formula": "ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": false,
+      "source_report": "rust/target/excel-desktop/p5-parser-depth-final-observed/abs66/results.json",
+      "input_sha256": "379ff3fa34bb09d1ae8e8dd09c87d3366d9c4ef630d5c48b387815469b89ec5a",
+      "cleanup_completed": true,
+      "failure_stage": "opening-owned-input",
+      "failures": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ],
+      "refusal_position": 263
+    },
+    {
+      "id": "single-abs65",
+      "wire_formula": "_xlfn.SINGLE(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(ABS(A1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": false,
+      "source_report": "rust/target/excel-desktop/p5-parser-depth-final-observed/single-abs65/results.json",
+      "input_sha256": "dcaaf2318a88b98f49c8943a6daaf95ced0844d734bf2143f72449bc3289e435",
+      "cleanup_completed": true,
+      "failure_stage": "opening-owned-input",
+      "failures": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ],
+      "refusal_position": 272
+    },
+    {
+      "id": "single-sum66",
+      "wire_formula": "_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+_xlfn.SINGLE(1+1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "accepted": false,
+      "source_report": "rust/target/excel-desktop/p5-parser-depth-final-observed/single-sum66/results.json",
+      "input_sha256": "40dab366b06f848b9abcbf88062400d4ac5765ab2e6e756618a9f702b9cb0d9e",
+      "cleanup_completed": true,
+      "failure_stage": "opening-owned-input",
+      "failures": [
+        "inspect: com_error: (-2147352567, 'Une exception s\u2019est produite.', (0, 'Microsoft Excel', 'La m\u00e9thode Open de la classe Workbooks a \u00e9chou\u00e9.', 'xlmain11.chm', 0, -2146827284), None)"
+      ],
+      "refusal_position": 987
+    }
+  ]
+}

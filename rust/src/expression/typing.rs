@@ -721,6 +721,76 @@ fn function_field(
         .cloned()
         .unwrap_or(DataType::Null);
     let dtype = match function {
+        Function::Factorial => {
+            let dtype = unwrap_dictionary(&first);
+            if !DataTypeKind::Integer.contains(dtype.id()) && !matches!(dtype, DataType::Null) {
+                return Err(typing_error(format_smolstr!(
+                    "expected an exact integer for factorial, got {first}"
+                )));
+            }
+            DataType::Float64
+        }
+        Function::Gcd | Function::Lcm => {
+            for field in &fields {
+                let dtype = unwrap_dictionary(field.dtype());
+                if !DataTypeKind::Integer.contains(dtype.id()) && !matches!(dtype, DataType::Null) {
+                    return Err(typing_error(format_smolstr!(
+                        "expected exact integers for {}, got {}",
+                        function.as_str(),
+                        field.dtype()
+                    )));
+                }
+            }
+            DataType::UInt64
+        }
+        Function::Sqrt
+        | Function::Exp
+        | Function::Ln
+        | Function::Log10
+        | Function::Degrees
+        | Function::Radians
+        | Function::Cos
+        | Function::Asin
+        | Function::Sin
+        | Function::Tan
+        | Function::Acos
+        | Function::Atan => {
+            let dtype = unwrap_dictionary(&first);
+            if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
+                return Err(typing_error(format_smolstr!(
+                    "expected a number for {}, got {first}",
+                    function.as_str()
+                )));
+            }
+            DataType::Float64
+        }
+        Function::Pow | Function::Atan2 => {
+            for field in &fields {
+                let dtype = unwrap_dictionary(field.dtype());
+                if !dtype.kind().is_numeric() && !matches!(dtype, DataType::Null) {
+                    return Err(typing_error(format_smolstr!(
+                        "expected numbers for {}, got {}",
+                        function.as_str(),
+                        field.dtype()
+                    )));
+                }
+            }
+            DataType::Float64
+        }
+        Function::Abs => {
+            let dtype = unwrap_dictionary(&first);
+            if !dtype.kind().is_numeric()
+                && !matches!(
+                    dtype,
+                    DataType::Duration32(_) | DataType::Duration64(_) | DataType::Null
+                )
+            {
+                return Err(typing_error(format_smolstr!(
+                    "expected a number or duration for abs, got {first}"
+                )));
+            }
+            dtype.clone()
+        }
         Function::Lower | Function::Upper | Function::Trim | Function::Substring => {
             if !is_text(&first) {
                 return Err(typing_error(format_smolstr!(
@@ -907,6 +977,30 @@ fn function_field(
     // - the one that runs out of alternatives - can itself be null.
     let nullable = match function {
         Function::Coalesce | Function::IfNull => fields.last().is_none_or(Field::is_nullable),
+        Function::Abs
+        | Function::Sqrt
+        | Function::Pow
+        | Function::Exp
+        | Function::Ln
+        | Function::Log10
+        | Function::Degrees
+        | Function::Radians
+        | Function::Cos
+        | Function::Asin
+        | Function::Sin
+        | Function::Tan
+        | Function::Acos
+        | Function::Atan
+        | Function::Atan2
+        | Function::Factorial
+        | Function::Gcd
+        | Function::Lcm
+            if fields
+                .iter()
+                .any(|field| matches!(unwrap_dictionary(field.dtype()), DataType::Null)) =>
+        {
+            true
+        }
         _ => nullable,
     };
     Ok(named(expression, dtype, nullable))

@@ -1,0 +1,673 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_caption_native_observation",
+  "native_only": true,
+  "rust_equivalence_checked": false,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "cases": [
+    {
+      "id": "boolean_grand",
+      "report_sha256": "606407dcd1c2b659961730898079eb1acc07853220132b83b0009c221bf87d07",
+      "manifest_sha256": "03fa48ecd7ceb7855dec37daae679b1253a3c95fdcf9e0a2ef1239d3800bdf7f",
+      "control_input_sha256": "69c3dabe709423ece3eb66b61419a1c58c24d17d5efee6d2e0ea672d83215aa0",
+      "candidate_input_sha256": "fcf959d4d48e11d6163f79995cb5c14c6f574161f43b74ba40941a6c1a67f480",
+      "candidate_saved_sha256": "4d44804709c22b79ec3c4c9b28d782d2c173bbeb68f51fc270bb493bf71c3c87",
+      "candidate_input_pivot_attrs": [
+        "dataCaption=\"CUSTOM_VALUES\"",
+        "grandTotalCaption=\"CUSTOM_GRAND\"",
+        "<item x=\"3\" n=\"CUSTOM_FALSE\"",
+        "<item x=\"2\" n=\"CUSTOM_TRUE\""
+      ],
+      "candidate_saved_pivot_attrs": [
+        "dataCaption=\"CUSTOM_VALUES\"",
+        "grandTotalCaption=\"CUSTOM_GRAND\"",
+        "<item n=\"CUSTOM_FALSE\"",
+        "<item n=\"CUSTOM_TRUE\""
+      ],
+      "before_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_GRAND"
+        }
+      ],
+      "after_save_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_GRAND"
+        }
+      ],
+      "after_reopen_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_GRAND"
+        }
+      ],
+      "control_after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "table_range2": "$A$3:$B$11"
+    },
+    {
+      "id": "blank_item",
+      "report_sha256": "b06163205a6cb14d7f90e36e822fdf690c5833486827adef1b5f7d0592e44f13",
+      "manifest_sha256": "ca085355d4943d954ea255a30748a83bd38a58f1aaee9e02f8cb35bcb9a8af65",
+      "control_input_sha256": "69c3dabe709423ece3eb66b61419a1c58c24d17d5efee6d2e0ea672d83215aa0",
+      "candidate_input_sha256": "e00a38c2bdeb26ce8b50c688d18f5f7c0db388b114eaafd08535fd6b5f5f48de",
+      "candidate_saved_sha256": "fbb2b94737074323699d4fdc2815a8a24ded8ed38a709f92e420107f5db2e43a",
+      "candidate_input_pivot_attrs": [
+        "dataCaption=\"Valeurs\"",
+        "<item n=\"CUSTOM_BLANK\""
+      ],
+      "candidate_saved_pivot_attrs": [
+        "dataCaption=\"Valeurs\"",
+        "<item n=\"CUSTOM_BLANK\""
+      ],
+      "before_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_BLANK"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "after_save_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_BLANK"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "after_reopen_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "CUSTOM_BLANK"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "control_after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0
+        },
+        {
+          "variant": "float",
+          "value": 1.0
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "table_range2": "$A$3:$B$11"
+    },
+    {
+      "id": "english_boolean_text_collision",
+      "report_sha256": "1e1b68b55d3261b580c771baa127443506da4b9fbf87dd35c939984904c7b686",
+      "manifest_sha256": "f16459c54d1290a086d74ee0959587ff021017286e5436870b654e23ff810513",
+      "control_input_sha256": "69c3dabe709423ece3eb66b61419a1c58c24d17d5efee6d2e0ea672d83215aa0",
+      "candidate_input_sha256": "9f77ebc3890067698d97383ad71e229640bc8e45e1de26b4f6c0d005f221b4f8",
+      "candidate_saved_sha256": "cc661ec4dee0f8632c2362fdec86c7a2899ed3ece2b108e7d4f8908aa9eb8be8",
+      "candidate_input_pivot_attrs": [
+        "dataCaption=\"Values\"",
+        "grandTotalCaption=\"Grand Total\"",
+        "n=\"FALSE\"",
+        "n=\"TRUE\""
+      ],
+      "candidate_saved_pivot_attrs": [
+        "dataCaption=\"Values\"",
+        "grandTotalCaption=\"Grand Total\"",
+        "n=\"FALSE\"",
+        "n=\"TRUE\""
+      ],
+      "before_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Grand Total"
+        }
+      ],
+      "after_save_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Grand Total"
+        }
+      ],
+      "after_reopen_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FALSE"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Grand Total"
+        }
+      ],
+      "control_after_refresh_labels": [
+        {
+          "variant": "str",
+          "value": "Group"
+        },
+        {
+          "variant": "float",
+          "value": -1.0,
+          "hex": "-0x1.0000000000000p+0",
+          "ieee754_hex": "bff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        {
+          "variant": "str",
+          "value": "1"
+        },
+        {
+          "variant": "str",
+          "value": "TRUE"
+        },
+        {
+          "variant": "str",
+          "value": "FAUX"
+        },
+        {
+          "variant": "str",
+          "value": "VRAI"
+        },
+        {
+          "variant": "str",
+          "value": "(vide)"
+        },
+        {
+          "variant": "str",
+          "value": "Total g\u00e9n\u00e9ral"
+        }
+      ],
+      "table_range2": "$A$3:$B$11"
+    }
+  ]
+}

@@ -16,7 +16,7 @@
 //! sight in its output and never in this crate's.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
 use quick_xml::events::Event;
@@ -25,10 +25,15 @@ use crate::{Result, Str};
 
 use super::package::{codec_error, local_name, text_piece};
 
-/// The shared strings as read: every item's text, by index.
+/// The shared strings as read: every item's text, by index, and which
+/// items a cell of the same text may be written as.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SharedStrings {
     items: Vec<Str>,
+    /// Whether each item is plain - one `t`, no run, no phonetic text -
+    /// and the first plain item of its text: the one a cell of that text
+    /// is written as.
+    reusable: Vec<bool>,
 }
 
 impl SharedStrings {
@@ -42,6 +47,7 @@ impl SharedStrings {
         let mut reader = super::styles::reader(bytes);
         let mut buffer = Vec::new();
         let mut items = Vec::new();
+        let mut plain = Vec::new();
         let mut text = String::new();
         let mut in_item = false;
         // Whether the cursor is inside a `t` whose text is the item's - one
@@ -49,6 +55,11 @@ impl SharedStrings {
         let mut in_text = false;
         // Elements deep inside a subtree the text is not read from.
         let mut skipping = 0_usize;
+        // Elements open inside the current item, and whether the item is
+        // one `t` directly under `si` and nothing else.
+        let mut depth = 0_usize;
+        let mut simple = true;
+        let mut texts = 0_usize;
         loop {
             let position = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
             let event = reader
@@ -61,20 +72,45 @@ impl SharedStrings {
                     if skipping > 0 {
                         skipping += 1;
                     } else {
+                        if in_item {
+                            depth += 1;
+                            if depth == 1 && name == b"t" {
+                                texts += 1;
+                            } else if depth == 1 {
+                                simple = false;
+                            }
+                        }
                         match name {
                             b"si" => {
                                 in_item = true;
                                 text.clear();
+                                depth = 0;
+                                simple = true;
+                                texts = 0;
                             }
                             b"t" if in_item => in_text = true,
-                            b"rPh" | b"phoneticPr" if in_item => skipping = 1,
+                            b"rPh" | b"phoneticPr" if in_item => {
+                                skipping = 1;
+                                depth -= 1;
+                            }
                             _ => {}
                         }
                     }
                 }
                 Event::Empty(ref start) => {
-                    if skipping == 0 && local_name(start.name().as_ref()) == b"si" {
-                        items.push(Str::new_static(""));
+                    if skipping == 0 {
+                        let qualified = start.name();
+                        let name = local_name(qualified.as_ref());
+                        if name == b"si" {
+                            items.push(Str::new_static(""));
+                            plain.push(false);
+                        } else if in_item && depth == 0 {
+                            if name == b"t" {
+                                texts += 1;
+                            } else {
+                                simple = false;
+                            }
+                        }
                     }
                 }
                 Event::End(end) => {
@@ -86,10 +122,12 @@ impl SharedStrings {
                         b"si" => {
                             in_item = false;
                             items.push(Str::new(decode(&text)));
+                            plain.push(simple && texts == 1);
                         }
                         b"t" => in_text = false,
                         _ => {}
                     }
+                    depth = depth.saturating_sub(1);
                 }
                 Event::Text(ref held) if in_text && skipping == 0 => {
                     text.push_str(&text_piece(held.xml10_content(), position)?);
@@ -105,7 +143,15 @@ impl SharedStrings {
             }
             buffer.clear();
         }
-        Ok(Self { items })
+        // A plain item is reusable when no plain item before it holds its
+        // text: the one a cell of that text interns to.
+        let mut seen: HashSet<&str> = HashSet::with_capacity(items.len());
+        let reusable = items
+            .iter()
+            .zip(&plain)
+            .map(|(item, plain)| *plain && seen.insert(item.as_str()))
+            .collect();
+        Ok(Self { items, reusable })
     }
 
     /// The text at `index`, `None` past the table.
@@ -117,69 +163,120 @@ impl SharedStrings {
     pub(crate) fn len(&self) -> usize {
         self.items.len()
     }
-}
 
-/// The shared strings as written: each distinct text once, in first-seen
-/// order, and the count of cells that reference one.
-#[derive(Debug, Default)]
-pub(crate) struct SharedStringTable {
-    items: Vec<Str>,
-    indexes: HashMap<Str, u32>,
-    references: u64,
-}
-
-impl SharedStringTable {
-    /// An empty table.
-    pub(crate) fn new() -> Self {
-        Self::default()
+    /// Whether a cell holding the text of item `index` is written as that
+    /// item by interning its text: the item is plain and the first plain
+    /// one of its text. A cell reading any other item keeps its index
+    /// beside it.
+    pub(crate) fn is_reusable(&self, index: usize) -> bool {
+        self.reusable.get(index).copied().unwrap_or(false)
     }
+}
 
-    /// A table opening with the strings a package already holds, each at
-    /// the index a stored sheet refers to it by; the reference count starts
-    /// at zero and counts the cells written over it.
-    pub(crate) fn from_existing(strings: &SharedStrings) -> Self {
-        let mut table = Self::new();
-        for (index, text) in strings.items.iter().enumerate() {
-            let index = u32::try_from(index).expect("fewer strings than u32::MAX");
-            table.items.push(text.clone());
-            table.indexes.entry(text.clone()).or_insert(index);
+/// The shared strings a save writes cells against: the items the package
+/// holds, each at its index, and the plain items this save appends.
+#[derive(Debug)]
+pub(crate) struct SharedStringsWriter<'a> {
+    held: &'a SharedStrings,
+    /// The index a text interns to: the first plain item of it, built on
+    /// the first cell written.
+    plain: Option<HashMap<Str, u32>>,
+    appended: Vec<Str>,
+}
+
+impl<'a> SharedStringsWriter<'a> {
+    /// A writer over the items `held` states.
+    pub(crate) fn new(held: &'a SharedStrings) -> Self {
+        Self {
+            held,
+            plain: None,
+            appended: Vec::new(),
         }
-        table
     }
 
-    /// The index `text` is stored at, adding it on first sight.
-    pub(crate) fn intern(&mut self, text: &str) -> u32 {
-        self.references += 1;
-        if let Some(index) = self.indexes.get(text) {
+    /// The index a cell holding `text` is written with: `kept`, the item it
+    /// was read from, while that item still holds the text; else the first
+    /// plain item holding it; else a plain item appended for it.
+    pub(crate) fn index(&mut self, text: &str, kept: Option<u32>) -> u32 {
+        if let Some(index) = kept.filter(|index| {
+            self.held
+                .get(*index as usize)
+                .is_some_and(|held| held.as_str() == text)
+        }) {
+            return index;
+        }
+        let held = self.held;
+        let plain = self.plain.get_or_insert_with(|| {
+            let mut plain = HashMap::with_capacity(held.items.len());
+            for (index, item) in held.items.iter().enumerate() {
+                if held.reusable[index] {
+                    plain.insert(item.clone(), index as u32);
+                }
+            }
+            plain
+        });
+        if let Some(index) = plain.get(text) {
             return *index;
         }
-        let index = u32::try_from(self.items.len()).expect("fewer strings than u32::MAX");
-        let held = Str::new(text);
-        self.items.push(held.clone());
-        self.indexes.insert(held, index);
+        let index = u32::try_from(held.items.len() + self.appended.len())
+            .expect("fewer strings than u32::MAX");
+        let item = Str::new(text);
+        plain.insert(item.clone(), index);
+        self.appended.push(item);
         index
     }
 
-    /// Write `sharedStrings.xml`: `count` the references, `uniqueCount` the
-    /// items, every `t` preserving its whitespace.
+    /// Whether the save appended an item.
+    pub(crate) fn has_appended(&self) -> bool {
+        !self.appended.is_empty()
+    }
+
+    /// The table again: `original`, the part as the package stores it, with
+    /// every item it holds copied as it stands - rich runs, phonetic text
+    /// and duplicates kept - the appended items after them, `uniqueCount`
+    /// the items it now holds and `count`, which no save keeps true, gone;
+    /// a fresh table where the package held none.
     ///
     /// # Errors
     ///
-    /// Returns the sink's failure, or the codec's refusal of a character no
-    /// escape covers.
-    pub(crate) fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        write!(
-            writer,
-            "<sst xmlns=\"{}\" count=\"{}\" uniqueCount=\"{}\">",
-            super::NAMESPACE,
-            self.references,
-            self.items.len()
-        )?;
-        for item in &self.items {
-            write_item(writer, item)?;
+    /// Returns the codec's refusal of a part that is not well-formed, or of
+    /// a character no escape covers.
+    pub(crate) fn into_part(
+        self,
+        original: Option<&[u8]>,
+        family: super::package::NamespaceFamily,
+    ) -> Result<Vec<u8>> {
+        let mut items = Vec::new();
+        for item in &self.appended {
+            write_item(&mut items, item)?;
         }
-        write!(writer, "</sst>")?;
-        Ok(())
+        let unique = (self.held.len() + self.appended.len()).to_string();
+        let Some(original) = original else {
+            let mut part = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
+                 <sst xmlns=\"{}\" uniqueCount=\"{unique}\">",
+                family.namespace()
+            )
+            .into_bytes();
+            part.extend_from_slice(&items);
+            part.extend_from_slice(b"</sst>");
+            return Ok(part);
+        };
+        let items = String::from_utf8(items).unwrap_or_default();
+        super::package::rewrite(
+            original,
+            &super::package::Rewrite {
+                before_end: &|name| (name == b"sst").then(|| items.clone()),
+                attributes: &|name| {
+                    if name == b"sst" {
+                        vec![("uniqueCount", Some(unique.clone())), ("count", None)]
+                    } else {
+                        Vec::new()
+                    }
+                },
+                ..super::package::Rewrite::default()
+            },
+        )
     }
 }
 

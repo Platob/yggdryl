@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "source_report": "rust/target/excel-desktop/p5-subnormal-literal-observed/results.json",
+  "source_report_sha256": "b4f6177e0553ffbbdced61e489cd09399b3148e302d6008a02b04be2d08a7bb1",
+  "source_manifest": ".scratch/p5-subnormal-literal/cases.json",
+  "input_sha256": "e0ebb29499627fb55764d13c52be26f409ab80fcf3a85695886d652e520df65a",
+  "native_package_sha256": "b6051dafe7ed9269a7a6066f913f3192acf2368e0ea6025eda48da998c0c0e23",
+  "excel_version": "16.0",
+  "excel_build": "20430.0",
+  "cleanup_completed": true,
+  "source_cells": [
+    {
+      "cell": "C2",
+      "kind": "formula",
+      "formula": "3E-308"
+    },
+    {
+      "cell": "D2",
+      "kind": "formula",
+      "formula": "-2.5E-308"
+    },
+    {
+      "cell": "E2",
+      "kind": "formula",
+      "formula": "2.3E-308"
+    }
+  ],
+  "cases": [
+    {
+      "id": "subnormal-literal-first",
+      "cell": "B2",
+      "formula": "C2",
+      "context": "first",
+      "value2_before_bits": "00159283684dba77",
+      "value2_after_bits": "00159283684dba77",
+      "cache_type": "n",
+      "cache_text": "3.0000000000000002E-308",
+      "cache_formula": "C2"
+    },
+    {
+      "id": "subnormal-literal-second",
+      "cell": "B3",
+      "formula": "D2",
+      "context": "second",
+      "value2_before_bits": "8011fa182c40c60d",
+      "value2_after_bits": "8011fa182c40c60d",
+      "cache_type": "n",
+      "cache_text": "-2.4999999999999998E-308",
+      "cache_formula": "D2"
+    },
+    {
+      "id": "subnormal-literal-third",
+      "cell": "B4",
+      "formula": "E2",
+      "context": "third",
+      "value2_before_bits": "001089ed476ecab0",
+      "value2_after_bits": "001089ed476ecab0",
+      "cache_type": "n",
+      "cache_text": "2.2999999999999999E-308",
+      "cache_formula": "E2"
+    },
+    {
+      "id": "subnormal-literal-pair-direct",
+      "cell": "B5",
+      "formula": "3E-308-2.5E-308",
+      "context": "pair-direct",
+      "value2_before_bits": "0003986b3c0cf46a",
+      "value2_after_bits": "0003986b3c0cf46a",
+      "cache_type": "n",
+      "cache_text": "0",
+      "cache_formula": "3E-308-2.5E-308"
+    },
+    {
+      "id": "subnormal-literal-fold-direct",
+      "cell": "B6",
+      "formula": "3E-308-2.5E-308+2.3E-308",
+      "context": "fold-direct",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "3E-308-2.5E-308+2.3E-308"
+    },
+    {
+      "id": "subnormal-literal-fold-outer-group",
+      "cell": "B7",
+      "formula": "(3E-308-2.5E-308+2.3E-308)",
+      "context": "fold-outer-group",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "(3E-308-2.5E-308+2.3E-308)"
+    },
+    {
+      "id": "subnormal-literal-fold-left-group",
+      "cell": "B8",
+      "formula": "(3E-308-2.5E-308)+2.3E-308",
+      "context": "fold-left-group",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "(3E-308-2.5E-308)+2.3E-308"
+    },
+    {
+      "id": "subnormal-literal-fold-right-group",
+      "cell": "B9",
+      "formula": "3E-308-(2.5E-308-2.3E-308)",
+      "context": "fold-right-group",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "3E-308-(2.5E-308-2.3E-308)"
+    },
+    {
+      "id": "subnormal-literal-sum-direct",
+      "cell": "B10",
+      "formula": "SUM(3E-308,-2.5E-308,2.3E-308)",
+      "context": "sum-direct",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "SUM(3E-308,-2.5E-308,2.3E-308)"
+    },
+    {
+      "id": "subnormal-literal-sum-subtotal",
+      "cell": "B11",
+      "formula": "SUM(3E-308-2.5E-308,2.3E-308)",
+      "context": "sum-subtotal",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "SUM(3E-308-2.5E-308,2.3E-308)"
+    },
+    {
+      "id": "subnormal-literal-fold-references",
+      "cell": "B12",
+      "formula": "C2+D2+E2",
+      "context": "fold-references",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "C2+D2+E2"
+    },
+    {
+      "id": "subnormal-literal-sum-references",
+      "cell": "B13",
+      "formula": "SUM(C2,D2,E2)",
+      "context": "sum-references",
+      "value2_before_bits": "00142258837bbf1a",
+      "value2_after_bits": "00142258837bbf1a",
+      "cache_type": "n",
+      "cache_text": "2.8000000000000003E-308",
+      "cache_formula": "SUM(C2,D2,E2)"
+    },
+    {
+      "id": "subnormal-literal-pair-sum",
+      "cell": "B14",
+      "formula": "SUM(3E-308,-2.5E-308)",
+      "context": "pair-sum",
+      "value2_before_bits": "0003986b3c0cf46a",
+      "value2_after_bits": "0003986b3c0cf46a",
+      "cache_type": "n",
+      "cache_text": "0",
+      "cache_formula": "SUM(3E-308,-2.5E-308)"
+    },
+    {
+      "id": "subnormal-literal-multiply",
+      "cell": "B15",
+      "formula": "3E-308*0.1",
+      "context": "multiply",
+      "value2_before_bits": "0000000000000000",
+      "value2_after_bits": "0000000000000000",
+      "cache_type": "n",
+      "cache_text": "0",
+      "cache_formula": "3E-308*0.1"
+    },
+    {
+      "id": "subnormal-literal-divide",
+      "cell": "B16",
+      "formula": "3E-308/10",
+      "context": "divide",
+      "value2_before_bits": "0000000000000000",
+      "value2_after_bits": "0000000000000000",
+      "cache_type": "n",
+      "cache_text": "0",
+      "cache_formula": "3E-308/10"
+    },
+    {
+      "id": "subnormal-literal-percent",
+      "cell": "B17",
+      "formula": "3E-308%",
+      "context": "percent",
+      "value2_before_bits": "0000000000000000",
+      "value2_after_bits": "0000000000000000",
+      "cache_type": "n",
+      "cache_text": "0",
+      "cache_formula": "3E-308%"
+    }
+  ]
+}

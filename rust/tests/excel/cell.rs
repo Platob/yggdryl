@@ -1,8 +1,8 @@
 //! `rust/src/excel/cell.rs`: the A1 grammar of `CellRef` and `CellRange`, the `t` kinds, the serial-date rule both ways, and the `Cell` a value builds.
 
 use yggdryl::excel::{
-    Cell, CellKind, CellRange, CellRef, DateSystem, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS,
-    NumberFormat,
+    Cell, CellKind, CellRange, CellRef, DateSystem, ExcelError, Formula, MAX_CELL_TEXT,
+    MAX_COLUMNS, MAX_ROWS, NumberFormat, StyleId,
 };
 use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
 
@@ -151,6 +151,18 @@ fn the_grid_holds_1048576_rows_by_16384_columns_and_require_in_grid_names_a_cell
             .to_string(),
         "invalid record value at $: expected a cell within 1048576 rows and 16384 columns \
          (A1 to XFD1048576), got row 1 column 16385"
+    );
+}
+
+#[test]
+fn directly_constructed_maximum_cell_coordinates_refuse_without_arithmetic_overflow() {
+    let error = CellRef::new(u32::MAX, u32::MAX)
+        .require_in_grid()
+        .unwrap_err();
+    let text = error.to_string();
+    assert!(
+        text.contains("got row 4294967296 column 4294967296"),
+        "{text}"
     );
 }
 
@@ -877,7 +889,7 @@ fn a_float_that_is_not_finite_is_the_num_error_cell() {
             Cell::from_scalar(reference("C4"), Scalar::from(number), DateSystem::Year1900).unwrap();
         assert_eq!(cell.kind(), CellKind::Error, "{number}");
         assert_eq!(cell.format(), NumberFormat::General, "{number}");
-        assert_eq!(cell.error(), Some("#NUM!"), "{number}");
+        assert_eq!(cell.error(), Some(ExcelError::Num), "{number}");
         assert_eq!(cell.value(), &Scalar::Null, "{number}");
         assert!(cell.is_null(), "{number}");
         assert_eq!(cell.text(), "#NUM!", "{number}");
@@ -964,23 +976,29 @@ fn a_cell_states_its_facts_and_each_with_restates_one_of_them() {
     assert!(empty.is_null());
     assert_eq!(empty.text(), "");
 
+    let sum = Formula::from_file("SUM(A1:A2)", reference("A3"));
     let summed = Cell::from_scalar(reference("A3"), Scalar::from(3.0), DateSystem::Year1900)
         .unwrap()
-        .with_formula("SUM(A1:A2)");
-    assert_eq!(summed.formula(), Some("SUM(A1:A2)"));
+        .with_formula(sum.clone());
+    assert_eq!(summed.formula(), Some(&sum));
+    assert_eq!(
+        summed.formula().unwrap().at(summed.reference()).to_string(),
+        "SUM(A1:A2)"
+    );
     assert_eq!(
         (summed.kind(), summed.value()),
         (CellKind::Number, &Scalar::from(3.0))
     );
     assert_eq!(summed.text(), "3");
 
-    let failed = summed.with_error("#DIV/0!");
+    let failed = summed.with_error(ExcelError::Div0);
     assert_eq!(failed.kind(), CellKind::Error);
     assert_eq!(failed.value(), &Scalar::Null);
     assert!(failed.is_null());
-    assert_eq!(failed.error(), Some("#DIV/0!"));
+    assert_eq!(failed.error(), Some(ExcelError::Div0));
+    assert_eq!(failed.error_text(), "#DIV/0!");
     assert_eq!(failed.text(), "#DIV/0!");
-    assert_eq!(failed.formula(), Some("SUM(A1:A2)"));
+    assert_eq!(failed.formula(), Some(&sum));
     assert_eq!(failed.format(), NumberFormat::General);
 
     let moved = stated.at(CellRef::new(4, 27));
@@ -988,4 +1006,96 @@ fn a_cell_states_its_facts_and_each_with_restates_one_of_them() {
     assert_eq!((moved.row(), moved.column()), (4, 27));
     assert_eq!(moved.kind(), CellKind::InlineString);
     assert_eq!(moved.into_scalar(), Scalar::from("AAPL"));
+}
+
+#[test]
+fn every_error_excel_spells_reads_back_as_its_own_variant_and_any_other_text_is_unrecognized() {
+    let spelled = [
+        (ExcelError::Null, "#NULL!"),
+        (ExcelError::Div0, "#DIV/0!"),
+        (ExcelError::Value, "#VALUE!"),
+        (ExcelError::Ref, "#REF!"),
+        (ExcelError::Name, "#NAME?"),
+        (ExcelError::Num, "#NUM!"),
+        (ExcelError::NA, "#N/A"),
+        (ExcelError::GettingData, "#GETTING_DATA"),
+        (ExcelError::Spill, "#SPILL!"),
+        (ExcelError::Calc, "#CALC!"),
+        (ExcelError::Field, "#FIELD!"),
+        (ExcelError::Blocked, "#BLOCKED!"),
+        (ExcelError::Connect, "#CONNECT!"),
+        (ExcelError::Busy, "#BUSY!"),
+        (ExcelError::Unknown, "#UNKNOWN!"),
+        (ExcelError::Python, "#PYTHON!"),
+        (ExcelError::Timeout, "#TIMEOUT!"),
+        (ExcelError::External, "#EXTERNAL!"),
+    ];
+    for (error, text) in spelled {
+        assert_eq!(error.as_str(), text);
+        assert_eq!(error.to_string(), text);
+        assert_eq!(ExcelError::from_text(text), error, "{text}");
+        assert_eq!(
+            ExcelError::from_text(&text.to_ascii_lowercase()),
+            error,
+            "{text}"
+        );
+    }
+    for text in ["#FUTURE!", "", "#N/A ", "N/A", "#UNRECOGNIZED"] {
+        assert_eq!(
+            ExcelError::from_text(text),
+            ExcelError::Unrecognized,
+            "{text:?}"
+        );
+    }
+    assert_eq!(ExcelError::Unrecognized.as_str(), "#UNRECOGNIZED");
+}
+
+#[test]
+fn an_unrecognized_error_keeps_the_literal_it_was_read_with_and_is_still_no_value() {
+    let future = Cell::new(
+        reference("B2"),
+        CellKind::Error,
+        NumberFormat::General,
+        Scalar::from("#FUTURE!"),
+    )
+    .with_error(ExcelError::from_text("#FUTURE!"));
+    assert_eq!(future.error(), Some(ExcelError::Unrecognized));
+    assert_eq!(future.error_text(), "#FUTURE!");
+    assert_eq!(future.text(), "#FUTURE!");
+    assert_eq!(future.value(), &Scalar::Null);
+    assert!(future.is_null());
+    assert_eq!(future.clone().into_scalar(), Scalar::Null);
+
+    // A known error takes the literal's place; an unrecognized one set on a
+    // cell holding no text has no literal to be written back as.
+    let known = future.with_error(ExcelError::Ref);
+    assert_eq!(known.error_text(), "#REF!");
+    let bare = Cell::from_scalar(reference("C2"), Scalar::from(1.5), DateSystem::Year1900)
+        .unwrap()
+        .with_error(ExcelError::Unrecognized);
+    assert_eq!(bare.error_text(), "#UNRECOGNIZED");
+    assert_eq!(bare.value(), &Scalar::Null);
+    // An empty text is no literal either.
+    let empty = Cell::new(
+        reference("E2"),
+        CellKind::Error,
+        NumberFormat::General,
+        Scalar::from(""),
+    )
+    .with_error(ExcelError::Unrecognized);
+    assert_eq!(empty.error_text(), "#UNRECOGNIZED");
+
+    let clean =
+        Cell::from_scalar(reference("D2"), Scalar::from(2.0), DateSystem::Year1900).unwrap();
+    assert_eq!((clean.error(), clean.error_text()), (None, ""));
+}
+
+#[test]
+fn a_cell_holds_its_style_index_and_starts_at_the_default() {
+    let cell = Cell::from_scalar(reference("A1"), Scalar::from(1.0), DateSystem::Year1900).unwrap();
+    assert_eq!(cell.style(), StyleId::DEFAULT);
+    let styled = cell.clone().with_style(StyleId::new(9));
+    assert_eq!(styled.style(), StyleId::new(9));
+    assert_eq!(styled.value(), cell.value());
+    assert_ne!(styled, cell);
 }

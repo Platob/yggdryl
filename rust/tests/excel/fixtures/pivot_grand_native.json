@@ -1,0 +1,279 @@
+{
+  "schema_version": 1,
+  "kind": "p6_pivot_grand_native",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0"
+  },
+  "provenance": {
+    "manifest_sha256": "07c55be5e2ec0c2ece1f6ad2f08491a2409b3a7bc8ae3bae073145017123d96a",
+    "input_sha256": "5cff95972b0cce9baab289b3d1d5f697b2939695596ef48f5155406b4d9d6526",
+    "saved_sha256": "6addfe4372cf1b3d0f7526852077d79075911b82e02db78095f8d34a6eb93a35",
+    "report_sha256": "7348fa94c5b1ab206e523ffedbeddf223736b38adf59c6644285317d85d6c37b",
+    "passed": true,
+    "cleanup_completed": true,
+    "refresh_save_reopen_equal": true
+  },
+  "cases": [
+    {
+      "id": "interleaved_baseline",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "West",
+          "3ff0000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "interleaved_b_first",
+      "source": [
+        [
+          "West",
+          "3ff0000000000000"
+        ],
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "interleaved_both_before_cancel",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "West",
+          "3ff0000000000000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "interleaved_reverse_small",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "West",
+          "3ff0000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "grouped_cancel_then_small",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "West",
+          "3ff0000000000000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "group_internal_lost_unit",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "East",
+          "3ff0000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4000000000000000",
+        "grand_bits": "4000000000000000"
+      }
+    },
+    {
+      "id": "group_internal_kept_unit",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "East",
+          "3ff0000000000000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "3ff0000000000000",
+        "west_bits": "4000000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "reverse_group_labels",
+      "source": [
+        [
+          "West",
+          "4341c37937e08000"
+        ],
+        [
+          "East",
+          "3ff0000000000000"
+        ],
+        [
+          "West",
+          "c341c37937e08000"
+        ],
+        [
+          "East",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "4008000000000000",
+        "west_bits": "0000000000000000",
+        "grand_bits": "4008000000000000"
+      }
+    },
+    {
+      "id": "tiny_group_tail",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "East",
+          "3cb0000000000000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "3cb0000000000000",
+        "west_bits": "4000000000000000",
+        "grand_bits": "4000000000000000"
+      }
+    },
+    {
+      "id": "tiny_interleaved",
+      "source": [
+        [
+          "East",
+          "4341c37937e08000"
+        ],
+        [
+          "West",
+          "3cb0000000000000"
+        ],
+        [
+          "East",
+          "c341c37937e08000"
+        ],
+        [
+          "West",
+          "4000000000000000"
+        ]
+      ],
+      "native": {
+        "east_bits": "0000000000000000",
+        "west_bits": "4000000000000000",
+        "grand_bits": "4000000000000000"
+      }
+    }
+  ]
+}

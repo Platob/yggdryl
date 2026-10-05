@@ -10,17 +10,19 @@ An Office Open XML workbook (`.xlsx`): one worksheet of it read and written as r
 | Build | default |
 | Rust | `yggdryl::excel`: `Excel<H>` over any handle with `ExcelOptions`, the free `read_field`, `read_batch_reader` and `overwrite_arrow_reader`; [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html), [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html), `CellRef` and `CellRange` for the [workbook](#workbook) |
 | Python | any `IOBase` whose name declares a workbook; `yggdryl.excel`: `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange`, `Row` |
-| JavaScript | any `IOBase` whose name declares a workbook; `Workbook`, `Sheet`, `Cell`, `CellRef`, `CellRange` and the `excel` namespace |
+| JavaScript | any `IOBase` whose name declares a workbook; worksheet records through the shared read and write calls |
 | Settings | [`ExcelOptions`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.ExcelOptions.html): `sheet`, `header` and `range`, beside the shared [`RecordOptions`](index.md#options) |
 | Refused | a coded name such as `.xlsx.gz` or `.xlsx.zst`: the package is deflated inside |
 
-An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. The whole workbook is the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
+An Office Open XML workbook (`.xlsx`) is a ZIP package of XML parts, and one worksheet of it is the record medium: the first row of the range names the columns, every cell below is a value, and a write renders the part row by row as the batches arrive. Rust and Python expose the whole workbook as the random-access side of the same medium - [`Workbook`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Workbook.html), [`Sheet`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Sheet.html) and [`Cell`](https://docs.rs/yggdryl/latest/yggdryl/excel/struct.Cell.html) - any cell by its `A1` reference, a sheet's rows laid out from a `Serie` and read back as one.
 
 ## Read
 
 Three facts about the file decide what a read answers. A number cell is a `float64`, because the file stores every number as a double: `1` reads as `1.0`, and a declared `int64` column reads it back as the integer it was written as. A cell's number format is its datatype - a serial under a date format is a `date32`, under a clock a `time32(ms)`, under a date and a clock a `datetime64(ms)`, under `[h]:mm:ss` a `duration64(ms)` - in the workbook's date system, 1900 or 1904. A boolean cell (`t="b"`) holds `1` or `0` and reads through the [boolean table](../types/numeric/boolean.md#the-one-text-reader), so a `TRUE` another writer left reads too and text the table does not read is refused naming the cell's text; an empty one is null. A number cell's text reads through the one float grammar, and an infinity or a `NaN`, which no spreadsheet stores, is refused. Text is escaped as ECMA-376 spells it: a control character, a carriage return and a literal `_x0041_` are written `_xHHHH_` and read back as themselves, which Excel does and openpyxl leaves unread.
 
-`sheet` addresses a worksheet - the first one unless it names another, and a sheet the workbook lacks reads as the empty stream - `header` says whether the range's first row names the columns (by their letters otherwise), and `range` the cells addressed (`A3:F`, `B:D`, `2:10`). What a read costs, in calls to the handle: the package index is the archive's own two reads (its size and the tail holding the directory) and each part read once - the sheet streamed, the shared strings and the styles held for the workbook's life. An inferred read passes the part twice, once to learn the field and once to stream the rows under it; a declared read passes it once.
+`sheet` addresses a worksheet - the first one unless it names another, and a sheet the workbook lacks reads as the empty stream - and `range` the cells addressed (`A3:F`, `B:D`, `2:10`). Rust's `header` is a [`RecordHeader`](https://docs.rs/yggdryl/latest/yggdryl/enum.RecordHeader.html): `Source` (the default) names columns from the first present row or authoritative named-table metadata; `None` uses column letters without consuming a header; `Rows(n)` consumes exactly `n` physical header rows as a hierarchy; `Infer` reads a header only when the selected cells prove one interpretation. Rust's sheet conversion arguments take the same policy: `true.into()` selects `Source`, `false.into()` selects `None`. Python and JavaScript expose these two policies as `header=True`/`False` and `header: true`/`false`.
+
+What a read costs, in calls to the handle: the package index is the archive's own two reads (its size and the tail holding the directory) and each part read once - the sheet streamed, the shared strings and the styles held for the workbook's life. An inferred read passes the part twice, once to learn the field and once to stream the rows under it; a declared read passes it once.
 
 === "Rust"
 
@@ -142,7 +144,7 @@ Three facts about the file decide what a read answers. A number cell is a `float
 
 ## Write
 
-A write renders the part row by row as the batches arrive, with no row held past its batch: the first row names the columns while `header` is on, and each value is the cell its datatype spells - a boolean as `t="b"`, a date, a time, a naive datetime or a duration as its serial under the number format that reads it back, a float that is not a number as `#NUM!`, text inline - while a zoned datetime, an interval, a decimal, a code or bytes is written as the text the XML codec spells, and a nested value as its JSON. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A coded name such as `.xlsx.gz` is refused before a byte is written - the package is deflated inside, as Parquet's pages are - and a read and `Workbook::open` refuse it too, naming the coding to drop.
+A write renders the part row by row as the batches arrive, with no row held past its batch: `Source` writes the column names first, `None` writes only records, and `Rows(n)` writes nested Struct header levels; `Infer` is read-only and refused before writing. Each value is the cell its datatype spells - a boolean as `t="b"`, a date, a time, a naive datetime or a duration as its serial under the number format that reads it back, a float that is not a number as `#NUM!`, text inline - while a zoned datetime, an interval, a decimal, a code or bytes is written as the text the XML codec spells, and a nested value as its JSON. A write into an opened package keeps every other part as it was, the sheets it does not touch included, and `sheet` naming one the workbook lacks adds it beside the others; it reads the package twice, once for the field the rows are shaped onto and once to carry the other parts across. A coded name such as `.xlsx.gz` is refused before a byte is written - the package is deflated inside, as Parquet's pages are - and a read and `Workbook::open` refuse it too, naming the coding to drop.
 
 === "Rust"
 
@@ -234,7 +236,7 @@ A write renders the part row by row as the batches arrive, with no row held past
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase, Workbook } = require('yggdryl')
+    const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-excel-'))
     const handle = new IOBase(path.join(root, 'book.xlsx'))
@@ -253,10 +255,10 @@ A write renders the part row by row as the batches arrive, with no row held past
     handle.overwriteArrowTable(notes(['a', 'b']), { sheet: 'Notes' })
     handle.appendArrowTable(notes(['c']), { sheet: 'Notes' })
 
-    const workbook = Workbook.open(handle)
-    assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
-    assert.equal(workbook.sheet('Notes').cell('A4').value.asJs(), 'c')
-    assert.equal(workbook.sheet('Sheet1').cell('B2').value.asJs(), 'AAPL')
+    const readNotes = handle.readArrowReader({ sheet: 'Notes' }).intoTable()
+    assert.deepEqual([...readNotes.getChild('note')], ['a', 'b', 'c'])
+    const readTrades = handle.readArrowReader({ sheet: 'Sheet1' }).intoTable()
+    assert.deepEqual([...readTrades.getChild('symbol')], ['AAPL', null])
 
     // A coding around the package is refused, and nothing is written.
     const coded = new IOBase(path.join(root, 'book.xlsx.gz'))
@@ -268,7 +270,7 @@ A write renders the part row by row as the batches arrive, with no row held past
 
 ## Workbook
 
-Random access reads and edits any cell by its `A1` reference, lays a sheet's rows out from a `Serie` and reads them back as one, adds, renames and removes sheets, and writes the package back with every other part as it was; a sheet is parsed on first access and held for the workbook's life.
+In Rust and Python, random access reads and edits any cell by its `A1` reference, lays a sheet's rows out from a `Serie` and reads them back as one, adds, renames and removes sheets, and writes the package back with every other part as it was; a sheet is parsed on first access and held for the workbook's life.
 
 === "Rust"
 
@@ -307,11 +309,11 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
     assert_eq!(sheet.scalar(CellRef::new(2, 1)), Scalar::Null);
     sheet.set_cell("D1".parse()?, "note")?;
     sheet.set_cell("D2".parse()?, 2.5)?;
-    let back = sheet.clone().into_serie(Some(&field), true, Default::default())?;
+    let back = sheet.clone().into_serie(Some(&field), true.into(), Default::default())?;
     assert_eq!(back.len(), 2);
 
     let mut notes = Sheet::new("Notes")?;
-    notes.write_serie("A1".parse()?, &rows, true)?;
+    notes.write_serie("A1".parse()?, &rows, true.into())?;
     workbook.insert_sheet(notes)?;
     let reopened = Workbook::from_bytes(workbook.into_bytes()?)?;
     assert_eq!(reopened.sheet_names(), ["Sheet1", "Notes"]);
@@ -360,48 +362,6 @@ Random access reads and edits any cell by its `A1` reference, lays a sheet's row
         workbook.write_into(path)
         assert Workbook.open(path)["Sheet1"]["D2"].as_py() == 2.5
         assert IOBase(path).read_arrow_reader(sheet="Copy").read_all().num_rows == 2
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { DataType, IOBase, Serie, Sheet, Workbook } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-excel-'))
-    const file = path.join(root, 'trades.xlsx')
-    const table = new arrow.Table({
-      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-      symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
-    })
-
-    // The record path: one worksheet, written and read like every medium.
-    const handle = new IOBase(file)
-    handle.overwriteArrowTable(table)
-    const field = Serie.fromArrowBatch(table).field
-    assert.deepEqual([...handle.readArrowReader(handle.recordOptions().withField(field)).intoTable().getChild('id')], [1n, 2n])
-    assert.deepEqual([...handle.readArrowReader().intoTable().getChild('id')], [1, 2])
-    handle.overwriteArrowTable(new arrow.Table({ note: arrow.vectorFromArray(['a'], new arrow.Utf8()) }), handle.recordOptions().withSheet('Notes'))
-
-    // The random-access path: any cell of any sheet, and a sheet as a Serie.
-    const workbook = Workbook.open(file)
-    assert.deepEqual(workbook.sheetNames, ['Sheet1', 'Notes'])
-    const sheet = workbook.sheet('Sheet1')
-    assert.equal(sheet.cell('B2').value.asJs(), 'AAPL')
-    assert.equal(sheet.cell('B3'), null)
-    sheet.setCell('D1', 'note')
-    sheet.setCell('D2', new DataType('date32').scalar('2024-01-02'))
-    assert.equal(sheet.cell('D2').format, 'date')
-    assert.equal(sheet.intoSerie(field).asJs().length, 2)
-    workbook.insertSheet(Sheet.fromSerie('Copy', table))
-    workbook.writeInto(file)
-    assert.equal(Workbook.open(file).sheet('Sheet1').cell('D1').value.asJs(), 'note')
-    assert.equal(new IOBase(file).readArrowReader(handle.recordOptions().withSheet('Copy')).intoTable().numRows, 2)
-    fs.rmSync(root, { recursive: true, force: true })
     ```
 
 `rust/tests/iobase_calls.rs` pins the record doors' call counts and `rust/tests/excel/workbook.rs` the workbook's, and `rust/tests/allocations.rs` pins that a cell read, a reference parse and a range test allocate nothing.

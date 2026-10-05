@@ -1,0 +1,1255 @@
+{
+  "schema_version": 1,
+  "scope": "attached Excel 11 PivotTable aggregates; observed, not Rust-equivalent",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_sha256": "88be2dbfd0b6179d864b2dc51396e69946ffd6858f0531d5d7cfc17fbd7c950e",
+  "manifest_sha256": "3bde4f25b5ce94583c1f93252ebdaf819abf8b0cb73441115391e432d67d58d2",
+  "native_report_sha256": "c1bb6e4daac2fee32f31f3b9e4b6ff4a6ced67126f04f50c12392b26fcbd3a86",
+  "cleanup_completed": true,
+  "authored_source_tables": [
+    {
+      "sheet": "Data",
+      "range": "A1:B17",
+      "rows": [
+        [
+          "Group",
+          "Metric"
+        ],
+        [
+          "East",
+          1.0
+        ],
+        [
+          "East",
+          2.0
+        ],
+        [
+          "East",
+          3.0
+        ],
+        [
+          "East",
+          "7"
+        ],
+        [
+          "East",
+          true
+        ],
+        [
+          "East",
+          ""
+        ],
+        [
+          "East",
+          null
+        ],
+        [
+          "West",
+          4.0
+        ],
+        [
+          "West",
+          5.0
+        ],
+        [
+          "West",
+          0.0
+        ],
+        [
+          "West",
+          "word"
+        ],
+        [
+          "West",
+          null
+        ],
+        [
+          "Solo",
+          9.0
+        ],
+        [
+          "TextOnly",
+          "word"
+        ],
+        [
+          "TextOnly",
+          true
+        ],
+        [
+          "BlankOnly",
+          null
+        ]
+      ]
+    }
+  ],
+  "source_xml": {
+    "xl/worksheets/sheet1.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:B17\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Group</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Metric</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B2\" t=\"n\"><v>1</v></c></row><row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B3\" t=\"n\"><v>2</v></c></row><row r=\"4\"><c r=\"A4\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B4\" t=\"n\"><v>3</v></c></row><row r=\"5\"><c r=\"A5\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B5\" t=\"inlineStr\"><is><t>7</t></is></c></row><row r=\"6\"><c r=\"A6\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B6\" t=\"b\"><v>1</v></c></row><row r=\"7\"><c r=\"A7\" t=\"inlineStr\"><is><t>East</t></is></c><c r=\"B7\" t=\"inlineStr\" /></row><row r=\"8\"><c r=\"A8\" t=\"inlineStr\"><is><t>East</t></is></c></row><row r=\"9\"><c r=\"A9\" t=\"inlineStr\"><is><t>West</t></is></c><c r=\"B9\" t=\"n\"><v>4</v></c></row><row r=\"10\"><c r=\"A10\" t=\"inlineStr\"><is><t>West</t></is></c><c r=\"B10\" t=\"n\"><v>5</v></c></row><row r=\"11\"><c r=\"A11\" t=\"inlineStr\"><is><t>West</t></is></c><c r=\"B11\" t=\"n\"><v>0</v></c></row><row r=\"12\"><c r=\"A12\" t=\"inlineStr\"><is><t>West</t></is></c><c r=\"B12\" t=\"inlineStr\"><is><t>word</t></is></c></row><row r=\"13\"><c r=\"A13\" t=\"inlineStr\"><is><t>West</t></is></c></row><row r=\"14\"><c r=\"A14\" t=\"inlineStr\"><is><t>Solo</t></is></c><c r=\"B14\" t=\"n\"><v>9</v></c></row><row r=\"15\"><c r=\"A15\" t=\"inlineStr\"><is><t>TextOnly</t></is></c><c r=\"B15\" t=\"inlineStr\"><is><t>word</t></is></c></row><row r=\"16\"><c r=\"A16\" t=\"inlineStr\"><is><t>TextOnly</t></is></c><c r=\"B16\" t=\"b\"><v>1</v></c></row><row r=\"17\"><c r=\"A17\" t=\"inlineStr\"><is><t>BlankOnly</t></is></c></row></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet10.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet11.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet12.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet2.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet3.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet4.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet5.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet6.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet7.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet8.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>",
+    "xl/worksheets/sheet9.xml": "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetPr><outlinePr summaryBelow=\"1\" summaryRight=\"1\" /><pageSetUpPr /></sheetPr><dimension ref=\"A1:A1\" /><sheetViews><sheetView workbookViewId=\"0\"><selection activeCell=\"A1\" sqref=\"A1\" /></sheetView></sheetViews><sheetFormatPr baseColWidth=\"8\" defaultRowHeight=\"15\" /><sheetData></sheetData><pageMargins left=\"0.75\" right=\"0.75\" top=\"1\" bottom=\"1\" header=\"0.5\" footer=\"0.5\" /></worksheet>"
+  },
+  "saved_error_cells": {
+    "xl/worksheets/sheet10.xml": [
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet11.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet12.xml": [
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet4.xml": [
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ],
+    "xl/worksheets/sheet9.xml": [
+      {
+        "cell": "B6",
+        "type": "e",
+        "value": "#DIV/0!"
+      },
+      {
+        "cell": "B7",
+        "type": "e",
+        "value": "#DIV/0!"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "aggregate_sum",
+      "aggregate": "sum",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "sum Metric",
+        "caption": "sum Metric",
+        "position": 1,
+        "function": -4157
+      },
+      "xml_data_field": {
+        "name": "sum Metric",
+        "subtotal": "sum"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "sum Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 24.0,
+            "hex": "0x1.8000000000000p+4",
+            "ieee754_hex": "4038000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_count",
+      "aggregate": "count",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "count Metric",
+        "caption": "count Metric",
+        "position": 1,
+        "function": -4112
+      },
+      "xml_data_field": {
+        "name": "count Metric",
+        "subtotal": "count"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "count Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 4.0,
+            "hex": "0x1.0000000000000p+2",
+            "ieee754_hex": "4010000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 12.0,
+            "hex": "0x1.8000000000000p+3",
+            "ieee754_hex": "4028000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_average",
+      "aggregate": "average",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "average Metric",
+        "caption": "average Metric",
+        "position": 1,
+        "function": -4106
+      },
+      "xml_data_field": {
+        "name": "average Metric",
+        "subtotal": "average"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "average Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 2.0,
+            "hex": "0x1.0000000000000p+1",
+            "ieee754_hex": "4000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 3.4285714285714284,
+            "hex": "0x1.b6db6db6db6dbp+1",
+            "ieee754_hex": "400b6db6db6db6db",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_max",
+      "aggregate": "max",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "max Metric",
+        "caption": "max Metric",
+        "position": 1,
+        "function": -4136
+      },
+      "xml_data_field": {
+        "name": "max Metric",
+        "subtotal": "max"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "max Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 5.0,
+            "hex": "0x1.4000000000000p+2",
+            "ieee754_hex": "4014000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_min",
+      "aggregate": "min",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "min Metric",
+        "caption": "min Metric",
+        "position": 1,
+        "function": -4139
+      },
+      "xml_data_field": {
+        "name": "min Metric",
+        "subtotal": "min"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "min Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_product",
+      "aggregate": "product",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "product Metric",
+        "caption": "product Metric",
+        "position": 1,
+        "function": -4149
+      },
+      "xml_data_field": {
+        "name": "product Metric",
+        "subtotal": "product"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "product Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 6.0,
+            "hex": "0x1.8000000000000p+2",
+            "ieee754_hex": "4018000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 9.0,
+            "hex": "0x1.2000000000000p+3",
+            "ieee754_hex": "4022000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_countnumbers",
+      "aggregate": "countNumbers",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "countNumbers Metric",
+        "caption": "countNumbers Metric",
+        "position": 1,
+        "function": 11
+      },
+      "xml_data_field": {
+        "name": "countNumbers Metric",
+        "subtotal": "countNums"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "countNumbers Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 3.0,
+            "hex": "0x1.8000000000000p+1",
+            "ieee754_hex": "4008000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 7.0,
+            "hex": "0x1.c000000000000p+2",
+            "ieee754_hex": "401c000000000000",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_stddev",
+      "aggregate": "stdDev",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "stdDev Metric",
+        "caption": "stdDev Metric",
+        "position": 1,
+        "function": -4155
+      },
+      "xml_data_field": {
+        "name": "stdDev Metric",
+        "subtotal": "stdDev"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "stdDev Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 2.6457513110645907,
+            "hex": "0x1.52a7fa9d2f8eap+1",
+            "ieee754_hex": "40052a7fa9d2f8ea",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 2.9920529661723823,
+            "hex": "0x1.7efb9772ce1a4p+1",
+            "ieee754_hex": "4007efb9772ce1a4",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_stddevp",
+      "aggregate": "stdDevP",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "stdDevP Metric",
+        "caption": "stdDevP Metric",
+        "position": 1,
+        "function": -4156
+      },
+      "xml_data_field": {
+        "name": "stdDevP Metric",
+        "subtotal": "stdDevp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "stdDevP Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 0.816496580927726,
+            "hex": "0x1.a20bd700c2c3ep-1",
+            "ieee754_hex": "3fea20bd700c2c3e",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 2.160246899469287,
+            "hex": "0x1.1482f86c40c43p+1",
+            "ieee754_hex": "4001482f86c40c43",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 2.770102775666474,
+            "hex": "0x1.6292ba4e05ee2p+1",
+            "ieee754_hex": "4006292ba4e05ee2",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_var",
+      "aggregate": "var",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "var Metric",
+        "caption": "var Metric",
+        "position": 1,
+        "function": -4164
+      },
+      "xml_data_field": {
+        "name": "var Metric",
+        "subtotal": "var"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "var Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 1.0,
+            "hex": "0x1.0000000000000p+0",
+            "ieee754_hex": "3ff0000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 7.0,
+            "hex": "0x1.c000000000000p+2",
+            "ieee754_hex": "401c000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 8.95238095238095,
+            "hex": "0x1.1e79e79e79e79p+3",
+            "ieee754_hex": "4021e79e79e79e79",
+            "classification": "finite"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "aggregate_varp",
+      "aggregate": "varP",
+      "table_range2": "$A$3:$B$9",
+      "data_field": {
+        "name": "varP Metric",
+        "caption": "varP Metric",
+        "position": 1,
+        "function": -4165
+      },
+      "xml_data_field": {
+        "name": "varP Metric",
+        "subtotal": "varp"
+      },
+      "value2": [
+        [
+          {
+            "variant": "str",
+            "value": "Group"
+          },
+          {
+            "variant": "str",
+            "value": "varP Metric"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "BlankOnly"
+          },
+          {
+            "variant": "empty",
+            "value": null
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "East"
+          },
+          {
+            "variant": "float",
+            "value": 0.6666666666666666,
+            "hex": "0x1.5555555555555p-1",
+            "ieee754_hex": "3fe5555555555555",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Solo"
+          },
+          {
+            "variant": "float",
+            "value": 0.0,
+            "hex": "0x0.0p+0",
+            "ieee754_hex": "0000000000000000",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "TextOnly"
+          },
+          {
+            "variant": "int",
+            "value": -2146826281
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "West"
+          },
+          {
+            "variant": "float",
+            "value": 4.666666666666667,
+            "hex": "0x1.2aaaaaaaaaaabp+2",
+            "ieee754_hex": "4012aaaaaaaaaaab",
+            "classification": "finite"
+          }
+        ],
+        [
+          {
+            "variant": "str",
+            "value": "Total g\u00e9n\u00e9ral"
+          },
+          {
+            "variant": "float",
+            "value": 7.673469387755102,
+            "hex": "0x1.eb1a1f58d0facp+2",
+            "ieee754_hex": "401eb1a1f58d0fac",
+            "classification": "finite"
+          }
+        ]
+      ]
+    }
+  ]
+}

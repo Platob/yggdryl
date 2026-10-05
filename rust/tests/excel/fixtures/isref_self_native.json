@@ -1,0 +1,555 @@
+{
+  "schema_version": 1,
+  "kind": "isref_self_native",
+  "source_report": "rust/target/excel-desktop/p5-isref-self-observed/results.json",
+  "source_report_sha256": "d399578eb753aab57fc257d07cc0a1324425158e5162f919ae2b25271263917d",
+  "manifest_sha256": "5b71ec2fb73d9da5813d8f6437777595041b9adbc25b15bc44a14c1f37a3f7d8",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "f8b03efbc713d061029e7282ffa1335a7cffb925edb12e2ec67f233dd0b0fefb",
+      "cases": 8,
+      "physical_formula_cells": 8
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "6cfc26971f48d11b72204127d735934c35f29daa89e52174c0029845d58b02e1",
+      "cases": 8,
+      "physical_formula_cells": 8
+    }
+  ],
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "calculation_scope": "owned workbook worksheets, Cases last; never Application.Calculate",
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": false,
+  "source_cells": [
+    {
+      "cell": "A1",
+      "kind": "number",
+      "value": 2
+    },
+    {
+      "cell": "A2",
+      "kind": "text",
+      "value": "text"
+    },
+    {
+      "cell": "A3",
+      "kind": "physically_absent"
+    },
+    {
+      "cell": "A4",
+      "kind": "formula",
+      "value": "=1/0"
+    }
+  ],
+  "defined_names": {
+    "SelfName": "Cases!$B$5",
+    "SelfColumn": "Cases!$B:$B"
+  },
+  "case_count": 16,
+  "cache_type_counts": {
+    "b": 12,
+    "str": 4
+  },
+  "cases": [
+    {
+      "id": "isref-self-self_single-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B2)",
+      "parameters": {
+        "kind": "self_single",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B2)",
+      "actual_formula2": "=ISREF(B2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(B2)",
+      "after_save_formula2": "=ISREF(B2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(B2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B3:B4)",
+      "parameters": {
+        "kind": "self_range",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B3:B4)",
+      "actual_formula2": "=ISREF(B3:B4)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(B3:B4)",
+      "after_save_formula2": "=ISREF(B3:B4)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(B3:B4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-grouped_self_range-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "function": "ISREF",
+      "wire_formula": "ISREF((B3:B4))",
+      "parameters": {
+        "kind": "grouped_self_range",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF((B3:B4))",
+      "actual_formula2": "=ISREF((B3:B4))",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF((B3:B4))",
+      "after_save_formula2": "=ISREF((B3:B4))",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF((B3:B4))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_named_scalar-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "function": "ISREF",
+      "wire_formula": "ISREF(SelfName)",
+      "parameters": {
+        "kind": "self_named_scalar",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(SelfName)",
+      "actual_formula2": "=ISREF(SelfName)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(SelfName)",
+      "after_save_formula2": "=ISREF(SelfName)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(SelfName)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_named_column-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "function": "ISREF",
+      "wire_formula": "ISREF(SelfColumn)",
+      "parameters": {
+        "kind": "self_named_column",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(SelfColumn)",
+      "actual_formula2": "=ISREF(SelfColumn)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(SelfColumn)",
+      "after_save_formula2": "=ISREF(SelfColumn)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(SelfColumn)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-computed_cycle-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B8+0)",
+      "parameters": {
+        "kind": "computed_cycle",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B8+0)",
+      "actual_formula2": "=ISREF(B8+0)",
+      "actual_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "after_save_formula": "=ISREF(B8+0)",
+      "after_save_formula2": "=ISREF(B8+0)",
+      "after_save_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "cache_type": "str",
+      "cache_value_text": null,
+      "cache_formula_text": "ISREF(B8+0)",
+      "cache_formula_attributes": {
+        "ca": "1"
+      },
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-computed_cycle_source-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "function": "CONTROL",
+      "wire_formula": "B7+1",
+      "parameters": {
+        "kind": "computed_cycle_source",
+        "origin": "self"
+      },
+      "actual_formula": "=B7+1",
+      "actual_formula2": "=B7+1",
+      "actual_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "after_save_formula": "=B7+1",
+      "after_save_formula2": "=B7+1",
+      "after_save_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "cache_type": "str",
+      "cache_value_text": null,
+      "cache_formula_text": "B7+1",
+      "cache_formula_attributes": {
+        "ca": "1"
+      },
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-invalid_direct-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "function": "ISREF",
+      "wire_formula": "ISREF(#REF!)",
+      "parameters": {
+        "kind": "invalid_direct",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(#REF!)",
+      "actual_formula2": "=ISREF(#REF!)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(#REF!)",
+      "after_save_formula2": "=ISREF(#REF!)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(#REF!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_single-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B2)",
+      "parameters": {
+        "kind": "self_single",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B2)",
+      "actual_formula2": "=ISREF(B2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(B2)",
+      "after_save_formula2": "=ISREF(B2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(B2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B3:B4)",
+      "parameters": {
+        "kind": "self_range",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B3:B4)",
+      "actual_formula2": "=ISREF(B3:B4)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(B3:B4)",
+      "after_save_formula2": "=ISREF(B3:B4)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(B3:B4)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-grouped_self_range-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "function": "ISREF",
+      "wire_formula": "ISREF((B3:B4))",
+      "parameters": {
+        "kind": "grouped_self_range",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF((B3:B4))",
+      "actual_formula2": "=ISREF((B3:B4))",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF((B3:B4))",
+      "after_save_formula2": "=ISREF((B3:B4))",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF((B3:B4))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_named_scalar-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "function": "ISREF",
+      "wire_formula": "ISREF(SelfName)",
+      "parameters": {
+        "kind": "self_named_scalar",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(SelfName)",
+      "actual_formula2": "=ISREF(SelfName)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(SelfName)",
+      "after_save_formula2": "=ISREF(SelfName)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(SelfName)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-self_named_column-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "function": "ISREF",
+      "wire_formula": "ISREF(SelfColumn)",
+      "parameters": {
+        "kind": "self_named_column",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(SelfColumn)",
+      "actual_formula2": "=ISREF(SelfColumn)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(SelfColumn)",
+      "after_save_formula2": "=ISREF(SelfColumn)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(SelfColumn)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-computed_cycle-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "function": "ISREF",
+      "wire_formula": "ISREF(B8+0)",
+      "parameters": {
+        "kind": "computed_cycle",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(B8+0)",
+      "actual_formula2": "=ISREF(B8+0)",
+      "actual_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "after_save_formula": "=ISREF(B8+0)",
+      "after_save_formula2": "=ISREF(B8+0)",
+      "after_save_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "cache_type": "str",
+      "cache_value_text": null,
+      "cache_formula_text": "ISREF(B8+0)",
+      "cache_formula_attributes": {
+        "ca": "1"
+      },
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-computed_cycle_source-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "function": "CONTROL",
+      "wire_formula": "B7+1",
+      "parameters": {
+        "kind": "computed_cycle_source",
+        "origin": "self"
+      },
+      "actual_formula": "=B7+1",
+      "actual_formula2": "=B7+1",
+      "actual_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "after_save_formula": "=B7+1",
+      "after_save_formula2": "=B7+1",
+      "after_save_value2": {
+        "variant": "str",
+        "value": ""
+      },
+      "cache_type": "str",
+      "cache_value_text": null,
+      "cache_formula_text": "B7+1",
+      "cache_formula_attributes": {
+        "ca": "1"
+      },
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-self-invalid_direct-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "function": "ISREF",
+      "wire_formula": "ISREF(#REF!)",
+      "parameters": {
+        "kind": "invalid_direct",
+        "origin": "self"
+      },
+      "actual_formula": "=ISREF(#REF!)",
+      "actual_formula2": "=ISREF(#REF!)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(#REF!)",
+      "after_save_formula2": "=ISREF(#REF!)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(#REF!)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ]
+}

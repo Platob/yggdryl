@@ -1,0 +1,2622 @@
+{
+  "schema_version": 1,
+  "kind": "p5_criteria_single_cell_native_evidence",
+  "report": "rust/target/excel-desktop/p5-criteria-isolation-native/results.json",
+  "report_sha256": "3399595ab0b3d4c876da86133b60e93ef10dc841207bf4e2beb5c44cc8aa62a3",
+  "manifest": ".scratch/p5-criteria-isolation-inputs/cases.json",
+  "manifest_sha256": "744213685b0a0d6a37449b3a3518e13849e9b4d752ff601785418acd69b530a7",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cleanup_completed": true,
+  "native_cache_equal": 92,
+  "source_cells": {
+    "Values": {
+      "A3": 3,
+      "A5": true,
+      "A7": "3"
+    }
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "48356026c5dd922518bdb7fe26d0fa3093b932bd71887fd85b888dc30f323b80",
+      "cases": 23,
+      "physical_formula_cells": 23
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "e348c8b46770b9f444246da2e93c1772c721418764fb098a36b28b1b07c39d5c",
+      "cases": 23,
+      "physical_formula_cells": 23
+    }
+  ],
+  "cases": [
+    {
+      "id": "source-empty-text-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "A9",
+      "wire_formula": "\"\"",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "source-empty-text"
+      },
+      "actual": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "\"\"",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A9",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "A11",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "source-error"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "COUNTIF(Values!A3,3)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,3)",
+        "formula2": "=COUNTIF(Values!A3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,3)",
+        "formula2": "=COUNTIF(Values!A3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COUNTIF(Values!A3,\"3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"3\")",
+        "formula2": "=COUNTIF(Values!A3,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"3\")",
+        "formula2": "=COUNTIF(Values!A3,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\"3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COUNTIF(Values!A3,\"03\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"03\")",
+        "formula2": "=COUNTIF(Values!A3,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"03\")",
+        "formula2": "=COUNTIF(Values!A3,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\"03\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COUNTIF(Values!A3,\"<>3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-3"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A3,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A3,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A3,\"<>3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COUNTIF(Values!A3,\">2\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-4"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\">2\")",
+        "formula2": "=COUNTIF(Values!A3,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\">2\")",
+        "formula2": "=COUNTIF(Values!A3,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\">2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COUNTIF(Values!A7,3)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,3)",
+        "formula2": "=COUNTIF(Values!A7,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,3)",
+        "formula2": "=COUNTIF(Values!A7,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COUNTIF(Values!A7,\"3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"3\")",
+        "formula2": "=COUNTIF(Values!A7,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"3\")",
+        "formula2": "=COUNTIF(Values!A7,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "COUNTIF(Values!A7,\"03\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"03\")",
+        "formula2": "=COUNTIF(Values!A7,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"03\")",
+        "formula2": "=COUNTIF(Values!A7,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"03\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "COUNTIF(Values!A7,\"<>3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-3"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A7,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A7,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"<>3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "COUNTIF(Values!A7,\">2\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-4"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\">2\")",
+        "formula2": "=COUNTIF(Values!A7,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\">2\")",
+        "formula2": "=COUNTIF(Values!A7,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A7,\">2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "absent-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "COUNTIF(Values!A4,\"\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "absent-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A4,\"\")",
+        "formula2": "=COUNTIF(Values!A4,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A4,\"\")",
+        "formula2": "=COUNTIF(Values!A4,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A4,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "absent-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "COUNTIF(Values!A4,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "absent-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A4,\"<>\")",
+        "formula2": "=COUNTIF(Values!A4,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A4,\"<>\")",
+        "formula2": "=COUNTIF(Values!A4,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A4,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "COUNTIF(Values!A9,\"\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"\")",
+        "formula2": "=COUNTIF(Values!A9,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"\")",
+        "formula2": "=COUNTIF(Values!A9,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "COUNTIF(Values!A9,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"<>\")",
+        "formula2": "=COUNTIF(Values!A9,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"<>\")",
+        "formula2": "=COUNTIF(Values!A9,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "COUNTIF(Values!A9,\"*\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"*\")",
+        "formula2": "=COUNTIF(Values!A9,\"*\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"*\")",
+        "formula2": "=COUNTIF(Values!A9,\"*\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "COUNTIF(Values!A11,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"<>\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"<>\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A11,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "COUNTIF(Values!A11,\"#DIV/0!\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "COUNTIF(Values!A11,\"<>#DIV/0!\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "COUNTIF(Values!A5,TRUE)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,TRUE)",
+        "formula2": "=COUNTIF(Values!A5,TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,TRUE)",
+        "formula2": "=COUNTIF(Values!A5,TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A5,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "COUNTIF(Values!A5,\"TRUE\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,\"TRUE\")",
+        "formula2": "=COUNTIF(Values!A5,\"TRUE\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,\"TRUE\")",
+        "formula2": "=COUNTIF(Values!A5,\"TRUE\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A5,\"TRUE\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "COUNTIF(Values!A5,1)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,1)",
+        "formula2": "=COUNTIF(Values!A5,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,1)",
+        "formula2": "=COUNTIF(Values!A5,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A5,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-empty-text-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "A9",
+      "wire_formula": "\"\"",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "source-empty-text"
+      },
+      "actual": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=\"\"",
+        "formula2": "=\"\"",
+        "value2": {
+          "variant": "str",
+          "value": ""
+        },
+        "display": "",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": null,
+        "formula_text": "\"\"",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A9",
+          "t": "str"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "source-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "A11",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "source-error"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "A11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "COUNTIF(Values!A3,3)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,3)",
+        "formula2": "=COUNTIF(Values!A3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,3)",
+        "formula2": "=COUNTIF(Values!A3,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "COUNTIF(Values!A3,\"3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"3\")",
+        "formula2": "=COUNTIF(Values!A3,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"3\")",
+        "formula2": "=COUNTIF(Values!A3,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\"3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "COUNTIF(Values!A3,\"03\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"03\")",
+        "formula2": "=COUNTIF(Values!A3,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"03\")",
+        "formula2": "=COUNTIF(Values!A3,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\"03\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "COUNTIF(Values!A3,\"<>3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-3"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A3,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A3,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A3,\"<>3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "numeric3-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "COUNTIF(Values!A3,\">2\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "numeric3-4"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A3,\">2\")",
+        "formula2": "=COUNTIF(Values!A3,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A3,\">2\")",
+        "formula2": "=COUNTIF(Values!A3,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A3,\">2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "COUNTIF(Values!A7,3)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,3)",
+        "formula2": "=COUNTIF(Values!A7,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,3)",
+        "formula2": "=COUNTIF(Values!A7,3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "COUNTIF(Values!A7,\"3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"3\")",
+        "formula2": "=COUNTIF(Values!A7,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"3\")",
+        "formula2": "=COUNTIF(Values!A7,\"3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "COUNTIF(Values!A7,\"03\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"03\")",
+        "formula2": "=COUNTIF(Values!A7,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"03\")",
+        "formula2": "=COUNTIF(Values!A7,\"03\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"03\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "COUNTIF(Values!A7,\"<>3\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-3"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A7,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\"<>3\")",
+        "formula2": "=COUNTIF(Values!A7,\"<>3\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A7,\"<>3\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "text3-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "COUNTIF(Values!A7,\">2\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "text3-4"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A7,\">2\")",
+        "formula2": "=COUNTIF(Values!A7,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A7,\">2\")",
+        "formula2": "=COUNTIF(Values!A7,\">2\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A7,\">2\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "absent-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "COUNTIF(Values!A4,\"\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "absent-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A4,\"\")",
+        "formula2": "=COUNTIF(Values!A4,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A4,\"\")",
+        "formula2": "=COUNTIF(Values!A4,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A4,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "absent-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "COUNTIF(Values!A4,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "absent-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A4,\"<>\")",
+        "formula2": "=COUNTIF(Values!A4,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A4,\"<>\")",
+        "formula2": "=COUNTIF(Values!A4,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A4,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "COUNTIF(Values!A9,\"\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"\")",
+        "formula2": "=COUNTIF(Values!A9,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"\")",
+        "formula2": "=COUNTIF(Values!A9,\"\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "COUNTIF(Values!A9,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"<>\")",
+        "formula2": "=COUNTIF(Values!A9,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"<>\")",
+        "formula2": "=COUNTIF(Values!A9,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "empty-text-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "COUNTIF(Values!A9,\"*\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "empty-text-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A9,\"*\")",
+        "formula2": "=COUNTIF(Values!A9,\"*\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A9,\"*\")",
+        "formula2": "=COUNTIF(Values!A9,\"*\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A9,\"*\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "COUNTIF(Values!A11,\"<>\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"<>\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"<>\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A11,\"<>\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "COUNTIF(Values!A11,\"#DIV/0!\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A11,\"#DIV/0!\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "error-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "COUNTIF(Values!A11,\"<>#DIV/0!\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "error-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula2": "=COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A11,\"<>#DIV/0!\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "COUNTIF(Values!A5,TRUE)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-0"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,TRUE)",
+        "formula2": "=COUNTIF(Values!A5,TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,TRUE)",
+        "formula2": "=COUNTIF(Values!A5,TRUE)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "COUNTIF(Values!A5,TRUE)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "COUNTIF(Values!A5,\"TRUE\")",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-1"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,\"TRUE\")",
+        "formula2": "=COUNTIF(Values!A5,\"TRUE\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,\"TRUE\")",
+        "formula2": "=COUNTIF(Values!A5,\"TRUE\")",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A5,\"TRUE\")",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    },
+    {
+      "id": "boolean-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "COUNTIF(Values!A5,1)",
+      "shape": {
+        "kind": "criteria_single_cell",
+        "operand_shape": "boolean-2"
+      },
+      "actual": {
+        "formula": "=COUNTIF(Values!A5,1)",
+        "formula2": "=COUNTIF(Values!A5,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=COUNTIF(Values!A5,1)",
+        "formula2": "=COUNTIF(Values!A5,1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "COUNTIF(Values!A5,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      }
+    }
+  ]
+}

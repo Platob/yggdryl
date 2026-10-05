@@ -12,3 +12,6 @@ mod bytes;
 mod lifecycle;
 #[path = "iobase/transfer.rs"]
 mod transfer;
+
+#[path = "iobase/hierarchy.rs"]
+mod hierarchy;

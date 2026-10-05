@@ -56,7 +56,7 @@ answers the task.
 | open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | a catalog of namespaces of tables - a folder read as one, a table registered at a dotted path, `SystemWarehouse`, `Properties`, the `namespaces`/`tables` views, `Catalog.from_url` | `yggdryl-warehouse` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
-| read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`, with `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
+| read or write rows/batches in Arrow IPC, Parquet, Avro, CSV/TSV, Excel (`.xlsx`; Rust/Python offer `Workbook`/`Sheet`/`Cell`), text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |

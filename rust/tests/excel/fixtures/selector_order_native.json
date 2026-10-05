@@ -1,0 +1,6424 @@
+{
+  "schema_version": 1,
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 260,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "scope": "Exactly130 value/reference observations and11 owned Worksheet.CircularReference controls. Initial dependencies include all IFS conditions and SWITCH expression/keys; only the chosen result/default is reached. Circular cached zeros are observations, never expected Rust values.",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "33738468135c20ff90f5b386f4fed3c29d305da784351c0637789675c1733a44",
+      "cases": 65,
+      "physical_formula_cells": 65
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "191fdb2c0e3b015c95b24c7c182fea2b96f53b6a85c83115e0747d4fe3ab6f0b",
+      "cases": 65,
+      "physical_formula_cells": 65
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "A1": true,
+      "A2": false,
+      "A3": 2,
+      "B1": 10,
+      "B2": 20,
+      "B3": 30,
+      "C3": 40,
+      "B4": 50,
+      "C4": 60,
+      "B5": 70
+    },
+    "CycleShape": {
+      "B3": 101
+    }
+  },
+  "manifest_sha256": "aca0be2e9cc2e8a6d95946e3b3d68cc32d3df0b3265b45d64cff40e9397c784d",
+  "source_report": "rust/target/excel-desktop/p5-selectors-followup/results.json",
+  "source_report_sha256": "3e0d29e1f8c86b85b6f51eeccdd23109137f8ca3e4b7bb8dea3644d10da6d5e7",
+  "cases": [
+    {
+      "id": "source-error-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D1",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "source-na-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "NA()",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=NA()",
+        "formula2": "=NA()",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=NA()",
+        "formula2": "=NA()",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "NA()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "source-selector-1900",
+      "date_system": "1900",
+      "sheet": "Values",
+      "cell": "D3",
+      "wire_formula": "1+1",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1+1",
+        "formula2": "=1+1",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=1+1",
+        "formula2": "=1+1",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "1+1",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D3"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-first-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,12)",
+        "formula2": "=@IFS(TRUE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,12)",
+        "formula2": "=@IFS(TRUE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-second-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "_xlfn.IFS(FALSE,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,TRUE,12)",
+        "formula2": "=@IFS(FALSE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,TRUE,12)",
+        "formula2": "=@IFS(FALSE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-none-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "_xlfn.IFS(FALSE,11,FALSE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,FALSE,12)",
+        "formula2": "=@IFS(FALSE,11,FALSE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,FALSE,12)",
+        "formula2": "=@IFS(FALSE,11,FALSE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "_xlfn.IFS(FALSE,11,FALSE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-number-true-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "_xlfn.IFS(2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(2,11,TRUE,12)",
+        "formula2": "=@IFS(2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(2,11,TRUE,12)",
+        "formula2": "=@IFS(2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-negative-true-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "_xlfn.IFS(-2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(-2,11,TRUE,12)",
+        "formula2": "=@IFS(-2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(-2,11,TRUE,12)",
+        "formula2": "=@IFS(-2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(-2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-zero-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "_xlfn.IFS(0,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(0,11,TRUE,12)",
+        "formula2": "=@IFS(0,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(0,11,TRUE,12)",
+        "formula2": "=@IFS(0,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(0,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-text-true-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "_xlfn.IFS(\"TRUE\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"TRUE\",11,TRUE,12)",
+        "formula2": "=@IFS(\"TRUE\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"TRUE\",11,TRUE,12)",
+        "formula2": "=@IFS(\"TRUE\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"TRUE\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-text-number-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "_xlfn.IFS(\"1\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"1\",11,TRUE,12)",
+        "formula2": "=@IFS(\"1\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"1\",11,TRUE,12)",
+        "formula2": "=@IFS(\"1\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"1\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-text-invalid-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "_xlfn.IFS(\"abc\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"abc\",11,TRUE,12)",
+        "formula2": "=@IFS(\"abc\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"abc\",11,TRUE,12)",
+        "formula2": "=@IFS(\"abc\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"abc\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-empty-test-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "_xlfn.IFS(,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(,11,TRUE,12)",
+        "formula2": "=@IFS(,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(,11,TRUE,12)",
+        "formula2": "=@IFS(,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-empty-result-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "_xlfn.IFS(TRUE,,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,,TRUE,12)",
+        "formula2": "=@IFS(TRUE,,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,,TRUE,12)",
+        "formula2": "=@IFS(TRUE,,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-empty-last-result-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "_xlfn.IFS(FALSE,11,TRUE,)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,TRUE,)",
+        "formula2": "=@IFS(FALSE,11,TRUE,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,TRUE,)",
+        "formula2": "=@IFS(FALSE,11,TRUE,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(FALSE,11,TRUE,)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-boolean-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "_xlfn.IFS(TRUE,FALSE,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,FALSE,TRUE,12)",
+        "formula2": "=@IFS(TRUE,FALSE,TRUE,12)",
+        "value2": {
+          "variant": "bool",
+          "value": false
+        },
+        "display": "FAUX",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,FALSE,TRUE,12)",
+        "formula2": "=@IFS(TRUE,FALSE,TRUE,12)",
+        "value2": {
+          "variant": "bool",
+          "value": false
+        },
+        "display": "FAUX",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,FALSE,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-text-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "_xlfn.IFS(TRUE,\"chosen\",TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula2": "=@IFS(TRUE,\"chosen\",TRUE,12)",
+        "value2": {
+          "variant": "str",
+          "value": "chosen"
+        },
+        "display": "chosen",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula2": "=@IFS(TRUE,\"chosen\",TRUE,12)",
+        "value2": {
+          "variant": "str",
+          "value": "chosen"
+        },
+        "display": "chosen",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "chosen",
+        "formula_text": "_xlfn.IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "str"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-blank-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "_xlfn.IFS(TRUE,Values!C9,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,Values!C9,TRUE,12)",
+        "formula2": "=@IFS(TRUE,Values!C9,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,Values!C9,TRUE,12)",
+        "formula2": "=@IFS(TRUE,Values!C9,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,Values!C9,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-reference-test-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "_xlfn.IFS(Values!A1,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(Values!A1,11,TRUE,12)",
+        "formula2": "=@IFS(Values!A1,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(Values!A1,11,TRUE,12)",
+        "formula2": "=@IFS(Values!A1,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(Values!A1,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-formula-test-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "_xlfn.IFS(Values!D3=2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(Values!D3=2,11,TRUE,12)",
+        "formula2": "=@IFS(Values!D3=2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(Values!D3=2,11,TRUE,12)",
+        "formula2": "=@IFS(Values!D3=2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(Values!D3=2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-first-test-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "_xlfn.IFS(1/0,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(1/0,11,TRUE,12)",
+        "formula2": "=@IFS(1/0,11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(1/0,11,TRUE,12)",
+        "formula2": "=@IFS(1/0,11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.IFS(1/0,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-test-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "_xlfn.IFS(TRUE,11,1/0,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,1/0,12)",
+        "formula2": "=@IFS(TRUE,11,1/0,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,1/0,12)",
+        "formula2": "=@IFS(TRUE,11,1/0,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,1/0,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-false-result-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "_xlfn.IFS(FALSE,1/0,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,1/0,TRUE,12)",
+        "formula2": "=@IFS(FALSE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,1/0,TRUE,12)",
+        "formula2": "=@IFS(FALSE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,1/0,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-result-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,1/0)",
+        "formula2": "=@IFS(TRUE,11,TRUE,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,1/0)",
+        "formula2": "=@IFS(TRUE,11,TRUE,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.IFS(TRUE,1/0,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,1/0,TRUE,12)",
+        "formula2": "=@IFS(TRUE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,1/0,TRUE,12)",
+        "formula2": "=@IFS(TRUE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.IFS(TRUE,1/0,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-test-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "_xlfn.IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula2": "=@IFS(TRUE,11,@NO_SUCH_ORDER_FUNCTION(1),12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula2": "=@IFS(TRUE,11,@NO_SUCH_ORDER_FUNCTION(1),12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-false-result-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "_xlfn.IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula2": "=@IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula2": "=@IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-result-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-identity-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "ISREF(_xlfn.IFS(TRUE,Values!B1,TRUE,Values!B2))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula2": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula2": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "1",
+        "formula_text": "ISREF(_xlfn.IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-range-result-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "SUM(_xlfn.IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula2": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula2": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "60",
+        "formula_text": "SUM(_xlfn.IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-at-reference-bool-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "SUM(_xlfn.IFS(TRUE,_xlfn.SINGLE(Values!A1),TRUE,0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "formula2": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "formula2": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUM(_xlfn.IFS(TRUE,_xlfn.SINGLE(Values!A1),TRUE,0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,12,13)",
+        "formula2": "=@SWITCH(1,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,12,13)",
+        "formula2": "=@SWITCH(1,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-second-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "_xlfn.SWITCH(2,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,11,2,12,13)",
+        "formula2": "=@SWITCH(2,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,11,2,12,13)",
+        "formula2": "=@SWITCH(2,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(2,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "_xlfn.SWITCH(3,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "13",
+        "formula_text": "_xlfn.SWITCH(3,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-no-default-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.SWITCH(3,1,11,2,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(3,1,11,2,12)",
+        "formula2": "=@SWITCH(3,1,11,2,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(3,1,11,2,12)",
+        "formula2": "=@SWITCH(3,1,11,2,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "_xlfn.SWITCH(3,1,11,2,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-match-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-bool-number-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.SWITCH(TRUE,1,11,TRUE,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula2": "=@SWITCH(TRUE,1,11,TRUE,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula2": "=@SWITCH(TRUE,1,11,TRUE,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-number-bool-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.SWITCH(1,TRUE,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,TRUE,11,1,12,13)",
+        "formula2": "=@SWITCH(1,TRUE,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,TRUE,11,1,12,13)",
+        "formula2": "=@SWITCH(1,TRUE,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(1,TRUE,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-number-text-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.SWITCH(1,\"1\",11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,\"1\",11,1,12,13)",
+        "formula2": "=@SWITCH(1,\"1\",11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,\"1\",11,1,12,13)",
+        "formula2": "=@SWITCH(1,\"1\",11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(1,\"1\",11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-text-number-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.SWITCH(\"1\",1,11,\"1\",12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula2": "=@SWITCH(\"1\",1,11,\"1\",12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula2": "=@SWITCH(\"1\",1,11,\"1\",12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-case-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.SWITCH(\"AbC\",\"abc\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula2": "=@SWITCH(\"AbC\",\"abc\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula2": "=@SWITCH(\"AbC\",\"abc\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-space-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.SWITCH(\"a b\",\"ab\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"a b\",\"ab\",11,13)",
+        "formula2": "=@SWITCH(\"a b\",\"ab\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"a b\",\"ab\",11,13)",
+        "formula2": "=@SWITCH(\"a b\",\"ab\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "13",
+        "formula_text": "_xlfn.SWITCH(\"a b\",\"ab\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "switch-nonascii-identical-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-nonascii-case-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "switch-empty-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.SWITCH(,0,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(,0,11,13)",
+        "formula2": "=@SWITCH(,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(,0,11,13)",
+        "formula2": "=@SWITCH(,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(,0,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-match-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.SWITCH(0,,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(0,,11,13)",
+        "formula2": "=@SWITCH(0,,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(0,,11,13)",
+        "formula2": "=@SWITCH(0,,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(0,,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-result-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "_xlfn.SWITCH(1,1,,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,,13)",
+        "formula2": "=@SWITCH(1,1,,13)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,,13)",
+        "formula2": "=@SWITCH(1,1,,13)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.SWITCH(1,1,,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-default-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "_xlfn.SWITCH(2,1,11,)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,11,)",
+        "formula2": "=@SWITCH(2,1,11,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,11,)",
+        "formula2": "=@SWITCH(2,1,11,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.SWITCH(2,1,11,)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-blank-reference-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "_xlfn.SWITCH(Values!C9,0,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(Values!C9,0,11,13)",
+        "formula2": "=@SWITCH(Values!C9,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(Values!C9,0,11,13)",
+        "formula2": "=@SWITCH(Values!C9,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(Values!C9,0,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-formula-expression-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "_xlfn.SWITCH(Values!D3,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(Values!D3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(Values!D3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(Values!D3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(Values!D3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(Values!D3,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-expression-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "_xlfn.SWITCH(1/0,1,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1/0,1,11,13)",
+        "formula2": "=@SWITCH(1/0,1,11,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1/0,1,11,13)",
+        "formula2": "=@SWITCH(1/0,1,11,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1/0,1,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-match-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "_xlfn.SWITCH(1,1/0,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1/0,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1/0,11,1,12,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1/0,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1/0,11,1,12,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1,1/0,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-match-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1/0,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1/0,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1/0,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1/0,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1/0,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1/0,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-unmatched-result-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "_xlfn.SWITCH(2,1,1/0,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,1/0,2,12,13)",
+        "formula2": "=@SWITCH(2,1,1/0,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,1/0,2,12,13)",
+        "formula2": "=@SWITCH(2,1,1/0,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(2,1,1/0,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-result-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B52",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,1/0,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,1/0,13)",
+        "formula2": "=@SWITCH(1,1,11,2,1/0,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,1/0,13)",
+        "formula2": "=@SWITCH(1,1,11,2,1/0,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,1/0,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B52"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B53",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1/0)",
+        "formula2": "=@SWITCH(1,1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1/0)",
+        "formula2": "=@SWITCH(1,1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B53"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-selected-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B54",
+      "wire_formula": "_xlfn.SWITCH(1,1,1/0,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,1/0,13)",
+        "formula2": "=@SWITCH(1,1,1/0,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,1/0,13)",
+        "formula2": "=@SWITCH(1,1,1/0,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1,1,1/0,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B54",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-match-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B55",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula2": "=@SWITCH(1,1,11,@NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula2": "=@SWITCH(1,1,11,@NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B55"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-result-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B56",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula2": "=@SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula2": "=@SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B56"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-unknown-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B57",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B57"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-identity-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B58",
+      "wire_formula": "ISREF(_xlfn.SWITCH(1,1,Values!B1,Values!B2))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "formula2": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "formula2": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "1",
+        "formula_text": "ISREF(_xlfn.SWITCH(1,1,Values!B1,Values!B2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B58",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-range-result-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B59",
+      "wire_formula": "SUM(_xlfn.SWITCH(1,1,Values!B1:B3,1/0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula2": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula2": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "60",
+        "formula_text": "SUM(_xlfn.SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B59"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-at-reference-bool-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B60",
+      "wire_formula": "SUM(_xlfn.SWITCH(1,1,_xlfn.SINGLE(Values!A1),0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "formula2": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "formula2": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUM(_xlfn.SWITCH(1,1,_xlfn.SINGLE(Values!A1),0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B60"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "if-control-later-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B61",
+      "wire_formula": "IF(TRUE,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,11,1/0)",
+        "formula2": "=IF(TRUE,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,11,1/0)",
+        "formula2": "=IF(TRUE,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "IF(TRUE,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B61"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "choose-control-later-error-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B62",
+      "wire_formula": "CHOOSE(1,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=CHOOSE(1,11,1/0)",
+        "formula2": "=CHOOSE(1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=CHOOSE(1,11,1/0)",
+        "formula2": "=CHOOSE(1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "CHOOSE(1,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B62"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "source-error-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D1",
+      "wire_formula": "1/0",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=1/0",
+        "formula2": "=1/0",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "1/0",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D1",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "source-na-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D2",
+      "wire_formula": "NA()",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=NA()",
+        "formula2": "=NA()",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=NA()",
+        "formula2": "=NA()",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "NA()",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D2",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "source-selector-1904",
+      "date_system": "1904",
+      "sheet": "Values",
+      "cell": "D3",
+      "wire_formula": "1+1",
+      "shape": {
+        "kind": "source"
+      },
+      "actual": {
+        "formula": "=1+1",
+        "formula2": "=1+1",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=1+1",
+        "formula2": "=1+1",
+        "value2": {
+          "variant": "float",
+          "value": 2.0,
+          "hex": "0x1.0000000000000p+1",
+          "ieee754_hex": "4000000000000000",
+          "classification": "finite"
+        },
+        "display": "2",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2",
+        "formula_text": "1+1",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "D3"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-first-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,12)",
+        "formula2": "=@IFS(TRUE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,12)",
+        "formula2": "=@IFS(TRUE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-second-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "_xlfn.IFS(FALSE,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,TRUE,12)",
+        "formula2": "=@IFS(FALSE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,TRUE,12)",
+        "formula2": "=@IFS(FALSE,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-none-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "_xlfn.IFS(FALSE,11,FALSE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,FALSE,12)",
+        "formula2": "=@IFS(FALSE,11,FALSE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,FALSE,12)",
+        "formula2": "=@IFS(FALSE,11,FALSE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "_xlfn.IFS(FALSE,11,FALSE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-number-true-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "_xlfn.IFS(2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(2,11,TRUE,12)",
+        "formula2": "=@IFS(2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(2,11,TRUE,12)",
+        "formula2": "=@IFS(2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-negative-true-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "_xlfn.IFS(-2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(-2,11,TRUE,12)",
+        "formula2": "=@IFS(-2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(-2,11,TRUE,12)",
+        "formula2": "=@IFS(-2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(-2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-zero-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "_xlfn.IFS(0,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(0,11,TRUE,12)",
+        "formula2": "=@IFS(0,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(0,11,TRUE,12)",
+        "formula2": "=@IFS(0,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(0,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-text-true-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "_xlfn.IFS(\"TRUE\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"TRUE\",11,TRUE,12)",
+        "formula2": "=@IFS(\"TRUE\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"TRUE\",11,TRUE,12)",
+        "formula2": "=@IFS(\"TRUE\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"TRUE\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-text-number-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "_xlfn.IFS(\"1\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"1\",11,TRUE,12)",
+        "formula2": "=@IFS(\"1\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"1\",11,TRUE,12)",
+        "formula2": "=@IFS(\"1\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"1\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-text-invalid-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "_xlfn.IFS(\"abc\",11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(\"abc\",11,TRUE,12)",
+        "formula2": "=@IFS(\"abc\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(\"abc\",11,TRUE,12)",
+        "formula2": "=@IFS(\"abc\",11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "_xlfn.IFS(\"abc\",11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9",
+          "t": "e"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "ifs-empty-test-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "_xlfn.IFS(,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(,11,TRUE,12)",
+        "formula2": "=@IFS(,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(,11,TRUE,12)",
+        "formula2": "=@IFS(,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-empty-result-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "_xlfn.IFS(TRUE,,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,,TRUE,12)",
+        "formula2": "=@IFS(TRUE,,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,,TRUE,12)",
+        "formula2": "=@IFS(TRUE,,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-empty-last-result-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "_xlfn.IFS(FALSE,11,TRUE,)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,11,TRUE,)",
+        "formula2": "=@IFS(FALSE,11,TRUE,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,11,TRUE,)",
+        "formula2": "=@IFS(FALSE,11,TRUE,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(FALSE,11,TRUE,)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-boolean-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "_xlfn.IFS(TRUE,FALSE,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,FALSE,TRUE,12)",
+        "formula2": "=@IFS(TRUE,FALSE,TRUE,12)",
+        "value2": {
+          "variant": "bool",
+          "value": false
+        },
+        "display": "FAUX",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,FALSE,TRUE,12)",
+        "formula2": "=@IFS(TRUE,FALSE,TRUE,12)",
+        "value2": {
+          "variant": "bool",
+          "value": false
+        },
+        "display": "FAUX",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,FALSE,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-text-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "_xlfn.IFS(TRUE,\"chosen\",TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula2": "=@IFS(TRUE,\"chosen\",TRUE,12)",
+        "value2": {
+          "variant": "str",
+          "value": "chosen"
+        },
+        "display": "chosen",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula2": "=@IFS(TRUE,\"chosen\",TRUE,12)",
+        "value2": {
+          "variant": "str",
+          "value": "chosen"
+        },
+        "display": "chosen",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "str",
+        "value_text": "chosen",
+        "formula_text": "_xlfn.IFS(TRUE,\"chosen\",TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "str"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-blank-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "_xlfn.IFS(TRUE,Values!C9,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,Values!C9,TRUE,12)",
+        "formula2": "=@IFS(TRUE,Values!C9,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,Values!C9,TRUE,12)",
+        "formula2": "=@IFS(TRUE,Values!C9,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.IFS(TRUE,Values!C9,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-reference-test-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "_xlfn.IFS(Values!A1,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(Values!A1,11,TRUE,12)",
+        "formula2": "=@IFS(Values!A1,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(Values!A1,11,TRUE,12)",
+        "formula2": "=@IFS(Values!A1,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(Values!A1,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-formula-test-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "_xlfn.IFS(Values!D3=2,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(Values!D3=2,11,TRUE,12)",
+        "formula2": "=@IFS(Values!D3=2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(Values!D3=2,11,TRUE,12)",
+        "formula2": "=@IFS(Values!D3=2,11,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(Values!D3=2,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-first-test-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "_xlfn.IFS(1/0,11,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(1/0,11,TRUE,12)",
+        "formula2": "=@IFS(1/0,11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(1/0,11,TRUE,12)",
+        "formula2": "=@IFS(1/0,11,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.IFS(1/0,11,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-test-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "_xlfn.IFS(TRUE,11,1/0,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,1/0,12)",
+        "formula2": "=@IFS(TRUE,11,1/0,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,1/0,12)",
+        "formula2": "=@IFS(TRUE,11,1/0,12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,1/0,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-false-result-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "_xlfn.IFS(FALSE,1/0,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,1/0,TRUE,12)",
+        "formula2": "=@IFS(FALSE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,1/0,TRUE,12)",
+        "formula2": "=@IFS(FALSE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,1/0,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-result-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,1/0)",
+        "formula2": "=@IFS(TRUE,11,TRUE,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,1/0)",
+        "formula2": "=@IFS(TRUE,11,TRUE,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-selected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "_xlfn.IFS(TRUE,1/0,TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,1/0,TRUE,12)",
+        "formula2": "=@IFS(TRUE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,1/0,TRUE,12)",
+        "formula2": "=@IFS(TRUE,1/0,TRUE,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.IFS(TRUE,1/0,TRUE,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-test-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "_xlfn.IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula2": "=@IFS(TRUE,11,@NO_SUCH_ORDER_FUNCTION(1),12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula2": "=@IFS(TRUE,11,@NO_SUCH_ORDER_FUNCTION(1),12)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,NO_SUCH_ORDER_FUNCTION(1),12)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-false-result-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "_xlfn.IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula2": "=@IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula2": "=@IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.IFS(FALSE,NO_SUCH_ORDER_FUNCTION(1),TRUE,12)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-later-result-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B25",
+      "wire_formula": "_xlfn.IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.IFS(TRUE,11,TRUE,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B25"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-identity-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B26",
+      "wire_formula": "ISREF(_xlfn.IFS(TRUE,Values!B1,TRUE,Values!B2))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula2": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula2": "=ISREF(IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "1",
+        "formula_text": "ISREF(_xlfn.IFS(TRUE,Values!B1,TRUE,Values!B2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B26",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-range-result-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B27",
+      "wire_formula": "SUM(_xlfn.IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula2": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula2": "=SUM(IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "60",
+        "formula_text": "SUM(_xlfn.IFS(TRUE,Values!B1:B3,TRUE,1/0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B27"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "ifs-at-reference-bool-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B28",
+      "wire_formula": "SUM(_xlfn.IFS(TRUE,_xlfn.SINGLE(Values!A1),TRUE,0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "formula2": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "formula2": "=SUM(IFS(TRUE,@Values!A1,TRUE,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUM(_xlfn.IFS(TRUE,_xlfn.SINGLE(Values!A1),TRUE,0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B28"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B29",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,12,13)",
+        "formula2": "=@SWITCH(1,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,12,13)",
+        "formula2": "=@SWITCH(1,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B29"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-second-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B30",
+      "wire_formula": "_xlfn.SWITCH(2,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,11,2,12,13)",
+        "formula2": "=@SWITCH(2,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,11,2,12,13)",
+        "formula2": "=@SWITCH(2,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(2,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B30"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B31",
+      "wire_formula": "_xlfn.SWITCH(3,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "13",
+        "formula_text": "_xlfn.SWITCH(3,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B31"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-no-default-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B32",
+      "wire_formula": "_xlfn.SWITCH(3,1,11,2,12)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(3,1,11,2,12)",
+        "formula2": "=@SWITCH(3,1,11,2,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(3,1,11,2,12)",
+        "formula2": "=@SWITCH(3,1,11,2,12)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826246
+        },
+        "display": "#N/A",
+        "is_error": true,
+        "error_type": {
+          "number": 7,
+          "literal": "#N/A",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#N/A",
+        "formula_text": "_xlfn.SWITCH(3,1,11,2,12)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B32",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-match-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B33",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B33"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-bool-number-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B34",
+      "wire_formula": "_xlfn.SWITCH(TRUE,1,11,TRUE,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula2": "=@SWITCH(TRUE,1,11,TRUE,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula2": "=@SWITCH(TRUE,1,11,TRUE,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(TRUE,1,11,TRUE,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B34"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-number-bool-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B35",
+      "wire_formula": "_xlfn.SWITCH(1,TRUE,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,TRUE,11,1,12,13)",
+        "formula2": "=@SWITCH(1,TRUE,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,TRUE,11,1,12,13)",
+        "formula2": "=@SWITCH(1,TRUE,11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(1,TRUE,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B35"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-number-text-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B36",
+      "wire_formula": "_xlfn.SWITCH(1,\"1\",11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,\"1\",11,1,12,13)",
+        "formula2": "=@SWITCH(1,\"1\",11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,\"1\",11,1,12,13)",
+        "formula2": "=@SWITCH(1,\"1\",11,1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(1,\"1\",11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B36"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-text-number-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B37",
+      "wire_formula": "_xlfn.SWITCH(\"1\",1,11,\"1\",12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula2": "=@SWITCH(\"1\",1,11,\"1\",12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula2": "=@SWITCH(\"1\",1,11,\"1\",12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(\"1\",1,11,\"1\",12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B37"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-case-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B38",
+      "wire_formula": "_xlfn.SWITCH(\"AbC\",\"abc\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula2": "=@SWITCH(\"AbC\",\"abc\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula2": "=@SWITCH(\"AbC\",\"abc\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"AbC\",\"abc\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B38"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-space-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B39",
+      "wire_formula": "_xlfn.SWITCH(\"a b\",\"ab\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"a b\",\"ab\",11,13)",
+        "formula2": "=@SWITCH(\"a b\",\"ab\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"a b\",\"ab\",11,13)",
+        "formula2": "=@SWITCH(\"a b\",\"ab\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 13.0,
+          "hex": "0x1.a000000000000p+3",
+          "ieee754_hex": "402a000000000000",
+          "classification": "finite"
+        },
+        "display": "13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "13",
+        "formula_text": "_xlfn.SWITCH(\"a b\",\"ab\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B39"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "switch-nonascii-identical-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B40",
+      "wire_formula": "_xlfn.SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"\u00e9\",\"\u00e9\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B40"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-nonascii-case-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B41",
+      "wire_formula": "_xlfn.SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula2": "=@SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(\"\u00e9\",\"\u00c9\",11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B41"
+        }
+      },
+      "rust_policy": "held_locale"
+    },
+    {
+      "id": "switch-empty-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B42",
+      "wire_formula": "_xlfn.SWITCH(,0,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(,0,11,13)",
+        "formula2": "=@SWITCH(,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(,0,11,13)",
+        "formula2": "=@SWITCH(,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(,0,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B42"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-match-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B43",
+      "wire_formula": "_xlfn.SWITCH(0,,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(0,,11,13)",
+        "formula2": "=@SWITCH(0,,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(0,,11,13)",
+        "formula2": "=@SWITCH(0,,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(0,,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B43"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-result-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B44",
+      "wire_formula": "_xlfn.SWITCH(1,1,,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,,13)",
+        "formula2": "=@SWITCH(1,1,,13)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,,13)",
+        "formula2": "=@SWITCH(1,1,,13)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.SWITCH(1,1,,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B44"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-empty-default-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B45",
+      "wire_formula": "_xlfn.SWITCH(2,1,11,)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,11,)",
+        "formula2": "=@SWITCH(2,1,11,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,11,)",
+        "formula2": "=@SWITCH(2,1,11,)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "_xlfn.SWITCH(2,1,11,)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B45"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-blank-reference-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B46",
+      "wire_formula": "_xlfn.SWITCH(Values!C9,0,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(Values!C9,0,11,13)",
+        "formula2": "=@SWITCH(Values!C9,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(Values!C9,0,11,13)",
+        "formula2": "=@SWITCH(Values!C9,0,11,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(Values!C9,0,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B46"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-formula-expression-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B47",
+      "wire_formula": "_xlfn.SWITCH(Values!D3,1,11,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(Values!D3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(Values!D3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(Values!D3,1,11,2,12,13)",
+        "formula2": "=@SWITCH(Values!D3,1,11,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(Values!D3,1,11,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B47"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-expression-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B48",
+      "wire_formula": "_xlfn.SWITCH(1/0,1,11,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1/0,1,11,13)",
+        "formula2": "=@SWITCH(1/0,1,11,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1/0,1,11,13)",
+        "formula2": "=@SWITCH(1/0,1,11,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1/0,1,11,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B48",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-first-match-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B49",
+      "wire_formula": "_xlfn.SWITCH(1,1/0,11,1,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1/0,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1/0,11,1,12,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1/0,11,1,12,13)",
+        "formula2": "=@SWITCH(1,1/0,11,1,12,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1,1/0,11,1,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B49",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-match-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B50",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1/0,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1/0,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1/0,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1/0,12,13)",
+        "formula2": "=@SWITCH(1,1,11,1/0,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1/0,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B50"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-unmatched-result-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B51",
+      "wire_formula": "_xlfn.SWITCH(2,1,1/0,2,12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(2,1,1/0,2,12,13)",
+        "formula2": "=@SWITCH(2,1,1/0,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(2,1,1/0,2,12,13)",
+        "formula2": "=@SWITCH(2,1,1/0,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "display": "12",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "12",
+        "formula_text": "_xlfn.SWITCH(2,1,1/0,2,12,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B51"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-result-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B52",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,1/0,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,1/0,13)",
+        "formula2": "=@SWITCH(1,1,11,2,1/0,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,1/0,13)",
+        "formula2": "=@SWITCH(1,1,11,2,1/0,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,1/0,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B52"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B53",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,1/0)",
+        "formula2": "=@SWITCH(1,1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,1/0)",
+        "formula2": "=@SWITCH(1,1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B53"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-selected-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B54",
+      "wire_formula": "_xlfn.SWITCH(1,1,1/0,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,1/0,13)",
+        "formula2": "=@SWITCH(1,1,1/0,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,1/0,13)",
+        "formula2": "=@SWITCH(1,1,1/0,13)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826281
+        },
+        "display": "#DIV/0!",
+        "is_error": true,
+        "error_type": {
+          "number": 2,
+          "literal": "#DIV/0!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#DIV/0!",
+        "formula_text": "_xlfn.SWITCH(1,1,1/0,13)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B54",
+          "t": "e"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-match-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B55",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula2": "=@SWITCH(1,1,11,@NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula2": "=@SWITCH(1,1,11,@NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1),12,13)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B55"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-later-result-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B56",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula2": "=@SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula2": "=@SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,2,NO_SUCH_ORDER_FUNCTION(1),13)",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B56"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-default-unknown-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B57",
+      "wire_formula": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula2": "=@SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "_xlfn.SWITCH(1,1,11,NO_SUCH_ORDER_FUNCTION(1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B57"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-identity-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B58",
+      "wire_formula": "ISREF(_xlfn.SWITCH(1,1,Values!B1,Values!B2))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "formula2": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "formula2": "=ISREF(SWITCH(1,1,Values!B1,Values!B2))",
+        "value2": {
+          "variant": "bool",
+          "value": true
+        },
+        "display": "VRAI",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "b",
+        "value_text": "1",
+        "formula_text": "ISREF(_xlfn.SWITCH(1,1,Values!B1,Values!B2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B58",
+          "t": "b"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-range-result-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B59",
+      "wire_formula": "SUM(_xlfn.SWITCH(1,1,Values!B1:B3,1/0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula2": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula2": "=SUM(SWITCH(1,1,Values!B1:B3,1/0))",
+        "value2": {
+          "variant": "float",
+          "value": 60.0,
+          "hex": "0x1.e000000000000p+5",
+          "ieee754_hex": "404e000000000000",
+          "classification": "finite"
+        },
+        "display": "60",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "60",
+        "formula_text": "SUM(_xlfn.SWITCH(1,1,Values!B1:B3,1/0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B59"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "switch-at-reference-bool-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B60",
+      "wire_formula": "SUM(_xlfn.SWITCH(1,1,_xlfn.SINGLE(Values!A1),0))",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "formula2": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "formula2": "=SUM(SWITCH(1,1,@Values!A1,0))",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SUM(_xlfn.SWITCH(1,1,_xlfn.SINGLE(Values!A1),0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B60"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "if-control-later-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B61",
+      "wire_formula": "IF(TRUE,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=IF(TRUE,11,1/0)",
+        "formula2": "=IF(TRUE,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=IF(TRUE,11,1/0)",
+        "formula2": "=IF(TRUE,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "IF(TRUE,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B61"
+        }
+      },
+      "rust_policy": "computed"
+    },
+    {
+      "id": "choose-control-later-error-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B62",
+      "wire_formula": "CHOOSE(1,11,1/0)",
+      "shape": {
+        "kind": "selector-order"
+      },
+      "actual": {
+        "formula": "=CHOOSE(1,11,1/0)",
+        "formula2": "=CHOOSE(1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=CHOOSE(1,11,1/0)",
+        "formula2": "=CHOOSE(1,11,1/0)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "display": "11",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "11",
+        "formula_text": "CHOOSE(1,11,1/0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B62"
+        }
+      },
+      "rust_policy": "computed"
+    }
+  ],
+  "coverage": {
+    "computed_expected": 120,
+    "held_locale": 10
+  },
+  "scheduling_evidence": {
+    "source_report": "rust/target/excel-desktop/p5-selector-cycles/results.json",
+    "source_report_sha256": "9f74982934a64ae0014ca86a22da2d0f7a21a10454bb5a1c8fdaf94b1d7a0f6d",
+    "excel": {
+      "version": "16.0",
+      "build": "20430.0",
+      "operating_system": "Windows (64-bit) NT 10.00",
+      "country_setting": 33.0,
+      "ui_language": 1036
+    },
+    "cleanup_completed": true,
+    "application_iteration": false,
+    "cached_values_are_answers": false,
+    "cases": [
+      {
+        "id": "constant-control",
+        "requested_formula": "11",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=11",
+        "formula2": "=11",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "if-inactive-self",
+        "requested_formula": "IF(TRUE,11,A1)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=IF(TRUE,11,A1)",
+        "formula2": "=IF(TRUE,11,A1)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "choose-inactive-self",
+        "requested_formula": "CHOOSE(1,11,A1)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=CHOOSE(1,11,A1)",
+        "formula2": "=CHOOSE(1,11,A1)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "ifs-later-condition",
+        "requested_formula": "_xlfn.IFS(TRUE,11,A1,12)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": "$A$1",
+        "formula": "=IFS(TRUE,11,A1,12)",
+        "formula2": "=@IFS(TRUE,11,A1,12)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "ifs-false-result",
+        "requested_formula": "_xlfn.IFS(FALSE,A1,TRUE,12)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=IFS(FALSE,A1,TRUE,12)",
+        "formula2": "=@IFS(FALSE,A1,TRUE,12)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "ifs-later-result",
+        "requested_formula": "_xlfn.IFS(TRUE,11,TRUE,A1)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=IFS(TRUE,11,TRUE,A1)",
+        "formula2": "=@IFS(TRUE,11,TRUE,A1)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "switch-later-match",
+        "requested_formula": "_xlfn.SWITCH(1,1,11,A1,12,13)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": "$A$1",
+        "formula": "=SWITCH(1,1,11,A1,12,13)",
+        "formula2": "=@SWITCH(1,1,11,A1,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "switch-unmatched-result",
+        "requested_formula": "_xlfn.SWITCH(2,1,A1,2,12,13)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=SWITCH(2,1,A1,2,12,13)",
+        "formula2": "=@SWITCH(2,1,A1,2,12,13)",
+        "value2": {
+          "variant": "float",
+          "value": 12.0,
+          "hex": "0x1.8000000000000p+3",
+          "ieee754_hex": "4028000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "switch-later-result",
+        "requested_formula": "_xlfn.SWITCH(1,1,11,2,A1,13)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=SWITCH(1,1,11,2,A1,13)",
+        "formula2": "=@SWITCH(1,1,11,2,A1,13)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "switch-default",
+        "requested_formula": "_xlfn.SWITCH(1,1,11,A1)",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": null,
+        "formula": "=SWITCH(1,1,11,A1)",
+        "formula2": "=@SWITCH(1,1,11,A1)",
+        "value2": {
+          "variant": "float",
+          "value": 11.0,
+          "hex": "0x1.6000000000000p+3",
+          "ieee754_hex": "4026000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      },
+      {
+        "id": "direct-cycle-control",
+        "requested_formula": "A1+1",
+        "phase": "closed",
+        "ownership_state": "closed",
+        "owned_workbook_acquired": true,
+        "owned_workbook_closed": true,
+        "baseline_circular_address": null,
+        "circular_address": "$A$1",
+        "formula": "=A1+1",
+        "formula2": "=A1+1",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "status": "observed"
+      }
+    ]
+  }
+}

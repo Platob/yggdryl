@@ -1,0 +1,493 @@
+{
+  "schema_version": 1,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "utc": "2026-10-01T00:27:26.663343+00:00",
+  "cleanup_completed": true,
+  "source_report": "rust/target/excel-desktop/allocated-totals-styles-native-base/results.json",
+  "scope": "Native ListObject.Resize D1:E4 to D1:E5 with row4 bold XF1 and row5 XF0. Allocated absent-s and s0 totals stay default. Missing D4 inherits bold and its table-declared label is materialized by Resize; core currently refuses that synthesis atomically.",
+  "cases": [
+    {
+      "id": "absent_s",
+      "base_sha256": "b6e89bbf1c2a7fb1b943019e2dc7cf224e044306f8e3371500a76201ee6f59c0",
+      "source_sha256": "154f653b23173b5b6801be9d62a58ca35a9e1146b00f6a5a62c64c178c618044",
+      "saved_sha256": "82833db17b4758874bad32a522df422e92ef6be1663d31dacf241b79b3354b6d",
+      "source_xml": {
+        "cells": {
+          "D4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D4\" t=\"inlineStr\"><ns0:is><ns0:t>Total</ns0:t></ns0:is></ns0:c>",
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\"><ns0:f>SUBTOTAL(109,[qty])</ns0:f><ns0:v /></ns0:c>",
+          "D5": null,
+          "E5": null
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "s": "1",
+            "customFormat": "1"
+          },
+          "5": {
+            "r": "5",
+            "s": "0",
+            "customFormat": "1"
+          }
+        },
+        "table": {
+          "id": "2",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E4",
+          "headerRowCount": "1",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E3"
+        }
+      },
+      "before": {
+        "cells": {
+          "D4": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$4",
+          "show_totals": true,
+          "totals": "$D$4:$E$4"
+        }
+      },
+      "after": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      },
+      "saved_xml": {
+        "cells": {
+          "D4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D4\" />",
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\" />",
+          "D5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D5\" t=\"s\"><ns0:v>7</ns0:v></ns0:c>",
+          "E5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E5\"><ns0:f>SUBTOTAL(109,Quantities[qty])</ns0:f><ns0:v>7</ns0:v></ns0:c>"
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "spans": "1:7",
+            "s": "1",
+            "customFormat": "1",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          },
+          "5": {
+            "r": "5",
+            "spans": "1:7",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          }
+        },
+        "table": {
+          "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable": "xr xr3",
+          "id": "2",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-000C-0000-FFFF-FFFF01000000}",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E5",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E4",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-0009-0000-0100-000002000000}"
+        }
+      },
+      "reopened": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      }
+    },
+    {
+      "id": "explicit_zero",
+      "base_sha256": "b6e89bbf1c2a7fb1b943019e2dc7cf224e044306f8e3371500a76201ee6f59c0",
+      "source_sha256": "fb334e33b94b42b93a0802def93dc243f201b94820878a4004f974938e48481f",
+      "saved_sha256": "ed053b969844f1ba80e29afd43bcd3804f49698847b61e08f146fad356b27551",
+      "source_xml": {
+        "cells": {
+          "D4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D4\" s=\"0\" t=\"inlineStr\"><ns0:is><ns0:t>Total</ns0:t></ns0:is></ns0:c>",
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\"><ns0:f>SUBTOTAL(109,[qty])</ns0:f><ns0:v /></ns0:c>",
+          "D5": null,
+          "E5": null
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "s": "1",
+            "customFormat": "1"
+          },
+          "5": {
+            "r": "5",
+            "s": "0",
+            "customFormat": "1"
+          }
+        },
+        "table": {
+          "id": "2",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E4",
+          "headerRowCount": "1",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E3"
+        }
+      },
+      "before": {
+        "cells": {
+          "D4": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$4",
+          "show_totals": true,
+          "totals": "$D$4:$E$4"
+        }
+      },
+      "after": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      },
+      "saved_xml": {
+        "cells": {
+          "D4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D4\" />",
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\" />",
+          "D5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D5\" t=\"s\"><ns0:v>7</ns0:v></ns0:c>",
+          "E5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E5\"><ns0:f>SUBTOTAL(109,Quantities[qty])</ns0:f><ns0:v>7</ns0:v></ns0:c>"
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "spans": "1:7",
+            "s": "1",
+            "customFormat": "1",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          },
+          "5": {
+            "r": "5",
+            "spans": "1:7",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          }
+        },
+        "table": {
+          "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable": "xr xr3",
+          "id": "2",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-000C-0000-FFFF-FFFF01000000}",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E5",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E4",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-0009-0000-0100-000002000000}"
+        }
+      },
+      "reopened": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      }
+    },
+    {
+      "id": "unallocated",
+      "base_sha256": "b6e89bbf1c2a7fb1b943019e2dc7cf224e044306f8e3371500a76201ee6f59c0",
+      "source_sha256": "e82d6e7c731617349c601cc556aff2d9e50b25a2ad6ed590f7e0b7582185de5e",
+      "saved_sha256": "dd719023dafa63f6a532fd729f1de088503bc2316f46b42b02ae8d6f59fb6129",
+      "source_xml": {
+        "cells": {
+          "D4": null,
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\"><ns0:f>SUBTOTAL(109,[qty])</ns0:f><ns0:v /></ns0:c>",
+          "D5": null,
+          "E5": null
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "s": "1",
+            "customFormat": "1"
+          },
+          "5": {
+            "r": "5",
+            "s": "0",
+            "customFormat": "1"
+          }
+        },
+        "table": {
+          "id": "2",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E4",
+          "headerRowCount": "1",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E3"
+        }
+      },
+      "before": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$4",
+          "show_totals": true,
+          "totals": "$D$4:$E$4"
+        }
+      },
+      "after": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      },
+      "saved_xml": {
+        "cells": {
+          "D4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D4\" />",
+          "E4": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E4\" />",
+          "D5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"D5\" s=\"1\" t=\"s\"><ns0:v>8</ns0:v></ns0:c>",
+          "E5": "<ns0:c xmlns:ns0=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" r=\"E5\"><ns0:f>SUBTOTAL(109,Quantities[qty])</ns0:f><ns0:v>7</ns0:v></ns0:c>"
+        },
+        "rows": {
+          "4": {
+            "r": "4",
+            "spans": "1:7",
+            "s": "1",
+            "customFormat": "1",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          },
+          "5": {
+            "r": "5",
+            "spans": "1:7",
+            "{http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac}dyDescent": "0.3"
+          }
+        },
+        "table": {
+          "{http://schemas.openxmlformats.org/markup-compatibility/2006}Ignorable": "xr xr3",
+          "id": "2",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-000C-0000-FFFF-FFFF01000000}",
+          "name": "Quantities",
+          "displayName": "Quantities",
+          "ref": "D1:E5",
+          "totalsRowCount": "1"
+        },
+        "auto_filter": {
+          "ref": "D1:E4",
+          "{http://schemas.microsoft.com/office/spreadsheetml/2014/revision}uid": "{00000000-0009-0000-0100-000002000000}"
+        }
+      },
+      "reopened": {
+        "cells": {
+          "D4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "E4": {
+            "value2": null,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "D5": {
+            "value2": "Total",
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "E5": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "table": {
+          "range": "$D$1:$E$5",
+          "show_totals": true,
+          "totals": "$D$5:$E$5"
+        }
+      }
+    }
+  ]
+}

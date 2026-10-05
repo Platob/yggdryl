@@ -241,7 +241,8 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
     assert "time_bucket" in FUNCTIONS
-    assert len(FUNCTIONS) == 28
+    # Rust adds 18 math functions to the existing 28-function vocabulary.
+    assert len(FUNCTIONS) == 46
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"

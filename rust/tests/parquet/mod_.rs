@@ -1718,6 +1718,33 @@ mod records {
         }
 
         #[test]
+        fn wrapper_field_projects_footer_schema_without_changing_source_width() {
+            let media = stored();
+            let options = media
+                .record_options()
+                .unwrap()
+                .with_select("id as key, price as amount")
+                .unwrap();
+            let field = media.read_arrow_field(&options).unwrap();
+            assert_eq!(
+                field.fields().iter().map(Field::name).collect::<Vec<_>>(),
+                ["key", "amount"]
+            );
+            assert_eq!(
+                field.into_arrow_schema().unwrap(),
+                media.read_arrow_reader(&options).unwrap().schema()
+            );
+            assert_eq!(media.column_size().unwrap(), 4);
+            let missing = media
+                .record_options()
+                .unwrap()
+                .with_select("absent")
+                .unwrap();
+            let error = media.read_arrow_field(&missing).unwrap_err().to_string();
+            assert!(error.contains("absent"), "{error}");
+        }
+
+        #[test]
         fn a_subset_schema_is_pushed_into_the_file_rather_than_applied_after_it() {
             let media = stored();
             let options = media.record_options().unwrap();

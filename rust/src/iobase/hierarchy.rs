@@ -158,8 +158,11 @@ pub(super) fn no_children(url: Option<&Url>, name: &str) -> Error {
 ///
 /// # Errors
 ///
-/// Returns the parent's resolution failure, or the copy's read failure.
-pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
+/// Returns the parent's resolution failure, or a stream/allocation failure.
+pub(crate) fn owned_handle(
+    handle: &(impl IOBase + ?Sized),
+    media_type: &crate::MediaType,
+) -> Result<Holder> {
     // A located handle is reopened where its *stored* bytes are. A handle
     // that applies a coding presents them decoded and its media type names
     // no coding, so the reopened one is stamped with that coding put back
@@ -167,7 +170,7 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     // every coded name. Raw DEFLATE has no media type spelling and `Coded`
     // never applies it; the zlib framing is what the one table spells.
     let stored_media_type = || -> Result<crate::MediaType> {
-        let mut media_type = handle.media_type().clone();
+        let mut media_type = media_type.clone();
         if let Some(coding) = crate::iobase::coding_mime(handle.applied_codec()) {
             media_type.push_encoding(coding)?;
         }
@@ -190,9 +193,33 @@ pub(crate) fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
             return Ok(child);
         }
     }
-    // A value, never a container: every caller reads a container's leaves
-    // before it asks for a handle of its own.
-    let mut buffer = crate::holder::Buffer::new();
-    crate::iobase::copy_value(handle, &mut buffer)?;
+    let mut stream = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
+    // The result is private until every read succeeds. Move its first bounded
+    // chunk instead of staging and publishing an atomic copy into an unseen
+    // destination. At most one transport chunk is held beside the result.
+    let mut bytes = stream.next().transpose()?.unwrap_or_default();
+    for chunk in stream {
+        let chunk = chunk?;
+        bytes.try_reserve(chunk.len()).map_err(|source| {
+            Error::Io(std::io::Error::other(format!(
+                "cannot grow an owned byte buffer: {source}"
+            )))
+        })?;
+        bytes.extend_from_slice(&chunk);
+    }
+    let buffer = crate::holder::Buffer::from_bytes(bytes).with_media_type(media_type.clone());
     Ok(Holder::buffer(buffer))
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/iobase/hierarchy.rs` pins and callers cannot reach.
+
+    /// Keep an owned handle to the exact resource the borrowed handle addresses.
+    pub fn owned_handle(
+        handle: &(impl crate::IOBase + ?Sized),
+    ) -> crate::Result<crate::holder::Holder> {
+        super::owned_handle(handle, handle.media_type())
+    }
 }

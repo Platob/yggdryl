@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "kind": "p5-isref-3d_native",
+  "source_report": "rust/target/excel-desktop/p5-isref-3d-observed/results.json",
+  "source_report_sha256": "4c80ba2d283a373d3eaca8499ecdefc2d0f815e8fead3bda76d711b00e0ad867",
+  "manifest_sha256": "c8f23c930f42e92c825895172fae2898c5cbf0184b5297955cc311e17963a9f8",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "a20fcc1b837b4cd334ae0692b3259f06d1adf75c770164ba4a4c9384ecff686c",
+      "cases": 4,
+      "physical_formula_cells": 4
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "d8d1e93cfc80a238ad783107c4bef4081b33dbd7dff1713afc598654d70707fd",
+      "cases": 4,
+      "physical_formula_cells": 4
+    }
+  ],
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "calculation_scope": "owned workbook worksheets, Cases last; never Application.Calculate",
+  "cleanup_completed": true,
+  "native_run_passed": true,
+  "native_comparisons_equal": true,
+  "rust_equivalence_checked": false,
+  "source_cells": [
+    {
+      "sheet": "Jan",
+      "cells": {
+        "A1": 1,
+        "A2": 11,
+        "A3": 21,
+        "A4": 31
+      }
+    },
+    {
+      "sheet": "Feb",
+      "cells": {
+        "A1": 2,
+        "A2": 12,
+        "A3": 22,
+        "A4": 32
+      }
+    },
+    {
+      "sheet": "Mar",
+      "cells": {
+        "A1": 3,
+        "A2": 13,
+        "A3": 23,
+        "A4": 33
+      }
+    }
+  ],
+  "case_count": 8,
+  "cache_type_counts": {
+    "b": 8
+  },
+  "cases": [
+    {
+      "id": "isref-3d-three_sheet_cell-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "ISREF(Jan:Mar!A1)",
+      "parameters": {
+        "kind": "three_sheet_cell",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan:Mar!A1)",
+      "actual_formula2": "=ISREF(Jan:Mar!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(Jan:Mar!A1)",
+      "after_save_formula2": "=ISREF(Jan:Mar!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(Jan:Mar!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-three_sheet_area-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "ISREF(Jan:Mar!A1:A2)",
+      "parameters": {
+        "kind": "three_sheet_area",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan:Mar!A1:A2)",
+      "actual_formula2": "=ISREF(Jan:Mar!A1:A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(Jan:Mar!A1:A2)",
+      "after_save_formula2": "=ISREF(Jan:Mar!A1:A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(Jan:Mar!A1:A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-same_sheet_span-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "ISREF(Jan:Jan!A1)",
+      "parameters": {
+        "kind": "same_sheet_span",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan!A1)",
+      "actual_formula2": "=ISREF(Jan!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(Jan!A1)",
+      "after_save_formula2": "=ISREF(Jan!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(Jan!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-grouped_three_sheet-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "ISREF((Jan:Mar!A1))",
+      "parameters": {
+        "kind": "grouped_three_sheet",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF((Jan:Mar!A1))",
+      "actual_formula2": "=ISREF((Jan:Mar!A1))",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF((Jan:Mar!A1))",
+      "after_save_formula2": "=ISREF((Jan:Mar!A1))",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF((Jan:'Mar'!A1))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-three_sheet_cell-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "ISREF(Jan:Mar!A1)",
+      "parameters": {
+        "kind": "three_sheet_cell",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan:Mar!A1)",
+      "actual_formula2": "=ISREF(Jan:Mar!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(Jan:Mar!A1)",
+      "after_save_formula2": "=ISREF(Jan:Mar!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(Jan:Mar!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-three_sheet_area-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "ISREF(Jan:Mar!A1:A2)",
+      "parameters": {
+        "kind": "three_sheet_area",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan:Mar!A1:A2)",
+      "actual_formula2": "=ISREF(Jan:Mar!A1:A2)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF(Jan:Mar!A1:A2)",
+      "after_save_formula2": "=ISREF(Jan:Mar!A1:A2)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF(Jan:Mar!A1:A2)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-same_sheet_span-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "ISREF(Jan:Jan!A1)",
+      "parameters": {
+        "kind": "same_sheet_span",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF(Jan!A1)",
+      "actual_formula2": "=ISREF(Jan!A1)",
+      "actual_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "after_save_formula": "=ISREF(Jan!A1)",
+      "after_save_formula2": "=ISREF(Jan!A1)",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": true
+      },
+      "cache_type": "b",
+      "cache_value_text": "1",
+      "cache_formula_text": "ISREF(Jan!A1)",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    },
+    {
+      "id": "isref-3d-grouped_three_sheet-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "ISREF((Jan:Mar!A1))",
+      "parameters": {
+        "kind": "grouped_three_sheet",
+        "syntax_family": "3d"
+      },
+      "actual_formula": "=ISREF((Jan:Mar!A1))",
+      "actual_formula2": "=ISREF((Jan:Mar!A1))",
+      "actual_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "after_save_formula": "=ISREF((Jan:Mar!A1))",
+      "after_save_formula2": "=ISREF((Jan:Mar!A1))",
+      "after_save_value2": {
+        "variant": "bool",
+        "value": false
+      },
+      "cache_type": "b",
+      "cache_value_text": "0",
+      "cache_formula_text": "ISREF((Jan:'Mar'!A1))",
+      "cache_formula_attributes": {},
+      "actual_cache_equal": true,
+      "after_save_cache_equal": true
+    }
+  ]
+}

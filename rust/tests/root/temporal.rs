@@ -5,11 +5,36 @@ use super::typed;
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::internals::temporal::{
-        format_date, format_datetime, format_duration, format_time, format_timestamp,
-        from_temporal_text, parse_date, parse_datetime, parse_duration, parse_fix_instant,
-        parse_instant, parse_time, parse_timestamp,
+        calendar_parts, format_date, format_datetime, format_duration, format_time,
+        format_timestamp, from_temporal_text, parse_date, parse_datetime, parse_duration,
+        parse_fix_instant, parse_instant, parse_time, parse_timestamp,
     };
-    use yggdryl::{Error, TimeUnit, Timezone};
+    use yggdryl::{Error, Scalar, TimeUnit, Timezone};
+
+    #[test]
+    fn native_calendar_parts_match_the_existing_temporal_spellings() {
+        let east: Timezone = "+02:00".parse().unwrap();
+        for (value, expected) in [
+            (Scalar::date32(0), Some((1970, 1, 1, 0))),
+            (Scalar::date32(-1), Some((1969, 12, 31, 0))),
+            (Scalar::date64(-86_400_000), Some((1969, 12, 31, 0))),
+            (
+                Scalar::datetime64(-1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Some((1969, 12, 31, 23)),
+            ),
+            (
+                Scalar::datetime64(0, TimeUnit::Second, east).unwrap(),
+                Some((1970, 1, 1, 2)),
+            ),
+            (
+                Scalar::time32(3_600, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                None,
+            ),
+            (Scalar::date32(i32::MAX), None),
+        ] {
+            assert_eq!(calendar_parts(&value), expected, "{value:?}");
+        }
+    }
 
     /// The empty text is no spelling: the empty-cell rule sits above this
     /// reader, on the doors, and the reader itself keeps refusing it.

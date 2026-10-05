@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "kind": "p6_empty_cache_native_counterfactual",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0"
+  },
+  "provenance": {
+    "manifest_sha256": "584b34fbb58c0121a5f57c46c54ce71b6ca9f90147177c0626bfd90a0ecdf236",
+    "report_sha256": "86f25ecac7ea31fc5d2f23be016330382d3f84a90a4a8d109957dd35286c0711",
+    "modified_members": [
+      "xl/pivotCache/pivotCacheDefinition5.xml",
+      "xl/pivotCache/pivotCacheRecords5.xml"
+    ],
+    "passed": true,
+    "cleanup_completed": true,
+    "selected_pivot_only": true
+  },
+  "cases": [
+    {
+      "id": "control",
+      "input_sha256": "cdb20d3f40f5b5ac7f14ee00d2ecdb839b8927e9d4907bfbcdc2bb937a4a054b",
+      "saved_sha256": "84a398b3d9b1dd271288e36814a417d76512e341532afcf82542b6987150a784",
+      "selected": {
+        "sheet": "CaseOrder",
+        "name": "P6_source_order_grand",
+        "table_range2": "$A$3:$B$6",
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      },
+      "before_refresh_equals_after_refresh": true,
+      "after_refresh_equals_save_and_reopen": true,
+      "input_cache_definition": {
+        "recordCount": "4",
+        "saveData": null,
+        "refreshOnLoad": null,
+        "records_relationship_id": "rId1"
+      },
+      "saved_cache_definition": {
+        "recordCount": "4",
+        "saveData": null,
+        "refreshOnLoad": null,
+        "records_relationship_id": "rId1"
+      },
+      "input_cache_records": {
+        "count": "4",
+        "record_elements": 4
+      },
+      "saved_cache_records": {
+        "count": "4",
+        "record_elements": 4
+      },
+      "saved_records_part_present": true,
+      "saved_records_relationship_part_present": true
+    },
+    {
+      "id": "candidate",
+      "input_sha256": "6b5715414376ebaaeda98867a8728777dfd818c33efd45a3434c4dc37b3f2812",
+      "saved_sha256": "cd3642a883f6b82330f263658fa642b1ed771d7a9e80215f092407f5fd6cff5b",
+      "selected": {
+        "sheet": "CaseOrder",
+        "name": "P6_source_order_grand",
+        "table_range2": "$A$3:$B$6",
+        "east_bits": "0000000000000000",
+        "west_bits": "4008000000000000",
+        "grand_bits": "4008000000000000"
+      },
+      "before_refresh_equals_after_refresh": true,
+      "after_refresh_equals_save_and_reopen": true,
+      "input_cache_definition": {
+        "recordCount": "0",
+        "saveData": "0",
+        "refreshOnLoad": "1",
+        "records_relationship_id": "rId1"
+      },
+      "saved_cache_definition": {
+        "recordCount": "4",
+        "saveData": "0",
+        "refreshOnLoad": "1",
+        "records_relationship_id": null
+      },
+      "input_cache_records": {
+        "count": "0",
+        "record_elements": 0
+      },
+      "saved_cache_records": null,
+      "saved_records_part_present": false,
+      "saved_records_relationship_part_present": false
+    }
+  ]
+}

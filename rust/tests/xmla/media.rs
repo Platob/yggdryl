@@ -1036,6 +1036,31 @@ fn record_options_are_the_xmla_options_carrying_the_declared_field() {
 }
 
 #[test]
+fn wrapper_field_projects_xmla_document_schema() {
+    let media = Xmla::new(stored(&bare_root(TRADES_SCHEMA, TRADES_ROWS)));
+    let options = media
+        .record_options()
+        .unwrap()
+        .with_select("id as key")
+        .unwrap();
+    let field = media.read_arrow_field(&options).unwrap();
+    assert_eq!(field.fields()[0].name(), "key");
+    assert_eq!(field.field_len(), 1);
+    assert_eq!(
+        field.into_arrow_schema().unwrap(),
+        media.read_arrow_reader(&options).unwrap().schema()
+    );
+    assert_eq!(media.column_size().unwrap(), 2);
+    let missing = media
+        .record_options()
+        .unwrap()
+        .with_select("absent")
+        .unwrap();
+    let error = media.read_arrow_field(&missing).unwrap_err().to_string();
+    assert!(error.contains("absent"), "{error}");
+}
+
+#[test]
 fn read_arrow_field_prefers_the_declared_field_else_reads_the_document() {
     let held = stored(&bare_root(TRADES_SCHEMA, TRADES_ROWS));
     let bytes = held.read_all_bytes().expect("the bytes");

@@ -229,7 +229,7 @@ mod grammar {
     }
 
     /// The predicates the two tiers are compared on, all evaluable per row.
-    const AGREEMENT: [&str; 38] = [
+    const AGREEMENT: [&str; 43] = [
         "i = 1",
         "i <> 1",
         "i < 0",
@@ -241,6 +241,11 @@ mod grammar {
         "f = f",
         "f > 1.0",
         "f is null",
+        "abs(i)",
+        "abs(f)",
+        "abs(d)",
+        "sqrt(i)",
+        "sqrt(f)",
         "d > decimal128(9,2) '1.00'",
         "d <= 0",
         "s = 'alpha'",
@@ -276,6 +281,18 @@ mod grammar {
         "um['absent'] is not null",
         "um.present = 10",
     ];
+
+    #[test]
+    fn factorial_scalar_and_arrow_rows_agree() {
+        let schema = StructType::from_fields([DataType::Int64.nullable_field("n")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let rows = [0_i64, 5, 20, 170].map(|n| Scalar::from_sequence([Scalar::from(n)]));
+        let mut rows = rows.to_vec();
+        rows.push(Scalar::from_sequence([Scalar::Null]));
+        assert_tiers_agree("factorial(n)", &schema, &rows);
+    }
 
     /// Evaluate one term on both tiers and assert they agree on every row.
     fn assert_tiers_agree(text: &str, schema: &Field, rows: &[Scalar]) -> Bound {

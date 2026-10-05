@@ -1,0 +1,74 @@
+{
+  "source": "openpyxl from-openpyxl-named-totals.xlsx",
+  "source_sha256": "b6e89bbf1c2a7fb1b943019e2dc7cf224e044306f8e3371500a76201ee6f59c0",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "calculation": "Worksheet(Data).Calculate on each oracle-owned workbook",
+  "comparison": "Data sheet cells and named-table ranges after one Excel SaveAs per native and Rust result; table autoFilter and totalsRowCount checked in parts",
+  "excludes": "Styles and unrelated package XML are outside this named-table comparison",
+  "source_table": {
+    "range": "D1:E4",
+    "filter": "D1:E3",
+    "totals": "1"
+  },
+  "cases": [
+    {
+      "mode": "shrink",
+      "rust_source_sha256": "76979d57179742feb358bf9f6d8af9f0ba100a46f4a48d47a7d4731f242c81ef",
+      "table": {
+        "range": "D1:E3",
+        "filter": "D1:E2",
+        "totals": "1"
+      },
+      "totals_cell": "E3",
+      "totals_formula": "=SUBTOTAL(109,[qty])",
+      "expected_sum": 6,
+      "native_saved_value2": 6.0,
+      "rust_raw_first_open_value2": 6.0,
+      "rust_raw_calculated_value2": 6.0,
+      "rust_saved_value2": 6.0,
+      "visible_after_equal_save_cycle": true
+    },
+    {
+      "mode": "equal",
+      "rust_source_sha256": "59f06da51e4472ebf3a8713d7213e98967ede60c3b5a0e0923ff8c7d579e417f",
+      "table": {
+        "range": "D1:E4",
+        "filter": "D1:E3",
+        "totals": "1"
+      },
+      "totals_cell": "E4",
+      "totals_formula": "=SUBTOTAL(109,[qty])",
+      "expected_sum": 13,
+      "native_saved_value2": 13.0,
+      "rust_raw_first_open_value2": 13.0,
+      "rust_raw_calculated_value2": 13.0,
+      "rust_saved_value2": 13.0,
+      "visible_after_equal_save_cycle": true
+    },
+    {
+      "mode": "grow",
+      "rust_source_sha256": "1a07174d48422572416b372bc05c7bc32257857bff39742a752bbde5b7675da2",
+      "table": {
+        "range": "D1:E5",
+        "filter": "D1:E4",
+        "totals": "1"
+      },
+      "totals_cell": "E5",
+      "totals_formula": "=SUBTOTAL(109,[qty])",
+      "expected_sum": 21,
+      "native_saved_value2": 21.0,
+      "rust_raw_first_open_value2": 21.0,
+      "rust_raw_calculated_value2": 21.0,
+      "rust_saved_value2": 21.0,
+      "visible_after_equal_save_cycle": true
+    }
+  ],
+  "passed": true,
+  "cleanup_completed": true
+}

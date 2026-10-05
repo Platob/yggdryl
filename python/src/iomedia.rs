@@ -52,7 +52,7 @@ use pyo3::types::{
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
-use yggdryl::{Field as CoreField, Level, SerieReader};
+use yggdryl::{Field as CoreField, Level, RecordHeader, SerieReader};
 
 use crate::chunked_serie::PyChunkedSerie;
 use crate::datatype::{
@@ -1560,13 +1560,13 @@ impl PyRecordOptions {
             )?;
         }
         if let RecordOptions::Excel(options) = &self.inner {
-            state.set_item("sheet", options.sheet.as_deref())?;
+            state.set_item("sheet", options.sheet())?;
             state.set_item(
                 "range",
-                options.range.map(crate::excel::PyCellRange::from_inner),
+                options.range().map(crate::excel::PyCellRange::from_inner),
             )?;
         }
-        if let Some(header) = self.inner.header() {
+        if let Some(header) = self.header() {
             state.set_item("header", header)?;
         }
         if let Some(block_codec) = self.inner.avro_block_codec() {
@@ -2370,7 +2370,9 @@ impl PyRecordOptions {
     /// another encoding.
     #[getter]
     fn header(&self) -> Option<bool> {
-        self.inner.header()
+        self.inner
+            .header()
+            .map(|header| header != RecordHeader::None)
     }
 
     #[setter]

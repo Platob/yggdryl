@@ -407,6 +407,51 @@ mod grammar {
     // ---------------------------------------------------------------------------
 
     #[test]
+    fn calendar_functions_keep_local_time_and_null_semantics() {
+        let east: Timezone = "+02:00".parse().unwrap();
+        let schema = DataType::from(
+            StructType::from_fields([
+                DataType::date32().required_field("date"),
+                DataType::datetime64(TimeUnit::Second, Timezone::NAIVE)
+                    .unwrap()
+                    .required_field("before_epoch"),
+                DataType::datetime64(TimeUnit::Second, east)
+                    .unwrap()
+                    .required_field("local"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        let row = Scalar::from_sequence([
+            Scalar::date32(0),
+            Scalar::datetime64(-1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            Scalar::datetime64(0, TimeUnit::Second, east).unwrap(),
+        ]);
+        for (text, expected) in [
+            ("year(date)", 1970),
+            ("month(before_epoch)", 12),
+            ("day(before_epoch)", 31),
+            ("hour(date)", 0),
+            ("hour(before_epoch)", 23),
+            ("hour(local)", 2),
+        ] {
+            let bound = text.parse::<Term>().unwrap().bind(&schema).unwrap();
+            assert_eq!(bound.eval(&row).unwrap(), Scalar::from(expected), "{text}");
+            assert_eq!(
+                bound
+                    .eval(&Scalar::from_sequence([
+                        Scalar::Null,
+                        Scalar::Null,
+                        Scalar::Null,
+                    ]))
+                    .unwrap(),
+                Scalar::Null,
+                "null {text}"
+            );
+        }
+    }
+
+    #[test]
     fn substring_takes_the_window_the_standard_names() {
         let schema = rows_schema();
         for (text, expected) in [
@@ -799,6 +844,113 @@ mod fixed_leaves {
         }
     }
 
+    #[test]
+    fn pure_math_bound_float64_answers_match_row_and_arrow() {
+        let schema = root([DataType::Float32.nullable_field("x")]);
+        for (name, expected) in [
+            ("exp", 1.0_f64.exp()),
+            ("ln", 1.0_f64.ln()),
+            ("log10", 1.0_f64.log10()),
+            ("degrees", 1.0_f64.to_degrees()),
+            ("radians", 1.0_f64.to_radians()),
+        ] {
+            let selector = format!("{name}(x) as answer");
+            let row = Scalar::from_sequence([Scalar::from(1.0_f32)]);
+            let (by_row, by_batch) = both_tiers(&selector, &schema, &row);
+            let result = &by_row.as_sequence().unwrap()[0];
+            assert_eq!(
+                result.as_f64().unwrap().to_bits(),
+                expected.to_bits(),
+                "{name}"
+            );
+            assert_eq!(by_batch, by_row, "{name}");
+            let null = Scalar::from_sequence([Scalar::Null]);
+            let (by_row, by_batch) = both_tiers(&selector, &schema, &null);
+            assert_eq!(by_row, Scalar::from_sequence([Scalar::Null]), "{name}");
+            assert_eq!(by_batch, by_row, "{name}");
+        }
+    }
+
+    #[test]
+    fn trigonometry_bound_float64_answers_match_row_and_arrow() {
+        let schema = root([DataType::Float32.nullable_field("x")]);
+        for (expression, expected) in [
+            ("cos(x)", 0.5_f64.cos()),
+            ("asin(x)", 0.5_f64.asin()),
+            ("sin(x)", 0.5_f64.sin()),
+            ("tan(x)", 0.5_f64.tan()),
+            ("acos(x)", 0.5_f64.acos()),
+            ("atan(x)", 0.5_f64.atan2(1.0)),
+            ("atan2(x,1)", 0.5_f64.atan2(1.0)),
+        ] {
+            let selector = format!("{expression} as answer");
+            let (by_row, by_batch) = both_tiers(
+                &selector,
+                &schema,
+                &Scalar::from_sequence([Scalar::from(0.5_f32)]),
+            );
+            assert_eq!(
+                by_row.as_sequence().unwrap()[0].as_f64().unwrap().to_bits(),
+                expected.to_bits()
+            );
+            assert_eq!(by_batch, by_row);
+            let (by_row, by_batch) =
+                both_tiers(&selector, &schema, &Scalar::from_sequence([Scalar::Null]));
+            assert_eq!(by_row, Scalar::from_sequence([Scalar::Null]));
+            assert_eq!(by_batch, by_row);
+        }
+    }
+
+    #[test]
+    fn bound_power_fallback_matches_scalar_and_arrow_rows() {
+        let schema = root([
+            DataType::Float32.nullable_field("base"),
+            DataType::Int64.required_field("exponent"),
+        ]);
+        for (base, expected) in [
+            (Scalar::from(2.0_f32), Scalar::from(8.0_f64)),
+            (Scalar::Null, Scalar::Null),
+        ] {
+            let row = Scalar::from_sequence([base, Scalar::from(3_i64)]);
+            let (by_row, by_batch) = both_tiers("pow(base, exponent) as answer", &schema, &row);
+            assert_eq!(by_row, Scalar::from_sequence([expected]));
+            assert_eq!(by_batch, by_row);
+        }
+    }
+
+    #[test]
+    fn integer_math_bound_row_and_arrow_agree() {
+        let schema = root([
+            DataType::Int64.nullable_field("left"),
+            DataType::UInt64.nullable_field("right"),
+        ]);
+        for (source, left, right, expected) in [
+            (
+                "gcd(left,right) as answer",
+                Scalar::from(-12_i64),
+                Scalar::from(18_u64),
+                Scalar::from(6_u64),
+            ),
+            (
+                "lcm(left,right) as answer",
+                Scalar::from(12_i64),
+                Scalar::from(18_u64),
+                Scalar::from(36_u64),
+            ),
+            (
+                "gcd(left,right) as answer",
+                Scalar::Null,
+                Scalar::from(18_u64),
+                Scalar::Null,
+            ),
+        ] {
+            let row = Scalar::from_sequence([left, right]);
+            let (by_row, by_batch) = both_tiers(source, &schema, &row);
+            assert_eq!(by_row, Scalar::from_sequence([expected]), "{source}");
+            assert_eq!(by_batch, by_row, "{source}");
+        }
+    }
+
     /// A struct read off a column is positional, and its field names it, so
     /// a row and a batch spell the one object keyed in declaration order -
     /// and read it back.
@@ -865,6 +1017,606 @@ mod fixed_leaves {
         let (by_row, by_batch) = both_tiers("try_cast(u as utf8) as t", &schema, &row);
         assert_eq!(by_row, Scalar::from_sequence([Scalar::Null]));
         assert_eq!(by_batch, by_row);
+    }
+}
+
+mod absolute_function_values {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Error, Scalar, StructType};
+
+    fn absolute(dtype: DataType, value: Scalar) -> yggdryl::Result<Scalar> {
+        let schema = StructType::from_fields([dtype.nullable_field("x")])
+            .map(DataType::from)?
+            .required_field("row");
+        "abs(x)"
+            .parse::<Term>()?
+            .bind(&schema)?
+            .eval(&Scalar::from_sequence([value]))
+    }
+
+    #[test]
+    fn abs_uses_the_existing_checked_scalar_primitive() {
+        for (dtype, value) in [
+            (DataType::Int64, Scalar::from(-17_i64)),
+            (DataType::Int64, Scalar::Null),
+            (DataType::Float64, Scalar::from(-1.25_f64)),
+            (DataType::Float64, Scalar::from(-0.0_f64)),
+            (
+                DataType::decimal128(9, 2).unwrap(),
+                Scalar::decimal128(-125, 2),
+            ),
+        ] {
+            assert_eq!(
+                absolute(dtype, value.clone()).unwrap(),
+                value.checked_abs().unwrap()
+            );
+        }
+        assert!(matches!(
+            absolute(DataType::Int64, Scalar::from(i64::MIN)),
+            Err(Error::ArithmeticOverflow {
+                operation: "absolute value",
+                kind: "i64"
+            }),
+        ));
+    }
+}
+
+#[test]
+fn sqrt_uses_bound_float64_conversion_and_ieee_values() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([DataType::Float32.nullable_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let root = Scalar::from_sequence([Scalar::from(9.0_f32)]);
+    let bound = "sqrt(x)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    assert_eq!(bound.field().dtype(), &DataType::Float64);
+    assert_eq!(bound.eval(&root).unwrap(), Scalar::from(3.0_f64));
+    let null = Scalar::from_sequence([Scalar::Null]);
+    assert_eq!(bound.eval(&null).unwrap(), Scalar::Null);
+    let negative = Scalar::from_sequence([Scalar::from(-1.0_f32)]);
+    assert!(bound.eval(&negative).unwrap().as_f64().unwrap().is_nan());
+    let zero = Scalar::from_sequence([Scalar::from(0.0_f32)]);
+    assert_eq!(bound.eval(&zero).unwrap(), Scalar::from(0.0_f64));
+
+    let empty = StructType::from_fields([])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let literal = "sqrt(4)".parse::<Term>().unwrap().bind(&empty).unwrap();
+    assert_eq!(
+        literal.eval(&Scalar::from_sequence([])).unwrap(),
+        Scalar::from(2.0_f64)
+    );
+}
+
+#[test]
+fn sqrt_uses_the_existing_float64_cast_for_large_integers() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::Int64.required_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "sqrt(x)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let original = Scalar::from(i64::MAX);
+    let cast = DataType::Float64.cast_scalar(&original).unwrap();
+    let expected = cast.as_f64().unwrap().sqrt();
+    assert_eq!(
+        bound.eval(&Scalar::from_sequence([original])).unwrap(),
+        Scalar::from(expected)
+    );
+}
+
+#[test]
+fn decimal_scalar_float64_cast_matches_arrow_for_exact_value() {
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie};
+
+    let source = DataType::decimal128(9, 2).unwrap().required_field("amount");
+    let target = DataType::Float64.required_field("amount");
+    let value = Scalar::decimal128(225, 2);
+    let column = Serie::from_scalars(source, [value.clone()]).unwrap();
+    let arrow = column
+        .cast(&target, ArrowCastOptions::new().with_safe(false))
+        .unwrap()
+        .scalar(0)
+        .unwrap();
+    assert_eq!(arrow, Scalar::from(2.25_f64), "Arrow's cast baseline");
+    assert_eq!(
+        target.dtype().cast_scalar(&value).unwrap(),
+        arrow,
+        "scalar cast disagrees with the already supported column cast"
+    );
+}
+
+#[test]
+fn all_decimal_scalar_layouts_cast_225_to_float64() {
+    use yggdryl::{BigDecimal, DataType, Decimal, Decimal32, Decimal64, Scalar};
+    for (dtype, value) in [
+        (
+            DataType::decimal32(9, 2).unwrap(),
+            Scalar::Decimal32(Decimal32::new(225, 2)),
+        ),
+        (
+            DataType::decimal64(18, 2).unwrap(),
+            Scalar::Decimal64(Decimal64::new(225, 2)),
+        ),
+        (
+            DataType::decimal128(38, 2).unwrap(),
+            Scalar::decimal128(225, 2),
+        ),
+        (
+            DataType::decimal256(76, 2).unwrap(),
+            Scalar::decimal256(225_i128.into(), 2),
+        ),
+        (
+            DataType::Decimal,
+            Scalar::Decimal("2.25".parse::<Decimal>().unwrap()),
+        ),
+        (
+            DataType::BigDecimal,
+            Scalar::BigDecimal("2.25".parse::<BigDecimal>().unwrap()),
+        ),
+    ] {
+        assert_eq!(value.id(), dtype.id(), "{dtype}");
+        assert_eq!(
+            DataType::Float64.cast_scalar(&value).unwrap(),
+            Scalar::from(2.25_f64),
+            "{dtype}"
+        );
+    }
+}
+
+#[test]
+fn decimal256_wide_scalar_float_cast_matches_arrow() {
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, i256};
+    let source = DataType::decimal256(76, 2)
+        .unwrap()
+        .required_field("amount");
+    let target = DataType::Float64.required_field("amount");
+    let value = Scalar::decimal256(
+        "1234567890123456789012345678901234567890"
+            .parse::<i256>()
+            .unwrap(),
+        2,
+    );
+    let column = Serie::from_scalars(source, [value.clone()]).unwrap();
+    let arrow = column
+        .cast(&target, ArrowCastOptions::new().with_safe(false))
+        .unwrap()
+        .scalar(0)
+        .unwrap();
+    assert_eq!(target.dtype().cast_scalar(&value).unwrap(), arrow);
+}
+
+#[test]
+fn parameterized_decimal_float64_scalar_cast_matches_arrow_across_scales() {
+    use yggdryl::{ArrowCastOptions, DataType, Decimal32, Decimal64, Scalar, Serie, i256};
+    for scale in [-2, 0, 2, 4] {
+        let rows = [225_i128, -225, 0];
+        let layouts = [
+            (
+                DataType::decimal32(9, scale).unwrap(),
+                rows.map(|n| Scalar::Decimal32(Decimal32::new(n as i32, scale))),
+            ),
+            (
+                DataType::decimal64(18, scale).unwrap(),
+                rows.map(|n| Scalar::Decimal64(Decimal64::new(n as i64, scale))),
+            ),
+            (
+                DataType::decimal128(38, scale).unwrap(),
+                rows.map(|n| Scalar::decimal128(n, scale)),
+            ),
+            (
+                DataType::decimal256(76, scale).unwrap(),
+                rows.map(|n| Scalar::decimal256(i256::from_i128(n), scale)),
+            ),
+        ];
+        for (dtype, values) in layouts {
+            let source = dtype.clone().required_field("amount");
+            let target = DataType::Float64.required_field("amount");
+            let column = Serie::from_scalars(source, values.clone()).unwrap();
+            let arrow = column
+                .cast(&target, ArrowCastOptions::new().with_safe(false))
+                .unwrap();
+            for (index, value) in values.into_iter().enumerate() {
+                let expected = arrow.scalar(index).unwrap();
+                let actual = target.dtype().cast_scalar(&value).unwrap();
+                assert_eq!(actual, expected, "scale {scale}, index {index}, {dtype}");
+            }
+        }
+    }
+}
+
+#[test]
+fn decimal256_wide_signed_scalar_float_cast_matches_arrow() {
+    use yggdryl::{ArrowCastOptions, DataType, Scalar, Serie, i256};
+    let source = DataType::decimal256(76, 2)
+        .unwrap()
+        .required_field("amount");
+    let target = DataType::Float64.required_field("amount");
+    for text in [
+        "1234567890123456789012345678901234567890",
+        "-1234567890123456789012345678901234567890",
+    ] {
+        let value = Scalar::decimal256(text.parse::<i256>().unwrap(), 2);
+        let column = Serie::from_scalars(source.clone(), [value.clone()]).unwrap();
+        let arrow = column
+            .cast(&target, ArrowCastOptions::new().with_safe(false))
+            .unwrap()
+            .scalar(0)
+            .unwrap();
+        assert_eq!(target.dtype().cast_scalar(&value).unwrap(), arrow, "{text}");
+    }
+}
+
+#[test]
+fn floating_scalar_cast_reads_numeric_text_and_refuses_invalid_text_or_boolean() {
+    use yggdryl::{DataType, Scalar};
+    let numeric_text = Scalar::from("2.25");
+    assert_eq!(
+        DataType::Float64.cast_scalar(&numeric_text).unwrap(),
+        Scalar::from(2.25_f64)
+    );
+    assert_eq!(
+        DataType::Float64.try_cast_scalar(&numeric_text),
+        Scalar::from(2.25_f64)
+    );
+    for value in [Scalar::from("not a number"), Scalar::from(true)] {
+        assert!(DataType::Float64.cast_scalar(&value).is_err(), "{value:?}");
+        assert_eq!(DataType::Float64.try_cast_scalar(&value), Scalar::Null);
+    }
+    assert_eq!(
+        DataType::Float64.cast_scalar(&Scalar::Null).unwrap(),
+        Scalar::Null
+    );
+    assert_eq!(
+        DataType::Float64.try_cast_scalar(&Scalar::Null),
+        Scalar::Null
+    );
+}
+
+#[test]
+fn trim_keeps_unicode_whitespace_semantics_and_nulls() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([DataType::utf8().nullable_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "trim(s)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    for (input, expected) in [
+        (Scalar::from("  a\u{2003}b \t"), Scalar::from("a\u{2003}b")),
+        (Scalar::from("\u{2003}\t"), Scalar::from("")),
+        (Scalar::Null, Scalar::Null),
+    ] {
+        let row = Scalar::from_sequence([input]);
+        assert_eq!(bound.eval(&row).unwrap(), expected);
+    }
+}
+
+#[test]
+fn power_uses_the_bound_float64_kernel_and_preserves_ieee() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let empty = StructType::from_fields([])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([]);
+    for text in ["pow(2,3)", "power(2,3)"] {
+        let bound = text.parse::<Term>().unwrap().bind(&empty).unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Float64);
+        assert_eq!(bound.eval(&row).unwrap(), Scalar::from(8.0_f64));
+    }
+    let zero = "pow(0,0)".parse::<Term>().unwrap().bind(&empty).unwrap();
+    assert_eq!(zero.eval(&row).unwrap(), Scalar::from(1.0_f64));
+    let negative = "pow(-8,0.5)".parse::<Term>().unwrap().bind(&empty).unwrap();
+    assert!(negative.eval(&row).unwrap().as_f64().unwrap().is_nan());
+    assert!("pow(2)".parse::<Term>().is_err());
+
+    let schema = StructType::from_fields([
+        DataType::Float32.nullable_field("base"),
+        DataType::Int64.required_field("exponent"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let bound = "pow(base, exponent)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(
+        bound
+            .eval(&Scalar::from_sequence([
+                Scalar::from(2.0_f32),
+                Scalar::from(3_i64),
+            ]))
+            .unwrap(),
+        Scalar::from(8.0_f64)
+    );
+    assert_eq!(
+        bound
+            .eval(&Scalar::from_sequence([Scalar::Null, Scalar::from(3_i64),]))
+            .unwrap(),
+        Scalar::Null
+    );
+}
+
+#[test]
+fn shared_pure_math_float64_functions_bind_once_and_evaluate() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::Float32.nullable_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(1.0_f32)]);
+    for (name, expected) in [
+        ("exp", 1.0_f64.exp()),
+        ("ln", 1.0_f64.ln()),
+        ("log10", 1.0_f64.log10()),
+        ("degrees", 1.0_f64.to_degrees()),
+        ("radians", 1.0_f64.to_radians()),
+    ] {
+        let expression = format!("{name}(x)");
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Float64, "{name}");
+        assert_eq!(
+            bound.eval(&row).unwrap().as_f64().unwrap().to_bits(),
+            expected.to_bits(),
+            "{name}"
+        );
+        assert_eq!(
+            bound.eval(&Scalar::from_sequence([Scalar::Null])).unwrap(),
+            Scalar::Null,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn shared_trigonometry_binds_numeric_inputs_once() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::Float32.nullable_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    for (name, expected) in [("cos", 0.5_f64.cos()), ("asin", 0.5_f64.asin())] {
+        let bound = format!("{name}(x)")
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Float64);
+        assert_eq!(
+            bound
+                .eval(&Scalar::from_sequence([Scalar::from(0.5_f32)]))
+                .unwrap()
+                .as_f64()
+                .unwrap()
+                .to_bits(),
+            expected.to_bits()
+        );
+        assert_eq!(
+            bound.eval(&Scalar::from_sequence([Scalar::Null])).unwrap(),
+            Scalar::Null
+        );
+    }
+}
+
+#[test]
+fn shared_remaining_trigonometry_binds_and_evaluates() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([
+        DataType::Float32.nullable_field("y"),
+        DataType::Float32.nullable_field("x"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(0.5_f32), Scalar::from(1.0_f32)]);
+    for (expression, expected) in [
+        ("sin(y)", 0.5_f64.sin()),
+        ("tan(y)", 0.5_f64.tan()),
+        ("acos(y)", 0.5_f64.acos()),
+        ("atan(y)", 0.5_f64.atan2(1.0)),
+        ("atan2(y,x)", 0.5_f64.atan2(1.0)),
+    ] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::Float64, "{expression}");
+        let actual = bound.eval(&row).unwrap().as_f64().unwrap();
+        assert_eq!(actual.to_bits(), expected.to_bits(), "{expression}");
+        let null_row = Scalar::from_sequence([Scalar::Null, Scalar::from(1.0_f32)]);
+        assert_eq!(bound.eval(&null_row).unwrap(), Scalar::Null, "{expression}");
+    }
+    assert!("atan2(y)".parse::<Term>().is_err());
+    assert!("sin(y,x)".parse::<Term>().is_err());
+}
+
+#[test]
+fn casing_keeps_rendered_version_and_null_expression_contracts() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType, Version};
+    let schema = StructType::from_fields([yggdryl::Field::new("s", DataType::Version, true)])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    for expression in ["lower(s)", "upper(s)"] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(
+            bound
+                .eval(&Scalar::from_sequence([Scalar::from(
+                    "5.0.2".parse::<Version>().unwrap()
+                )]))
+                .unwrap(),
+            Scalar::from("5.0.2")
+        );
+        assert_eq!(
+            bound.eval(&Scalar::from_sequence([Scalar::Null])).unwrap(),
+            Scalar::Null
+        );
+    }
+}
+
+#[test]
+fn generic_integer_gcd_lcm_are_exact() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([
+        DataType::Int64.nullable_field("left"),
+        DataType::UInt64.nullable_field("right"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    for (source, left, right, expected) in [
+        (
+            "gcd(left,right)",
+            Scalar::from(-12_i64),
+            Scalar::from(18_u64),
+            Scalar::from(6_u64),
+        ),
+        (
+            "lcm(left,right)",
+            Scalar::from(12_i64),
+            Scalar::from(18_u64),
+            Scalar::from(36_u64),
+        ),
+        (
+            "gcd(left,right)",
+            Scalar::from(0_i64),
+            Scalar::from(0_u64),
+            Scalar::from(0_u64),
+        ),
+        (
+            "lcm(left,right)",
+            Scalar::from(0_i64),
+            Scalar::from(18_u64),
+            Scalar::from(0_u64),
+        ),
+        (
+            "gcd(left,right)",
+            Scalar::Null,
+            Scalar::from(18_u64),
+            Scalar::Null,
+        ),
+    ] {
+        let bound = source.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.field().dtype(), &DataType::UInt64, "{source}");
+        let row = Scalar::from_sequence([left, right]);
+        assert_eq!(bound.eval(&row).unwrap(), expected, "{source}");
+    }
+}
+
+#[test]
+fn factorial_binds_exact_integer_inputs_and_returns_float64() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::Int64.nullable_field("n")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "factorial(n)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(bound.field().dtype(), &DataType::Float64);
+    for (source, expected) in [
+        (0, 1.0_f64),
+        (5, 120.0),
+        (20, 2_432_902_008_176_640_000.0),
+        (170, 7.257415615308004e306),
+    ] {
+        let value = bound
+            .eval(&Scalar::from_sequence([Scalar::from(source as i64)]))
+            .unwrap();
+        assert_eq!(value.as_f64().unwrap().to_bits(), expected.to_bits());
+    }
+    assert_eq!(
+        bound.eval(&Scalar::from_sequence([Scalar::Null])).unwrap(),
+        Scalar::Null
+    );
+    assert!(
+        bound
+            .eval(&Scalar::from_sequence([Scalar::from(-1_i64)]))
+            .is_err()
+    );
+    assert!(
+        bound
+            .eval(&Scalar::from_sequence([Scalar::from(171_i64)]))
+            .unwrap()
+            .as_f64()
+            .unwrap()
+            .is_infinite()
+    );
+}
+
+#[test]
+fn exact_integer_math_required_null_is_nullable() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, StructType};
+    let schema = StructType::from_fields([
+        DataType::Null.required_field("n"),
+        DataType::UInt64.required_field("k"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    for text in ["gcd(n,k)", "lcm(n,k)"] {
+        assert!(
+            text.parse::<Term>()
+                .unwrap()
+                .bind(&schema)
+                .unwrap()
+                .field()
+                .is_nullable(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn factorial_required_null_field_stays_nullable() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::Null.required_field("n")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "factorial(n)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(bound.field().dtype(), &DataType::Float64);
+    assert!(bound.field().is_nullable());
+    assert_eq!(
+        bound.eval(&Scalar::from_sequence([Scalar::Null])).unwrap(),
+        Scalar::Null
+    );
+    for invalid in [DataType::Float64, DataType::utf8(), DataType::Boolean] {
+        let schema = StructType::from_fields([invalid.required_field("n")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        assert!(
+            "factorial(n)"
+                .parse::<Term>()
+                .unwrap()
+                .bind(&schema)
+                .is_err()
+        );
     }
 }
 

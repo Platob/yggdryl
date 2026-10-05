@@ -11,12 +11,23 @@
 //!
 //! | Layer | Owns |
 //! | --- | --- |
-//! | [`cell`] | `CellRef` and `CellRange` (the A1 grammar), `CellKind`, `Cell`, and `DateSystem`, the serial-date rule both ways |
-//! | [`styles`] | `NumberFormat`: which cells hold a date, a time or a duration, and the styles part this crate writes |
+//! | [`cell`] | `CellRef` and `CellRange` (the A1 grammar), `CellKind`, `ExcelError`, `Cell`, and `DateSystem`, the serial-date rule both ways |
+//! | [`formula`] | `Formula`: what a cell's `<f>` states, one shared shape per formula - references relative to the cell holding it - in its file and its entry spelling |
+//! | [`layout`] | `Frozen` and what a worksheet states about its grid beside its cells: row and column formats, merges, the frozen pane, the defaults |
+//! | [`style`] | `StyleId`, the `cellXfs` index a cell's `s` states, `CellStyle` with the font, fill, border, alignment and protection it resolves to, and `StylePatch`, the change the ribbon makes to the cells of some ranges |
+//! | [`styles`] | `StyleSheet`: the styles part as a model, appended to and never reordered; `NumberFormat`, which cells hold a date, a time or a duration |
+//! | [`entry`] | `Entry`: the text a user types into a cell, read as en-US Excel reads it |
+//! | [`format`](mod@format) | `FormatCode`: a number format code read once, what it says a number is, and `Rendered`, the text a value displays as under it |
+//! | [`theme`] | `Theme`: the colours of the workbook's theme, which a style's theme colours index |
 //! | [`shared_strings`] | the shared string table, read and written, with the `_xHHHH_` escape a string cell crosses under |
 //! | [`package`] | the Open Packaging Conventions: content types, relationships, part names |
-//! | [`sheet`] | `Sheet` and `Row`: every cell of one worksheet, reachable by reference, laid out as a `Serie` or built from one |
-//! | [`workbook`] | `Workbook`: the sheets of one package, parsed on demand, written back with every other part carried over |
+//! | [`sheet`] | `Sheet`, `Row` and `CellMut`: every cell of one worksheet, reachable by reference, laid out as a `Serie` or built from one, and what its part states outside its cells carried as it was written |
+//! | [`workbook`] | `Workbook`, `SheetKey` and `Package`: the sheets of one package, parsed on demand, saved by writing what changed and copying every other member as it is stored; the structural verbs - rows and columns inserted and removed, sheets renamed, moved and removed - every reference in the package following, and the range verbs: clear, paste, paste text, sort |
+//! | [`edit`] | `Edit`, one change of a workbook as a value, applied all or nothing by `Workbook::apply`, which answers `Applied` with the edit undoing it; `Clear`, `Paste`, `SortKey`, `Landing`, and `Restore`/`RestoreSheet`/`RestoreBand`, what an undo puts back that the opposite edit does not |
+//! | [`fill`] | `FillMode` and `Workbook::fill`: AutoFill, as the series a source spells or as copies of it |
+//! | [`find`] | `FindOptions`, `FindScope` and `Within`: Find Next and Replace All over one pattern of Excel's wildcards |
+//! | [`journal`] | `Journal`: undo and redo, bounded in edits and in bytes |
+//! | [`names`] | `DefinedName`: the workbook's defined names, carried as written until a sheet they name is renamed or removed |
 //! | [`options`], [`media`] | the `.xlsx` record medium: [`ExcelOptions`] and [`Excel`] |
 //!
 //! ```
@@ -55,32 +66,76 @@
 //! # }
 //! ```
 
+pub(crate) mod carried;
 pub mod cell;
+pub mod edit;
+pub mod entry;
+pub mod fill;
+pub mod find;
+pub mod format;
+pub mod formula;
+pub mod journal;
+pub mod layout;
 pub mod media;
+pub mod names;
 pub mod options;
 pub mod package;
 pub(crate) mod parser;
+pub mod pivot;
 pub(crate) mod reader;
+pub(crate) mod records;
+pub(crate) mod regions;
 pub mod shared_strings;
 pub mod sheet;
+pub(crate) mod shift;
+pub mod style;
 pub mod styles;
+pub(crate) mod table;
+pub mod theme;
 pub mod workbook;
 pub(crate) mod writer;
 
 pub use cell::{
-    Cell, CellKind, CellRange, CellRef, DateSystem, MAX_CELL_TEXT, MAX_COLUMNS, MAX_ROWS,
+    Cell, CellKind, CellRange, CellRef, DateSystem, ExcelError, MAX_CELL_TEXT, MAX_COLUMNS,
+    MAX_ROWS,
 };
-pub use media::{Excel, overwrite_arrow_reader, read_batch_reader, read_field};
+pub use edit::{
+    Applied, Clear, Edit, Landing, MAX_EDITED_CELLS, Paste, Restore, RestoreBand, RestoreSheet,
+    SortKey,
+};
+pub use entry::Entry;
+pub use fill::FillMode;
+pub use find::{FindOptions, FindScope, Within};
+pub use format::{FormatCode, Rendered};
+pub use formula::aggregate::Aggregate;
+pub use formula::{
+    Clock, Formula, FunctionDescriptor, MAX_FORMULA_LENGTH, MAX_FORMULA_NESTING, Recalculation,
+};
+pub use journal::{DEFAULT_JOURNAL_BYTES, DEFAULT_JOURNAL_ENTRIES, Journal};
+pub use layout::{DEFAULT_COLUMN_WIDTH, DEFAULT_ROW_HEIGHT, Frozen};
+pub use media::{Excel, overwrite_arrow_reader, read_batch_reader, read_field, regions};
 pub(crate) use media::{row_size, stated_field};
-pub use options::ExcelOptions;
-pub use sheet::{MAX_SHEET_NAME, Row, Sheet, SheetState, validate_sheet_name};
-pub use styles::NumberFormat;
-pub use workbook::{SheetKind, Workbook};
+pub use names::DefinedName;
+pub use options::{ExcelOptions, ExcelSelection};
+pub use pivot::{
+    AxisField, ItemOrder, PivotFieldInfo, PivotOrigin, PivotSource, PivotSpec, PivotTable,
+    ValueField,
+};
+pub use regions::{ExcelRegion, ExcelRegionKind};
+pub use sheet::{CellMut, Direction, MAX_SHEET_NAME, Row, Sheet, SheetState, validate_sheet_name};
+pub use style::{
+    Alignment, Border, BorderPreset, BorderStyle, Borders, CellStyle, Color, Edge, Fill, Font,
+    FontScheme, Horizontal, PatternType, Protection, StyleId, StylePatch, Underline, Vertical,
+    VerticalRun,
+};
+pub use styles::{MAX_CELL_FORMATS, NumberFormat, StyleSheet};
+pub use theme::Theme;
+pub use workbook::{Package, SheetKey, SheetKind, Workbook};
 
-/// The SpreadsheetML namespace every part is written in.
+/// The Transitional SpreadsheetML namespace used by a new workbook.
 pub const NAMESPACE: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
-/// The SpreadsheetML namespace of a "Strict Open XML" workbook, read alike.
+/// The SpreadsheetML namespace retained by a "Strict Open XML" workbook.
 pub const STRICT_NAMESPACE: &str = "http://purl.oclc.org/ooxml/spreadsheetml/main";
 
 /// The namespace of the `r:` relationship attributes a part carries.
@@ -100,8 +155,8 @@ pub const DEFAULT_SHEET_NAME: &str = "Sheet1";
 /// file no spreadsheet opens: every door that reads or writes the package
 /// refuses the name before a byte crosses, as Parquet's do, and the holder
 /// leaves the coding undecoded so the refusal is the answer a caller gets.
-pub(crate) fn reject_outer_coding<H: crate::IOBase + ?Sized>(handle: &H) -> crate::Result<()> {
-    let codec = handle.codec();
+pub(crate) fn reject_outer_coding(media_type: &crate::MediaType) -> crate::Result<()> {
+    let codec = crate::Codec::from_media_type(media_type);
     if codec.is_identity() {
         return Ok(());
     }

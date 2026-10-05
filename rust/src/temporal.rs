@@ -45,7 +45,7 @@ use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 use crate::invalid;
 use crate::parser::{Parser, Token, TokenKind, is_closing_or_separator};
 use crate::timezone::{civil_from_days, days_from_civil};
-use crate::{Error, Result, TimeUnit, Timezone};
+use crate::{Error, Result, Scalar, TimeUnit, Timezone};
 
 /// Arrow casts every temporal family shares: they take any temporal.
 pub(crate) mod casts {
@@ -481,12 +481,75 @@ fn push_clock(text: &mut String, count: i64, unit: TimeUnit) {
     }
 }
 
-/// Spell a day count as `YYYY-MM-DD`, when it has four-digit years.
-pub(crate) fn format_date(days: i32) -> Option<SmolStr> {
-    let (year, month, day) = civil_from_days(i64::from(days));
+/// Native civil and clock facts shared by temporal formatting and expressions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CalendarParts {
+    pub(crate) year: i32,
+    pub(crate) month: u32,
+    pub(crate) day: u32,
+    pub(crate) hour: u32,
+    clock: i64,
+}
+
+fn calendar_from_day(days: i64, clock: i64, per: i64) -> Option<CalendarParts> {
+    let (year, month, day) = civil_from_days(days);
     if !(0..=9_999).contains(&year) {
         return None;
     }
+    Some(CalendarParts {
+        year,
+        month,
+        day,
+        hour: u32::try_from(clock.div_euclid(per).div_euclid(3_600)).ok()?,
+        clock,
+    })
+}
+
+fn calendar_from_count(count: i64, unit: TimeUnit) -> Option<CalendarParts> {
+    let per = per_second(unit)?;
+    let in_day = DAY * per;
+    calendar_from_day(count.div_euclid(in_day), count.rem_euclid(in_day), per)
+}
+
+fn local_count(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<(i64, Option<i32>)> {
+    let per = per_second(unit)?;
+    let offset = zone.offset_at(count.div_euclid(per));
+    let local = match offset {
+        Some(offset) => count.checked_add(i64::from(offset).checked_mul(per)?)?,
+        None => count,
+    };
+    Some((local, offset))
+}
+
+impl Scalar {
+    /// Civil fields without a text allocation; unsupported temporal families
+    /// and values beyond the classic four-digit year remain absent.
+    pub(crate) fn calendar_parts(&self) -> Option<CalendarParts> {
+        match self {
+            Scalar::Date32(date) => calendar_from_day(i64::from(date.count()), 0, 1),
+            Scalar::Date64(date) => self
+                .temporal_count_at(TimeUnit::Day)
+                .and_then(|days| i32::try_from(days).ok())
+                .and_then(|days| calendar_from_day(i64::from(days), 0, 1))
+                .or_else(|| calendar_from_count(date.count(), date.unit())),
+            Scalar::DateTime64(datetime) => {
+                let count = if datetime.timezone().is_naive() {
+                    datetime.count()
+                } else {
+                    local_count(datetime.count(), datetime.unit(), &datetime.timezone())?.0
+                };
+                calendar_from_count(count, datetime.unit())
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Spell a day count as `YYYY-MM-DD`, when it has four-digit years.
+pub(crate) fn format_date(days: i32) -> Option<SmolStr> {
+    let CalendarParts {
+        year, month, day, ..
+    } = calendar_from_day(i64::from(days), 0, 1)?;
     Some(format_smolstr!("{year:04}-{month:02}-{day:02}"))
 }
 
@@ -503,16 +566,16 @@ pub(crate) fn format_time(count: i64, unit: TimeUnit) -> Option<SmolStr> {
 
 /// Spell a naive reading as `YYYY-MM-DDTHH:MM:SS[.fraction]`.
 pub(crate) fn format_datetime(count: i64, unit: TimeUnit) -> Option<SmolStr> {
-    let per = per_second(unit)?;
-    let days = count.div_euclid(DAY * per);
-    let in_day = count.rem_euclid(DAY * per);
-    let (year, month, day) = civil_from_days(days);
-    if !(0..=9_999).contains(&year) {
-        return None;
-    }
+    let CalendarParts {
+        year,
+        month,
+        day,
+        clock,
+        ..
+    } = calendar_from_count(count, unit)?;
     let mut text = String::with_capacity(30);
     text.push_str(&format!("{year:04}-{month:02}-{day:02}T"));
-    push_clock(&mut text, in_day, unit);
+    push_clock(&mut text, clock, unit);
     Some(SmolStr::from(text))
 }
 
@@ -524,12 +587,7 @@ pub(crate) fn format_datetime(count: i64, unit: TimeUnit) -> Option<SmolStr> {
 /// offset, because `+02:00` cannot say `Europe/Paris`. A zone this build has
 /// no rules for spells the UTC reading with `Z` and keeps its bracketed name.
 pub(crate) fn format_timestamp(count: i64, unit: TimeUnit, zone: &Timezone) -> Option<SmolStr> {
-    let per = per_second(unit)?;
-    let offset = zone.offset_at(count.div_euclid(per));
-    let local = match offset {
-        Some(offset) => count.checked_add(i64::from(offset).checked_mul(per)?)?,
-        None => count,
-    };
+    let (local, offset) = local_count(count, unit, zone)?;
     let mut text = String::from(format_datetime(local, unit)?.as_str());
     match offset {
         Some(0) if zone.is_utc() => text.push('Z'),
@@ -2108,7 +2166,14 @@ pub mod internals {
 
     use smol_str::SmolStr;
 
-    use crate::{Result, TimeUnit, Timezone};
+    use crate::{Result, Scalar, TimeUnit, Timezone};
+
+    /// Native civil fields used by expressions without rendering a string.
+    pub fn calendar_parts(value: &Scalar) -> Option<(i32, u32, u32, u32)> {
+        value
+            .calendar_parts()
+            .map(|parts| (parts.year, parts.month, parts.day, parts.hour))
+    }
 
     /// Write a day count as a calendar date.
     #[must_use]

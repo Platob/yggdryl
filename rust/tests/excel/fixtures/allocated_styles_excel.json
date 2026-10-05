@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "utc": "2026-10-01T00:24:16.458606+00:00",
+  "cleanup_completed": true,
+  "source_report": "rust/target/excel-desktop/allocated-cell-styles-no-tables/results.json",
+  "source_sha256": "a74e3877e65a958f64a54083a2fd52ce46a4805638a83b5fd1b04d0c5130f976",
+  "native_saved_sha256": "fbbed328113718ff887dba169a832d3abaf8fe02aa2bb8a42cda21462d2e5942",
+  "method": "Allocated no-s / allocated s=0 / no physical cell under bold row or column XF1; number Value2 and datetime Value writes; native save/reopen.",
+  "scope": "Pins font-style precedence. Datetime was assigned through COM Value; its observed serial reflects COM/local-time conversion and is not an asserted Date32 or default-format equivalence.",
+  "cases": [
+    {
+      "id": "row_number",
+      "owner": "row",
+      "operation": "number",
+      "observations": {
+        "absent_s": {
+          "before": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "explicit_zero": {
+          "before": {
+            "value2": 8.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "unallocated": {
+          "before": {
+            "value2": null,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          }
+        }
+      }
+    },
+    {
+      "id": "row_date",
+      "owner": "row",
+      "operation": "date",
+      "observations": {
+        "absent_s": {
+          "before": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        },
+        "explicit_zero": {
+          "before": {
+            "value2": 8.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        },
+        "unallocated": {
+          "before": {
+            "value2": null,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": true,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": true,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        }
+      }
+    },
+    {
+      "id": "column_number",
+      "owner": "column",
+      "operation": "number",
+      "observations": {
+        "absent_s": {
+          "before": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "explicit_zero": {
+          "before": {
+            "value2": 8.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          }
+        },
+        "unallocated": {
+          "before": {
+            "value2": null,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 123.0,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "reopened": {
+            "value2": 123.0,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          }
+        }
+      }
+    },
+    {
+      "id": "column_date",
+      "owner": "column",
+      "operation": "date",
+      "observations": {
+        "absent_s": {
+          "before": {
+            "value2": 7.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        },
+        "explicit_zero": {
+          "before": {
+            "value2": 8.0,
+            "font_bold": false,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": false,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        },
+        "unallocated": {
+          "before": {
+            "value2": null,
+            "font_bold": true,
+            "number_format_en_us": "General"
+          },
+          "after": {
+            "value2": 45291.958333333336,
+            "font_bold": true,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          },
+          "reopened": {
+            "value2": 45291.958333333336,
+            "font_bold": true,
+            "number_format_en_us": "m/d/yyyy h:mm"
+          }
+        }
+      }
+    }
+  ]
+}

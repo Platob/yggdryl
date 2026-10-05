@@ -191,6 +191,34 @@ mod text {
     }
 
     #[test]
+    fn wrapper_field_projects_text_rowheader_schema() {
+        let text = Text::new(named("projected.log", b"alpha\nbravo\n"));
+        let options = text
+            .record_options()
+            .unwrap()
+            .with_select("body as payload")
+            .unwrap();
+        let field = text.read_arrow_field(&options).unwrap();
+        assert_eq!(field.fields()[0].name(), "payload");
+        assert_eq!(field.field_len(), 1);
+        assert_eq!(
+            field.into_arrow_schema().unwrap(),
+            text.read_arrow_reader(&options).unwrap().schema()
+        );
+        assert_eq!(
+            text.column_size().unwrap(),
+            text.options().source_field().unwrap().field_len()
+        );
+        let missing = text
+            .record_options()
+            .unwrap()
+            .with_select("absent")
+            .unwrap();
+        let error = text.read_arrow_field(&missing).unwrap_err().to_string();
+        assert!(error.contains("absent"), "{error}");
+    }
+
+    #[test]
     fn a_where_clause_matching_no_line_answers_the_row_schema_and_no_rows() {
         // An empty result is the columns and no rows, never an error and never
         // a missing schema: the shape was settled before a byte was read.

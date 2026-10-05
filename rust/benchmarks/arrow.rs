@@ -614,6 +614,68 @@ fn cast_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The SerieReader boundary with a wrapper-owned projection, against the same
+/// options passed explicitly. Both arms read or publish the same selected rows.
+fn record_options_benchmarks(criterion: &mut Criterion) {
+    use yggdryl::ipc::{Ipc, IpcOptions};
+
+    let root = root();
+    let selected = IpcOptions::new().with_select("symbol, size").unwrap();
+    let plain = RecordOptions::Ipc(IpcOptions::new());
+    let mut group = criterion.benchmark_group("arrow_serie_record_options");
+    for count in ROWS {
+        let batch = batch(&root, count);
+        let mut raw = handle("trades.arrows");
+        raw.write_serie(written(&root, &batch).into(), IOMode::Overwrite, None)
+            .unwrap();
+        let source = Ipc::new(raw).with_options(selected.clone());
+        let options = source.record_options().unwrap();
+        let mut documents = Vec::new();
+        group.throughput(Throughput::Elements(count as u64));
+        for (name, options) in [("owned", None), ("explicit", Some(&options))] {
+            let read = source.read_serie(options).unwrap();
+            assert_eq!(read.field().field_len(), 2);
+            assert_eq!(read.field().fields()[0].name(), "symbol");
+            assert_eq!(read.field().fields()[1].name(), "size");
+            assert_eq!(drain(read), count);
+            let mut target = Ipc::new(handle("trades.arrows")).with_options(selected.clone());
+            target
+                .write_serie(written(&root, &batch).into(), IOMode::Overwrite, options)
+                .unwrap();
+            documents.push(target.read_all_bytes().unwrap());
+            let stored = target.read_serie(Some(&plain)).unwrap();
+            assert_eq!(stored.field().field_len(), 2);
+            assert_eq!(drain(stored), count);
+
+            group.bench_function(format!("read_serie/{name}/{count}"), |bencher| {
+                bencher.iter(|| drain(black_box(&source).read_serie(black_box(options)).unwrap()));
+            });
+            group.bench_function(format!("write_serie/{name}/{count}"), |bencher| {
+                bencher.iter_batched(
+                    || {
+                        (
+                            Ipc::new(handle("trades.arrows")).with_options(selected.clone()),
+                            written(&root, &batch),
+                        )
+                    },
+                    |(mut target, rows)| {
+                        target
+                            .write_serie(rows.into(), IOMode::Overwrite, black_box(options))
+                            .unwrap();
+                        target
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+        }
+        assert_eq!(
+            documents[0], documents[1],
+            "the selected streams are identical"
+        );
+    }
+    group.finish();
+}
+
 /// Structured text both ways, against the native `Scalar` pair on the same rows.
 ///
 /// The setup asserts that the two writes produce byte-identical documents, so
@@ -1458,6 +1520,7 @@ criterion_group!(
     cast_benchmarks,
     json_cast_benchmarks,
     structured_benchmarks,
+    record_options_benchmarks,
     null_visibility_benchmarks,
     memory_size_benchmarks,
     window_benchmarks,

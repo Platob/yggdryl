@@ -322,9 +322,9 @@ with tempfile.TemporaryDirectory() as directory:
 ## Fold a sorted stream into books
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
-orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - pruning every
-execution and trade. A book is complete (`is_complete`) only at a snapshot
+orders and quotes into its sides and records executions among its deltas,
+yielding one `BookEvent` per recorded instant and book key - the instrument's
+ISIN, else its ticker, else `XX0000000000` - pruning every trade. A book is complete (`is_complete`) only at a snapshot
 tick; every other book states its deltas alone beside the top of book they
 settled on, and `with_previous` over the complete book before it rebuilds it
 whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -505,9 +505,10 @@ assert chain.column("crosscode").to_pylist() == ["10:1:O-1001"]
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries into the sides and executions among the deltas - and
 `MarketData.from_arrow_reader` reads the books back. A `W` full refresh is a
-snapshot input, so its book is complete; the `X` after it states its delta.
+snapshot input, so its book is complete; the `X` after it states the bid's
+change and the execution as its deltas.
 
 ```python
 from decimal import Decimal
@@ -635,8 +636,8 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`; an execution or a trade is
-  pruned, no error and no book. What `BookIterator` finds wrong in the data -
+  `with_operations` at `$.operations[i].kind`; an execution is recorded among
+  the deltas and moves no side, while a trade is pruned, no error and no book. What `BookIterator` finds wrong in the data -
   an operation dated before its book - it leaves out, and an order or a quote
   stating neither side it places nowhere (still the book's delta), each with a
   `logging` warning under `yggdryl.graph.book`, and no error.

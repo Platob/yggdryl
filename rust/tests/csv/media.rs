@@ -735,6 +735,9 @@ fn a_local_csv_file_is_written_read_appended_and_reopened() {
         rows_of(read_batch_reader(&reopened, None, &CsvOptions::new()).expect("a reader")),
         four_rows()
     );
+    // The metadata read maps this independent local handle. Release that
+    // mapping before another handle grows the same file on Windows.
+    drop(reopened);
 
     // Through the holder's own record surface: the name picks the encoding.
     let mut holder = Holder::file(&path).expect("a file");
@@ -1183,4 +1186,22 @@ fn a_resumed_append_completes_onto_the_header_too() {
         .expect("pushed");
     session.finish(&mut handle).expect("finished");
     assert_eq!(text(&handle), "x,y\n1,a\nabc,c\n3.5,d\n");
+}
+
+#[test]
+fn declared_wrapper_field_matches_the_selected_csv_reader() {
+    let media = Csv::new(stored("id,symbol\n1,AAPL\n"));
+    let options = RecordOptions::Csv(CsvOptions::new())
+        .with_field(trades_field())
+        .with_select("id")
+        .unwrap();
+    let field = media.read_arrow_field(&options).unwrap();
+    let reader = media.read_arrow_reader(&options).unwrap();
+    assert_eq!(field.field_len(), 1);
+    assert_eq!(field.fields()[0].name(), "id");
+    assert_eq!(field.into_arrow_schema().unwrap(), reader.schema());
+    let batches = reader.map(Result::unwrap).collect::<Vec<_>>();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(batches[0].num_columns(), 1);
+    assert_eq!(batches[0].num_rows(), 1);
 }

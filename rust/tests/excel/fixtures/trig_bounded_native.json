@@ -1,0 +1,1476 @@
+{
+  "schema_version": 1,
+  "kind": "trig_bounded_native_replay",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 100,
+  "report_sha256": "0c4521bc5ae1cd1c78d75629c8accff9c186290af98bf76539a72fb0d4761365",
+  "manifest_sha256": "29be46131546bb5dce754ebb50d55404d8bffa71ed18bf90f110b01ab59a4564",
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "8d1ccdb485b2f12136749aa3ee1b1b40ada057c872f8621b40efb7d4df2f813a",
+      "cases": 148,
+      "physical_formula_cells": 148
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "d1fafba0406f697a7507f8f4931e29b25607fd8fb8d62b56f5a104fedf022fef",
+      "cases": 148,
+      "physical_formula_cells": 148
+    }
+  ],
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "acos-bound-0-1900",
+      "date_system": "1900",
+      "cell": "B4",
+      "wire_formula": "ACOS(-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-1",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ACOS(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-1-1900",
+      "date_system": "1900",
+      "cell": "B5",
+      "wire_formula": "ACOS(-0.999999999999999)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-0.999999999999999",
+        "category": "domain"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.1415926114429444,
+        "hex": "0x1.921fb4e9c057ep+1",
+        "ieee754_hex": "400921fb4e9c057e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926114429444",
+        "formula_text": "ACOS(-0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-4-1900",
+      "date_system": "1900",
+      "cell": "B8",
+      "wire_formula": "ACOS(-0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-0.5",
+        "category": "domain"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0943951023931957,
+        "hex": "0x1.0c152382d7366p+1",
+        "ieee754_hex": "4000c152382d7366",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.0943951023931957",
+        "formula_text": "ACOS(-0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-6-1900",
+      "date_system": "1900",
+      "cell": "B10",
+      "wire_formula": "ACOS(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ACOS(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-8-1900",
+      "date_system": "1900",
+      "cell": "B12",
+      "wire_formula": "ACOS(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0.5",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0471975511965976,
+        "hex": "0x1.0c152382d7365p+0",
+        "ieee754_hex": "3ff0c152382d7365",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.0471975511965976",
+        "formula_text": "ACOS(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-11-1900",
+      "date_system": "1900",
+      "cell": "B15",
+      "wire_formula": "ACOS(0.999999999999999)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0.999999999999999",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.470348358154297e-08,
+        "hex": "0x1.8000000000000p-25",
+        "ieee754_hex": "3e68000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4.4703483581542969E-8",
+        "formula_text": "ACOS(0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-12-1900",
+      "date_system": "1900",
+      "cell": "B16",
+      "wire_formula": "ACOS(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "1",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ACOS(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-13-1900",
+      "date_system": "1900",
+      "cell": "B17",
+      "wire_formula": "ACOS(1.00000000000001)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "1.00000000000001",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ACOS(1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-14-1900",
+      "date_system": "1900",
+      "cell": "B18",
+      "wire_formula": "ACOS(-1.00000000000001)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-1.00000000000001",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ACOS(-1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-0-1900",
+      "date_system": "1900",
+      "cell": "B73",
+      "wire_formula": "SIN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SIN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B73"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-1-1900",
+      "date_system": "1900",
+      "cell": "B74",
+      "wire_formula": "SIN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "-0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SIN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B74"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-2-1900",
+      "date_system": "1900",
+      "cell": "B75",
+      "wire_formula": "SIN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0.1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09983341664682815,
+        "hex": "0x1.98eaecb8bcb2cp-4",
+        "ieee754_hex": "3fb98eaecb8bcb2c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9833416646828155E-2",
+        "formula_text": "SIN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B75"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-3-1900",
+      "date_system": "1900",
+      "cell": "B76",
+      "wire_formula": "SIN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.479425538604203,
+        "hex": "0x1.eaee8744b05f0p-2",
+        "ieee754_hex": "3fdeaee8744b05f0",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.47942553860420301",
+        "formula_text": "SIN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B76"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-4-1900",
+      "date_system": "1900",
+      "cell": "B77",
+      "wire_formula": "SIN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.8414709848078965,
+        "hex": "0x1.aed548f090ceep-1",
+        "ieee754_hex": "3feaed548f090cee",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.8414709848078965",
+        "formula_text": "SIN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B77"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-5-1900",
+      "date_system": "1900",
+      "cell": "B78",
+      "wire_formula": "SIN(1.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "1.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.9974949866040544,
+        "hex": "0x1.feb7a9b2c6d8bp-1",
+        "ieee754_hex": "3fefeb7a9b2c6d8b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.99749498660405445",
+        "formula_text": "SIN(1.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B78"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-6-1900",
+      "date_system": "1900",
+      "cell": "B79",
+      "wire_formula": "SIN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "2.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5984721441039565,
+        "hex": "0x1.326af0dcfcab1p-1",
+        "ieee754_hex": "3fe326af0dcfcab1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.59847214410395655",
+        "formula_text": "SIN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B79"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-7-1900",
+      "date_system": "1900",
+      "cell": "B80",
+      "wire_formula": "SIN(PI())",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "PI()",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.22514845490862e-16,
+        "hex": "0x1.1a80000000000p-53",
+        "ieee754_hex": "3ca1a80000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.22514845490862E-16",
+        "formula_text": "SIN(PI())",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B80"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-0-1900",
+      "date_system": "1900",
+      "cell": "B87",
+      "wire_formula": "TAN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "TAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B87"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-1-1900",
+      "date_system": "1900",
+      "cell": "B88",
+      "wire_formula": "TAN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "-0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "TAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B88"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-2-1900",
+      "date_system": "1900",
+      "cell": "B89",
+      "wire_formula": "TAN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0.1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.10033467208545055,
+        "hex": "0x1.9af8877430b80p-4",
+        "ieee754_hex": "3fb9af8877430b80",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.10033467208545055",
+        "formula_text": "TAN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B89"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-3-1900",
+      "date_system": "1900",
+      "cell": "B90",
+      "wire_formula": "TAN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5463024898437905,
+        "hex": "0x1.17b4f5bf3474ap-1",
+        "ieee754_hex": "3fe17b4f5bf3474a",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.54630248984379048",
+        "formula_text": "TAN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B90"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-4-1900",
+      "date_system": "1900",
+      "cell": "B91",
+      "wire_formula": "TAN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "1",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5574077246549023,
+        "hex": "0x1.8eb245cbee3a6p+0",
+        "ieee754_hex": "3ff8eb245cbee3a6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5574077246549023",
+        "formula_text": "TAN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B91"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-5-1900",
+      "date_system": "1900",
+      "cell": "B92",
+      "wire_formula": "TAN(1.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "1.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 14.101419947171719,
+        "hex": "0x1.c33ed50b88777p+3",
+        "ieee754_hex": "402c33ed50b88777",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "14.101419947171719",
+        "formula_text": "TAN(1.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B92"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-6-1900",
+      "date_system": "1900",
+      "cell": "B93",
+      "wire_formula": "TAN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "2.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7470222972386603,
+        "hex": "-0x1.7e79b4e00bb15p-1",
+        "ieee754_hex": "bfe7e79b4e00bb15",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.74702229723866032",
+        "formula_text": "TAN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B93"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-7-1900",
+      "date_system": "1900",
+      "cell": "B94",
+      "wire_formula": "TAN(PI())",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "PI()",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.22514845490862e-16,
+        "hex": "-0x1.1a80000000000p-53",
+        "ieee754_hex": "bca1a80000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.22514845490862E-16",
+        "formula_text": "TAN(PI())",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B94"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-0-1904",
+      "date_system": "1904",
+      "cell": "B4",
+      "wire_formula": "ACOS(-1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-1",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.141592653589793,
+        "hex": "0x1.921fb54442d18p+1",
+        "ieee754_hex": "400921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926535897931",
+        "formula_text": "ACOS(-1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-1-1904",
+      "date_system": "1904",
+      "cell": "B5",
+      "wire_formula": "ACOS(-0.999999999999999)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-0.999999999999999",
+        "category": "domain"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 3.1415926114429444,
+        "hex": "0x1.921fb4e9c057ep+1",
+        "ieee754_hex": "400921fb4e9c057e",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3.1415926114429444",
+        "formula_text": "ACOS(-0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-4-1904",
+      "date_system": "1904",
+      "cell": "B8",
+      "wire_formula": "ACOS(-0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-0.5",
+        "category": "domain"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 2.0943951023931957,
+        "hex": "0x1.0c152382d7366p+1",
+        "ieee754_hex": "4000c152382d7366",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.0943951023931957",
+        "formula_text": "ACOS(-0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-6-1904",
+      "date_system": "1904",
+      "cell": "B10",
+      "wire_formula": "ACOS(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5707963267948966,
+        "hex": "0x1.921fb54442d18p+0",
+        "ieee754_hex": "3ff921fb54442d18",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5707963267948966",
+        "formula_text": "ACOS(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-8-1904",
+      "date_system": "1904",
+      "cell": "B12",
+      "wire_formula": "ACOS(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0.5",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.0471975511965976,
+        "hex": "0x1.0c152382d7365p+0",
+        "ieee754_hex": "3ff0c152382d7365",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.0471975511965976",
+        "formula_text": "ACOS(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-11-1904",
+      "date_system": "1904",
+      "cell": "B15",
+      "wire_formula": "ACOS(0.999999999999999)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "0.999999999999999",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 4.470348358154297e-08,
+        "hex": "0x1.8000000000000p-25",
+        "ieee754_hex": "3e68000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4.4703483581542969E-8",
+        "formula_text": "ACOS(0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-12-1904",
+      "date_system": "1904",
+      "cell": "B16",
+      "wire_formula": "ACOS(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "1",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "ACOS(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-13-1904",
+      "date_system": "1904",
+      "cell": "B17",
+      "wire_formula": "ACOS(1.00000000000001)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "1.00000000000001",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ACOS(1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "acos-bound-14-1904",
+      "date_system": "1904",
+      "cell": "B18",
+      "wire_formula": "ACOS(-1.00000000000001)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "ACOS",
+        "arguments": "-1.00000000000001",
+        "category": "domain"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "int",
+        "value": -2146826252
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#NUM!",
+        "formula_text": "ACOS(-1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-0-1904",
+      "date_system": "1904",
+      "cell": "B73",
+      "wire_formula": "SIN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SIN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B73"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-1-1904",
+      "date_system": "1904",
+      "cell": "B74",
+      "wire_formula": "SIN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "-0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "SIN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B74"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-2-1904",
+      "date_system": "1904",
+      "cell": "B75",
+      "wire_formula": "SIN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0.1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.09983341664682815,
+        "hex": "0x1.98eaecb8bcb2cp-4",
+        "ieee754_hex": "3fb98eaecb8bcb2c",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "9.9833416646828155E-2",
+        "formula_text": "SIN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B75"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-3-1904",
+      "date_system": "1904",
+      "cell": "B76",
+      "wire_formula": "SIN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "0.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.479425538604203,
+        "hex": "0x1.eaee8744b05f0p-2",
+        "ieee754_hex": "3fdeaee8744b05f0",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.47942553860420301",
+        "formula_text": "SIN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B76"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-4-1904",
+      "date_system": "1904",
+      "cell": "B77",
+      "wire_formula": "SIN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.8414709848078965,
+        "hex": "0x1.aed548f090ceep-1",
+        "ieee754_hex": "3feaed548f090cee",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.8414709848078965",
+        "formula_text": "SIN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B77"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-5-1904",
+      "date_system": "1904",
+      "cell": "B78",
+      "wire_formula": "SIN(1.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "1.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.9974949866040544,
+        "hex": "0x1.feb7a9b2c6d8bp-1",
+        "ieee754_hex": "3fefeb7a9b2c6d8b",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.99749498660405445",
+        "formula_text": "SIN(1.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B78"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-6-1904",
+      "date_system": "1904",
+      "cell": "B79",
+      "wire_formula": "SIN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "2.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5984721441039565,
+        "hex": "0x1.326af0dcfcab1p-1",
+        "ieee754_hex": "3fe326af0dcfcab1",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.59847214410395655",
+        "formula_text": "SIN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B79"
+        }
+      }
+    },
+    {
+      "id": "sin-bound-7-1904",
+      "date_system": "1904",
+      "cell": "B80",
+      "wire_formula": "SIN(PI())",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "SIN",
+        "arguments": "PI()",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.22514845490862e-16,
+        "hex": "0x1.1a80000000000p-53",
+        "ieee754_hex": "3ca1a80000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.22514845490862E-16",
+        "formula_text": "SIN(PI())",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B80"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-0-1904",
+      "date_system": "1904",
+      "cell": "B87",
+      "wire_formula": "TAN(0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "TAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B87"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-1-1904",
+      "date_system": "1904",
+      "cell": "B88",
+      "wire_formula": "TAN(-0)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "-0",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.0,
+        "hex": "0x0.0p+0",
+        "ieee754_hex": "0000000000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "TAN(0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B88"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-2-1904",
+      "date_system": "1904",
+      "cell": "B89",
+      "wire_formula": "TAN(0.1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0.1",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.10033467208545055,
+        "hex": "0x1.9af8877430b80p-4",
+        "ieee754_hex": "3fb9af8877430b80",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.10033467208545055",
+        "formula_text": "TAN(0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B89"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-3-1904",
+      "date_system": "1904",
+      "cell": "B90",
+      "wire_formula": "TAN(0.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "0.5",
+        "category": "reduction"
+      },
+      "expect_computed": true,
+      "actual_value2": {
+        "variant": "float",
+        "value": 0.5463024898437905,
+        "hex": "0x1.17b4f5bf3474ap-1",
+        "ieee754_hex": "3fe17b4f5bf3474a",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.54630248984379048",
+        "formula_text": "TAN(0.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B90"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-4-1904",
+      "date_system": "1904",
+      "cell": "B91",
+      "wire_formula": "TAN(1)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "1",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 1.5574077246549023,
+        "hex": "0x1.8eb245cbee3a6p+0",
+        "ieee754_hex": "3ff8eb245cbee3a6",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5574077246549023",
+        "formula_text": "TAN(1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B91"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-5-1904",
+      "date_system": "1904",
+      "cell": "B92",
+      "wire_formula": "TAN(1.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "1.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": 14.101419947171719,
+        "hex": "0x1.c33ed50b88777p+3",
+        "ieee754_hex": "402c33ed50b88777",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "14.101419947171719",
+        "formula_text": "TAN(1.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B92"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-6-1904",
+      "date_system": "1904",
+      "cell": "B93",
+      "wire_formula": "TAN(2.5)",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "2.5",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": -0.7470222972386603,
+        "hex": "-0x1.7e79b4e00bb15p-1",
+        "ieee754_hex": "bfe7e79b4e00bb15",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.74702229723866032",
+        "formula_text": "TAN(2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B93"
+        }
+      }
+    },
+    {
+      "id": "tan-bound-7-1904",
+      "date_system": "1904",
+      "cell": "B94",
+      "wire_formula": "TAN(PI())",
+      "shape": {
+        "kind": "trig_refinement",
+        "function": "TAN",
+        "arguments": "PI()",
+        "category": "reduction"
+      },
+      "expect_computed": false,
+      "actual_value2": {
+        "variant": "float",
+        "value": -1.22514845490862e-16,
+        "hex": "-0x1.1a80000000000p-53",
+        "ieee754_hex": "bca1a80000000000",
+        "classification": "finite"
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.22514845490862E-16",
+        "formula_text": "TAN(PI())",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B94"
+        }
+      }
+    }
+  ]
+}

@@ -149,6 +149,8 @@ mod parser;
 mod path;
 #[path = "root/protocol.rs"]
 mod protocol;
+#[path = "root/record_header.rs"]
+mod record_header;
 #[path = "root/regex.rs"]
 mod regex;
 #[path = "root/ric.rs"]

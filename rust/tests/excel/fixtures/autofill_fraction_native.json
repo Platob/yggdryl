@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "source_report_sha256": "c242c424d1f4a8a780bd413e4fbea999791fa5908c35bf1e3bba6492cb01db4e",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0"
+  },
+  "cleanup_completed": true,
+  "scope": "Date-format fractional AutoFill Value2 and saved numeric OOXML observations only",
+  "cases": [
+    {
+      "date_system": "1900",
+      "input_sha256": "79b492922098224b7aca26a007de012bca250e384d63adf77d94105bf0150aeb",
+      "saved_sha256": "2b51b2096a43f7ebf3d41b3ab358c77372042fc65a8ae91ab81bdd0733b628b3",
+      "cells": [
+        {
+          "cell": "S1",
+          "value2_ieee754_hex": "40e61d9000000000",
+          "saved_numeric_text": "45292.5",
+          "saved_ieee754_hex": "40e61d9000000000"
+        },
+        {
+          "cell": "S2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "S3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "U1",
+          "value2_ieee754_hex": "40e61d80083126e9",
+          "saved_numeric_text": "45292.000999999997",
+          "saved_ieee754_hex": "40e61d80083126e9"
+        },
+        {
+          "cell": "U2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "U3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "W1",
+          "value2_ieee754_hex": "40e61d8000000638",
+          "saved_numeric_text": "45292.000000011583",
+          "saved_ieee754_hex": "40e61d8000000638"
+        },
+        {
+          "cell": "W2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "W3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "Y1",
+          "value2_ieee754_hex": "40e61d800000055e",
+          "saved_numeric_text": "45292.000000009997",
+          "saved_ieee754_hex": "40e61d800000055e"
+        },
+        {
+          "cell": "Y2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "Y3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "AA1",
+          "value2_ieee754_hex": "40e61d9000000000",
+          "saved_numeric_text": "45292.5",
+          "saved_ieee754_hex": "40e61d9000000000"
+        },
+        {
+          "cell": "AA2",
+          "value2_ieee754_hex": "40e61db000000000",
+          "saved_numeric_text": "45293.5",
+          "saved_ieee754_hex": "40e61db000000000"
+        },
+        {
+          "cell": "AA3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "AA4",
+          "value2_ieee754_hex": "40e61de000000000",
+          "saved_numeric_text": "45295",
+          "saved_ieee754_hex": "40e61de000000000"
+        }
+      ]
+    },
+    {
+      "date_system": "1904",
+      "input_sha256": "61938744180da54c04b0371fad4bda0979ce7a75c5d9cbb613ea777cf8d8c4cf",
+      "saved_sha256": "735be85bd50b7dba3b03934fef74d532510cbe552851435a142c11087a0f7eb1",
+      "cells": [
+        {
+          "cell": "S1",
+          "value2_ieee754_hex": "40e61d9000000000",
+          "saved_numeric_text": "45292.5",
+          "saved_ieee754_hex": "40e61d9000000000"
+        },
+        {
+          "cell": "S2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "S3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "U1",
+          "value2_ieee754_hex": "40e61d80083126e9",
+          "saved_numeric_text": "45292.000999999997",
+          "saved_ieee754_hex": "40e61d80083126e9"
+        },
+        {
+          "cell": "U2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "U3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "W1",
+          "value2_ieee754_hex": "40e61d8000000638",
+          "saved_numeric_text": "45292.000000011583",
+          "saved_ieee754_hex": "40e61d8000000638"
+        },
+        {
+          "cell": "W2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "W3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "Y1",
+          "value2_ieee754_hex": "40e61d800000055e",
+          "saved_numeric_text": "45292.000000009997",
+          "saved_ieee754_hex": "40e61d800000055e"
+        },
+        {
+          "cell": "Y2",
+          "value2_ieee754_hex": "40e61da000000000",
+          "saved_numeric_text": "45293",
+          "saved_ieee754_hex": "40e61da000000000"
+        },
+        {
+          "cell": "Y3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "AA1",
+          "value2_ieee754_hex": "40e61d9000000000",
+          "saved_numeric_text": "45292.5",
+          "saved_ieee754_hex": "40e61d9000000000"
+        },
+        {
+          "cell": "AA2",
+          "value2_ieee754_hex": "40e61db000000000",
+          "saved_numeric_text": "45293.5",
+          "saved_ieee754_hex": "40e61db000000000"
+        },
+        {
+          "cell": "AA3",
+          "value2_ieee754_hex": "40e61dc000000000",
+          "saved_numeric_text": "45294",
+          "saved_ieee754_hex": "40e61dc000000000"
+        },
+        {
+          "cell": "AA4",
+          "value2_ieee754_hex": "40e61de000000000",
+          "saved_numeric_text": "45295",
+          "saved_ieee754_hex": "40e61de000000000"
+        }
+      ]
+    }
+  ]
+}

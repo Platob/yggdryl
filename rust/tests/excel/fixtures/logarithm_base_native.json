@@ -1,0 +1,2950 @@
+{
+  "schema_version": 1,
+  "scope": "Native arbitrary-base logarithms; shared natural logarithm ratio and decimal-base kernel",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 96,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "source_cells": {
+    "Values": {}
+  },
+  "source_report": "rust\\target\\excel-desktop\\p5-log-base-native\\results.json",
+  "source_report_sha256": "7932e17e9675b82c0fa07005e63c3585d2cbd91b8942f18d61031a90a3e455ca",
+  "manifest_sha256": "4210a9dbcbf5291e7ccaa5fbf6a6a68280004a00f9359c3f5b0969e0ebe6a6c5",
+  "cases": [
+    {
+      "id": "log-base-0-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "LOG(2,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,3"
+      },
+      "actual": {
+        "formula": "=LOG(2,3)",
+        "formula2": "=LOG(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.6309297535714574,
+          "hex": "0x1.430939835353dp-1",
+          "ieee754_hex": "3fe430939835353d",
+          "classification": "finite"
+        },
+        "display": "0.63093",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,3)",
+        "formula2": "=LOG(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.6309297535714574,
+          "hex": "0x1.430939835353dp-1",
+          "ieee754_hex": "3fe430939835353d",
+          "classification": "finite"
+        },
+        "display": "0.63093",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.63092975357145742",
+        "formula_text": "LOG(2,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-1-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "LOG(3,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3,2"
+      },
+      "actual": {
+        "formula": "=LOG(3,2)",
+        "formula2": "=LOG(3,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5849625007211563,
+          "hex": "0x1.95c01a39fbd69p+0",
+          "ieee754_hex": "3ff95c01a39fbd69",
+          "classification": "finite"
+        },
+        "display": "1.584963",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3,2)",
+        "formula2": "=LOG(3,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5849625007211563,
+          "hex": "0x1.95c01a39fbd69p+0",
+          "ieee754_hex": "3ff95c01a39fbd69",
+          "classification": "finite"
+        },
+        "display": "1.584963",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5849625007211563",
+        "formula_text": "LOG(3,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-2-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "LOG(10,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "10,3"
+      },
+      "actual": {
+        "formula": "=LOG(10,3)",
+        "formula2": "=LOG(10,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.095903274289385,
+          "hex": "0x1.0c468ef9537c2p+1",
+          "ieee754_hex": "4000c468ef9537c2",
+          "classification": "finite"
+        },
+        "display": "2.095903",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(10,3)",
+        "formula2": "=LOG(10,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.095903274289385,
+          "hex": "0x1.0c468ef9537c2p+1",
+          "ieee754_hex": "4000c468ef9537c2",
+          "classification": "finite"
+        },
+        "display": "2.095903",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.0959032742893848",
+        "formula_text": "LOG(10,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-3-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "LOG(3,10)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3,10"
+      },
+      "actual": {
+        "formula": "=LOG(3,10)",
+        "formula2": "=LOG(3,10)",
+        "value2": {
+          "variant": "float",
+          "value": 0.47712125471966244,
+          "hex": "0x1.e8927964fd5fdp-2",
+          "ieee754_hex": "3fde8927964fd5fd",
+          "classification": "finite"
+        },
+        "display": "0.477121",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3,10)",
+        "formula2": "=LOG(3,10)",
+        "value2": {
+          "variant": "float",
+          "value": 0.47712125471966244,
+          "hex": "0x1.e8927964fd5fdp-2",
+          "ieee754_hex": "3fde8927964fd5fd",
+          "classification": "finite"
+        },
+        "display": "0.477121",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.47712125471966244",
+        "formula_text": "LOG(3,10)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-4-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "LOG(5,7)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "5,7"
+      },
+      "actual": {
+        "formula": "=LOG(5,7)",
+        "formula2": "=LOG(5,7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.8270874753469162,
+          "hex": "0x1.a778027317a90p-1",
+          "ieee754_hex": "3fea778027317a90",
+          "classification": "finite"
+        },
+        "display": "0.827087",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(5,7)",
+        "formula2": "=LOG(5,7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.8270874753469162,
+          "hex": "0x1.a778027317a90p-1",
+          "ieee754_hex": "3fea778027317a90",
+          "classification": "finite"
+        },
+        "display": "0.827087",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.82708747534691618",
+        "formula_text": "LOG(5,7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-5-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "LOG(7,5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "7,5"
+      },
+      "actual": {
+        "formula": "=LOG(7,5)",
+        "formula2": "=LOG(7,5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.2090619551221675,
+          "hex": "0x1.3585159416685p+0",
+          "ieee754_hex": "3ff3585159416685",
+          "classification": "finite"
+        },
+        "display": "1.209062",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(7,5)",
+        "formula2": "=LOG(7,5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.2090619551221675,
+          "hex": "0x1.3585159416685p+0",
+          "ieee754_hex": "3ff3585159416685",
+          "classification": "finite"
+        },
+        "display": "1.209062",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2090619551221675",
+        "formula_text": "LOG(7,5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-6-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "LOG(0.1,0.3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.1,0.3"
+      },
+      "actual": {
+        "formula": "=LOG(0.1,0.3)",
+        "formula2": "=LOG(0.1,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.912489289393198,
+          "hex": "0x1.e998e5e7e4e17p+0",
+          "ieee754_hex": "3ffe998e5e7e4e17",
+          "classification": "finite"
+        },
+        "display": "1.912489",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.1,0.3)",
+        "formula2": "=LOG(0.1,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.912489289393198,
+          "hex": "0x1.e998e5e7e4e17p+0",
+          "ieee754_hex": "3ffe998e5e7e4e17",
+          "classification": "finite"
+        },
+        "display": "1.912489",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.912489289393198",
+        "formula_text": "LOG(0.1,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-7-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "LOG(0.3,0.1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.3,0.1"
+      },
+      "actual": {
+        "formula": "=LOG(0.3,0.1)",
+        "formula2": "=LOG(0.3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.5228787452803376,
+          "hex": "0x1.0bb6c34d81502p-1",
+          "ieee754_hex": "3fe0bb6c34d81502",
+          "classification": "finite"
+        },
+        "display": "0.522879",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.3,0.1)",
+        "formula2": "=LOG(0.3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.5228787452803376,
+          "hex": "0x1.0bb6c34d81502p-1",
+          "ieee754_hex": "3fe0bb6c34d81502",
+          "classification": "finite"
+        },
+        "display": "0.522879",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.52287874528033762",
+        "formula_text": "LOG(0.3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-8-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "LOG(1E-100,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1E-100,2"
+      },
+      "actual": {
+        "formula": "=LOG(1E-100,2)",
+        "formula2": "=LOG(1E-100,2)",
+        "value2": {
+          "variant": "float",
+          "value": -332.19280948873626,
+          "hex": "-0x1.4c315bf6707b1p+8",
+          "ieee754_hex": "c074c315bf6707b1",
+          "classification": "finite"
+        },
+        "display": "-332.193",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1E-100,2)",
+        "formula2": "=LOG(1E-100,2)",
+        "value2": {
+          "variant": "float",
+          "value": -332.19280948873626,
+          "hex": "-0x1.4c315bf6707b1p+8",
+          "ieee754_hex": "c074c315bf6707b1",
+          "classification": "finite"
+        },
+        "display": "-332.193",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-332.19280948873626",
+        "formula_text": "LOG(1E-100,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-9-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "LOG(1E100,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1E100,3"
+      },
+      "actual": {
+        "formula": "=LOG(1E+100,3)",
+        "formula2": "=LOG(1E+100,3)",
+        "value2": {
+          "variant": "float",
+          "value": 209.59032742893845,
+          "hex": "0x1.a32e3f659271ep+7",
+          "ieee754_hex": "406a32e3f659271e",
+          "classification": "finite"
+        },
+        "display": "209.5903",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1E+100,3)",
+        "formula2": "=LOG(1E+100,3)",
+        "value2": {
+          "variant": "float",
+          "value": 209.59032742893845,
+          "hex": "0x1.a32e3f659271ep+7",
+          "ieee754_hex": "406a32e3f659271e",
+          "classification": "finite"
+        },
+        "display": "209.5903",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "209.59032742893845",
+        "formula_text": "LOG(1E+100,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-10-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "LOG(0.999999999999999,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.999999999999999,2"
+      },
+      "actual": {
+        "formula": "=LOG(0.999999999999999,2)",
+        "formula2": "=LOG(0.999999999999999,2)",
+        "value2": {
+          "variant": "float",
+          "value": -1.4415419267167138e-15,
+          "hex": "-0x1.9f7f051d0f362p-50",
+          "ieee754_hex": "bcd9f7f051d0f362",
+          "classification": "finite"
+        },
+        "display": "-1.4E-15",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.999999999999999,2)",
+        "formula2": "=LOG(0.999999999999999,2)",
+        "value2": {
+          "variant": "float",
+          "value": -1.4415419267167138e-15,
+          "hex": "-0x1.9f7f051d0f362p-50",
+          "ieee754_hex": "bcd9f7f051d0f362",
+          "classification": "finite"
+        },
+        "display": "-1.4E-15",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4415419267167138E-15",
+        "formula_text": "LOG(0.999999999999999,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-11-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "LOG(2,1.00000000000001)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,1.00000000000001"
+      },
+      "actual": {
+        "formula": "=LOG(2,1.00000000000001)",
+        "formula2": "=LOG(2,1.00000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 69370164090726.56,
+          "hex": "0x1.f8bbffe8bb348p+45",
+          "ieee754_hex": "42cf8bbffe8bb348",
+          "classification": "finite"
+        },
+        "display": "6.94E+13",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,1.00000000000001)",
+        "formula2": "=LOG(2,1.00000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 69370164090726.56,
+          "hex": "0x1.f8bbffe8bb348p+45",
+          "ieee754_hex": "42cf8bbffe8bb348",
+          "classification": "finite"
+        },
+        "display": "6.94E+13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "69370164090726.563",
+        "formula_text": "LOG(2,1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-12-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "LOG(2,0.999999999999999)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,0.999999999999999"
+      },
+      "actual": {
+        "formula": "=LOG(2,0.999999999999999)",
+        "formula2": "=LOG(2,0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -693701640907261.8,
+          "hex": "-0x1.3b757ff174feep+49",
+          "ieee754_hex": "c303b757ff174fee",
+          "classification": "finite"
+        },
+        "display": "-6.9E+14",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,0.999999999999999)",
+        "formula2": "=LOG(2,0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -693701640907261.8,
+          "hex": "-0x1.3b757ff174feep+49",
+          "ieee754_hex": "c303b757ff174fee",
+          "classification": "finite"
+        },
+        "display": "-6.9E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-693701640907261.75",
+        "formula_text": "LOG(2,0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-13-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "LOG(100,100)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "100,100"
+      },
+      "actual": {
+        "formula": "=LOG(100,100)",
+        "formula2": "=LOG(100,100)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(100,100)",
+        "formula2": "=LOG(100,100)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(100,100)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-14-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "LOG(1,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1,3"
+      },
+      "actual": {
+        "formula": "=LOG(1,3)",
+        "formula2": "=LOG(1,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1,3)",
+        "formula2": "=LOG(1,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(1,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-15-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "LOG(4,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "4,4"
+      },
+      "actual": {
+        "formula": "=LOG(4,4)",
+        "formula2": "=LOG(4,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(4,4)",
+        "formula2": "=LOG(4,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(4,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-16-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "LOG(8,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "8,4"
+      },
+      "actual": {
+        "formula": "=LOG(8,4)",
+        "formula2": "=LOG(8,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5,
+          "hex": "0x1.8000000000000p+0",
+          "ieee754_hex": "3ff8000000000000",
+          "classification": "finite"
+        },
+        "display": "1.5",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(8,4)",
+        "formula2": "=LOG(8,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5,
+          "hex": "0x1.8000000000000p+0",
+          "ieee754_hex": "3ff8000000000000",
+          "classification": "finite"
+        },
+        "display": "1.5",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5",
+        "formula_text": "LOG(8,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-17-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "LOG(32,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "32,4"
+      },
+      "actual": {
+        "formula": "=LOG(32,4)",
+        "formula2": "=LOG(32,4)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5,
+          "hex": "0x1.4000000000000p+1",
+          "ieee754_hex": "4004000000000000",
+          "classification": "finite"
+        },
+        "display": "2.5",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(32,4)",
+        "formula2": "=LOG(32,4)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5,
+          "hex": "0x1.4000000000000p+1",
+          "ieee754_hex": "4004000000000000",
+          "classification": "finite"
+        },
+        "display": "2.5",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.5",
+        "formula_text": "LOG(32,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-18-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "LOG(2.5,3.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2.5,3.5"
+      },
+      "actual": {
+        "formula": "=LOG(2.5,3.5)",
+        "formula2": "=LOG(2.5,3.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.7314158822675504,
+          "hex": "0x1.767c247c3a6d5p-1",
+          "ieee754_hex": "3fe767c247c3a6d5",
+          "classification": "finite"
+        },
+        "display": "0.731416",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2.5,3.5)",
+        "formula2": "=LOG(2.5,3.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.7314158822675504,
+          "hex": "0x1.767c247c3a6d5p-1",
+          "ieee754_hex": "3fe767c247c3a6d5",
+          "classification": "finite"
+        },
+        "display": "0.731416",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.73141588226755039",
+        "formula_text": "LOG(2.5,3.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-19-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "LOG(3.5,2.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3.5,2.5"
+      },
+      "actual": {
+        "formula": "=LOG(3.5,2.5)",
+        "formula2": "=LOG(3.5,2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.3672112190123349,
+          "hex": "0x1.5e018df061dc9p+0",
+          "ieee754_hex": "3ff5e018df061dc9",
+          "classification": "finite"
+        },
+        "display": "1.367211",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3.5,2.5)",
+        "formula2": "=LOG(3.5,2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.3672112190123349,
+          "hex": "0x1.5e018df061dc9p+0",
+          "ieee754_hex": "3ff5e018df061dc9",
+          "classification": "finite"
+        },
+        "display": "1.367211",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.3672112190123349",
+        "formula_text": "LOG(3.5,2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-20-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "LOG(3E-308,9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3E-308,9E307"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308,9E+307)",
+        "formula2": "=LOG(3E-308,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9985992601996844,
+          "hex": "-0x1.ff4866f8bc20fp-1",
+          "ieee754_hex": "bfeff4866f8bc20f",
+          "classification": "finite"
+        },
+        "display": "-0.9986",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3E-308,9E+307)",
+        "formula2": "=LOG(3E-308,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9985992601996844,
+          "hex": "-0x1.ff4866f8bc20fp-1",
+          "ieee754_hex": "bfeff4866f8bc20f",
+          "classification": "finite"
+        },
+        "display": "-0.9986",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.99859926019968437",
+        "formula_text": "LOG(3E-308,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-21-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "LOG(9E307,3E-308)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "9E307,3E-308"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307,3E-308)",
+        "formula2": "=LOG(9E+307,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0014027046245113,
+          "hex": "-0x1.005bed7a7cfc4p+0",
+          "ieee754_hex": "bff005bed7a7cfc4",
+          "classification": "finite"
+        },
+        "display": "-1.0014",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(9E+307,3E-308)",
+        "formula2": "=LOG(9E+307,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0014027046245113,
+          "hex": "-0x1.005bed7a7cfc4p+0",
+          "ieee754_hex": "bff005bed7a7cfc4",
+          "classification": "finite"
+        },
+        "display": "-1.0014",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0014027046245113",
+        "formula_text": "LOG(9E+307,3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-22-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "LOG(3E-308,3E-308)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3E-308,3E-308"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308,3E-308)",
+        "formula2": "=LOG(3E-308,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3E-308,3E-308)",
+        "formula2": "=LOG(3E-308,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(3E-308,3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-23-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "LOG(9E307,9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "9E307,9E307"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307,9E+307)",
+        "formula2": "=LOG(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(9E+307,9E+307)",
+        "formula2": "=LOG(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(9E+307,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-0-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "LOG(2,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,3"
+      },
+      "actual": {
+        "formula": "=LOG(2,3)",
+        "formula2": "=LOG(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.6309297535714574,
+          "hex": "0x1.430939835353dp-1",
+          "ieee754_hex": "3fe430939835353d",
+          "classification": "finite"
+        },
+        "display": "0.63093",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,3)",
+        "formula2": "=LOG(2,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.6309297535714574,
+          "hex": "0x1.430939835353dp-1",
+          "ieee754_hex": "3fe430939835353d",
+          "classification": "finite"
+        },
+        "display": "0.63093",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.63092975357145742",
+        "formula_text": "LOG(2,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-1-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "LOG(3,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3,2"
+      },
+      "actual": {
+        "formula": "=LOG(3,2)",
+        "formula2": "=LOG(3,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5849625007211563,
+          "hex": "0x1.95c01a39fbd69p+0",
+          "ieee754_hex": "3ff95c01a39fbd69",
+          "classification": "finite"
+        },
+        "display": "1.584963",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3,2)",
+        "formula2": "=LOG(3,2)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5849625007211563,
+          "hex": "0x1.95c01a39fbd69p+0",
+          "ieee754_hex": "3ff95c01a39fbd69",
+          "classification": "finite"
+        },
+        "display": "1.584963",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5849625007211563",
+        "formula_text": "LOG(3,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-2-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "LOG(10,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "10,3"
+      },
+      "actual": {
+        "formula": "=LOG(10,3)",
+        "formula2": "=LOG(10,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.095903274289385,
+          "hex": "0x1.0c468ef9537c2p+1",
+          "ieee754_hex": "4000c468ef9537c2",
+          "classification": "finite"
+        },
+        "display": "2.095903",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(10,3)",
+        "formula2": "=LOG(10,3)",
+        "value2": {
+          "variant": "float",
+          "value": 2.095903274289385,
+          "hex": "0x1.0c468ef9537c2p+1",
+          "ieee754_hex": "4000c468ef9537c2",
+          "classification": "finite"
+        },
+        "display": "2.095903",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.0959032742893848",
+        "formula_text": "LOG(10,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-3-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "LOG(3,10)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3,10"
+      },
+      "actual": {
+        "formula": "=LOG(3,10)",
+        "formula2": "=LOG(3,10)",
+        "value2": {
+          "variant": "float",
+          "value": 0.47712125471966244,
+          "hex": "0x1.e8927964fd5fdp-2",
+          "ieee754_hex": "3fde8927964fd5fd",
+          "classification": "finite"
+        },
+        "display": "0.477121",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3,10)",
+        "formula2": "=LOG(3,10)",
+        "value2": {
+          "variant": "float",
+          "value": 0.47712125471966244,
+          "hex": "0x1.e8927964fd5fdp-2",
+          "ieee754_hex": "3fde8927964fd5fd",
+          "classification": "finite"
+        },
+        "display": "0.477121",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.47712125471966244",
+        "formula_text": "LOG(3,10)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-4-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "LOG(5,7)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "5,7"
+      },
+      "actual": {
+        "formula": "=LOG(5,7)",
+        "formula2": "=LOG(5,7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.8270874753469162,
+          "hex": "0x1.a778027317a90p-1",
+          "ieee754_hex": "3fea778027317a90",
+          "classification": "finite"
+        },
+        "display": "0.827087",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(5,7)",
+        "formula2": "=LOG(5,7)",
+        "value2": {
+          "variant": "float",
+          "value": 0.8270874753469162,
+          "hex": "0x1.a778027317a90p-1",
+          "ieee754_hex": "3fea778027317a90",
+          "classification": "finite"
+        },
+        "display": "0.827087",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.82708747534691618",
+        "formula_text": "LOG(5,7)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-5-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "LOG(7,5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "7,5"
+      },
+      "actual": {
+        "formula": "=LOG(7,5)",
+        "formula2": "=LOG(7,5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.2090619551221675,
+          "hex": "0x1.3585159416685p+0",
+          "ieee754_hex": "3ff3585159416685",
+          "classification": "finite"
+        },
+        "display": "1.209062",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(7,5)",
+        "formula2": "=LOG(7,5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.2090619551221675,
+          "hex": "0x1.3585159416685p+0",
+          "ieee754_hex": "3ff3585159416685",
+          "classification": "finite"
+        },
+        "display": "1.209062",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.2090619551221675",
+        "formula_text": "LOG(7,5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-6-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "LOG(0.1,0.3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.1,0.3"
+      },
+      "actual": {
+        "formula": "=LOG(0.1,0.3)",
+        "formula2": "=LOG(0.1,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.912489289393198,
+          "hex": "0x1.e998e5e7e4e17p+0",
+          "ieee754_hex": "3ffe998e5e7e4e17",
+          "classification": "finite"
+        },
+        "display": "1.912489",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.1,0.3)",
+        "formula2": "=LOG(0.1,0.3)",
+        "value2": {
+          "variant": "float",
+          "value": 1.912489289393198,
+          "hex": "0x1.e998e5e7e4e17p+0",
+          "ieee754_hex": "3ffe998e5e7e4e17",
+          "classification": "finite"
+        },
+        "display": "1.912489",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.912489289393198",
+        "formula_text": "LOG(0.1,0.3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-7-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "LOG(0.3,0.1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.3,0.1"
+      },
+      "actual": {
+        "formula": "=LOG(0.3,0.1)",
+        "formula2": "=LOG(0.3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.5228787452803376,
+          "hex": "0x1.0bb6c34d81502p-1",
+          "ieee754_hex": "3fe0bb6c34d81502",
+          "classification": "finite"
+        },
+        "display": "0.522879",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.3,0.1)",
+        "formula2": "=LOG(0.3,0.1)",
+        "value2": {
+          "variant": "float",
+          "value": 0.5228787452803376,
+          "hex": "0x1.0bb6c34d81502p-1",
+          "ieee754_hex": "3fe0bb6c34d81502",
+          "classification": "finite"
+        },
+        "display": "0.522879",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.52287874528033762",
+        "formula_text": "LOG(0.3,0.1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-8-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "LOG(1E-100,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1E-100,2"
+      },
+      "actual": {
+        "formula": "=LOG(1E-100,2)",
+        "formula2": "=LOG(1E-100,2)",
+        "value2": {
+          "variant": "float",
+          "value": -332.19280948873626,
+          "hex": "-0x1.4c315bf6707b1p+8",
+          "ieee754_hex": "c074c315bf6707b1",
+          "classification": "finite"
+        },
+        "display": "-332.193",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1E-100,2)",
+        "formula2": "=LOG(1E-100,2)",
+        "value2": {
+          "variant": "float",
+          "value": -332.19280948873626,
+          "hex": "-0x1.4c315bf6707b1p+8",
+          "ieee754_hex": "c074c315bf6707b1",
+          "classification": "finite"
+        },
+        "display": "-332.193",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-332.19280948873626",
+        "formula_text": "LOG(1E-100,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-9-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "LOG(1E100,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1E100,3"
+      },
+      "actual": {
+        "formula": "=LOG(1E+100,3)",
+        "formula2": "=LOG(1E+100,3)",
+        "value2": {
+          "variant": "float",
+          "value": 209.59032742893845,
+          "hex": "0x1.a32e3f659271ep+7",
+          "ieee754_hex": "406a32e3f659271e",
+          "classification": "finite"
+        },
+        "display": "209.5903",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1E+100,3)",
+        "formula2": "=LOG(1E+100,3)",
+        "value2": {
+          "variant": "float",
+          "value": 209.59032742893845,
+          "hex": "0x1.a32e3f659271ep+7",
+          "ieee754_hex": "406a32e3f659271e",
+          "classification": "finite"
+        },
+        "display": "209.5903",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "209.59032742893845",
+        "formula_text": "LOG(1E+100,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-10-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "LOG(0.999999999999999,2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "0.999999999999999,2"
+      },
+      "actual": {
+        "formula": "=LOG(0.999999999999999,2)",
+        "formula2": "=LOG(0.999999999999999,2)",
+        "value2": {
+          "variant": "float",
+          "value": -1.4415419267167138e-15,
+          "hex": "-0x1.9f7f051d0f362p-50",
+          "ieee754_hex": "bcd9f7f051d0f362",
+          "classification": "finite"
+        },
+        "display": "-1.4E-15",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(0.999999999999999,2)",
+        "formula2": "=LOG(0.999999999999999,2)",
+        "value2": {
+          "variant": "float",
+          "value": -1.4415419267167138e-15,
+          "hex": "-0x1.9f7f051d0f362p-50",
+          "ieee754_hex": "bcd9f7f051d0f362",
+          "classification": "finite"
+        },
+        "display": "-1.4E-15",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.4415419267167138E-15",
+        "formula_text": "LOG(0.999999999999999,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-11-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "LOG(2,1.00000000000001)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,1.00000000000001"
+      },
+      "actual": {
+        "formula": "=LOG(2,1.00000000000001)",
+        "formula2": "=LOG(2,1.00000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 69370164090726.56,
+          "hex": "0x1.f8bbffe8bb348p+45",
+          "ieee754_hex": "42cf8bbffe8bb348",
+          "classification": "finite"
+        },
+        "display": "6.94E+13",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,1.00000000000001)",
+        "formula2": "=LOG(2,1.00000000000001)",
+        "value2": {
+          "variant": "float",
+          "value": 69370164090726.56,
+          "hex": "0x1.f8bbffe8bb348p+45",
+          "ieee754_hex": "42cf8bbffe8bb348",
+          "classification": "finite"
+        },
+        "display": "6.94E+13",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "69370164090726.563",
+        "formula_text": "LOG(2,1.00000000000001)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-12-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "LOG(2,0.999999999999999)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2,0.999999999999999"
+      },
+      "actual": {
+        "formula": "=LOG(2,0.999999999999999)",
+        "formula2": "=LOG(2,0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -693701640907261.8,
+          "hex": "-0x1.3b757ff174feep+49",
+          "ieee754_hex": "c303b757ff174fee",
+          "classification": "finite"
+        },
+        "display": "-6.9E+14",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2,0.999999999999999)",
+        "formula2": "=LOG(2,0.999999999999999)",
+        "value2": {
+          "variant": "float",
+          "value": -693701640907261.8,
+          "hex": "-0x1.3b757ff174feep+49",
+          "ieee754_hex": "c303b757ff174fee",
+          "classification": "finite"
+        },
+        "display": "-6.9E+14",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-693701640907261.75",
+        "formula_text": "LOG(2,0.999999999999999)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-13-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "LOG(100,100)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "100,100"
+      },
+      "actual": {
+        "formula": "=LOG(100,100)",
+        "formula2": "=LOG(100,100)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(100,100)",
+        "formula2": "=LOG(100,100)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(100,100)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-14-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "LOG(1,3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "1,3"
+      },
+      "actual": {
+        "formula": "=LOG(1,3)",
+        "formula2": "=LOG(1,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(1,3)",
+        "formula2": "=LOG(1,3)",
+        "value2": {
+          "variant": "float",
+          "value": 0.0,
+          "hex": "0x0.0p+0",
+          "ieee754_hex": "0000000000000000",
+          "classification": "finite"
+        },
+        "display": "0",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0",
+        "formula_text": "LOG(1,3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-15-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "LOG(4,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "4,4"
+      },
+      "actual": {
+        "formula": "=LOG(4,4)",
+        "formula2": "=LOG(4,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(4,4)",
+        "formula2": "=LOG(4,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(4,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-16-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "LOG(8,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "8,4"
+      },
+      "actual": {
+        "formula": "=LOG(8,4)",
+        "formula2": "=LOG(8,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5,
+          "hex": "0x1.8000000000000p+0",
+          "ieee754_hex": "3ff8000000000000",
+          "classification": "finite"
+        },
+        "display": "1.5",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(8,4)",
+        "formula2": "=LOG(8,4)",
+        "value2": {
+          "variant": "float",
+          "value": 1.5,
+          "hex": "0x1.8000000000000p+0",
+          "ieee754_hex": "3ff8000000000000",
+          "classification": "finite"
+        },
+        "display": "1.5",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.5",
+        "formula_text": "LOG(8,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-17-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "LOG(32,4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "32,4"
+      },
+      "actual": {
+        "formula": "=LOG(32,4)",
+        "formula2": "=LOG(32,4)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5,
+          "hex": "0x1.4000000000000p+1",
+          "ieee754_hex": "4004000000000000",
+          "classification": "finite"
+        },
+        "display": "2.5",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(32,4)",
+        "formula2": "=LOG(32,4)",
+        "value2": {
+          "variant": "float",
+          "value": 2.5,
+          "hex": "0x1.4000000000000p+1",
+          "ieee754_hex": "4004000000000000",
+          "classification": "finite"
+        },
+        "display": "2.5",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "2.5",
+        "formula_text": "LOG(32,4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-18-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "LOG(2.5,3.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "2.5,3.5"
+      },
+      "actual": {
+        "formula": "=LOG(2.5,3.5)",
+        "formula2": "=LOG(2.5,3.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.7314158822675504,
+          "hex": "0x1.767c247c3a6d5p-1",
+          "ieee754_hex": "3fe767c247c3a6d5",
+          "classification": "finite"
+        },
+        "display": "0.731416",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(2.5,3.5)",
+        "formula2": "=LOG(2.5,3.5)",
+        "value2": {
+          "variant": "float",
+          "value": 0.7314158822675504,
+          "hex": "0x1.767c247c3a6d5p-1",
+          "ieee754_hex": "3fe767c247c3a6d5",
+          "classification": "finite"
+        },
+        "display": "0.731416",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "0.73141588226755039",
+        "formula_text": "LOG(2.5,3.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-19-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B20",
+      "wire_formula": "LOG(3.5,2.5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3.5,2.5"
+      },
+      "actual": {
+        "formula": "=LOG(3.5,2.5)",
+        "formula2": "=LOG(3.5,2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.3672112190123349,
+          "hex": "0x1.5e018df061dc9p+0",
+          "ieee754_hex": "3ff5e018df061dc9",
+          "classification": "finite"
+        },
+        "display": "1.367211",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3.5,2.5)",
+        "formula2": "=LOG(3.5,2.5)",
+        "value2": {
+          "variant": "float",
+          "value": 1.3672112190123349,
+          "hex": "0x1.5e018df061dc9p+0",
+          "ieee754_hex": "3ff5e018df061dc9",
+          "classification": "finite"
+        },
+        "display": "1.367211",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1.3672112190123349",
+        "formula_text": "LOG(3.5,2.5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B20"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-20-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B21",
+      "wire_formula": "LOG(3E-308,9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3E-308,9E307"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308,9E+307)",
+        "formula2": "=LOG(3E-308,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9985992601996844,
+          "hex": "-0x1.ff4866f8bc20fp-1",
+          "ieee754_hex": "bfeff4866f8bc20f",
+          "classification": "finite"
+        },
+        "display": "-0.9986",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3E-308,9E+307)",
+        "formula2": "=LOG(3E-308,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": -0.9985992601996844,
+          "hex": "-0x1.ff4866f8bc20fp-1",
+          "ieee754_hex": "bfeff4866f8bc20f",
+          "classification": "finite"
+        },
+        "display": "-0.9986",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-0.99859926019968437",
+        "formula_text": "LOG(3E-308,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B21"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-21-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B22",
+      "wire_formula": "LOG(9E307,3E-308)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "9E307,3E-308"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307,3E-308)",
+        "formula2": "=LOG(9E+307,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0014027046245113,
+          "hex": "-0x1.005bed7a7cfc4p+0",
+          "ieee754_hex": "bff005bed7a7cfc4",
+          "classification": "finite"
+        },
+        "display": "-1.0014",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(9E+307,3E-308)",
+        "formula2": "=LOG(9E+307,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": -1.0014027046245113,
+          "hex": "-0x1.005bed7a7cfc4p+0",
+          "ieee754_hex": "bff005bed7a7cfc4",
+          "classification": "finite"
+        },
+        "display": "-1.0014",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "-1.0014027046245113",
+        "formula_text": "LOG(9E+307,3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B22"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-22-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B23",
+      "wire_formula": "LOG(3E-308,3E-308)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "3E-308,3E-308"
+      },
+      "actual": {
+        "formula": "=LOG(3E-308,3E-308)",
+        "formula2": "=LOG(3E-308,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(3E-308,3E-308)",
+        "formula2": "=LOG(3E-308,3E-308)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(3E-308,3E-308)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B23"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "log-base-23-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B24",
+      "wire_formula": "LOG(9E307,9E307)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "function": "LOG",
+        "args": "9E307,9E307"
+      },
+      "actual": {
+        "formula": "=LOG(9E+307,9E+307)",
+        "formula2": "=LOG(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=LOG(9E+307,9E+307)",
+        "formula2": "=LOG(9E+307,9E+307)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "LOG(9E+307,9E+307)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B24"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    }
+  ]
+}

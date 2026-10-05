@@ -1,0 +1,1870 @@
+{
+  "schema_version": 1,
+  "scope": "36 source/INDEX/OFFSET native observations; original and edge workbooks replay separately",
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 72,
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "input_workbooks": [
+    {
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sha256": "e8e74044cc127b8e11befd82a7e3e20c24012998cca2e91bddd46867dbb457f8",
+      "cases": 32,
+      "physical_formula_cells": 32
+    },
+    {
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sha256": "b5291b060db8650543d4784f033192c8ce877a9bc5a607a5debaf8432221a6cb",
+      "cases": 32,
+      "physical_formula_cells": 32
+    }
+  ],
+  "source_cells": {
+    "Values": {
+      "D3": 0,
+      "A1": 1,
+      "A2": 3,
+      "A3": 5,
+      "A4": 7,
+      "B1": 10,
+      "B2": 30,
+      "B3": 50,
+      "B4": 70,
+      "C1": "one",
+      "C2": "three",
+      "C3": "five",
+      "C4": "seven",
+      "F1": 7,
+      "F2": 5,
+      "F3": 3,
+      "F4": 1,
+      "H1": "alpha",
+      "H2": "beta",
+      "H3": "BETA",
+      "H4": "*",
+      "N1": 3,
+      "N2": 3,
+      "N3": 5,
+      "N4": 7,
+      "J1": 1,
+      "K1": 3,
+      "L1": 5,
+      "M1": 7,
+      "J2": 10,
+      "K2": 30,
+      "L2": 50,
+      "M2": 70,
+      "J3": "one",
+      "K3": "three",
+      "L3": "five",
+      "M3": "seven"
+    }
+  },
+  "manifest_sha256": "e9ee739e82b0e6bab804f61bf54a8b04e939929c23e77dd305e458da71b22f4b",
+  "source_report": "rust/target/excel-desktop/p5-reference-functions-native/results.json",
+  "source_report_sha256": "35c4d60b7068cd1ed27d1127701c6ed238664b0face91803b57b3b42b7f31943",
+  "cases": [
+    {
+      "id": "edge-0-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-2,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "value2": {
+          "variant": "float",
+          "value": 80.0,
+          "hex": "0x1.4000000000000p+6",
+          "ieee754_hex": "4054000000000000",
+          "classification": "finite"
+        },
+        "display": "80",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "value2": {
+          "variant": "float",
+          "value": 80.0,
+          "hex": "0x1.4000000000000p+6",
+          "ieee754_hex": "4054000000000000",
+          "classification": "finite"
+        },
+        "display": "80",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "80",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "edge-1-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1,-2))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 55.0,
+          "hex": "0x1.b800000000000p+5",
+          "ieee754_hex": "404b800000000000",
+          "classification": "finite"
+        },
+        "display": "55",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 55.0,
+          "hex": "0x1.b800000000000p+5",
+          "ieee754_hex": "404b800000000000",
+          "classification": "finite"
+        },
+        "display": "55",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "55",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B3"
+        }
+      }
+    },
+    {
+      "id": "edge-2-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-2,-2))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 88.0,
+          "hex": "0x1.6000000000000p+6",
+          "ieee754_hex": "4056000000000000",
+          "classification": "finite"
+        },
+        "display": "88",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 88.0,
+          "hex": "0x1.6000000000000p+6",
+          "ieee754_hex": "4056000000000000",
+          "classification": "finite"
+        },
+        "display": "88",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "88",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "edge-3-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "SUM(OFFSET(Values!A1,0,0,-2,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B5",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-4-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-1,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B6"
+        }
+      }
+    },
+    {
+      "id": "edge-5-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,0,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B7",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-6-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1,0))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-7-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B9"
+        }
+      }
+    },
+    {
+      "id": "edge-8-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B10"
+        }
+      }
+    },
+    {
+      "id": "edge-9-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B11"
+        }
+      }
+    },
+    {
+      "id": "edge-10-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,2))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,2))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,2))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(INDEX(Values!A1:C4,2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-11-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,,2))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,,2))",
+        "value2": {
+          "variant": "float",
+          "value": 160.0,
+          "hex": "0x1.4000000000000p+7",
+          "ieee754_hex": "4064000000000000",
+          "classification": "finite"
+        },
+        "display": "160",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,,2))",
+        "value2": {
+          "variant": "float",
+          "value": 160.0,
+          "hex": "0x1.4000000000000p+7",
+          "ieee754_hex": "4064000000000000",
+          "classification": "finite"
+        },
+        "display": "160",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "160",
+        "formula_text": "SUM(INDEX(Values!A1:C4,,2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      }
+    },
+    {
+      "id": "edge-12-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,0,0))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "value2": {
+          "variant": "float",
+          "value": 176.0,
+          "hex": "0x1.6000000000000p+7",
+          "ieee754_hex": "4066000000000000",
+          "classification": "finite"
+        },
+        "display": "176",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "value2": {
+          "variant": "float",
+          "value": 176.0,
+          "hex": "0x1.6000000000000p+7",
+          "ieee754_hex": "4066000000000000",
+          "classification": "finite"
+        },
+        "display": "176",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "176",
+        "formula_text": "SUM(INDEX(Values!A1:C4,0,0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      }
+    },
+    {
+      "id": "edge-13-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,1)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,1)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,1)",
+        "value2": {
+          "variant": "float",
+          "value": 30.0,
+          "hex": "0x1.e000000000000p+4",
+          "ieee754_hex": "403e000000000000",
+          "classification": "finite"
+        },
+        "display": "30",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,1)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,1)",
+        "value2": {
+          "variant": "float",
+          "value": 30.0,
+          "hex": "0x1.e000000000000p+4",
+          "ieee754_hex": "403e000000000000",
+          "classification": "finite"
+        },
+        "display": "30",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "30",
+        "formula_text": "INDEX(Values!A1:C4,2,2,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      }
+    },
+    {
+      "id": "edge-14-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,2)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,2)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,2)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "INDEX(Values!A1:C4,2,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-15-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,0)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,0)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,0)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,2,2,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-16-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "INDEX(Values!A1:C4,-0.9,2)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,-0.9,2)",
+        "formula2": "=@INDEX(Values!A1:C4,-0.9,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,-0.9,2)",
+        "formula2": "=@INDEX(Values!A1:C4,-0.9,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,-0.9,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-17-1900",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "INDEX(Values!A1:C4,2,-0.9)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,-0.9)",
+        "formula2": "=@INDEX(Values!A1:C4,2,-0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,-0.9)",
+        "formula2": "=@INDEX(Values!A1:C4,2,-0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,2,-0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-0-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-2,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "value2": {
+          "variant": "float",
+          "value": 80.0,
+          "hex": "0x1.4000000000000p+6",
+          "ieee754_hex": "4054000000000000",
+          "classification": "finite"
+        },
+        "display": "80",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "value2": {
+          "variant": "float",
+          "value": 80.0,
+          "hex": "0x1.4000000000000p+6",
+          "ieee754_hex": "4054000000000000",
+          "classification": "finite"
+        },
+        "display": "80",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "80",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-2,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B2"
+        }
+      }
+    },
+    {
+      "id": "edge-1-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1,-2))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 55.0,
+          "hex": "0x1.b800000000000p+5",
+          "ieee754_hex": "404b800000000000",
+          "classification": "finite"
+        },
+        "display": "55",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 55.0,
+          "hex": "0x1.b800000000000p+5",
+          "ieee754_hex": "404b800000000000",
+          "classification": "finite"
+        },
+        "display": "55",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "55",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1,-2))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B3"
+        }
+      }
+    },
+    {
+      "id": "edge-2-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-2,-2))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 88.0,
+          "hex": "0x1.6000000000000p+6",
+          "ieee754_hex": "4056000000000000",
+          "classification": "finite"
+        },
+        "display": "88",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "value2": {
+          "variant": "float",
+          "value": 88.0,
+          "hex": "0x1.6000000000000p+6",
+          "ieee754_hex": "4056000000000000",
+          "classification": "finite"
+        },
+        "display": "88",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "88",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-2,-2))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B4"
+        }
+      }
+    },
+    {
+      "id": "edge-3-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "SUM(OFFSET(Values!A1,0,0,-2,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula2": "=SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!A1,0,0,-2,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B5",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-4-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-1,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-1,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B6"
+        }
+      }
+    },
+    {
+      "id": "edge-5-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,0,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,0,1))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,0,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B7",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-6-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1,0))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1,0))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1,0))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-7-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,1.9,1.9))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B9"
+        }
+      }
+    },
+    {
+      "id": "edge-8-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula2": "=SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,0,0,-1.9,-1.9))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B10"
+        }
+      }
+    },
+    {
+      "id": "edge-9-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+      "shape": {
+        "function": "OFFSET"
+      },
+      "actual": {
+        "formula": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula2": "=SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "value2": {
+          "variant": "float",
+          "value": 50.0,
+          "hex": "0x1.9000000000000p+5",
+          "ieee754_hex": "4049000000000000",
+          "classification": "finite"
+        },
+        "display": "50",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "50",
+        "formula_text": "SUM(OFFSET(Values!B3,-0.9,-0.9,1,1))",
+        "formula_attributes": {
+          "ca": "1"
+        },
+        "attributes": {
+          "r": "B11"
+        }
+      }
+    },
+    {
+      "id": "edge-10-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,2))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,2))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,2))",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "SUM(INDEX(Values!A1:C4,2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-11-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,,2))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,,2))",
+        "value2": {
+          "variant": "float",
+          "value": 160.0,
+          "hex": "0x1.4000000000000p+7",
+          "ieee754_hex": "4064000000000000",
+          "classification": "finite"
+        },
+        "display": "160",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,,2))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,,2))",
+        "value2": {
+          "variant": "float",
+          "value": 160.0,
+          "hex": "0x1.4000000000000p+7",
+          "ieee754_hex": "4064000000000000",
+          "classification": "finite"
+        },
+        "display": "160",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "160",
+        "formula_text": "SUM(INDEX(Values!A1:C4,,2))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13"
+        }
+      }
+    },
+    {
+      "id": "edge-12-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SUM(INDEX(Values!A1:C4,0,0))",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "value2": {
+          "variant": "float",
+          "value": 176.0,
+          "hex": "0x1.6000000000000p+7",
+          "ieee754_hex": "4066000000000000",
+          "classification": "finite"
+        },
+        "display": "176",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "formula2": "=SUM(INDEX(Values!A1:C4,0,0))",
+        "value2": {
+          "variant": "float",
+          "value": 176.0,
+          "hex": "0x1.6000000000000p+7",
+          "ieee754_hex": "4066000000000000",
+          "classification": "finite"
+        },
+        "display": "176",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "176",
+        "formula_text": "SUM(INDEX(Values!A1:C4,0,0))",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14"
+        }
+      }
+    },
+    {
+      "id": "edge-13-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,1)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,1)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,1)",
+        "value2": {
+          "variant": "float",
+          "value": 30.0,
+          "hex": "0x1.e000000000000p+4",
+          "ieee754_hex": "403e000000000000",
+          "classification": "finite"
+        },
+        "display": "30",
+        "is_error": false
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,1)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,1)",
+        "value2": {
+          "variant": "float",
+          "value": 30.0,
+          "hex": "0x1.e000000000000p+4",
+          "ieee754_hex": "403e000000000000",
+          "classification": "finite"
+        },
+        "display": "30",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "30",
+        "formula_text": "INDEX(Values!A1:C4,2,2,1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15"
+        }
+      }
+    },
+    {
+      "id": "edge-14-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,2)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,2)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,2)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826265
+        },
+        "display": "#REF!",
+        "is_error": true,
+        "error_type": {
+          "number": 4,
+          "literal": "#REF!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#REF!",
+        "formula_text": "INDEX(Values!A1:C4,2,2,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-15-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "INDEX(Values!A1:C4,2,2,0)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,2,0)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,2,0)",
+        "formula2": "=INDEX(Values!A1:C4,2,2,0)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,2,2,0)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-16-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "INDEX(Values!A1:C4,-0.9,2)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,-0.9,2)",
+        "formula2": "=@INDEX(Values!A1:C4,-0.9,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,-0.9,2)",
+        "formula2": "=@INDEX(Values!A1:C4,-0.9,2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,-0.9,2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18",
+          "t": "e"
+        }
+      }
+    },
+    {
+      "id": "edge-17-1904",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B19",
+      "wire_formula": "INDEX(Values!A1:C4,2,-0.9)",
+      "shape": {
+        "function": "INDEX"
+      },
+      "actual": {
+        "formula": "=INDEX(Values!A1:C4,2,-0.9)",
+        "formula2": "=@INDEX(Values!A1:C4,2,-0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "after_save": {
+        "formula": "=INDEX(Values!A1:C4,2,-0.9)",
+        "formula2": "=@INDEX(Values!A1:C4,2,-0.9)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "INDEX(Values!A1:C4,2,-0.9)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B19",
+          "t": "e"
+        }
+      }
+    }
+  ],
+  "additional_native_source": {
+    "report": "rust\\target\\excel-desktop\\p5-index-offset-edges-native\\results.json",
+    "report_sha256": "96502c63ebbe6c9e4545b1df6425d528a9abb1a4b10433c17ef6c65036f6d540",
+    "manifest_sha256": "e1f57591f36ded858e6e9fe415dc74c7fcb4f418b57943334f7d52e72c2b14c0",
+    "input_workbooks": [
+      {
+        "file": "functions-input-1900.xlsx",
+        "date_system": "1900",
+        "sha256": "de40d92df92d938229f72ccce2274b4c3a6d7b7e84cd2826e46f04d16fe208fa",
+        "cases": 18,
+        "physical_formula_cells": 18
+      },
+      {
+        "file": "functions-input-1904.xlsx",
+        "date_system": "1904",
+        "sha256": "103ee14b429ace8afb387e958e24d229422f0eca19a787a7686acff670093f1b",
+        "cases": 18,
+        "physical_formula_cells": 18
+      }
+    ]
+  },
+  "incremental_evaluated_per_epoch": 10
+}

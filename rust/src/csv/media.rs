@@ -184,7 +184,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
 ) -> crate::arrow::Result<BatchReader> {
     let declared = field.cloned().or_else(|| options.field());
     let url = handle.url().cloned();
-    let bytes = owned_decoded(crate::iobase::owned_handle(handle)?);
+    let bytes = owned_decoded(crate::iobase::owned_handle(handle, handle.media_type())?);
     match reader::open(bytes, options, declared.as_ref(), url)? {
         Some(opened) => {
             // The record surface applies a total row limit after projection
@@ -487,9 +487,9 @@ impl<H: IOBase> IOMedia for Csv<H> {
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let options = self.require_options(options)?;
         if let Some(field) = options.field() {
-            return Ok(field.clone());
+            return options.result_field(field);
         }
-        let stored = match self.cached(options) {
+        let source = match self.cached(options) {
             Some(cached) => cached.clone().with_name(options.name()),
             None => {
                 // Past the session's cache, which only a leaf ever fills.
@@ -501,18 +501,7 @@ impl<H: IOBase> IOMedia for Csv<H> {
                 field
             }
         };
-        // The shape the rows come back in, so the schema a caller reads and
-        // the batches a caller gets never disagree: the `select` clause
-        // bound over the stored columns, as the record surface binds it.
-        if options.select().is_all() {
-            return Ok(stored);
-        }
-        let empty = crate::arrow::batch_reader(arrow_schema_from_field(&stored)?, []);
-        let published = options.apply_arrow_expressions(empty)?.schema();
-        Ok(crate::arrow::field_from_arrow_schema(
-            options.name(),
-            published.as_ref(),
-        )?)
+        options.result_field(source)
     }
 
     fn overwrite_arrow_reader(

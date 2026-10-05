@@ -3,6 +3,7 @@
 //! free `read_field`, `read_batch_reader` and `overwrite_arrow_reader` doors.
 
 use std::sync::Arc;
+use yggdryl::RecordHeader;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::BatchReader;
@@ -19,14 +20,10 @@ use yggdryl::{
     StructType, Url,
 };
 
-/// What a dimension read asks of the handle beneath the wrapper while no
-/// workbook is held: whether the handle is a container - whose leaves'
-/// workbooks answer instead, one by one - then one fresh open of the
-/// workbook, which is one streamed copy of the package into a buffer of its
-/// own and the three metadata questions that decide it cannot be reopened in
-/// place.
+/// A cold dimension read first probes for a container; private owned-source
+/// intake then retains one stream directly, eliminating two copy-stage probes.
 const DIMENSION_READ: &str =
-    "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1";
+    "pstream_bytes=1 bound_location=1 media_type=1 is_container=1 parent=1";
 
 /// The trades table: a required `id` and a nullable `symbol`.
 fn trades() -> Field {
@@ -60,6 +57,48 @@ fn reader(ids: &[i64], symbols: &[Option<&str>]) -> BatchReader {
 /// An empty buffer declaring a workbook.
 fn xlsx() -> Buffer {
     Buffer::new().with_media_type(MimeType::XLSX.into())
+}
+
+#[test]
+fn projected_result_field_agrees_with_reader_for_declared_and_inferred_excel() {
+    let mut media = Excel::new(xlsx());
+    let stored = media.record_options().unwrap();
+    media
+        .overwrite_arrow_reader(reader(&[1, 2], &[Some("AAPL"), None]), &stored)
+        .unwrap();
+    for opened in [false, true] {
+        if opened {
+            media.open().unwrap();
+        }
+        for declared in [false, true] {
+            for (select, filter, name, rows) in [
+                ("id as key", "key > 1", "key", 1),
+                ("id + 1 as next_id", "id > 0", "next_id", 2),
+            ] {
+                let mut options = stored
+                    .clone()
+                    .with_select(select)
+                    .unwrap()
+                    .with_filter(filter)
+                    .unwrap();
+                if declared {
+                    options = options.with_field(trades());
+                }
+                let field = media.read_arrow_field(&options).unwrap();
+                assert_eq!(field.field_len(), 1);
+                assert_eq!(field.fields()[0].name(), name);
+                let batches = media.read_arrow_reader(&options).unwrap();
+                assert_eq!(field.into_arrow_schema().unwrap(), batches.schema());
+                assert_eq!(
+                    batches
+                        .map(|batch| batch.unwrap().num_rows())
+                        .sum::<usize>(),
+                    rows
+                );
+                assert_eq!(media.column_size().unwrap(), 2);
+            }
+        }
+    }
 }
 
 /// A buffer declaring a workbook and holding `bytes`.
@@ -128,26 +167,26 @@ fn empty_root() -> Field {
 fn the_wrapper_retains_its_options_and_hands_back_its_handle() {
     let media = Excel::new(xlsx());
     assert_eq!(media.options(), &ExcelOptions::new());
-    assert_eq!(media.options().sheet, None);
-    assert!(media.options().header);
-    assert_eq!(media.options().range, None);
+    assert_eq!(media.options().sheet(), None);
+    assert_eq!(media.options().header, RecordHeader::Source);
+    assert_eq!(media.options().range(), None);
 
     let media = media.with_field(trades().with_name("trade"));
     assert_eq!(media.options().field, Some(trades().with_name("trade")));
     assert_eq!(media.options().name.as_str(), "trade");
 
     // A complete configuration replaces the declared field too.
-    let configured = ExcelOptions::new().with_header(false);
+    let configured = ExcelOptions::new().with_header(RecordHeader::None);
     let mut media = media.with_options(configured.clone());
     assert_eq!(media.options(), &configured);
     assert_eq!(media.options().field, None);
 
     let media_sheet = Excel::new(xlsx()).with_sheet("Trades");
-    assert_eq!(media_sheet.options().sheet.as_deref(), Some("Trades"));
+    assert_eq!(media_sheet.options().sheet(), Some("Trades"));
 
-    media.options_mut().header = true;
+    media.options_mut().header = RecordHeader::Source;
     media.options_mut().set_field(trades());
-    assert!(media.options().header);
+    assert_eq!(media.options().header, RecordHeader::Source);
     assert_eq!(media.options().field(), Some(trades()));
 
     media.handle_mut().write_all_bytes(b"PK").unwrap();
@@ -161,7 +200,11 @@ fn the_wrapper_retains_its_options_and_hands_back_its_handle() {
 fn record_options_are_the_excel_options_the_wrapper_holds() {
     let range: CellRange = "B2:D".parse().unwrap();
     let media = Excel::new(xlsx())
-        .with_options(ExcelOptions::new().with_range(range).with_header(false))
+        .with_options(
+            ExcelOptions::new()
+                .with_range(range)
+                .with_header(RecordHeader::None),
+        )
         .with_sheet("Trades")
         .with_field(trades());
     let options = media.record_options().unwrap();
@@ -172,7 +215,7 @@ fn record_options_are_the_excel_options_the_wrapper_holds() {
     assert_eq!(options.field(), Some(trades()));
     assert_eq!(options.mime_type(), MimeType::XLSX);
     assert_eq!(options.excel_sheet(), Some("Trades"));
-    assert_eq!(options.header(), Some(false));
+    assert_eq!(options.header(), Some(RecordHeader::None));
     assert_eq!(options.excel_range(), Some(range));
 }
 
@@ -353,7 +396,7 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
     let mut renamed = options.clone();
     renamed.set_name("trade".into());
     let mut headless = options.clone();
-    headless.set_header(false).unwrap();
+    headless.set_header(RecordHeader::None).unwrap();
     costs("another reading while open", &calls, "none", || {
         assert_eq!(media.read_arrow_field(&renamed).unwrap().name(), "trade");
         assert_eq!(
@@ -372,7 +415,7 @@ fn open_holds_the_workbook_so_the_schema_and_the_row_count_cost_the_package_once
     costs(
         "the rows while open",
         &calls,
-        "pstream_bytes=1 bound_location=3 media_type=1 is_container=1 parent=1",
+        "pstream_bytes=1 bound_location=1 media_type=1 is_container=1 parent=1",
         || assert_eq!(media.read_arrow_reader(&options).unwrap().count(), 1),
     );
 
@@ -661,7 +704,8 @@ fn a_sheet_name_excel_refuses_is_refused_before_a_byte_is_written() {
 
 #[test]
 fn without_a_header_the_first_row_holds_values_and_the_columns_are_named_by_their_letters() {
-    let mut media = Excel::new(xlsx()).with_options(ExcelOptions::new().with_header(false));
+    let mut media =
+        Excel::new(xlsx()).with_options(ExcelOptions::new().with_header(RecordHeader::None));
     let options = media.record_options().unwrap();
     media
         .overwrite_arrow_batch(batch(&[1, 2], &[Some("AAPL"), Some("MSFT")]), &options)
@@ -991,4 +1035,2106 @@ fn a_local_xlsx_url_is_held_written_and_reopened_as_a_workbook() {
             .unwrap();
     assert_eq!(workbook.sheet_names(), vec!["Sheet1"]);
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn named_table_read_uses_one_extent_for_schema_rows_and_dimensions() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let bytes = named_table_package(&named_table_parts());
+    for opened in [false, true] {
+        for (name, columns, expected) in [
+            ("nAmEs", ["id", "name"], ["[1.0,\"one\"]", "[2.0,\"two\"]"]),
+            (
+                "Quantities",
+                ["year", "qty"],
+                ["[2024.0,3.0]", "[2025.0,4.0]"],
+            ),
+        ] {
+            let configured = ExcelOptions::new().with_table(name);
+            let mut media = Excel::new(stored(bytes.clone())).with_options(configured.clone());
+            if opened {
+                media.open().unwrap();
+            }
+            let options = media.record_options().unwrap();
+            let field = media.read_arrow_field(&options).unwrap();
+            assert_eq!(
+                field.fields().iter().map(Field::name).collect::<Vec<_>>(),
+                columns
+            );
+            assert_eq!(
+                media.read_arrow_reader(&options).unwrap().schema(),
+                field.clone().into_arrow_schema().unwrap()
+            );
+            assert_eq!(rows(&media, &options), expected);
+            assert_eq!(media.row_size().unwrap(), 2);
+            assert_eq!(media.column_size().unwrap(), 2);
+            assert_eq!(
+                free_rows(
+                    read_batch_reader(media.handle(), None, &configured).unwrap(),
+                    &field
+                ),
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn named_table_read_ignores_unselected_bad_values_and_orphan_table_relationships() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace("<v>2024</v>", "<v>not-a-number</v>");
+    let rels = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/worksheets/_rels/sheet1.xml.rels")
+        .unwrap()
+        .1;
+    *rels = rels.replace("</Relationships>", &format!("<Relationship Id=\"Orphan\" Type=\"{}/table\" Target=\"../tables/orphan.xml\"/></Relationships>", crate::excel_package::R_NS));
+    parts.push(("xl/tables/orphan.xml", "not table XML".into()));
+    let media = Excel::new(stored(named_table_package(&parts)))
+        .with_options(ExcelOptions::new().with_table("Names"));
+    assert_eq!(
+        rows(&media, &media.record_options().unwrap()),
+        ["[1.0,\"one\"]", "[2.0,\"two\"]"]
+    );
+}
+
+#[test]
+fn named_table_read_pairs_declared_and_projected_results_with_the_table_body() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let media = Excel::new(stored(named_table_package(&named_table_parts())));
+    let options = RecordOptions::from(ExcelOptions::new().with_table("Quantities"))
+        .with_select("qty * 2 as doubled")
+        .unwrap()
+        .with_filter("doubled > 6")
+        .unwrap();
+    let field = media.read_arrow_field(&options).unwrap();
+    assert_eq!(
+        field.fields().iter().map(Field::name).collect::<Vec<_>>(),
+        ["doubled"]
+    );
+    assert_eq!(
+        media.read_arrow_reader(&options).unwrap().schema(),
+        field.clone().into_arrow_schema().unwrap()
+    );
+    assert_eq!(rows(&media, &options), ["[8.0]"]);
+}
+
+#[test]
+fn named_table_read_validates_actual_membership_through_existing_relationship_rules() {
+    use crate::excel_package::{R_NS, named_table_package, named_table_parts};
+    for (old, new, reason) in [
+        (
+            "Target=\"../tables/table1.xml\"".to_owned(),
+            "Target=\"../tables/missing.xml\"".to_owned(),
+            "got missing",
+        ),
+        (
+            format!("Type=\"{R_NS}/table\" Target=\"../tables/table1.xml\""),
+            format!("Type=\"{R_NS}/drawing\" Target=\"../tables/table1.xml\""),
+            "expected a table relationship",
+        ),
+        (
+            "Target=\"../tables/table1.xml\"".to_owned(),
+            "Target=\"https://example.test/table.xml\" TargetMode=\"External\"".to_owned(),
+            "external or absent",
+        ),
+    ] {
+        let mut parts = named_table_parts();
+        let rels = &mut parts
+            .iter_mut()
+            .find(|(name, _)| *name == "xl/worksheets/_rels/sheet1.xml.rels")
+            .unwrap()
+            .1;
+        assert!(rels.contains(&old));
+        *rels = rels.replace(&old, &new);
+        let media = Excel::new(stored(named_table_package(&parts)))
+            .with_options(ExcelOptions::new().with_table("Names"));
+        let (path, actual) = refusal(media.column_size().unwrap_err());
+        assert_eq!(path, "xl/worksheets/sheet1.xml#tablePart[rIdT1]");
+        assert!(actual.contains(reason), "{actual}");
+    }
+}
+
+#[test]
+fn named_table_read_missing_and_duplicate_names_refuse_with_identity_locations() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let options = RecordOptions::from(ExcelOptions::new().with_table("Missing"));
+    let error = Excel::new(stored(named_table_package(&parts)))
+        .read_arrow_field(&options)
+        .unwrap_err();
+    let (path, reason) = refusal(error);
+    assert_eq!(path, "$.table");
+    for wanted in [
+        "Missing",
+        "Data!Names",
+        "Data!Quantities",
+        "xl/tables/table1.xml",
+        "xl/tables/table2.xml",
+    ] {
+        assert!(reason.contains(wanted), "{reason}");
+    }
+    let target = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/tables/table2.xml")
+        .unwrap()
+        .1;
+    *target = target.replace("Quantities", "nAmEs");
+    let data = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *data = data.replace("<tablePart r:id=\"rIdT2\"/>", "");
+    let other = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/worksheets/sheet2.xml")
+        .unwrap()
+        .1;
+    *other = crate::excel_package::sheet(
+        "",
+        "<tableParts count=\"1\"><tablePart r:id=\"rIdT2\"/></tableParts>",
+    );
+    parts.push(("xl/worksheets/_rels/sheet2.xml.rels", format!("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdT2\" Type=\"{}/table\" Target=\"../tables/table2.xml\"/></Relationships>", crate::excel_package::R_NS)));
+    let options = RecordOptions::from(ExcelOptions::new().with_table("Names"));
+    let (path, reason) = refusal(
+        Excel::new(stored(named_table_package(&parts)))
+            .read_arrow_field(&options)
+            .unwrap_err(),
+    );
+    assert_eq!(path, "$.table");
+    for wanted in ["nAmEs", "xl/tables/table1.xml", "xl/tables/table2.xml"] {
+        assert!(reason.contains(wanted), "{reason}");
+    }
+}
+
+#[test]
+fn named_table_write_changes_only_selected_body_beside_another_table() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let options = ExcelOptions::new().with_table("Names");
+    // The selected table's authoritative column names are id and name.
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let input = RecordBatch::try_new(
+        field.clone().into_arrow_schema().unwrap(),
+        vec![
+            Arc::new(Int64Array::from(vec![9, 10])),
+            Arc::new(StringArray::from(vec![Some("nine"), Some("ten")])),
+        ],
+    )
+    .unwrap();
+    overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(field.into_arrow_schema().unwrap(), [input]),
+        &options,
+    )
+    .unwrap();
+
+    let output = handle.read_all_bytes().unwrap();
+    let media = Excel::new(stored(output.clone()));
+    let names = RecordOptions::from(options);
+    let quantities = RecordOptions::from(ExcelOptions::new().with_table("Quantities"));
+    assert_eq!(rows(&media, &names), ["[9.0,\"nine\"]", "[10.0,\"ten\"]"]);
+    assert_eq!(rows(&media, &quantities), ["[2024.0,3.0]", "[2025.0,4.0]"]);
+
+    let old = Workbook::from_bytes(original).unwrap();
+    let new = Workbook::from_bytes(output).unwrap();
+    for part in [
+        "xl/tables/table1.xml",
+        "xl/tables/table2.xml",
+        "xl/worksheets/_rels/sheet1.xml.rels",
+    ] {
+        assert_eq!(member(&new, part), member(&old, part), "{part}");
+    }
+    let sheet = member(&new, "xl/worksheets/sheet1.xml");
+    for retained in [
+        "r=\"A1\"",
+        "r=\"B1\"",
+        "r=\"D1\"",
+        "r=\"E1\"",
+        "r=\"D2\"",
+        "r=\"E2\"",
+        "r=\"D3\"",
+        "r=\"E3\"",
+        "r=\"D4\"",
+        "r=\"E4\"",
+        "<tableParts count=\"2\">",
+    ] {
+        assert!(sheet.contains(retained), "missing {retained} in {sheet}");
+    }
+}
+
+#[test]
+fn named_table_write_replaces_file_backed_package_and_reopens() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut folder = LocalFolder::temporary().unwrap().path().unwrap();
+    folder.push(format!(
+        "yggdryl-excel-named-write-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&folder).unwrap();
+    let path = folder.join("tables.xlsx");
+    std::fs::write(&path, named_table_package(&named_table_parts())).unwrap();
+    let url = Url::from_path(&path).unwrap();
+    let mut held = Holder::from_url(&url, std::iter::empty::<(&str, &str)>()).unwrap();
+    overwrite_arrow_reader(
+        &mut held,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &ExcelOptions::new()
+            .with_table("Names")
+            .with_header(RecordHeader::None),
+    )
+    .unwrap();
+    drop(held);
+    let reopened = Excel::new(stored(std::fs::read(&path).unwrap()));
+    assert_eq!(
+        rows(
+            &reopened,
+            &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+        ),
+        ["[9.0,\"nine\"]", "[10.0,\"ten\"]"]
+    );
+    assert_eq!(
+        rows(
+            &reopened,
+            &RecordOptions::from(ExcelOptions::new().with_table("Quantities"))
+        ),
+        ["[2024.0,3.0]", "[2025.0,4.0]"]
+    );
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_dir(folder).unwrap();
+}
+
+#[test]
+fn named_table_write_preserves_header_totals_and_other_table() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let options = ExcelOptions::new().with_table("Quantities");
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let input = RecordBatch::try_new(
+        field.clone().into_arrow_schema().unwrap(),
+        vec![
+            Arc::new(Int64Array::from(vec![2030, 2031])),
+            Arc::new(Int64Array::from(vec![6, 8])),
+        ],
+    )
+    .unwrap();
+    overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(field.into_arrow_schema().unwrap(), [input]),
+        &options,
+    )
+    .unwrap();
+    let output = handle.read_all_bytes().unwrap();
+    let media = Excel::new(stored(output.clone()));
+    assert_eq!(
+        rows(&media, &RecordOptions::from(options)),
+        ["[2030.0,6.0]", "[2031.0,8.0]"]
+    );
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+        ),
+        ["[1.0,\"one\"]", "[2.0,\"two\"]"]
+    );
+    let old = Workbook::from_bytes(original).unwrap();
+    let new = Workbook::from_bytes(output).unwrap();
+    assert_eq!(
+        member(&new, "xl/tables/table1.xml"),
+        member(&old, "xl/tables/table1.xml")
+    );
+    assert_eq!(
+        member(&new, "xl/tables/table2.xml"),
+        member(&old, "xl/tables/table2.xml")
+    );
+    let sheet = member(&new, "xl/worksheets/sheet1.xml");
+    assert!(sheet.contains("r=\"D4\""));
+    assert!(sheet.contains("r=\"E4\""));
+    assert!(sheet.contains("<v>7</v>"));
+}
+
+#[test]
+fn named_table_write_keeps_row_style_and_opaque_worksheet_child() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet
+        .replace(
+            "<sheetData>",
+            "<sheetPr codeName=\"RetainedCode\"/><sheetData>",
+        )
+        .replace(
+            "<row r=\"2\">",
+            "<row r=\"2\" ht=\"23\" customHeight=\"1\">",
+        )
+        .replace("<c r=\"A2\">", "<c r=\"A2\" s=\"0\">");
+    let mut handle = stored(named_table_package(&parts));
+    let options = ExcelOptions::new()
+        .with_table("Names")
+        .with_header(RecordHeader::None);
+    overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &options,
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    assert!(sheet.contains("<sheetPr codeName=\"RetainedCode\"/>"));
+    assert!(sheet.contains("<row r=\"2\" ht=\"23\" customHeight=\"1\">"));
+    assert!(sheet.contains("<c r=\"A2\" s=\"0\">"));
+    assert!(sheet.contains("<tableParts count=\"2\">"));
+}
+
+#[test]
+fn named_table_write_fills_sparse_body_without_touching_other_columns() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace("<c r=\"A2\"><v>1</v></c>", "");
+    let from = sheet.find("<row r=\"3\">").unwrap();
+    let until = from + sheet[from..].find("</row>").unwrap() + "</row>".len();
+    sheet.replace_range(from..until, "");
+    let mut handle = stored(named_table_package(&parts));
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let input = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![9, 10])),
+            Arc::new(StringArray::from(vec![Some("nine"), Some("ten")])),
+        ],
+    )
+    .unwrap();
+    overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(schema, [input]),
+        &ExcelOptions::new().with_table("Names"),
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    for cell in ["A2", "B2", "A3", "B3", "D2", "E2", "D4", "E4"] {
+        assert!(sheet.contains(&format!("r=\"{cell}\"")), "missing {cell}");
+    }
+    assert!(!sheet.contains("r=\"D3\""));
+    assert!(!sheet.contains("r=\"E3\""));
+}
+
+#[test]
+fn named_table_write_replaces_selected_formula_with_scalar() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<c r=\"A2\"><v>1</v></c>",
+        "<c r=\"A2\"><f>1+1</f><v>2</v></c>",
+    );
+    let mut handle = stored(named_table_package(&parts));
+    let options = ExcelOptions::new()
+        .with_table("Names")
+        .with_header(RecordHeader::None);
+    overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &options,
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    assert!(!sheet.contains("<f>1+1</f>"));
+    assert!(sheet.contains("<c r=\"A2\"><v>9</v></c>"));
+    assert!(sheet.contains("r=\"D2\""));
+}
+
+#[test]
+fn named_table_write_accepts_implicit_row_and_cell_coordinates() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet
+        .replace("<row r=\"2\"><c r=\"A2\">", "<row><c>")
+        .replace(
+            "</sheetData>",
+            "<row><c r=\"G5\"><v>5</v></c></row></sheetData>",
+        );
+    let mut handle = stored(named_table_package(&parts));
+    overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &ExcelOptions::new()
+            .with_table("Names")
+            .with_header(RecordHeader::None),
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    assert!(sheet.contains("<row><c r=\"A2\"><v>9</v></c>"), "{sheet}");
+    assert!(
+        sheet.contains("<row><c r=\"G5\"><v>5</v></c></row>"),
+        "{sheet}"
+    );
+}
+
+#[test]
+fn named_table_write_replaces_rich_inline_text_without_touching_other_cells() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<is><t>one</t></is>",
+        "<is><r><rPr><b/></rPr><t>old rich text</t></r></is>",
+    );
+    let mut handle = stored(named_table_package(&parts));
+    overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &ExcelOptions::new()
+            .with_table("Names")
+            .with_header(RecordHeader::None),
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    assert!(!sheet.contains("old rich text"), "{sheet}");
+    let media = Excel::new(stored(handle.read_all_bytes().unwrap()));
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+        ),
+        ["[9.0,\"nine\"]", "[10.0,\"ten\"]"]
+    );
+    assert!(sheet.contains("<c r=\"D2\"><v>2024</v></c>"), "{sheet}");
+}
+
+#[test]
+fn named_table_write_inserts_sparse_cell_before_retained_row_extension() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<c r=\"E2\"><v>3</v></c></row>",
+        "<extLst><ext uri=\"urn:kept\"/></extLst></row>",
+    );
+    let mut handle = stored(named_table_package(&parts));
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let input = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![2030, 2031])),
+            Arc::new(Int64Array::from(vec![6, 8])),
+        ],
+    )
+    .unwrap();
+    overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(schema, [input]),
+        &ExcelOptions::new().with_table("Quantities"),
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    let row = sheet
+        .split("<row r=\"2\">")
+        .nth(1)
+        .unwrap()
+        .split("</row>")
+        .next()
+        .unwrap();
+    assert!(
+        row.find("r=\"E2\"").unwrap() < row.find("<extLst>").unwrap(),
+        "{row}"
+    );
+    assert!(
+        row.contains("<extLst><ext uri=\"urn:kept\"/></extLst>"),
+        "{row}"
+    );
+    assert!(row.contains("r=\"A2\""), "{row}");
+}
+
+#[test]
+fn named_table_write_refuses_grouped_formula_master_atomically() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<c r=\"A2\"><v>1</v></c>",
+        "<c r=\"A2\"><f t=\"shared\" si=\"0\" ref=\"A2:D2\">1+1</f><v>2</v></c>",
+    );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let error = overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &ExcelOptions::new()
+            .with_table("Names")
+            .with_header(RecordHeader::None),
+    )
+    .unwrap_err();
+    let (path, reason) = refusal(error);
+    assert!(path.contains("Data!A2"), "{path}: {reason}");
+    assert!(reason.contains("grouped formula"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_write_temporal_cell_keeps_its_font_when_format_changes() {
+    use crate::excel_package::{R_NS, member, named_table_package, named_table_parts, styles};
+    use arrow_array::Date32Array;
+    let mut parts = named_table_parts();
+    let types = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "[Content_Types].xml")
+        .unwrap()
+        .1;
+    *types = types.replace("</Types>", "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>");
+    let rels = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/_rels/workbook.xml.rels")
+        .unwrap()
+        .1;
+    *rels = rels.replace("</Relationships>", &format!(
+        "<Relationship Id=\"rId3\" Type=\"{R_NS}/styles\" Target=\"styles.xml\"/></Relationships>"));
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<c r=\"D2\"><v>2024</v></c>",
+        "<c r=\"D2\" s=\"1\"><v>2024</v></c>",
+    );
+    let mut style = styles(&[], &[0, 0]);
+    style = style
+        .replace("<fonts count=\"1\">", "<fonts count=\"2\">")
+        .replace(
+            "</fonts>",
+            "<font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>",
+        );
+    let old = "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>";
+    let at = style.rfind(old).unwrap();
+    style.replace_range(
+        at..at + old.len(),
+        &old.replacen("fontId=\"0\"", "fontId=\"1\"", 1),
+    );
+    parts.push(("xl/styles.xml", style));
+    let mut handle = stored(named_table_package(&parts));
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Date32.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let input = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Date32Array::from(vec![19_723, 19_724])),
+            Arc::new(Int64Array::from(vec![6, 8])),
+        ],
+    )
+    .unwrap();
+    overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(schema, [input]),
+        &ExcelOptions::new().with_table("Quantities"),
+    )
+    .unwrap();
+    let book = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    let sheet = member(&book, "xl/worksheets/sheet1.xml");
+    let cell = sheet.split("<c r=\"D2\" s=\"").nth(1).unwrap();
+    let style_id: usize = cell.split('"').next().unwrap().parse().unwrap();
+    let styles = member(&book, "xl/styles.xml");
+    let xfs = styles
+        .split("<cellXfs")
+        .nth(1)
+        .unwrap()
+        .split("</cellXfs>")
+        .next()
+        .unwrap();
+    let entries: Vec<&str> = xfs.split("<xf ").skip(1).collect();
+    assert!(entries[style_id].contains("fontId=\"1\""));
+    assert!(!entries[style_id].contains("numFmtId=\"0\""));
+    assert!(sheet.contains("r=\"D4\""));
+}
+
+#[test]
+fn named_table_write_missing_selection_is_atomic_and_located() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let error = overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9], &[Some("nine")]),
+        &ExcelOptions::new().with_table("Missing"),
+    )
+    .unwrap_err();
+    let (path, reason) = refusal(error);
+    assert_eq!(path, "$.table");
+    assert!(reason.contains("Missing"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_write_source_columns_must_match_table_columns_atomically() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    // The incoming schema says symbol, while tableColumns says name.
+    let error = overwrite_arrow_reader(
+        &mut handle,
+        reader(&[9, 10], &[Some("nine"), Some("ten")]),
+        &ExcelOptions::new().with_table("Names"),
+    )
+    .unwrap_err();
+    let (path, reason) = refusal(error);
+    assert!(
+        path.contains("symbol") || path.contains("name") || path.contains("table"),
+        "{path}: {reason}"
+    );
+    assert!(
+        reason.contains("name") || reason.contains("symbol"),
+        "{reason}"
+    );
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+fn names_reader(ids: &[i64], labels: &[Option<&str>]) -> BatchReader {
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(ids.to_vec())),
+            Arc::new(StringArray::from(labels.to_vec())),
+        ],
+    )
+    .unwrap();
+    yggdryl::arrow::batch_reader(schema, [batch])
+}
+
+#[test]
+fn named_table_write_grows_into_empty_columns_beside_stationary_table() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let table = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/tables/table1.xml")
+        .unwrap()
+        .1;
+    *table = table.replace(
+        "<tableColumns count=",
+        "<autoFilter ref=\"A1:B3\"/><tableColumns count=",
+    );
+    let original = named_table_package(&parts);
+    let old = Workbook::from_bytes(original.clone()).unwrap();
+    let mut handle = stored(original);
+    overwrite_arrow_reader(
+        &mut handle,
+        names_reader(&[9, 10, 11], &[Some("nine"), Some("ten"), Some("eleven")]),
+        &ExcelOptions::new().with_table("Names"),
+    )
+    .unwrap();
+    let output = handle.read_all_bytes().unwrap();
+    let new = Workbook::from_bytes(output.clone()).unwrap();
+    let media = Excel::new(stored(output));
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+        ),
+        ["[9.0,\"nine\"]", "[10.0,\"ten\"]", "[11.0,\"eleven\"]"]
+    );
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Quantities"))
+        ),
+        ["[2024.0,3.0]", "[2025.0,4.0]"]
+    );
+    assert!(member(&new, "xl/tables/table1.xml").contains("ref=\"A1:B4\""));
+    assert!(member(&new, "xl/tables/table1.xml").contains("<autoFilter ref=\"A1:B4\"/>"));
+    assert_eq!(
+        member(&new, "xl/tables/table2.xml"),
+        member(&old, "xl/tables/table2.xml")
+    );
+    let sheet = member(&new, "xl/worksheets/sheet1.xml");
+    for cell in ["A4", "B4", "D4", "E4"] {
+        assert!(
+            sheet.contains(&format!("r=\"{cell}\"")),
+            "missing {cell}: {sheet}"
+        );
+    }
+    assert!(
+        sheet.contains("<v>7</v>"),
+        "adjacent totals changed: {sheet}"
+    );
+}
+
+#[test]
+fn named_table_write_shrinks_without_moving_adjacent_table() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let old = Workbook::from_bytes(original.clone()).unwrap();
+    let mut handle = stored(original);
+    overwrite_arrow_reader(
+        &mut handle,
+        names_reader(&[9], &[Some("nine")]),
+        &ExcelOptions::new().with_table("Names"),
+    )
+    .unwrap();
+    let output = handle.read_all_bytes().unwrap();
+    let new = Workbook::from_bytes(output.clone()).unwrap();
+    let media = Excel::new(stored(output));
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+        ),
+        ["[9.0,\"nine\"]"]
+    );
+    assert_eq!(
+        rows(
+            &media,
+            &RecordOptions::from(ExcelOptions::new().with_table("Quantities"))
+        ),
+        ["[2024.0,3.0]", "[2025.0,4.0]"]
+    );
+    assert!(member(&new, "xl/tables/table1.xml").contains("ref=\"A1:B2\""));
+    assert_eq!(
+        member(&new, "xl/tables/table2.xml"),
+        member(&old, "xl/tables/table2.xml")
+    );
+    let sheet = member(&new, "xl/worksheets/sheet1.xml");
+    assert!(
+        !sheet.contains("r=\"A3\""),
+        "former body cell remained: {sheet}"
+    );
+    assert!(
+        !sheet.contains("r=\"B3\""),
+        "former body cell remained: {sheet}"
+    );
+    for cell in ["D3", "E3", "D4", "E4"] {
+        assert!(
+            sheet.contains(&format!("r=\"{cell}\"")),
+            "missing {cell}: {sheet}"
+        );
+    }
+}
+
+#[test]
+fn named_table_growth_refuses_occupied_target_atomically() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace("<row r=\"4\">", "<row r=\"4\"><c r=\"A4\"><v>777</v></c>");
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            names_reader(&[9, 10, 11], &[Some("nine"), Some("ten"), Some("eleven")]),
+            &ExcelOptions::new().with_table("Names"),
+        )
+        .unwrap_err(),
+    );
+    assert!(
+        path.contains("A4") || path.contains("Names"),
+        "{path}: {reason}"
+    );
+    assert!(
+        reason.contains("occupied") || reason.contains("overlap"),
+        "{reason}"
+    );
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_resize_zero_body_refuses_atomically() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            names_reader(&[], &[]),
+            &ExcelOptions::new().with_table("Names"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("Names"), "{path}: {reason}");
+    assert!(
+        reason.contains("one") || reason.contains("zero"),
+        "{reason}"
+    );
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+fn named_totals_resize_parts() -> Vec<(&'static str, String)> {
+    use crate::excel_package::named_table_parts;
+    let mut parts = named_table_parts();
+    let worksheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *worksheet = worksheet.replace(
+        "<c r=\"D4\" t=\"inlineStr\"><is><t>Total</t></is></c><c r=\"E4\"><v>7</v></c>",
+        "<c r=\"C4\"><v>91</v></c><c r=\"D4\" t=\"inlineStr\"><is><t>Total</t></is></c><c r=\"E4\"><f>SUBTOTAL(109,[qty])</f><v>7</v></c><c r=\"G4\"><v>92</v></c>",
+    ).replace("</sheetData>",
+        "<row r=\"5\"><c r=\"C5\"><v>93</v></c><c r=\"G5\"><v>94</v></c></row></sheetData>");
+    let table = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/tables/table2.xml")
+        .unwrap()
+        .1;
+    *table = table.replace(
+        "totalsRowCount=\"1\"><tableColumns",
+        "totalsRowCount=\"1\"><autoFilter ref=\"D1:E3\"/><tableColumns",
+    );
+    parts
+}
+
+fn named_totals_resize_package() -> Vec<u8> {
+    crate::excel_package::named_table_package(&named_totals_resize_parts())
+}
+
+fn quantities_reader(rows: usize) -> BatchReader {
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let years = (0..rows).map(|row| 2030 + row as i64).collect::<Vec<_>>();
+    let quantities = (0..rows).map(|row| 6 + row as i64).collect::<Vec<_>>();
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(years)),
+            Arc::new(Int64Array::from(quantities)),
+        ],
+    )
+    .unwrap();
+    yggdryl::arrow::batch_reader(schema, [batch])
+}
+
+fn totals_two_styles(parts: &mut Vec<(&'static str, String)>) {
+    use crate::excel_package::{R_NS, styles};
+    let types = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "[Content_Types].xml")
+        .unwrap()
+        .1;
+    *types = types.replace("</Types>",
+        "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/></Types>");
+    let relationships = &mut parts
+        .iter_mut()
+        .find(|(name, _)| *name == "xl/_rels/workbook.xml.rels")
+        .unwrap()
+        .1;
+    *relationships = relationships.replace("</Relationships>",
+        &format!("<Relationship Id=\"rId3\" Type=\"{R_NS}/styles\" Target=\"styles.xml\"/></Relationships>"));
+    parts.push(("xl/styles.xml", styles(&[], &[0, 14])));
+}
+
+#[test]
+fn named_table_with_totals_moves_totals_for_positive_body_resize() {
+    use crate::excel_package::member;
+    let oracle: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/named_totals_excel.json")).unwrap();
+    assert_eq!(oracle["passed"], true);
+    let original = named_totals_resize_package();
+    let old = Workbook::from_bytes(original.clone()).unwrap();
+    let old_table = member(&old, "xl/tables/table2.xml");
+    for (key, attribute) in [("range", "ref"), ("filter", "autoFilter ref")] {
+        let expected = oracle["source_table"][key].as_str().unwrap();
+        assert!(
+            old_table.contains(&format!("{attribute}=\"{expected}\"")),
+            "{old_table}"
+        );
+    }
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let cases = oracle["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 3);
+    for case in cases {
+        let mode = case["mode"].as_str().unwrap();
+        let rows = match mode {
+            "shrink" => 1,
+            "equal" => 2,
+            "grow" => 3,
+            _ => panic!("{mode}"),
+        };
+        let years = (0..rows).map(|row| 2030 + row as i64).collect::<Vec<_>>();
+        let quantities = (0..rows).map(|row| 6 + row as i64).collect::<Vec<_>>();
+        assert_eq!(
+            case["expected_sum"].as_i64(),
+            Some(quantities.iter().copied().sum())
+        );
+        let input = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(years)),
+                Arc::new(Int64Array::from(quantities)),
+            ],
+        )
+        .unwrap();
+        let mut handle = stored(original.clone());
+        overwrite_arrow_reader(
+            &mut handle,
+            yggdryl::arrow::batch_reader(schema.clone(), [input]),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap();
+        let new = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+        let table = member(&new, "xl/tables/table2.xml");
+        let expected = &case["table"];
+        let range = expected["range"].as_str().unwrap();
+        let filter = expected["filter"].as_str().unwrap();
+        assert!(table.contains(&format!("ref=\"{range}\"")), "{table}");
+        assert!(
+            table.contains(&format!("<autoFilter ref=\"{filter}\"")),
+            "{table}"
+        );
+        assert!(table.contains("totalsRowCount=\"1\""), "{table}");
+        assert_eq!(
+            member(&new, "xl/tables/table1.xml"),
+            member(&old, "xl/tables/table1.xml")
+        );
+        let data = new.sheet("Data").unwrap();
+        for (at, value) in [("C4", 91.0), ("G4", 92.0), ("C5", 93.0), ("G5", 94.0)] {
+            assert_eq!(
+                data.scalar(at.parse().unwrap()),
+                value.into(),
+                "{mode}: {at}"
+            );
+        }
+        let xml = member(&new, "xl/worksheets/sheet1.xml");
+        let totals_at = case["totals_cell"].as_str().unwrap();
+        let formula = case["totals_formula"]
+            .as_str()
+            .unwrap()
+            .strip_prefix('=')
+            .unwrap();
+        assert!(
+            xml.contains(&format!("r=\"{totals_at}\"><f>{formula}</f>")),
+            "{mode}: {xml}"
+        );
+        if mode != "equal" {
+            assert!(
+                !xml.contains(&format!("<f>{formula}</f><v>7</v>")),
+                "{mode}: {xml}"
+            );
+        }
+        match mode {
+            "shrink" => {
+                assert!(data.scalar("D4".parse().unwrap()).is_null());
+                assert!(data.scalar("E4".parse().unwrap()).is_null());
+            }
+            "equal" => assert!(xml.contains("r=\"D4\" t=\"inlineStr\""), "{xml}"),
+            "grow" => {
+                assert_eq!(data.scalar("D4".parse().unwrap()), 2032.0.into());
+                assert_eq!(data.scalar("E4".parse().unwrap()), 8.0.into());
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[test]
+fn named_totals_move_keeps_unrelated_totals_row_cells_with_unreadable_styles() {
+    use crate::excel_package::{member, named_table_package};
+    for (label, old_cell, raw_cell) in [
+        (
+            "implicit-left",
+            "<c r=\"C4\"><v>91</v></c>",
+            "<c s=\"not-a-style\"><v>91</v></c>",
+        ),
+        (
+            "explicit-right",
+            "<c r=\"G4\"><v>92</v></c>",
+            "<c r=\"G4\" s=\"not-a-style\"><v>92</v></c>",
+        ),
+    ] {
+        let mut parts = named_totals_resize_parts();
+        let worksheet = &mut parts
+            .iter_mut()
+            .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+            .unwrap()
+            .1;
+        *worksheet = worksheet.replace(old_cell, raw_cell);
+        let original = named_table_package(&parts);
+        let mut handle = stored(original);
+        overwrite_arrow_reader(
+            &mut handle,
+            quantities_reader(3),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap();
+        let result = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+        let xml = member(&result, "xl/worksheets/sheet1.xml");
+        assert!(xml.contains(raw_cell), "{label}: {xml}");
+    }
+}
+
+#[test]
+fn named_totals_move_refuses_unreadable_selected_style_atomically() {
+    use crate::excel_package::named_table_package;
+    let mut parts = named_totals_resize_parts();
+    let worksheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *worksheet = worksheet.replace(
+        "<c r=\"D4\" t=\"inlineStr\">",
+        "<c r=\"D4\" s=\"not-a-style\" t=\"inlineStr\">",
+    );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            quantities_reader(3),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("Data!"), "{path}: {reason}");
+    assert!(
+        reason.contains("style") || reason.contains("integer"),
+        "{reason}"
+    );
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_totals_equal_height_keeps_existing_a1_formula() {
+    use crate::excel_package::{member, named_table_package};
+    let mut parts = named_totals_resize_parts();
+    let worksheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *worksheet = worksheet
+        .replace("SUBTOTAL(109,[qty])", "SUM(E2:E3)+E3")
+        .replace(
+            "<row r=\"4\">",
+            "<row r=\"4\" xml:space=\"preserve\" xmlns:q=\"urn:unrelated\">",
+        );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    overwrite_arrow_reader(
+        &mut handle,
+        quantities_reader(2),
+        &ExcelOptions::new().with_table("Quantities"),
+    )
+    .unwrap();
+    let result = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+    assert!(member(&result, "xl/worksheets/sheet1.xml").contains("r=\"E4\"><f>SUM(E2:E3)+E3</f>"));
+}
+
+#[test]
+fn named_totals_move_refuses_a1_grouped_and_scope_atomically() {
+    use crate::excel_package::named_table_package;
+    for (kind, row_change, cell_change, reason) in [
+        ("a1", "<row r=\"4\">", "<f>SUM(E2:E3)+E3</f>", "A1"),
+        ("split-a1", "<row r=\"4\">", "<f>A<![CDATA[1]]></f>", "A1"),
+        ("nested-f", "<row r=\"4\">", "<f><t>A1</t></f>", "text-only"),
+        (
+            "grouped",
+            "<row r=\"4\">",
+            "<f t=\"shared\" si=\"0\">1+1</f>",
+            "grouped formula",
+        ),
+        (
+            "foreign-f",
+            "<row r=\"4\">",
+            "<f xmlns=\"urn:foreign\">A1</f>",
+            "plain value",
+        ),
+        (
+            "reset-f",
+            "<row r=\"4\">",
+            "<f xmlns=\"\">A1</f>",
+            "plain value",
+        ),
+        (
+            "foreign-v",
+            "<row r=\"4\">",
+            "<f>SUBTOTAL(109,[qty])</f>",
+            "plain value",
+        ),
+        (
+            "scope",
+            "<row r=\"4\" xml:space=\"preserve\">",
+            "<f>SUBTOTAL(109,[qty])</f>",
+            "namespace",
+        ),
+    ] {
+        let mut parts = named_totals_resize_parts();
+        let worksheet = &mut parts
+            .iter_mut()
+            .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+            .unwrap()
+            .1;
+        *worksheet = worksheet
+            .replace("<row r=\"4\">", row_change)
+            .replace("<f>SUBTOTAL(109,[qty])</f>", cell_change);
+        if kind == "foreign-v" {
+            *worksheet = worksheet.replace("<v>7</v>", "<v xmlns=\"urn:foreign\">7</v>");
+        }
+        let original = named_table_package(&parts);
+        let mut handle = stored(original.clone());
+        let (path, actual) = refusal(
+            overwrite_arrow_reader(
+                &mut handle,
+                quantities_reader(
+                    if kind.starts_with("foreign-")
+                        || kind == "reset-f"
+                        || kind == "split-a1"
+                        || kind == "nested-f"
+                    {
+                        1
+                    } else {
+                        3
+                    },
+                ),
+                &ExcelOptions::new().with_table("Quantities"),
+            )
+            .unwrap_err(),
+        );
+        assert!(
+            path.contains("Data!") || path.contains("Quantities"),
+            "{kind}: {path}: {actual}"
+        );
+        assert!(actual.contains(reason), "{kind}: {path}: {actual}");
+        assert_eq!(handle.read_all_bytes().unwrap(), original, "{kind}");
+    }
+}
+
+#[test]
+fn named_totals_move_late_reader_error_is_atomic() {
+    use arrow_schema::ArrowError;
+    let original = named_totals_resize_package();
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let first = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![2030])),
+            Arc::new(Int64Array::from(vec![6])),
+        ],
+    )
+    .unwrap();
+    let reader: BatchReader = Box::new(arrow_array::RecordBatchIterator::new(
+        [
+            Ok(first),
+            Err(ArrowError::ComputeError("late totals input".into())),
+        ]
+        .into_iter(),
+        schema,
+    ));
+    let mut handle = stored(original.clone());
+    let error = overwrite_arrow_reader(
+        &mut handle,
+        reader,
+        &ExcelOptions::new().with_table("Quantities"),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("late totals input"), "{error}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_totals_growth_refuses_merge_at_new_totals_row() {
+    use crate::excel_package::named_table_package;
+    let mut parts = named_totals_resize_parts();
+    let worksheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *worksheet = worksheet.replace(
+        "<tableParts count=\"2\">",
+        "<mergeCells count=\"1\"><mergeCell ref=\"D5:E5\"/></mergeCells><tableParts count=\"2\">",
+    );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            quantities_reader(3),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("Quantities"), "{path}: {reason}");
+    assert!(reason.contains("merged"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_totals_move_keeps_allocated_default_styles_from_excel() {
+    use crate::excel_package::{member, named_table_package};
+    let evidence: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/allocated_totals_styles_excel.json")).unwrap();
+    for case in evidence["cases"].as_array().unwrap() {
+        let presence = case["id"].as_str().unwrap();
+        let mut parts = named_totals_resize_parts();
+        totals_two_styles(&mut parts);
+        let styles = &mut parts
+            .iter_mut()
+            .find(|(name, _)| *name == "xl/styles.xml")
+            .unwrap()
+            .1;
+        let fonts =
+            "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>";
+        assert_eq!(styles.matches(fonts).count(), 1);
+        *styles = styles.replace(fonts,
+            "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>");
+        let xf = "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>";
+        assert_eq!(styles.matches(xf).count(), 1);
+        *styles = styles.replace(xf,
+            "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+        let sheet = &mut parts
+            .iter_mut()
+            .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+            .unwrap()
+            .1;
+        *sheet = sheet
+            .replace("<row r=\"4\">", "<row r=\"4\" s=\"1\" customFormat=\"1\">")
+            .replace("<row r=\"5\">", "<row r=\"5\" s=\"0\" customFormat=\"1\">");
+        let cell = "<c r=\"D4\" t=\"inlineStr\"><is><t>Total</t></is></c>";
+        assert_eq!(sheet.matches(cell).count(), 1);
+        match presence {
+            "absent_s" => {}
+            "explicit_zero" => {
+                *sheet = sheet.replace(
+                    cell,
+                    "<c r=\"D4\" s=\"0\" t=\"inlineStr\"><is><t>Total</t></is></c>",
+                )
+            }
+            "unallocated" => *sheet = sheet.replace(cell, ""),
+            other => panic!("unexpected native fixture presence {other}"),
+        }
+        let original = named_table_package(&parts);
+        let before = Workbook::from_bytes(original.clone()).unwrap();
+        assert_eq!(
+            before
+                .cell_style("Data", "D4".parse().unwrap())
+                .unwrap()
+                .font
+                .bold,
+            case["before"]["cells"]["D4"]["font_bold"]
+                .as_bool()
+                .unwrap(),
+            "{presence}"
+        );
+        let mut handle = stored(original.clone());
+        let written = overwrite_arrow_reader(
+            &mut handle,
+            quantities_reader(3),
+            &ExcelOptions::new().with_table("Quantities"),
+        );
+        if presence == "unallocated" {
+            // Native Resize creates the declared label with the source's bold
+            // style. This unsupported synthesis remains an atomic refusal.
+            let (path, reason) = refusal(written.unwrap_err());
+            assert_eq!(path, "Data!D5");
+            assert!(reason.contains("style"), "{reason}");
+            assert_eq!(handle.read_all_bytes().unwrap(), original);
+            assert_eq!(case["reopened"]["cells"]["D5"]["value2"], "Total");
+            assert_eq!(case["reopened"]["cells"]["D5"]["font_bold"], true);
+            continue;
+        }
+        written.unwrap();
+        let after = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+        let expected = &case["reopened"]["cells"]["D5"];
+        assert_eq!(
+            after.sheet("Data").unwrap().scalar("D5".parse().unwrap()),
+            Scalar::from(expected["value2"].as_str().unwrap())
+        );
+        let style = after.cell_style("Data", "D5".parse().unwrap()).unwrap();
+        assert_eq!(
+            style.font.bold,
+            expected["font_bold"].as_bool().unwrap(),
+            "{presence}"
+        );
+        assert_eq!(
+            style.number_format,
+            expected["number_format_en_us"].as_str().unwrap()
+        );
+        let sheet = member(&after, "xl/worksheets/sheet1.xml");
+        assert!(
+            sheet.contains("r=\"E5\"><f>SUBTOTAL(109,[qty])</f>"),
+            "{sheet}"
+        );
+        assert!(!sheet.contains("r=\"E5\"><f>SUBTOTAL(109,[qty])</f><v>7</v>"));
+    }
+}
+
+#[test]
+fn named_totals_move_refuses_absent_cells_requiring_metadata_synthesis() {
+    use crate::excel_package::{member, named_table_package};
+    for (kind, absent, from, to) in [
+        (
+            "label",
+            "<c r=\"D4\" t=\"inlineStr\"><is><t>Total</t></is></c>",
+            "D4",
+            "D5",
+        ),
+        (
+            "function",
+            "<c r=\"E4\"><f>SUBTOTAL(109,[qty])</f><v>7</v></c>",
+            "E4",
+            "E5",
+        ),
+        (
+            "formula",
+            "<c r=\"E4\"><f>SUBTOTAL(109,[qty])</f><v>7</v></c>",
+            "E4",
+            "E5",
+        ),
+    ] {
+        let mut parts = named_totals_resize_parts();
+        let sheet = &mut parts
+            .iter_mut()
+            .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+            .unwrap()
+            .1;
+        assert_eq!(sheet.matches(absent).count(), 1);
+        *sheet = sheet.replace(absent, "");
+        let table = &mut parts
+            .iter_mut()
+            .find(|(name, _)| *name == "xl/tables/table2.xml")
+            .unwrap()
+            .1;
+        if kind == "label" {
+            let column = "<tableColumn id=\"1\" name=\"year\"/>";
+            assert_eq!(table.matches(column).count(), 1);
+            *table = table.replace(
+                column,
+                "<tableColumn id=\"1\" name=\"year\" totalsRowLabel=\"Total\"/>",
+            );
+        } else if kind == "formula" {
+            let column = "<tableColumn id=\"2\" name=\"qty\" totalsRowFunction=\"sum\"/>";
+            assert_eq!(table.matches(column).count(), 1);
+            *table = table.replace(column,
+                "<tableColumn id=\"2\" name=\"qty\" totalsRowFunction=\"custom\"><totalsRowFormula>SUM([qty])</totalsRowFormula></tableColumn>");
+        }
+        let original = named_table_package(&parts);
+        let mut same = stored(original.clone());
+        overwrite_arrow_reader(
+            &mut same,
+            quantities_reader(2),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap();
+        let unchanged = Workbook::from_bytes(same.read_all_bytes().unwrap()).unwrap();
+        assert!(
+            unchanged
+                .sheet("Data")
+                .unwrap()
+                .cell(from.parse().unwrap())
+                .is_none(),
+            "{kind}"
+        );
+        let before = Workbook::from_bytes(original.clone()).unwrap();
+        assert_eq!(
+            member(&unchanged, "xl/tables/table2.xml"),
+            member(&before, "xl/tables/table2.xml")
+        );
+        let mut changed = stored(original.clone());
+        let (path, reason) = refusal(
+            overwrite_arrow_reader(
+                &mut changed,
+                quantities_reader(3),
+                &ExcelOptions::new().with_table("Quantities"),
+            )
+            .unwrap_err(),
+        );
+        assert_eq!(path, format!("Data!{to}"), "{kind}");
+        assert!(
+            reason.contains("physical totals cell")
+                && reason.contains(from)
+                && reason.contains("Quantities")
+                && reason.contains("synthesis"),
+            "{kind}: {reason}"
+        );
+        assert_eq!(changed.read_all_bytes().unwrap(), original, "{kind}");
+    }
+}
+
+#[test]
+fn named_totals_move_refuses_missing_cells_with_changed_row_style() {
+    use crate::excel_package::named_table_package;
+    let mut parts = named_totals_resize_parts();
+    totals_two_styles(&mut parts);
+    let worksheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *worksheet = worksheet
+        .replace("<row r=\"4\">", "<row r=\"4\" s=\"1\" customFormat=\"1\">")
+        .replace("<c r=\"D4\" t=\"inlineStr\"><is><t>Total</t></is></c>", "")
+        .replace("<c r=\"E4\"><f>SUBTOTAL(109,[qty])</f><v>7</v></c>", "");
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            quantities_reader(3),
+            &ExcelOptions::new().with_table("Quantities"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("Data!"), "{path}: {reason}");
+    assert!(reason.contains("style"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_growth_refuses_merged_target_atomically() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet.replace(
+        "<tableParts count=\"2\">",
+        "<mergeCells count=\"1\"><mergeCell ref=\"A4:B4\"/></mergeCells><tableParts count=\"2\">",
+    );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            names_reader(&[9, 10, 11], &[Some("nine"), Some("ten"), Some("eleven")]),
+            &ExcelOptions::new().with_table("Names"),
+        )
+        .unwrap_err(),
+    );
+    assert!(
+        path.contains("Names") || path.contains("A4"),
+        "{path}: {reason}"
+    );
+    assert!(reason.contains("merged"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_shrink_refuses_grouped_formula_in_discarded_row() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut parts = named_table_parts();
+    let sheet = &mut parts
+        .iter_mut()
+        .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+        .unwrap()
+        .1;
+    *sheet = sheet
+        .replace(
+            "<c r=\"A3\"><v>2</v></c>",
+            "<c r=\"A3\"><f t=\"shared\" ref=\"A3:A4\" si=\"0\">1+1</f><v>2</v></c>",
+        )
+        .replace(
+            "<row r=\"4\">",
+            "<row r=\"4\"><c r=\"A4\"><f t=\"shared\" si=\"0\"/><v>3</v></c>",
+        );
+    let original = named_table_package(&parts);
+    let mut handle = stored(original.clone());
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            names_reader(&[9], &[Some("nine")]),
+            &ExcelOptions::new().with_table("Names"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("A3"), "{path}: {reason}");
+    assert!(reason.contains("grouped formula"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_growth_late_conversion_refuses_without_writing_handle() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let too_long = "x".repeat(32_768);
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            names_reader(&[9, 10, 11], &[Some("nine"), Some("ten"), Some(&too_long)]),
+            &ExcelOptions::new().with_table("Names"),
+        )
+        .unwrap_err(),
+    );
+    assert!(path.contains("Data!B4"), "{path}: {reason}");
+    assert!(reason.contains("characters"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_write_late_cell_failure_keeps_original_bytes() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let original = named_table_package(&named_table_parts());
+    let mut handle = stored(original.clone());
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let first = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![9])),
+            Arc::new(StringArray::from(vec![Some("nine")])),
+        ],
+    )
+    .unwrap();
+    let too_long = "x".repeat(32_768);
+    let second = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![10])),
+            Arc::new(StringArray::from(vec![Some(too_long.as_str())])),
+        ],
+    )
+    .unwrap();
+    let error = overwrite_arrow_reader(
+        &mut handle,
+        yggdryl::arrow::batch_reader(schema, [first, second]),
+        &ExcelOptions::new().with_table("Names"),
+    )
+    .unwrap_err();
+    let (path, reason) = refusal(error);
+    assert!(path.contains("Data!B3"), "{path}: {reason}");
+    assert!(reason.contains("characters"), "{reason}");
+    assert_eq!(handle.read_all_bytes().unwrap(), original);
+}
+
+#[test]
+fn named_table_declared_result_schema_is_no_io_but_records_validate_membership() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let counted = Counted::new(stored(named_table_package(&named_table_parts())));
+    let calls = Arc::clone(counted.calls());
+    let options = RecordOptions::from(ExcelOptions::new().with_table("Missing"))
+        .with_field(trades())
+        .with_select("id as key")
+        .unwrap();
+    calls.reset();
+    let field = counted.read_arrow_field(&options).unwrap();
+    assert_eq!(
+        field.fields().iter().map(Field::name).collect::<Vec<_>>(),
+        ["key"]
+    );
+    assert_eq!(calls.snapshot().to_string(), "none");
+    let error = match counted.read_arrow_reader(&options) {
+        Ok(_) => panic!("a declared schema cannot supply a missing table's records"),
+        Err(error) => error.to_string(),
+    };
+    assert!(error.contains("$.table"), "{error}");
+    assert!(error.contains("Missing"), "{error}");
+}
+
+#[test]
+fn named_table_read_after_in_memory_edits_uses_the_unsaved_package_image() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    let mut book = Workbook::from_bytes(named_table_package(&named_table_parts())).unwrap();
+    book.insert_columns("Data", 0, 1).unwrap();
+    book.set_entry("Data", "B2".parse().unwrap(), "7").unwrap();
+    book.rename_sheet("Data", "Edited").unwrap();
+    // into_bytes writes the live model/part overrides; no save/rebase is needed.
+    let media = Excel::new(stored(book.into_bytes().unwrap()))
+        .with_options(ExcelOptions::new().with_table("Names"));
+    let options = media.record_options().unwrap();
+    assert_eq!(rows(&media, &options), ["[7.0,\"one\"]", "[2.0,\"two\"]"]);
+    assert_eq!(media.row_size().unwrap(), 2);
+    assert_eq!(media.column_size().unwrap(), 2);
+}
+
+#[test]
+fn rows_declared_column_size_refuses_deep_field_at_schema_boundary() {
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOMedia, StructType};
+    use yggdryl::{
+        RecordHeader,
+        excel::{Excel, ExcelOptions},
+    };
+
+    let mut child = DataType::Float64.required_field("value");
+    for _ in 0..70 {
+        child = DataType::from(StructType::from_fields([child]).unwrap()).required_field("group");
+    }
+    let root = DataType::from(StructType::from_fields([child]).unwrap()).required_field("row");
+    let media = Excel::new(Buffer::new()).with_options(
+        ExcelOptions::new()
+            .with_header(RecordHeader::Rows(2))
+            .with_field(root),
+    );
+    let error = media.column_size().unwrap_err().to_string();
+    assert!(
+        error.contains("Field") && error.contains("limit"),
+        "{error}"
+    );
+}
+
+#[test]
+fn direct_excel_writer_refuses_an_oversized_null_batch_before_landing() {
+    use arrow_array::NullArray;
+    use yggdryl::excel::MAX_ROWS;
+
+    let field =
+        DataType::from(StructType::from_fields([DataType::Null.nullable_field("Blank")]).unwrap())
+            .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let huge = RecordBatch::try_new(
+        Arc::clone(&schema),
+        vec![Arc::new(NullArray::new(usize::MAX))],
+    )
+    .unwrap();
+    for header in [
+        RecordHeader::None,
+        RecordHeader::Source,
+        RecordHeader::Rows(2),
+    ] {
+        let mut handle = xlsx();
+        let options = ExcelOptions::new().with_header(header);
+        let batches = yggdryl::arrow::batch_reader(Arc::clone(&schema), [huge.clone()]);
+        let (path, reason) =
+            refusal(overwrite_arrow_reader(&mut handle, batches, &options).unwrap_err());
+        assert_eq!(path, format!("Sheet1!A{}", MAX_ROWS + 1), "{header:?}");
+        assert!(reason.contains("expected at most 1048576 rows"), "{reason}");
+        assert_eq!(handle.size(), 0, "{header:?} is atomic");
+    }
+}
+
+#[test]
+fn direct_excel_writer_refuses_directly_constructed_out_of_grid_anchor() {
+    use yggdryl::excel::{CellRef, MAX_ROWS};
+
+    for row in [MAX_ROWS, u32::MAX] {
+        for empty in [false, true] {
+            let mut handle = xlsx();
+            let at = CellRef::new(row, 0);
+            let options = ExcelOptions::new()
+                .with_header(RecordHeader::None)
+                .with_range(CellRange::new(at, at));
+            let batches = if empty {
+                reader(&[], &[])
+            } else {
+                reader(&[1], &[Some("AAPL")])
+            };
+            let (path, reason) =
+                refusal(overwrite_arrow_reader(&mut handle, batches, &options).unwrap_err());
+            // The options boundary locates the invalid selection before
+            // the writer reaches its cell guard, including an empty stream.
+            assert_eq!(path, "$.range", "row {row}, empty {empty}");
+            assert!(
+                reason.contains("expected a cell within 1048576 rows"),
+                "{reason}"
+            );
+            assert!(
+                reason.contains(&format!("got row {} column 1", u64::from(row) + 1)),
+                "{reason}"
+            );
+            assert_eq!(handle.size(), 0, "row {row}, empty {empty} is atomic");
+        }
+    }
+}
+
+#[test]
+fn direct_excel_writer_counts_earlier_batches_before_landing_the_next() {
+    use arrow_array::NullArray;
+    use yggdryl::excel::MAX_ROWS;
+
+    let field =
+        DataType::from(StructType::from_fields([DataType::Null.nullable_field("Blank")]).unwrap())
+            .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let batches = [
+        RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(NullArray::new(1))]).unwrap(),
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(NullArray::new(MAX_ROWS as usize))],
+        )
+        .unwrap(),
+    ];
+    let mut handle = xlsx();
+    let options = ExcelOptions::new().with_header(RecordHeader::None);
+    let (path, reason) = refusal(
+        overwrite_arrow_reader(
+            &mut handle,
+            yggdryl::arrow::batch_reader(schema, batches),
+            &options,
+        )
+        .unwrap_err(),
+    );
+    assert_eq!(path, format!("Sheet1!A{}", MAX_ROWS + 1));
+    assert!(reason.contains("expected at most 1048576 rows"), "{reason}");
+    assert_eq!(handle.size(), 0);
+}
+
+#[test]
+fn named_table_write_keeps_allocated_default_styles_from_excel() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    use arrow_array::Date32Array;
+
+    let evidence: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/allocated_styles_excel.json")).unwrap();
+    for case in evidence["cases"].as_array().unwrap() {
+        let owner = case["owner"].as_str().unwrap();
+        let temporal = case["operation"].as_str().unwrap() == "date";
+        for presence in ["absent_s", "explicit_zero", "unallocated"] {
+            let mut parts = named_table_parts();
+            totals_two_styles(&mut parts);
+            let styles = &mut parts
+                .iter_mut()
+                .find(|(name, _)| *name == "xl/styles.xml")
+                .unwrap()
+                .1;
+            let original_fonts =
+                "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>";
+            assert_eq!(styles.matches(original_fonts).count(), 1);
+            *styles = styles.replace(original_fonts,
+                "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font><font><b/><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>");
+            let original_xf = "<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>";
+            assert_eq!(styles.matches(original_xf).count(), 1);
+            *styles = styles.replace(original_xf,
+                "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+            let sheet = &mut parts
+                .iter_mut()
+                .find(|(name, _)| *name == "xl/worksheets/sheet1.xml")
+                .unwrap()
+                .1;
+            match owner {
+                "row" => {
+                    *sheet =
+                        sheet.replace("<row r=\"2\">", "<row r=\"2\" s=\"1\" customFormat=\"1\">")
+                }
+                "column" => {
+                    *sheet = sheet.replace(
+                        "<sheetData>",
+                        "<cols><col min=\"4\" max=\"4\" style=\"1\"/></cols><sheetData>",
+                    )
+                }
+                other => panic!("unexpected native fixture owner {other}"),
+            }
+            let cell = "<c r=\"D2\"><v>2024</v></c>";
+            assert_eq!(sheet.matches(cell).count(), 1);
+            match presence {
+                "absent_s" => {}
+                "explicit_zero" => {
+                    *sheet = sheet.replace(cell, "<c r=\"D2\" s=\"0\"><v>2024</v></c>")
+                }
+                "unallocated" => *sheet = sheet.replace(cell, ""),
+                _ => unreachable!(),
+            }
+            let at = "D2".parse().unwrap();
+            let bytes = named_table_package(&parts);
+            let before = Workbook::from_bytes(bytes.clone()).unwrap();
+            let expected = &case["observations"][presence];
+            assert_eq!(
+                before.cell_style("Data", at).unwrap().font.bold,
+                expected["before"]["font_bold"].as_bool().unwrap(),
+                "native before: {owner}/{presence}/temporal={temporal}"
+            );
+            let kind = if temporal {
+                DataType::Date32
+            } else {
+                DataType::Int64
+            };
+            let field = DataType::from(
+                StructType::from_fields([
+                    kind.required_field("year"),
+                    DataType::Int64.required_field("qty"),
+                ])
+                .unwrap(),
+            )
+            .required_field("row");
+            let schema = field.into_arrow_schema().unwrap();
+            let values: arrow_array::ArrayRef = if temporal {
+                Arc::new(Date32Array::from(vec![19_723, 19_724]))
+            } else {
+                Arc::new(Int64Array::from(vec![123, 124]))
+            };
+            let input = RecordBatch::try_new(
+                schema.clone(),
+                vec![values, Arc::new(Int64Array::from(vec![6, 8]))],
+            )
+            .unwrap();
+            let mut output = stored(bytes);
+            overwrite_arrow_reader(
+                &mut output,
+                yggdryl::arrow::batch_reader(schema, [input]),
+                &ExcelOptions::new().with_table("Quantities"),
+            )
+            .unwrap();
+            let after = Workbook::from_bytes(output.read_all_bytes().unwrap()).unwrap();
+            // Excel16.0 build20430: allocated no-s and s=0 cells keep XF0;
+            // only a genuinely absent cell inherits the row/column style.
+            assert_eq!(
+                after.cell_style("Data", at).unwrap().font.bold,
+                expected["reopened"]["font_bold"].as_bool().unwrap(),
+                "native after: {owner}/{presence}/temporal={temporal}"
+            );
+            assert_eq!(
+                after.sheet("Data").unwrap().scalar("E2".parse().unwrap()),
+                Scalar::from(6.0)
+            );
+        }
+    }
+}
+
+#[test]
+fn named_table_write_inherits_missing_cells_row_or_column_style() {
+    use crate::excel_package::{named_table_package, named_table_parts};
+    use arrow_array::Date32Array;
+    use yggdryl::excel::StylePatch;
+
+    for range in ["2:2", "D:D"] {
+        for temporal in [false, true] {
+            let mut before =
+                Workbook::from_bytes(named_table_package(&named_table_parts())).unwrap();
+            before
+                .set_style(
+                    "Data",
+                    &[range.parse().unwrap()],
+                    &StylePatch {
+                        bold: Some(true),
+                        ..StylePatch::default()
+                    },
+                )
+                .unwrap();
+            before
+                .sheet_mut("Data")
+                .unwrap()
+                .remove_cell("D2".parse().unwrap())
+                .unwrap();
+            assert!(
+                before
+                    .sheet("Data")
+                    .unwrap()
+                    .cell("D2".parse().unwrap())
+                    .is_none()
+            );
+            assert!(
+                before
+                    .cell_style("Data", "D2".parse().unwrap())
+                    .unwrap()
+                    .font
+                    .bold
+            );
+            let mut handle = stored(before.into_bytes().unwrap());
+            let first = if temporal {
+                DataType::Date32
+            } else {
+                DataType::Int64
+            };
+            let field = DataType::from(
+                StructType::from_fields([
+                    first.required_field("year"),
+                    DataType::Int64.required_field("qty"),
+                ])
+                .unwrap(),
+            )
+            .required_field("row");
+            let schema = field.into_arrow_schema().unwrap();
+            let values: arrow_array::ArrayRef = if temporal {
+                Arc::new(Date32Array::from(vec![19_723, 19_724]))
+            } else {
+                Arc::new(Int64Array::from(vec![2030, 2031]))
+            };
+            let input = RecordBatch::try_new(
+                schema.clone(),
+                vec![values, Arc::new(Int64Array::from(vec![6, 8]))],
+            )
+            .unwrap();
+            overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(schema, [input]),
+                &ExcelOptions::new().with_table("Quantities"),
+            )
+            .unwrap();
+            let after = Workbook::from_bytes(handle.read_all_bytes().unwrap()).unwrap();
+            assert!(
+                after
+                    .cell_style("Data", "D2".parse().unwrap())
+                    .unwrap()
+                    .font
+                    .bold,
+                "new body cell must keep its inherited {range} font (temporal={temporal})"
+            );
+            assert_eq!(
+                after.sheet("Data").unwrap().scalar("E2".parse().unwrap()),
+                Scalar::from(6.0)
+            );
+        }
+    }
+}
+
+#[test]
+fn named_table_write_split_and_empty_batches_match_one_batch_exactly() {
+    use crate::excel_package::{member, named_table_package, named_table_parts};
+    let parts = named_table_parts();
+    let original = named_table_package(&parts);
+    let ids = [9, 10];
+    let labels = [Some("nine"), None];
+    let options = ExcelOptions::new()
+        .with_table("Names")
+        .with_header(RecordHeader::None);
+    let mut expected = None;
+    for lengths in [&[2][..], &[1, 1][..], &[0, 1, 0, 1, 0, 0][..]] {
+        let mut offset = 0;
+        let batches = lengths
+            .iter()
+            .map(|&length| {
+                let next = offset + length;
+                let result = batch(&ids[offset..next], &labels[offset..next]);
+                offset = next;
+                result
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(offset, ids.len());
+        let mut output = stored(original.clone());
+        overwrite_arrow_reader(
+            &mut output,
+            yggdryl::arrow::batch_reader(trades().into_arrow_schema().unwrap(), batches),
+            &options,
+        )
+        .unwrap();
+        let bytes = output.read_all_bytes().unwrap();
+        let media = Excel::new(stored(bytes.clone()));
+        assert_eq!(
+            rows(
+                &media,
+                &RecordOptions::from(ExcelOptions::new().with_table("Names"))
+            ),
+            ["[9.0,\"nine\"]", "[10.0,null]"],
+            "batches {lengths:?}"
+        );
+        let book = Workbook::from_bytes(bytes).unwrap();
+        // The batch boundary changes neither rewritten XML nor any carried part.
+        let actual = parts
+            .iter()
+            .map(|(name, _)| (*name, member(&book, name)))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        if let Some(expected) = &expected {
+            assert_eq!(&actual, expected, "batches {lengths:?}");
+        } else {
+            expected = Some(actual);
+        }
+    }
 }

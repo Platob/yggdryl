@@ -2416,18 +2416,18 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
 
     fn read_arrow_field(&self, options: &RecordOptions) -> crate::Result<Field> {
         let options = self.require_record_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
-        if !self.warm() && self.reads_leaves() {
+        let source = if let Some(field) = options.field() {
+            field
+        } else if !self.warm() && self.reads_leaves() {
             return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        if self.opened
+        } else if self.opened
             && let Some(dimensions) = self.dimensions()?
         {
-            return Ok(dimensions.field.with_name(options.name()));
-        }
-        Ok(read_field(&self.handle, options)?)
+            dimensions.field.with_name(options.name())
+        } else {
+            read_field(&self.handle, options)?
+        };
+        options.result_field(source)
     }
 
     fn overwrite_arrow_reader(

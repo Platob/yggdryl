@@ -22,6 +22,7 @@ enum Opened {
 }
 
 fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
+    options.require_read()?;
     if handle.is_container() {
         return open_container(handle, options);
     }
@@ -71,8 +72,9 @@ pub(crate) fn container_field(
 ) -> Result<crate::Field> {
     use crate::media::IORecordOptions;
 
+    options.require_read()?;
     if let Some(field) = options.field() {
-        return Ok(field.clone());
+        return options.result_field(field);
     }
     opened_field(open_container(handle, options)?, options)
 }
@@ -235,9 +237,9 @@ pub trait IOMedia: Send {
 
     /// Read the canonical non-null Struct root Field of this resource.
     ///
-    /// A declared schema is returned as it stands; otherwise this is the shape
-    /// [`Self::read_arrow_reader`] reports, so the schema a caller reads
-    /// and the batches a caller gets can never disagree.
+    /// The declared or inferred source schema is bound through the filter and
+    /// selector, returning the shape [`Self::read_arrow_reader`] reports. A
+    /// declared source requires no I/O to resolve its result field.
     ///
     /// # Errors
     ///
@@ -245,8 +247,9 @@ pub trait IOMedia: Send {
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         use crate::media::IORecordOptions;
 
+        options.require_read()?;
         if let Some(field) = options.field() {
-            return Ok(field.clone());
+            return options.result_field(field);
         }
         opened_field(open(self.as_io_base(), options)?, options)
     }
@@ -322,7 +325,7 @@ pub trait IOMedia: Send {
     /// frame to read a prefix of, and reads only the declared field off the
     /// options.
     ///
-    /// `options` absent is the handle's own encoding read whole: a record
+    /// `options` absent uses the handle's own record options: a record
     /// encoding answers its stored schema, a document names the root its own
     /// contents prove, and a container - a folder, a path ending in `/`, a
     /// glob, a table - reads as the table its leaves hold, under the encoding

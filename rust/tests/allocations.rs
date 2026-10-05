@@ -26,9 +26,13 @@ use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+#[path = "support/excel_package.rs"]
+mod excel_package;
+
 use smol_str::SmolStr;
 use yggdryl::IdKey;
 use yggdryl::SerieValue as _;
+use yggdryl::expression::Term;
 use yggdryl::graph::{
     BookEvent, BookIterator, BookRef, Element, ElementColumn, Event, ExecutionEvent, Market,
     MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent, TradeEvent,
@@ -114,6 +118,57 @@ unsafe impl GlobalAlloc for Counting {
 
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_ordered_sum_push_and_finish_allocate_nothing_per_value() {
+    use yggdryl::internals::excel_formula_aggregate::Accumulator;
+
+    let values = [1.0, -f64::from_bits(0x3fef_ffff_ffff_fffe), f64::EPSILON];
+    for rows in [64, 4_096] {
+        let (allocations, sum) = counted(|| {
+            let mut accumulator = Accumulator::default();
+            for index in 0..rows {
+                accumulator
+                    .push_number(black_box(values[index % values.len()]))
+                    .unwrap();
+            }
+            accumulator.finish_sum().unwrap()
+        });
+        black_box(sum);
+        assert_eq!(allocations, 0, "{rows} ordered numeric values allocated");
+    }
+}
+
+#[test]
+fn expression_calendar_parts_allocate_nothing_per_row() {
+    let schema = DataType::from(
+        StructType::from_fields([DataType::datetime64(TimeUnit::Second, Timezone::UTC)
+            .unwrap()
+            .required_field("stamp")])
+        .unwrap(),
+    )
+    .required_field("row");
+    let row =
+        Scalar::from_sequence([Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()]);
+    let bound = "year(stamp)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from(1970));
+    for rows in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..rows {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(
+            allocations, 0,
+            "calendar extraction allocated over {rows} rows"
+        );
+    }
+}
 
 /// Count the allocations `work` performs, and return them with its answer.
 fn counted<T>(work: impl FnOnce() -> T) -> (usize, T) {
@@ -335,7 +390,7 @@ fn version_allocates_only_a_patch_past_the_inline_capacity() {
         ("1.2SP2_EP240", "SP2_EP240"),
         ("1.2.65536", "65536"),
         ("1.2.00065536", "65536"),
-        ("1.2界", "界"),
+        ("1.2\u{754c}", "\u{754c}"),
     ] {
         let expected = Version::new(1, 2, Some(patch));
         free("parsing a version with a qualified patch", || {
@@ -7177,23 +7232,17 @@ fn located_lines_render_and_project_one_shared_crosscode() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// What `owned_handle`'s copy of a buffer costs, by how many rows it holds.
+/// Public atomic copy and private owned intake costs at the same corpus sizes.
 ///
-/// A text read over a buffer with no location re-opens it as a copy, staged
-/// through the memory filesystem, and that staging grows with the object:
-/// eighteen allocations for anything under one 64 KiB window, three more
-/// for the 114 KiB that 1 024 rows are. It is measured beside the read and
-/// taken off it, because it is `main`'s and the transport's, not the
-/// reader's: the reader's own cost is what is left, and that is linear.
-///
-/// It last moved, by five, when the staging location's URL stopped being
-/// formatted and parsed as text: it is built from its parts under the static
-/// host `localhost`, so the count is the same on every machine.
-const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 18), (1_024, 21)];
+/// Main's part-built staging URL and shared host remove five allocations
+/// from the public atomic copy (23/26 to 18/21). Private intake still moves
+/// its first stream chunk directly: 2 allocations below 64 KiB, 4 for the
+/// 114 KiB corpus, without the public copy's transaction.
+const HANDLE_COSTS: [(usize, usize, usize); 2] = [(16, 18, 2), (1_024, 21, 4)];
 
-/// What the read itself costs past the copy: nine, and nothing a line.
+/// What the read itself costs past owned intake: ten, and nothing a line.
 ///
-/// Seven of the nine are built before a byte is read - the cursor over the
+/// Seven of the original nine are built before a byte is read - the cursor over the
 /// owned handle and the transport boxed around it, the options and the
 /// location each shared once, and the splitter's window as a vector and as
 /// the shared box that seals it - and two on the first pull, where the
@@ -7202,8 +7251,8 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 18), (1_024, 21)];
 /// Nothing a line, because a line is not a thing that is built: the window
 /// is the page, and a line is the range of it the splitter cut, so the
 /// header off its front, the strips off its edges and the byte limit off
-/// its tail move two offsets and copy nothing. With the copy, the assertion
-/// below counts 33 for 16 rows and the same 10 over the copy for 1 024 -
+/// its tail move two offsets and copy nothing. With private intake, the assertion
+/// below counts 12 for 16 rows and the same 10 over intake for 1 024 -
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
@@ -7253,7 +7302,7 @@ const DECLARED_COSTS: [(usize, usize); 2] = [(16, 3), (1_024, 4)];
 #[test]
 fn reading_text_lines_costs_a_constant_and_nothing_a_line() {
     warm_text_event_schema();
-    for (rows, copy) in OWNED_COPY_COSTS {
+    for (rows, copy, owned) in HANDLE_COSTS {
         let text = bridge_lines(rows);
         let source = Buffer::from_bytes(text.into_bytes())
             .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
@@ -7262,10 +7311,10 @@ fn reading_text_lines_costs_a_constant_and_nothing_a_line() {
             yggdryl::IOBase::copy_into(black_box(&source), &mut staged).expect("a copy");
             black_box(staged);
         });
-        assert_eq!(staged, copy, "the owned copy of {rows} rows");
+        assert_eq!(staged, copy, "the public atomic copy of {rows} rows");
         assert_eq!(
             text_lines_cost(&source, rows),
-            copy + TEXT_LINES_ONCE,
+            owned + TEXT_LINES_ONCE,
             "reading {rows} UTF-8 rows"
         );
     }
@@ -7277,7 +7326,7 @@ fn keeping_every_line_costs_its_windows_and_not_its_lines() {
     // The other half of the claim above. A reader that drops each line lets
     // the splitter write its window over again, so the count is flat; one
     // that keeps them cannot, and what it pays is a window at a time.
-    for rows in [16_usize, 1_024] {
+    for (rows, _, owned) in HANDLE_COSTS {
         let text = bridge_lines(rows);
         let windows = text.len().div_ceil(yggdryl::DEFAULT_STREAM_BATCH_SIZE);
         let source = Buffer::from_bytes(text.into_bytes())
@@ -7298,13 +7347,7 @@ fn keeping_every_line_costs_its_windows_and_not_its_lines() {
         assert_eq!(held.len(), rows, "every line was read");
         assert_eq!(
             allocations,
-            OWNED_COPY_COSTS
-                .iter()
-                .find(|(at, _)| *at == rows)
-                .map_or(0, |(_, copy)| *copy)
-                + TEXT_LINES_ONCE
-                + 1
-                + TEXT_LINES_RETAINED_PER_WINDOW * windows,
+            owned + TEXT_LINES_ONCE + 1 + TEXT_LINES_RETAINED_PER_WINDOW * windows,
             "keeping {rows} rows across {windows} windows"
         );
         // Every body is still a range of a page, and the pages are the
@@ -7405,7 +7448,7 @@ fn a_transcode_pays_for_the_text_it_builds() {
     // The borrow above is only meaningful beside the case that does not
     // borrow: bytes that are not already UTF-8 become a string that is.
     let wire = Charset::Cp1252
-        .encode("symbol,désk\nAAPL,€1\n")
+        .encode("symbol,dÃƒÆ’Ã‚Â©sk\nAAPL,ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬1\n")
         .expect("windows-1252 holds it")
         .into_owned();
     let (allocations, decoded) = counted(|| {
@@ -7418,7 +7461,7 @@ fn a_transcode_pays_for_the_text_it_builds() {
         allocations > 0,
         "a transcode reported a borrow of bytes it does not own"
     );
-    assert_eq!(decoded, "symbol,désk\nAAPL,€1\n");
+    assert_eq!(decoded, "symbol,dÃƒÆ’Ã‚Â©sk\nAAPL,ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬1\n");
 }
 
 /// One column of `n` values of `width` bytes, every one of them US-ASCII.
@@ -8978,6 +9021,81 @@ fn a_record_crosses_into_a_batch_for_one_box_per_leaf() {
     );
 }
 
+/// Resolving omitted options costs one clone of the wrapper's stored settings,
+/// independent of the number of rows. Explicit and omitted paths share all
+/// parsing, selection and publication work, so no absolute codec cost is pinned.
+#[test]
+fn iomedia_omitted_options_allocate_only_one_owned_options_clone() {
+    use yggdryl::ipc::{Ipc, IpcOptions};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{IOBase, IOMedia, IOMode, SerieReader};
+
+    let mut overhead = Vec::new();
+    for rows in [64, 4_096] {
+        let batch = int_batch(2, rows);
+        let records = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new()).unwrap();
+        let stream = || SerieReader::from_serie(records.clone()).unwrap();
+        let buffer = || Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+        let mut raw = buffer();
+        raw.write_serie(stream().into(), IOMode::Overwrite, None)
+            .unwrap();
+        let selected = IpcOptions::new().with_select("c001").unwrap();
+        let source = Ipc::new(raw).with_options(selected.clone());
+        let options = source.record_options().unwrap();
+        let read = |options| {
+            let reader = source.read_serie(options).unwrap();
+            assert_eq!(reader.field().field_len(), 1);
+            assert_eq!(reader.field().fields()[0].name(), "c001");
+            reader.map(|column| column.unwrap().len()).sum::<usize>()
+        };
+        // Warm both routes before measuring, including any projection caches.
+        assert_eq!(read(Some(&options)), rows);
+        assert_eq!(read(None), rows);
+        let (cloned, _) = counted(|| source.record_options().unwrap());
+        let (explicit_read, count) = counted(|| read(Some(&options)));
+        assert_eq!(count, rows);
+        let (omitted_read, count) = counted(|| read(None));
+        assert_eq!(count, rows);
+        assert_eq!(omitted_read, explicit_read + cloned, "read: {rows} rows");
+
+        for options in [Some(&options), None] {
+            let mut warm = Ipc::new(buffer()).with_options(selected.clone());
+            warm.write_serie(stream().into(), IOMode::Overwrite, options)
+                .unwrap();
+        }
+        let mut writes = Vec::new();
+        let mut bytes = Vec::new();
+        for options in [Some(&options), None] {
+            // Fresh buffers have equal capacities; stream construction and
+            // wrapper setup are outside the measured publication boundary.
+            let mut target = Ipc::new(buffer()).with_options(selected.clone());
+            let reader = stream();
+            let (allocations, ()) = counted(|| {
+                target
+                    .write_serie(reader.into(), IOMode::Overwrite, options)
+                    .unwrap();
+            });
+            writes.push(allocations);
+            bytes.push(target.read_all_bytes().unwrap());
+            let plain = RecordOptions::Ipc(IpcOptions::new());
+            let stored = target.read_serie(Some(&plain)).unwrap();
+            assert_eq!(stored.field().field_len(), 1);
+            assert_eq!(stored.field().fields()[0].name(), "c001");
+            assert_eq!(
+                stored.map(|column| column.unwrap().len()).sum::<usize>(),
+                rows
+            );
+        }
+        assert_eq!(writes[1], writes[0] + cloned, "write: {rows} rows");
+        assert_eq!(bytes[0], bytes[1]);
+        overhead.push((omitted_read - explicit_read, writes[1] - writes[0], cloned));
+    }
+    assert_eq!(
+        overhead[0], overhead[1],
+        "resolving options never scales with rows"
+    );
+}
+
 /// `rows` CSV records of `cells` cells each, comma-separated, quoted every
 /// fourth cell so the quoted path runs too.
 fn csv_records(rows: usize, cells: usize) -> Buffer {
@@ -9073,6 +9191,67 @@ fn excel_rows(count: usize) -> Serie {
     .expect("rows under the field")
 }
 
+/// Landing an imported rectangle of null records retains one physical row
+/// per record. Its work is independent of the number of null columns.
+#[test]
+fn excel_land_null_record_allocations_follow_rows_not_columns() {
+    use yggdryl::{
+        RecordHeader,
+        excel::{CellRange, CellRef, Edit, Landing, Sheet, Workbook},
+    };
+
+    let cost = |rows: usize, width: usize| {
+        let field = DataType::from(
+            StructType::from_fields(
+                (0..width).map(|column| DataType::Float64.nullable_field(format!("c{column}"))),
+            )
+            .unwrap(),
+        )
+        .required_field("record");
+        let records = Serie::from_scalars(
+            field,
+            (0..rows).map(|_| Scalar::from_sequence(std::iter::repeat_n(Scalar::Null, width))),
+        )
+        .unwrap();
+        let cells = Sheet::from_serie("Imported", &records, RecordHeader::None).unwrap();
+        assert!(cells.dimension().is_none());
+        let mut workbook = Workbook::new();
+        workbook.add_sheet("Data").unwrap();
+        let (allocations, applied) = counted(|| {
+            workbook
+                .apply(Edit::Land {
+                    destination: Landing::At {
+                        sheet: "Data".into(),
+                        anchor: CellRef::new(0, 0),
+                    },
+                    cells: Box::new(cells),
+                })
+                .unwrap()
+        });
+        assert_eq!(
+            applied.touched,
+            [(
+                "Data".into(),
+                CellRange::new(
+                    CellRef::new(0, 0),
+                    CellRef::new(rows as u32 - 1, width as u32 - 1)
+                )
+            )]
+        );
+        allocations
+    };
+    let (short_one, short_wide) = (cost(64, 1), cost(64, 16));
+    let (long_one, long_wide) = (cost(512, 1), cost(512, 16));
+    assert_eq!(short_one, short_wide, "a null column allocated during Land");
+    assert_eq!(long_one, long_wide, "a null column allocated during Land");
+    // Only B-tree nodes for physical record rows grow with height; the
+    // number of node allocations is below the number of new rows.
+    assert!(
+        long_one >= short_one && long_one - short_one < 512 - 64,
+        "448 more null rows cost {long_one} versus {short_one} allocations"
+    );
+}
+
 /// A reference and a range are parsed per cell of a part, and a cell is
 /// looked up per row of a read, so none of them may allocate: a reference
 /// is two integers, a range two references, and a lookup a walk of the
@@ -9080,9 +9259,13 @@ fn excel_rows(count: usize) -> Serie {
 /// is the text of a number, which has no bytes until it is rendered.
 #[test]
 fn excel_cell_reads_allocate_nothing() {
-    use yggdryl::excel::{CellRange, CellRef, Sheet};
+    use yggdryl::{
+        RecordHeader,
+        excel::{CellRange, CellRef, Sheet},
+    };
 
-    let sheet = Sheet::from_serie("Sheet1", &excel_rows(64), true).expect("a sheet");
+    let sheet =
+        Sheet::from_serie("Sheet1", &excel_rows(64), RecordHeader::Source).expect("a sheet");
     let number: CellRef = "C3".parse().expect("a reference");
     let text: CellRef = "B3".parse().expect("a reference");
     let range: CellRange = "A1:C64".parse().expect("a range");
@@ -9110,29 +9293,58 @@ fn excel_cell_reads_allocate_nothing() {
     free("the cells of a range", || {
         let _ = black_box(sheet.cells_in(range).count());
     });
+    free("a cell's style", || {
+        let _ = black_box(sheet.cell(number).map(yggdryl::excel::Cell::style));
+    });
+    free("the cell count", || {
+        let _ = black_box(sheet.cell_count());
+    });
+    free("the dimension", || {
+        let _ = black_box(sheet.dimension());
+    });
     costs("the text of a number cell", 1, || {
         let _ = black_box(sheet.cell(number).map(yggdryl::excel::Cell::text));
     });
 }
 
+/// A cell is at most 80 bytes: its 48-byte value, its 8-byte reference, one
+/// pointer to a shared formula, a 2-byte style and one byte each for its
+/// kind, its format and its error - 69 bytes, rounded up to the value's
+/// 16-byte alignment. A row is its index beside one vector of cells.
+#[test]
+fn excel_cell_is_at_most_80_bytes() {
+    use yggdryl::excel::{Cell, Row};
+
+    assert_eq!(std::mem::size_of::<Scalar>(), 48);
+    assert_eq!(std::mem::size_of::<Cell>(), 80);
+    assert_eq!(std::mem::size_of::<Row>(), 32);
+}
+
 /// What a sheet costs per row, at two corpus sizes so a per-cell cost would
-/// show as a slope: laying rows out into cells is the row's own map of
+/// show as a slope: laying rows out into cells is the row's own vector of
 /// cells, reading them back is the run each row becomes and the record it
 /// is laid out under, and rendering the part builds nothing per row - the
 /// numbers are written from their digits and the text is interned as it is.
+///
+/// Re-pinned when a row became one exact-capacity vector of cells rather
+/// than a B-tree node per eleven of them: parsing a row costs that vector
+/// and nothing else, the parser's own buffer handed back for the next row.
 #[test]
 fn excel_sheet_costs_per_row_and_nothing_per_cell() {
-    use yggdryl::excel::{Sheet, Workbook};
+    use yggdryl::{
+        RecordHeader,
+        excel::{Sheet, Workbook},
+    };
 
     let field = excel_field();
     let cost = |count: usize| {
         let rows = excel_rows(count);
         let (laid_out, sheet) =
-            counted(|| Sheet::from_serie("Sheet1", &rows, true).expect("a sheet"));
+            counted(|| Sheet::from_serie("Sheet1", &rows, RecordHeader::Source).expect("a sheet"));
         let (read_back, serie) = counted(|| {
             sheet
                 .clone()
-                .into_serie(Some(&field), true, Default::default())
+                .into_serie(Some(&field), RecordHeader::Source, Default::default())
                 .expect("the rows lay out")
         });
         assert_eq!(serie.len(), count);
@@ -9147,9 +9359,9 @@ fn excel_sheet_costs_per_row_and_nothing_per_cell() {
     };
     let (small, large) = (cost(64), cost(640));
     let more = 640 - 64;
-    // Under two per row: the row's cell map, and the doublings of the maps.
+    // The row's one vector, and a node of the rows map every few rows.
     assert!(
-        large.0 - small.0 < more * 2,
+        large.0 - small.0 < more * 5 / 4,
         "laying out 576 more rows cost {} allocations, against {} for 64 rows",
         large.0 - small.0,
         small.0
@@ -9169,12 +9381,297 @@ fn excel_sheet_costs_per_row_and_nothing_per_cell() {
     );
     // Opening reads the package documents and no sheet.
     assert_eq!(small.3, large.3, "opening a workbook cost a row");
-    // Under three per row: the row's cells as read, and its map once held.
+    // The row's one vector of the exact length, and a node of the rows map
+    // every few rows; the cells the parser read go back to it.
     assert!(
-        large.4 - small.4 < more * 3,
+        large.4 - small.4 < more * 5 / 4,
         "parsing 576 more rows cost {} allocations",
         large.4 - small.4
     );
+}
+
+/// `bytes` with the text of member `part` edited, every other member copied
+/// as stored.
+fn excel_repacked(bytes: Vec<u8>, part: &str, edit: impl FnOnce(String) -> String) -> Vec<u8> {
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::zip::ZipArchive;
+
+    let source = std::sync::Arc::new(ZipArchive::new(Holder::buffer(Buffer::from_bytes(bytes))));
+    let target = ZipArchive::new(Holder::buffer(Buffer::new()));
+    let mut edit = Some(edit);
+    for entry in source.entries().expect("the members") {
+        if entry.name() == part {
+            let text = String::from_utf8(source.read_member(part).expect("the part"))
+                .expect("the part is text");
+            let edit = edit.take().expect("one member of that name");
+            target
+                .write_member(part, edit(text).as_bytes())
+                .expect("written");
+        } else {
+            target
+                .copy_member_from(&source, entry.name())
+                .expect("copied");
+        }
+    }
+    target.flush().expect("flushed");
+    match target.into_handle().expect("the handle") {
+        Holder::Buffer(buffer) => buffer.into_bytes(),
+        other => yggdryl::IOBase::read_all_bytes(&other).expect("the bytes"),
+    }
+}
+
+/// A sheet parsed ten times as wide costs what the narrow one does: a row
+/// is one vector however many cells it holds, a number cell's value is its
+/// digits parsed in place, and the parser's buffer is reused row to row.
+///
+/// What only a few cells state (`cm`, `vm`, `ph`) is an entry beside the
+/// cells, so a cell stating none has none: the same sheet with `ph` on
+/// every cell costs the entries' nodes on top, which is what the flat cost
+/// of the plain one proves it does not pay.
+#[test]
+fn excel_sheet_parse_costs_nothing_per_cell() {
+    use yggdryl::excel::{CellRef, Sheet, Workbook};
+
+    let cost = |width: u32, phonetic: bool| {
+        let mut sheet = Sheet::new("Sheet1").expect("a sheet");
+        for row in 0..256 {
+            for column in 0..width {
+                sheet
+                    .set_cell(CellRef::new(row, column), f64::from(row * width + column))
+                    .expect("a number cell");
+            }
+        }
+        let mut workbook = Workbook::new();
+        workbook.insert_sheet(sheet).expect("inserted");
+        let mut bytes = workbook.into_bytes().expect("the package");
+        if phonetic {
+            bytes = excel_repacked(bytes, "xl/worksheets/sheet1.xml", |part| {
+                part.replace("<c r=", "<c ph=\"1\" r=")
+            });
+        }
+        let reopened = Workbook::from_bytes(bytes).expect("opens");
+        let (parsed, cells) = counted(|| reopened.sheet("Sheet1").expect("the sheet").cell_count());
+        assert_eq!(cells, 256 * width as usize);
+        parsed
+    };
+    let (narrow, wide) = (cost(4, false), cost(40, false));
+    assert!(
+        wide < narrow + 16,
+        "parsing 256 rows of 40 cells cost {wide} allocations, against {narrow} for 4 cells"
+    );
+    // A B-tree leaf holds eleven entries, so 10,240 of them are at least
+    // 931 nodes.
+    let stating = cost(40, true);
+    assert!(
+        stating >= wide + 256 * 40 / 11,
+        "parsing 10,240 cells stating `ph` cost {stating} allocations, against {wide} for none"
+    );
+}
+
+/// Text written into the part as an inline string - openpyxl writes every
+/// string so - costs a text cell what a number cell costs: a plain `<is>`
+/// is read through one buffer the parse reuses, and only a rich one's runs
+/// are kept beside its cell.
+#[test]
+fn excel_inline_string_parse_costs_nothing_per_cell() {
+    use yggdryl::excel::{CellRef, Sheet, Workbook};
+
+    let cost = |width: u32| {
+        let mut sheet = Sheet::new("Sheet1").expect("a sheet");
+        for row in 0..256 {
+            for column in 0..width {
+                sheet
+                    .set_cell(CellRef::new(row, column), f64::from(row * width + column))
+                    .expect("a number cell");
+            }
+        }
+        let mut workbook = Workbook::new();
+        workbook.insert_sheet(sheet).expect("inserted");
+        let bytes = excel_repacked(
+            workbook.into_bytes().expect("the package"),
+            "xl/worksheets/sheet1.xml",
+            |part| {
+                part.replace("\"><v>", "\" t=\"inlineStr\"><is><t>")
+                    .replace("</v></c>", "</t></is></c>")
+            },
+        );
+        let reopened = Workbook::from_bytes(bytes).expect("opens");
+        let (parsed, cells) = counted(|| reopened.sheet("Sheet1").expect("the sheet").cell_count());
+        assert_eq!(cells, 256 * width as usize);
+        assert_eq!(
+            reopened
+                .sheet("Sheet1")
+                .expect("the sheet")
+                .scalar(CellRef::new(1, 0)),
+            yggdryl::Scalar::from(width.to_string())
+        );
+        parsed
+    };
+    let (narrow, wide) = (cost(4), cost(40));
+    assert!(
+        wide < narrow + 16,
+        "parsing 256 rows of 40 inline strings cost {wide} allocations, against {narrow} for 4"
+    );
+}
+
+/// A save that appends a string extends the shared strings as the package
+/// stores them - every item it held rewritten from the stored bytes - and
+/// that rewrite holds nothing per item: a table sixty-four times as long
+/// costs what the short one does, bar the output's growth.
+#[test]
+fn excel_shared_strings_extended_cost_nothing_per_item() {
+    use yggdryl::excel::{CellRef, Workbook};
+
+    let cost = |items: u32| {
+        let mut workbook = Workbook::new();
+        let table = workbook.add_sheet("Table").expect("a sheet");
+        for row in 0..items {
+            table
+                .set_cell(CellRef::new(row, 0), format!("item {row}"))
+                .expect("a text cell");
+        }
+        workbook.add_sheet("Edited").expect("a sheet");
+        let reopened = Workbook::from_bytes(workbook.into_bytes().expect("the package"));
+        let mut reopened = reopened.expect("opens");
+        reopened.parse_all().expect("parsed");
+        reopened
+            .sheet_mut("Edited")
+            .expect("the sheet")
+            .set_cell(CellRef::new(0, 0), "new")
+            .expect("a text cell");
+        let (saved, bytes) = counted(|| reopened.into_bytes().expect("the package"));
+        let written = Workbook::from_bytes(bytes).expect("opens");
+        assert_eq!(
+            written
+                .sheet("Edited")
+                .expect("the sheet")
+                .scalar(CellRef::new(0, 0)),
+            yggdryl::Scalar::from("new")
+        );
+        saved
+    };
+    let (short, long) = (cost(64), cost(4_096));
+    assert!(
+        long < short + 16,
+        "extending a table of 4,096 strings cost {long} allocations, against {short} for 64"
+    );
+}
+
+/// A shared formula group is one shape: every dependent holds the
+/// master's `Arc`, so a column of `N` dependents costs what `N` number
+/// cells cost plus the one shape - at two corpus sizes - where a column of
+/// `N` formulas stated one by one lexes each, and interning keeps one.
+#[test]
+fn excel_shared_formula_parse_allocates_per_shape() {
+    use yggdryl::excel::{CellRef, Sheet, Workbook};
+
+    // A two-column sheet: `A` the row number, `B` twice it, as numbers, as
+    // one shared group anchored in `B1`, or as a formula stated per cell.
+    let cost = |rows: u32, formulas: Option<bool>| {
+        let mut sheet = Sheet::new("Sheet1").expect("a sheet");
+        for row in 0..rows {
+            sheet
+                .set_cell(CellRef::new(row, 0), f64::from(row + 1))
+                .expect("a number cell");
+            sheet
+                .set_cell(CellRef::new(row, 1), f64::from(2 * (row + 1)))
+                .expect("a number cell");
+        }
+        let mut workbook = Workbook::new();
+        workbook.insert_sheet(sheet).expect("inserted");
+        let mut bytes = workbook.into_bytes().expect("the package");
+        if let Some(shared) = formulas {
+            bytes = excel_repacked(bytes, "xl/worksheets/sheet1.xml", |part| {
+                let mut pieces = part.split("<c r=\"B");
+                let mut edited = pieces.next().expect("the head").to_owned();
+                for (at, piece) in pieces.enumerate() {
+                    let row = at + 1;
+                    let (reference, rest) = piece.split_once('>').expect("a cell");
+                    let formula = match (shared, row) {
+                        (true, 1) => {
+                            format!("<f t=\"shared\" ref=\"B1:B{rows}\" si=\"0\">A1*2</f>")
+                        }
+                        (true, _) => "<f t=\"shared\" si=\"0\"/>".to_owned(),
+                        (false, _) => format!("<f>A{row}*2</f>"),
+                    };
+                    edited.push_str(&format!("<c r=\"B{reference}>{formula}{rest}"));
+                }
+                edited
+            });
+        }
+        let reopened = Workbook::from_bytes(bytes).expect("opens");
+        let (parsed, cells) = counted(|| reopened.sheet("Sheet1").expect("the sheet").cell_count());
+        assert_eq!(cells, 2 * rows as usize);
+        if formulas.is_some() {
+            let sheet = reopened.sheet("Sheet1").expect("the sheet");
+            let last = sheet.cell(CellRef::new(rows - 1, 1)).expect("B");
+            assert_eq!(
+                last.formula()
+                    .expect("a formula")
+                    .at(last.reference())
+                    .to_string(),
+                format!("A{rows}*2")
+            );
+        }
+        parsed
+    };
+    let shared = |rows: u32| cost(rows, Some(true)) - cost(rows, None);
+    let (small, large) = (shared(64), shared(1_024));
+    assert!(
+        large <= small + 4,
+        "a shared group of 1,024 cells cost {large} allocations beyond its numbers, \
+         against {small} for 64"
+    );
+    // Stated one by one, each formula is lexed before the interner finds
+    // the shape it already holds.
+    let stated = cost(1_024, Some(false)) - cost(1_024, None);
+    assert!(
+        stated > large + 1_024,
+        "1,024 formulas stated one by one cost {stated} allocations, against {large} shared"
+    );
+}
+
+/// What a sheet holds beside its cells: nothing while it is empty, one box
+/// of column counts - [`MAX_COLUMNS`](yggdryl::excel::MAX_COLUMNS) of them,
+/// 64 KiB - taken with its first cell and let go with its last, and per
+/// cell nothing but what its row's vector grows by.
+#[test]
+fn excel_sheet_holds_one_box_of_column_counts_and_its_rows() {
+    use yggdryl::excel::{CellRef, Sheet};
+
+    let (built, sheet) = counted(|| Sheet::new("Held").expect("a sheet"));
+    assert_eq!(built, 0, "an empty sheet allocated");
+    let mut sheet = sheet;
+    let (first, _) = counted(|| sheet.set_cell(CellRef::new(0, 0), 1.0).expect("a cell"));
+    // The box of column counts, the rows map's node, the row's vector.
+    assert_eq!(first, 3, "the first cell");
+    let (same_row, ()) = counted(|| {
+        for column in 1..4 {
+            sheet
+                .set_cell(CellRef::new(0, column), 1.0)
+                .expect("a cell");
+        }
+    });
+    assert_eq!(
+        same_row, 0,
+        "three more cells the row's vector holds room for"
+    );
+    let (grown, _) = counted(|| sheet.set_cell(CellRef::new(0, 4), 1.0).expect("a cell"));
+    assert_eq!(grown, 1, "a fifth cell grows the row's vector");
+    let (next_row, _) = counted(|| sheet.set_cell(CellRef::new(1, 0), 1.0).expect("a cell"));
+    assert_eq!(next_row, 1, "a cell in a new row is that row's vector");
+    let (replaced, _) = counted(|| sheet.set_cell(CellRef::new(1, 0), 2.0).expect("a cell"));
+    assert_eq!(replaced, 0, "replacing a cell");
+
+    // Emptied, the sheet lets the box go; its next cell takes it again.
+    let references: Vec<CellRef> = sheet.cells().map(yggdryl::excel::Cell::reference).collect();
+    for reference in references {
+        sheet.remove_cell(reference);
+    }
+    assert_eq!(sheet.cell_count(), 0);
+    // The box and the row's vector: an emptied map keeps its root node.
+    let (again, _) = counted(|| sheet.set_cell(CellRef::new(5, 5), 1.0).expect("a cell"));
+    assert_eq!(again, 2, "the first cell of an emptied sheet");
 }
 
 /// The record doors: a write renders every row into the part it streams
@@ -9224,6 +9721,2070 @@ fn excel_record_doors_cost_per_row_and_nothing_per_cell() {
     );
 }
 
+/// Rendering a value under a parsed number format allocates the text it
+/// answers and nothing else: the number's fifteen-digit form and the text
+/// are built on the stack, so a text that fits inline allocates nothing, a
+/// longer one its one buffer, and General its one list of narrower
+/// spellings.
+#[test]
+fn excel_format_render_allocates_only_its_text() {
+    use yggdryl::excel::{DateSystem, FormatCode};
+
+    let system = DateSystem::Year1900;
+    for (code, value) in [
+        ("#,##0.00;[Red](#,##0.00)", Scalar::from(-1_234_567.891)),
+        ("0.00%", Scalar::from(0.1234)),
+        ("0.00E+00", Scalar::from(6.022e23)),
+        ("# ??/??", Scalar::from(std::f64::consts::PI)),
+        ("_(\"$\"* #,##0.00_)", Scalar::from(1234.5)),
+        ("m/d/yyyy", Scalar::date32(19_724)),
+        ("[h]:mm:ss.000", Scalar::from(1.500_01)),
+        ("dddd, mmmm d, yyyy", Scalar::from(45_292.0)),
+        ("0;-0;0;\"<\"@\">\"", Scalar::from("text")),
+        ("General", Scalar::from(7.0)),
+    ] {
+        let format = FormatCode::from_code(code).expect("a format code");
+        free(&format!("rendering under {code}"), || {
+            let _ = black_box(format.render(&value, system));
+        });
+    }
+    let long = FormatCode::from_code("\"Total amount due: \"#,##0.00").expect("a format code");
+    costs("a text past the inline bound", 1, || {
+        let _ = black_box(long.render(&Scalar::from(1234.5), system));
+    });
+    let general = FormatCode::general();
+    for value in [1234.5678, 12_345_678_901.0] {
+        costs("General's narrower spellings", 1, || {
+            let _ = black_box(general.render(&Scalar::from(value), system));
+        });
+    }
+}
+
+/// A cell's number format is read once, when its style is: displaying a
+/// cell reads the code the styles hold, never parses it again, and so
+/// allocates only its text - nothing for one that fits inline, whichever
+/// of a thousand cells in three styles (currency, percentage, date) it is.
+#[test]
+fn excel_display_text_reads_a_format_parsed_once_per_style() {
+    use yggdryl::excel::{CellRef, Workbook};
+
+    let mut workbook = Workbook::new();
+    workbook.add_sheet("Sheet1").expect("a sheet");
+    for row in 0..1_000_u32 {
+        let text = match row % 3 {
+            0 => format!("${row}.5"),
+            1 => format!("{}%", row % 100),
+            _ => "1/2/2024".to_owned(),
+        };
+        workbook
+            .set_entry("Sheet1", CellRef::new(row, 0), &text)
+            .expect("an entry");
+    }
+    // The default style and the three the entries suggested.
+    assert_eq!(workbook.style_sheet().expect("styles").len(), 4);
+    let mut row = 0_u32;
+    free("displaying a styled cell", || {
+        row = (row + 1) % 1_000;
+        let _ = black_box(workbook.display_text("Sheet1", CellRef::new(row, 0)));
+    });
+}
+
+/// A patch over a range derives each distinct style it meets once: ten
+/// thousand cells in three styles intern exactly three, and the cells cost
+/// the plan of what changes - one entry per cell, in one vector grown as it
+/// fills - and nothing each.
+#[test]
+fn excel_set_style_interns_one_style_per_distinct_source() {
+    use yggdryl::excel::{CellRange, CellRef, StylePatch, Workbook};
+
+    let patched = |rows: u32| {
+        let mut workbook = Workbook::new();
+        let sheet = workbook.add_sheet("Sheet1").expect("a sheet");
+        for row in 0..rows {
+            for column in 0..100 {
+                sheet
+                    .set_cell(CellRef::new(row, column), f64::from(row + column))
+                    .expect("a cell");
+            }
+        }
+        let tenth = rows / 10;
+        for (first, code) in [(0, "0%"), (tenth, "m/d/yyyy")] {
+            let patch = StylePatch {
+                number_format: Some(code.into()),
+                ..StylePatch::default()
+            };
+            let range = CellRange::new(CellRef::new(first, 0), CellRef::new(first + tenth - 1, 99));
+            workbook
+                .set_style("Sheet1", &[range], &patch)
+                .expect("a patch");
+        }
+        let before = workbook.style_sheet().expect("styles").len();
+        let bold = StylePatch {
+            bold: Some(true),
+            ..StylePatch::default()
+        };
+        let all = CellRange::new(CellRef::new(0, 0), CellRef::new(rows - 1, 99));
+        let (allocations, ()) = counted(|| {
+            workbook
+                .set_style("Sheet1", &[all], &bold)
+                .expect("a patch");
+        });
+        assert_eq!(workbook.style_sheet().expect("styles").len(), before + 3);
+        allocations
+    };
+    let small = patched(25);
+    let large = patched(100);
+    eprintln!("excel_set_style: 2,500 cells {small}, 10,000 cells {large}");
+    // Four times the cells: the same three styles, and a plan grown by
+    // doubling - two more reallocations - but nothing per cell.
+    assert!(
+        large <= small + 4,
+        "2,500 cells cost {small}, 10,000 cost {large}"
+    );
+}
+
+/// Rows opened above a sheet of formulas move every cell and rewrite every
+/// reference, and the rewrites are memoized per shape and per class of
+/// host the rows treat alike: a column of `N` cells sharing one shape costs
+/// what a column of `N` numbers costs - the rows map rebuilt, the cells
+/// moved in their own vectors - plus the one rewritten shape, at two corpus
+/// sizes.
+#[test]
+fn excel_structural_edit_allocates_per_shape_and_nothing_per_formula() {
+    use yggdryl::excel::{Cell as ExcelCell, CellRef, DateSystem, Formula, Workbook};
+
+    // `B` is `A2*2` in every row, `C` names the absolute `$E$1` above
+    // every row: opening rows above row 1 leaves `B`'s shape as it is and
+    // gives `C` one new shape, `A2+$E$3`, held by every cell.
+    let cost = |rows: u32, formulas: bool| {
+        let mut workbook = Workbook::new();
+        let data = workbook.add_sheet("Data").expect("a sheet");
+        let shapes = [
+            Formula::from_file("A1*2", CellRef::new(0, 1)),
+            Formula::from_file("A1+$E$1", CellRef::new(0, 2)),
+        ];
+        for row in 0..rows {
+            data.set_cell(CellRef::new(row, 0), f64::from(row))
+                .expect("a number");
+            for (column, shape) in (1..).zip(&shapes) {
+                let at = CellRef::new(row, column);
+                let cell = ExcelCell::from_scalar(at, f64::from(row).into(), DateSystem::Year1900)
+                    .expect("a cell");
+                data.insert_cell(if formulas {
+                    cell.with_formula(shape.clone())
+                } else {
+                    cell
+                })
+                .expect("a cell");
+            }
+        }
+        let (allocations, ()) = counted(|| {
+            workbook.insert_rows("Data", 0, 2).expect("the rows open");
+        });
+        if formulas {
+            let sheet = workbook.sheet("Data").expect("the sheet");
+            let last = sheet.cell(CellRef::new(rows + 1, 2)).expect("moved");
+            assert_eq!(
+                last.formula()
+                    .expect("a formula")
+                    .at(last.reference())
+                    .to_string(),
+                format!("A{}+$E$3", rows + 2)
+            );
+        }
+        allocations
+    };
+    let formulas = |rows: u32| cost(rows, true).saturating_sub(cost(rows, false));
+    let (small, large) = (formulas(1_024), formulas(16_384));
+    eprintln!(
+        "excel_structural_edit: numbers {} / {}, formulas beyond them {small} / {large}",
+        cost(1_024, false),
+        cost(16_384, false)
+    );
+    assert!(
+        large <= small + 4,
+        "16,384 rows of formulas cost {large} allocations beyond their numbers, against \
+         {small} for 1,024"
+    );
+}
+
+/// A paste walks the cells its two ranges hold, never the grid between
+/// them: pasting the whole grid of a sparse sheet costs what pasting the
+/// one column holding its cells costs, and each cell more costs a bounded
+/// few allocations, at two corpus sizes. A walk of the grid's 17 billion
+/// coordinates would not finish.
+#[test]
+fn excel_paste_allocates_per_cell_held_and_nothing_per_cell_of_the_grid() {
+    let cost = |cells, range| excel_sparse_paste_cost(cells, range, false);
+    let (column, grid) = (cost(256, "A:A"), cost(256, "A1:XFD1048576"));
+    assert!(
+        grid <= column + 8,
+        "the whole grid cost {grid} allocations, the column holding the same cells {column}"
+    );
+    let (small, large) = (cost(16, "A1:XFD1048576"), grid);
+    assert!(
+        large - small < (256 - 16) * 8,
+        "240 more cells cost {} allocations more",
+        large - small
+    );
+}
+
+/// Numeric sparse cells: copying and cutting have separate pins, sharing
+/// only the setup and postconditions. Formula relocation is not inferred
+/// from a copy's costs or semantics.
+fn excel_sparse_paste_cost(cells: u32, range: &str, cut: bool) -> usize {
+    use yggdryl::excel::{CellRef, Paste, Workbook};
+
+    let mut workbook = Workbook::new();
+    let from = workbook.add_sheet("From").expect("a sheet");
+    for row in 0..cells {
+        from.set_cell(CellRef::new(row * 97, 0), f64::from(row))
+            .expect("a number");
+    }
+    workbook.add_sheet("To").expect("a sheet");
+    let block = range.parse().expect("a range");
+    let (allocations, landed) =
+        counted(|| workbook.paste(("From", block), ("To", CellRef::new(0, 0)), Paste::All, cut));
+    assert_eq!(landed.expect("the paste lands"), block);
+    assert_eq!(
+        workbook.sheet("To").expect("the sheet").len(),
+        cells as usize
+    );
+    assert_eq!(
+        workbook.sheet("From").expect("the source").len(),
+        if cut { 0 } else { cells as usize },
+    );
+    assert_eq!(
+        workbook
+            .sheet("To")
+            .unwrap()
+            .scalar(CellRef::new((cells - 1) * 97, 0)),
+        f64::from(cells - 1).into(),
+    );
+    allocations
+}
+
+/// A cut retains inverses and moves cells, but the empty grid between its
+/// stored cells must cost nothing at either corpus size.
+#[test]
+fn excel_cut_allocates_nothing_per_empty_cell_of_the_grid() {
+    for cells in [16, 256] {
+        let column = excel_sparse_paste_cost(cells, "A:A", true);
+        let grid = excel_sparse_paste_cost(cells, "A1:XFD1048576", true);
+        eprintln!("excel_cut: {cells} cells, column {column}, grid {grid}");
+        assert_eq!(grid, column, "cutting the empty columns cost allocations");
+    }
+}
+
+/// Refusing intersecting whole tables precedes cell slices and inverses:
+/// the table metadata is identical at both sizes, so populated cells in
+/// the rejected cut add no allocations.
+#[test]
+fn excel_table_cut_collision_allocates_nothing_per_source_cell() {
+    use excel_package::{
+        NS, R_NS, content_types, package, root_relationships, workbook, workbook_relationships,
+        worksheet,
+    };
+    use yggdryl::excel::Paste;
+
+    let cost = |rows: u32| {
+        let table = |id, name, range| {
+            format!(
+                "<table xmlns=\"{NS}\" id=\"{id}\" name=\"{name}\" displayName=\"{name}\" ref=\"{range}\" totalsRowShown=\"0\"><autoFilter ref=\"{range}\"/><tableColumns count=\"2\"><tableColumn id=\"1\" name=\"Item\"/><tableColumn id=\"2\" name=\"Cost\"/></tableColumns></table>"
+            )
+        };
+        let data: String = (1..=rows).map(|row| {
+            let headers = if row == 2 {
+                "<c r=\"E2\" t=\"inlineStr\"><is><t>Item</t></is></c><c r=\"F2\" t=\"inlineStr\"><is><t>Cost</t></is></c><c r=\"N2\" t=\"inlineStr\"><is><t>Item</t></is></c><c r=\"O2\" t=\"inlineStr\"><is><t>Cost</t></is></c>"
+            } else { "" };
+            format!("<row r=\"{row}\"><c r=\"A{row}\"><v>{row}</v></c>{headers}</row>")
+        }).collect();
+        let sheet = worksheet(&data).replace("</worksheet>", "<tableParts count=\"2\"><tablePart r:id=\"rIdCosts\"/><tablePart r:id=\"rIdTaken\"/></tableParts></worksheet>");
+        let relationships = format!(
+            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdCosts\" Type=\"{R_NS}/table\" Target=\"../tables/table1.xml\"/><Relationship Id=\"rIdTaken\" Type=\"{R_NS}/table\" Target=\"../tables/table2.xml\"/></Relationships>"
+        );
+        let declarations: String = (1..=2).map(|id| format!(
+            "<Override PartName=\"/xl/tables/table{id}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml\"/>"
+        )).collect();
+        let types =
+            content_types(1, false, false).replace("</Types>", &format!("{declarations}</Types>"));
+        let bytes = package(&[
+            ("[Content_Types].xml", &types),
+            ("_rels/.rels", &root_relationships()),
+            ("xl/workbook.xml", &workbook(&["Data"], false)),
+            (
+                "xl/_rels/workbook.xml.rels",
+                &workbook_relationships(1, false, false),
+            ),
+            ("xl/worksheets/sheet1.xml", &sheet),
+            ("xl/worksheets/_rels/sheet1.xml.rels", &relationships),
+            ("xl/tables/table1.xml", &table(1, "Costs", "E2:F6")),
+            ("xl/tables/table2.xml", &table(2, "Taken", "N2:O6")),
+        ]);
+        let mut opened = yggdryl::excel::Workbook::from_bytes(bytes).unwrap();
+        opened.parse_all().unwrap();
+        let revision = opened.sheet("Data").unwrap().revision();
+        let source = "A1:F1048576".parse().unwrap();
+        let target = "J1".parse().unwrap();
+        let (allocations, result) =
+            counted(|| opened.paste(("Data", source), ("Data", target), Paste::All, true));
+        match result.unwrap_err() {
+            yggdryl::Error::InvalidRecord { path, reason } => {
+                assert_eq!(path.as_str(), "Data!N2:O6");
+                assert_eq!(
+                    reason.as_str(),
+                    "expected the moved table Costs to avoid other tables, got Taken at N2:O6"
+                );
+            }
+            error => panic!("expected the table collision, got {error}"),
+        }
+        assert!(!opened.is_dirty());
+        assert_eq!(opened.sheet("Data").unwrap().revision(), revision);
+        assert_eq!(
+            opened
+                .sheet("Data")
+                .unwrap()
+                .scalar(format!("A{rows}").parse().unwrap()),
+            f64::from(rows).into()
+        );
+        allocations
+    };
+    // Registration's empty MarkupContext owns one process-wide lazy Arc.
+    // Warm that allocation before comparing fresh workbooks, so this pin
+    // also runs alone rather than relying on another Excel test's order.
+    black_box(cost(1_024));
+    let (small, large) = (cost(1_024), cost(16_384));
+    eprintln!("excel_table_cut_collision: 1,024 cells {small}, 16,384 cells {large}");
+    assert_eq!(large, small, "a refused cut allocated for its source cells");
+}
+
+/// Retaining an edit's cells allocates their slice, independent of style
+/// identity. An appended style adds one descriptor allocation, even when
+/// thousands of cells use it; styles read from a package add none.
+#[test]
+fn excel_retained_style_descriptors_allocate_per_distinct_style() {
+    use yggdryl::excel::{CellRange, CellRef, Edit, StylePatch, Workbook};
+
+    let cost = |cells: u32, kind: &str| {
+        let mut book = Workbook::new();
+        let sheet = book.add_sheet("Sheet1").unwrap();
+        for row in 0..cells {
+            sheet
+                .set_cell(CellRef::new(row, 0), f64::from(row))
+                .unwrap();
+        }
+        let range = CellRange::new(CellRef::new(0, 0), CellRef::new(cells - 1, 0));
+        if kind != "default" {
+            book.set_style(
+                "Sheet1",
+                &[range],
+                &StylePatch {
+                    bold: Some(true),
+                    ..StylePatch::default()
+                },
+            )
+            .unwrap();
+        }
+        if kind == "original" {
+            book = Workbook::from_bytes(book.into_bytes().unwrap()).unwrap();
+            book.parse_all().unwrap();
+        }
+        book.style_sheet().unwrap();
+        // Replacement keeps every cell in all three cases; clearing would
+        // remove default blanks but retain styled blanks, changing the work.
+        let edit = Edit::SetEntries {
+            sheet: "Sheet1".into(),
+            entries: (0..cells)
+                .map(|row| (CellRef::new(row, 0), "8".into()))
+                .collect(),
+        };
+        let (allocations, applied) = counted(|| book.apply(edit).unwrap());
+        assert!(applied.inverse.is_some());
+        assert_eq!(book.sheet("Sheet1").unwrap().cell_count(), cells as usize);
+        allocations
+    };
+    // Warm datatype and style caches outside every measured operation.
+    for kind in ["default", "original", "appended"] {
+        cost(1, kind);
+    }
+    for cells in [64, 4_096] {
+        let default = cost(cells, "default");
+        let original = cost(cells, "original");
+        let appended = cost(cells, "appended");
+        eprintln!(
+            "excel_retained_style_descriptors: {cells} cells, default={default}, original={original}, appended={appended}"
+        );
+        assert_eq!(
+            original, default,
+            "original styles retain no descriptors for {cells} cells"
+        );
+        assert_eq!(
+            appended,
+            default + 1,
+            "one shared appended style retains one vector for {cells} cells"
+        );
+    }
+}
+
+/// An already parsed worksheet with only original style IDs retains its
+/// root bytes and metadata once. Removing it must not walk raw cell tags
+/// merely to discover that none can require a retained style descriptor.
+#[test]
+fn excel_remove_original_styles_allocates_nothing_per_cell() {
+    use excel_package::{
+        content_types, package_coded, root_relationships, styles, workbook, workbook_relationships,
+        worksheet,
+    };
+    use yggdryl::excel::{CellRef, Edit, StyleId, Workbook};
+
+    let cost = |cells: u32| {
+        let mut row = String::from("<row r=\"1\">");
+        for column in 0..cells {
+            let at = CellRef::new(0, column);
+            row.push_str(&format!("<c r=\"{at}\" s=\"1\"><v>7</v></c>"));
+        }
+        row.push_str("</row>");
+        // Identity coding and a fixed package graph isolate the retained
+        // payload's one allocation from decoder and XML traversal costs.
+        let bytes = package_coded(
+            &[
+                ("[Content_Types].xml", &content_types(2, false, true)),
+                ("_rels/.rels", &root_relationships()),
+                ("xl/workbook.xml", &workbook(&["Original", "Keep"], false)),
+                (
+                    "xl/_rels/workbook.xml.rels",
+                    &workbook_relationships(2, false, true),
+                ),
+                ("xl/worksheets/sheet1.xml", &worksheet(&row)),
+                ("xl/worksheets/sheet2.xml", &worksheet("")),
+                ("xl/styles.xml", &styles(&[(164, "0.000")], &[0, 164])),
+            ],
+            yggdryl::Codec::Identity,
+        );
+        let mut book = Workbook::from_bytes(bytes).unwrap();
+        book.parse_all().unwrap();
+        book.style_sheet().unwrap();
+        assert!(!book.is_dirty());
+        let last = CellRef::new(0, cells - 1);
+        assert_eq!(book.sheet("Original").unwrap().cell_count(), cells as usize);
+        assert_eq!(
+            book.sheet("Original").unwrap().cell(last).unwrap().style(),
+            StyleId::new(1),
+        );
+        let edit = Edit::RemoveSheet {
+            name: "Original".into(),
+        };
+        let (allocations, applied) = counted(|| book.apply(edit).unwrap());
+        assert_eq!(book.sheet_names(), vec!["Keep"]);
+        let inverse = applied.inverse.expect("removal retains its original sheet");
+        // Exercise the returned retention outside the measured region so
+        // a cheap removal that loses original styles cannot satisfy the pin.
+        book.apply(inverse).unwrap();
+        assert_eq!(book.sheet("Original").unwrap().cell_count(), cells as usize);
+        assert_eq!(
+            book.cell_style("Original", last).unwrap().number_format,
+            "0.000",
+        );
+        allocations
+    };
+    cost(1);
+    let (small, large) = (cost(64), cost(4_096));
+    eprintln!("excel_remove_original_styles: 64 cells {small}, 4,096 cells {large}");
+    assert_eq!(
+        large, small,
+        "original-only style retention must not allocate while revisiting raw cell tags",
+    );
+}
+
+/// A refusal that never appends a style must not clone a style table held
+/// by an in-flight snapshot merely to roll it back to the same checkpoint.
+#[test]
+fn excel_failed_guard_without_styles_does_not_clone_the_shared_style_table() {
+    use excel_package::{
+        content_types, package_coded, root_relationships, styles, workbook, workbook_relationships,
+        worksheet,
+    };
+    use yggdryl::excel::{Edit, Workbook};
+
+    let cost = |formats: u32| {
+        // Distinct custom-format map entries make a whole-table clone cost
+        // visible to the counting allocator, even when every cell uses xf0.
+        let codes: Vec<_> = (1..formats)
+            .map(|id| (163 + id, format!("0.000&quot;tag{id}&quot;")))
+            .collect();
+        let borrowed: Vec<_> = codes
+            .iter()
+            .map(|(id, code)| (*id, code.as_str()))
+            .collect();
+        let xfs: Vec<_> = (0..formats)
+            .map(|id| if id == 0 { 0 } else { 163 + id })
+            .collect();
+        let bytes = package_coded(
+            &[
+                ("[Content_Types].xml", &content_types(1, false, true)),
+                ("_rels/.rels", &root_relationships()),
+                ("xl/workbook.xml", &workbook(&["Sheet1"], false)),
+                (
+                    "xl/_rels/workbook.xml.rels",
+                    &workbook_relationships(1, false, true),
+                ),
+                (
+                    "xl/worksheets/sheet1.xml",
+                    &worksheet("<row r=\"1\"><c r=\"A1\"><v>7</v></c></row>"),
+                ),
+                ("xl/styles.xml", &styles(&borrowed, &xfs)),
+            ],
+            yggdryl::Codec::Identity,
+        );
+        let mut book = Workbook::from_bytes(bytes).unwrap();
+        book.parse_all().unwrap();
+        assert_eq!(book.style_sheet().unwrap().len(), formats as usize);
+        let pending = book.into_package().unwrap();
+        let revision = book.sheet("Sheet1").unwrap().revision();
+        let edit = Edit::RowHeight {
+            sheet: "Sheet1".into(),
+            start: 0,
+            count: 1,
+            height: Some(-1.0),
+        };
+        let (allocations, result) = counted(|| book.apply(edit));
+        assert!(matches!(
+            result.unwrap_err(),
+            yggdryl::Error::InvalidRecord { .. }
+        ));
+        assert_eq!(book.style_sheet().unwrap().len(), formats as usize);
+        assert_eq!(book.sheet("Sheet1").unwrap().revision(), revision);
+        assert!(!book.is_dirty());
+        black_box(&pending);
+        allocations
+    };
+    cost(1);
+    let (small, large) = (cost(64), cost(4_096));
+    eprintln!("excel_failed_guard_without_styles: 64 XFs {small}, 4,096 XFs {large}");
+    assert_eq!(
+        large, small,
+        "a refusal with no style append cloned the shared style table"
+    );
+}
+
+/// A failed entry restores its cells and newly appended formats without
+/// cloning the surrounding worksheet. Percent and date entry cover both
+/// a new style ID and the cell's temporal-kind transition.
+#[test]
+fn excel_failed_guard_with_styles_costs_only_the_attempted_cells() {
+    use yggdryl::excel::{CellRef, Workbook};
+
+    let cost = |cells: u32, entry: &str| {
+        let mut book = Workbook::new();
+        let sheet = book.add_sheet("Sheet1").unwrap();
+        // Keep an untouched sibling in each row: rollback need not remove
+        // and reinsert BTree rows, while a whole-sheet clone scales by rows.
+        for row in 0..cells / 2 {
+            for column in 0..2 {
+                sheet.set_cell(CellRef::new(row, column), 7.0).unwrap();
+            }
+        }
+        let package = book.into_package().unwrap();
+        book.rebase(package).unwrap();
+        let pending = book.into_package().unwrap();
+        let count = book.style_sheet().unwrap().len();
+        let first = CellRef::new(0, 0);
+        let second = CellRef::new(1, 0);
+        let last = CellRef::new(cells / 2 - 1, 1);
+        let style = book.cell_style("Sheet1", first).unwrap();
+        let format = book.sheet("Sheet1").unwrap().cell(first).unwrap().format();
+        let revision = book.sheet("Sheet1").unwrap().revision();
+        let tsv = format!("{entry}\n=SUM(A1");
+        let (allocations, result) = counted(|| book.paste_text("Sheet1", first, &tsv));
+        assert!(matches!(result.unwrap_err(), yggdryl::Error::Parse { .. }));
+        assert_eq!(book.style_sheet().unwrap().len(), count);
+        let sheet = book.sheet("Sheet1").unwrap();
+        assert_eq!(sheet.revision(), revision);
+        assert_eq!(sheet.cell_count(), cells as usize);
+        for at in [first, second, last] {
+            assert_eq!(sheet.scalar(at), Scalar::from(7.0));
+        }
+        assert_eq!(sheet.cell(first).unwrap().format(), format);
+        assert_eq!(book.cell_style("Sheet1", first).unwrap(), style);
+        assert!(!book.is_dirty());
+        black_box(&pending);
+        allocations
+    };
+    for entry in ["12%", "1/1/2024"] {
+        cost(4, entry);
+        let (small, large) = (cost(64, entry), cost(4_096, entry));
+        eprintln!(
+            "excel_failed_guard_with_styles {entry:?}: 64 resident cells {small}, 4,096 cells {large}"
+        );
+        assert_eq!(
+            large, small,
+            "rollback copied cells outside its two-cell payload"
+        );
+    }
+}
+
+/// A fixed two-child failure owns only its touched cells and metadata.
+/// More original XFs, other sheets or resident cells must not enlarge it.
+#[test]
+fn excel_failed_batch_allocates_only_for_touched_state() {
+    use excel_package::{
+        content_types, package_coded, root_relationships, styles, workbook, workbook_relationships,
+        worksheet,
+    };
+    use yggdryl::excel::{Edit, Workbook};
+
+    let cost = |formats: u32, sheets: usize, cells: u32| {
+        let names: Vec<_> = (0..sheets).map(|id| format!("Sheet{id}")).collect();
+        let borrowed_names: Vec<_> = names.iter().map(String::as_str).collect();
+        let codes: Vec<_> = (1..formats)
+            .map(|id| (163 + id, format!("0.000&quot;tag{id}&quot;")))
+            .collect();
+        let borrowed_codes: Vec<_> = codes
+            .iter()
+            .map(|(id, code)| (*id, code.as_str()))
+            .collect();
+        let xfs: Vec<_> = (0..formats)
+            .map(|id| if id == 0 { 0 } else { 163 + id })
+            .collect();
+        let rows: String = (1..=cells / 2).map(|row| format!(
+            "<row r=\"{row}\"><c r=\"A{row}\"><v>7</v></c><c r=\"B{row}\"><v>7</v></c></row>"
+        )).collect();
+        let mut parts = vec![
+            (
+                "[Content_Types].xml".to_owned(),
+                content_types(sheets, false, true),
+            ),
+            ("_rels/.rels".to_owned(), root_relationships()),
+            (
+                "xl/workbook.xml".to_owned(),
+                workbook(&borrowed_names, false),
+            ),
+            (
+                "xl/_rels/workbook.xml.rels".to_owned(),
+                workbook_relationships(sheets, false, true),
+            ),
+            ("xl/styles.xml".to_owned(), styles(&borrowed_codes, &xfs)),
+        ];
+        for id in 1..=sheets {
+            parts.push((
+                format!("xl/worksheets/sheet{id}.xml"),
+                worksheet(if id == 1 {
+                    &rows
+                } else {
+                    "<row r=\"1\"><c r=\"A1\"><v>7</v></c><c r=\"B1\"><v>7</v></c></row>"
+                }),
+            ));
+        }
+        let borrowed: Vec<_> = parts
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect();
+        let mut book =
+            Workbook::from_bytes(package_coded(&borrowed, yggdryl::Codec::Identity)).unwrap();
+        book.parse_all().unwrap();
+        assert_eq!(book.style_sheet().unwrap().len(), formats as usize);
+        let revisions: Vec<_> = names
+            .iter()
+            .map(|name| book.sheet(name).unwrap().revision())
+            .collect();
+        let edit = Edit::Batch(vec![
+            Edit::SetEntries {
+                sheet: "Sheet0".into(),
+                entries: vec![("A1".parse().unwrap(), "8".into())],
+            },
+            // An existing target avoids measuring construction of a missing-
+            // sheet error listing every unrelated tab in the workbook.
+            Edit::RowHeight {
+                sheet: "Sheet0".into(),
+                start: 0,
+                count: 1,
+                height: Some(-1.0),
+            },
+        ]);
+        let (allocations, result) = counted(|| book.apply(edit));
+        assert!(matches!(
+            result.unwrap_err(),
+            yggdryl::Error::InvalidRecord { .. }
+        ));
+        assert_eq!(
+            book.sheet("Sheet0").unwrap().scalar("A1".parse().unwrap()),
+            Scalar::from(7.0)
+        );
+        assert_eq!(book.sheet("Sheet0").unwrap().cell_count(), cells as usize);
+        assert_eq!(
+            names
+                .iter()
+                .map(|name| book.sheet(name).unwrap().revision())
+                .collect::<Vec<_>>(),
+            revisions
+        );
+        assert_eq!(book.style_sheet().unwrap().len(), formats as usize);
+        assert!(!book.is_dirty());
+        allocations
+    };
+    cost(1, 2, 4);
+    let baseline = cost(64, 2, 64);
+    for (axis, formats, sheets, cells) in [
+        ("original styles", 4_096, 2, 64),
+        ("unrelated sheets", 64, 128, 64),
+        ("resident cells", 64, 2, 4_096),
+    ] {
+        let larger = cost(formats, sheets, cells);
+        eprintln!("excel_failed_batch {axis}: baseline {baseline}, larger {larger}");
+        assert_eq!(
+            larger, baseline,
+            "Batch rollback allocated for {axis} outside its touched state"
+        );
+    }
+}
+
+/// A note-only cut allocates for its metadata, never unrelated parsed cells.
+#[test]
+fn excel_note_cut_costs_notes_and_not_unrelated_cells() {
+    use yggdryl::excel::{Paste, Workbook};
+    let cost = |notes, cells| {
+        let mut workbook =
+            Workbook::from_bytes(excel_package::note_cost_package(notes, cells)).unwrap();
+        workbook.parse_all().unwrap();
+        let (allocations, result) = counted(|| {
+            workbook.paste(
+                ("Data", "B2".parse().unwrap()),
+                ("Data", "F6".parse().unwrap()),
+                Paste::All,
+                true,
+            )
+        });
+        assert_eq!(result.unwrap().to_string(), "F6");
+        assert_eq!(workbook.sheet("Data").unwrap().len(), cells as usize);
+        excel_package::assert_cost_note_moved(&workbook, notes);
+        allocations
+    };
+    // Warm process-global lazy state outside either measured corpus.
+    cost(1, 1);
+    for notes in [1, 16] {
+        let (small, large) = (cost(notes, 64), cost(notes, 4_096));
+        eprintln!("excel_note_cut: {notes} notes, 64 cells {small}, 4096 cells {large}");
+        assert_eq!(
+            large, small,
+            "unrelated cells changed note cut allocation cost"
+        );
+    }
+}
+
+#[test]
+fn excel_cross_sheet_carried_cut_allocates_for_registrations_not_unrelated_cells() {
+    use yggdryl::excel::{Paste, Workbook};
+    let cost = |kind: &str, registrations: u32, cells: u32| {
+        let bytes = excel_package::carried_cost_package(kind, registrations, cells);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        workbook.parse_all().unwrap();
+        let source = format!("B2:B{}", registrations + 1);
+        let (allocations, moved) = counted(|| {
+            workbook.paste(
+                ("Data", source.parse().unwrap()),
+                ("Other", "J10".parse().unwrap()),
+                Paste::All,
+                true,
+            )
+        });
+        assert!(moved.is_ok(), "{kind}: {moved:?}");
+        assert_eq!(workbook.sheet("Data").unwrap().cell_count(), cells as usize);
+        allocations
+    };
+    // Warm process-global lazy state before comparing either corpus.
+    for kind in ["cf", "dv", "x14cf", "x14dv", "x14spark", "hyperlink"] {
+        cost(kind, 1, 1);
+    }
+    for kind in ["cf", "dv", "x14cf", "x14dv", "x14spark", "hyperlink"] {
+        for registrations in [1, 16] {
+            let small = cost(kind, registrations, 64);
+            let large = cost(kind, registrations, 4_096);
+            eprintln!(
+                "excel_carried_cut: {kind}, {registrations} registrations, 64 cells {small}, 4096 cells {large}"
+            );
+            assert_eq!(
+                large, small,
+                "unrelated cells changed {kind} carried transfer allocations"
+            );
+        }
+    }
+}
+
+/// Thread resolution costs its roots/replies, never unrelated resident cells.
+#[test]
+fn excel_threaded_cut_costs_threads_and_not_unrelated_cells() {
+    use yggdryl::excel::{Paste, Workbook};
+    let cost = |threads, cells| {
+        let mut workbook =
+            Workbook::from_bytes(excel_package::threaded_cost_package(threads, cells)).unwrap();
+        workbook.parse_all().unwrap();
+        let (allocations, result) = counted(|| {
+            workbook.paste(
+                ("Data", "B2".parse().unwrap()),
+                ("Data", "F6".parse().unwrap()),
+                Paste::All,
+                true,
+            )
+        });
+        assert_eq!(result.unwrap().to_string(), "F6");
+        assert_eq!(workbook.sheet("Data").unwrap().len(), cells as usize);
+        excel_package::assert_cost_thread_moved(&workbook, threads);
+        allocations
+    };
+    cost(1, 1);
+    for threads in [1, 16] {
+        let (small, large) = (cost(threads, 64), cost(threads, 4_096));
+        eprintln!(
+            "excel_threaded_cut: {threads} roots and replies, 64 cells {small}, 4096 cells {large}"
+        );
+        assert_eq!(
+            large, small,
+            "unrelated cells changed threaded cut allocation cost"
+        );
+    }
+}
+
+/// Only context intake owns a long local-name key. Per-token lookup folds
+/// borrowed bytes; rewritten formula tokens share the original name buffer.
+#[test]
+fn excel_scoped_name_cut_allocates_for_one_resolved_key_not_each_lookup() {
+    use yggdryl::excel::{CellRange, CellRef, Paste, Workbook};
+
+    fn cost(cells: u32, name: &str, occurrences: usize, unrelated: usize) -> usize {
+        let bytes =
+            excel_package::scoped_name_cost_package(cells, name, occurrences, unrelated, false);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        workbook.parse_all().unwrap();
+        let block = CellRange::new(CellRef::new(2, 2), CellRef::new(cells + 1, 2));
+        let target = CellRef::new(7, 7);
+        let (allocations, moved) =
+            counted(|| workbook.paste(("Data", block), ("Other", target), Paste::All, true));
+        assert_eq!(
+            moved.unwrap(),
+            CellRange::new(target, CellRef::new(cells + 6, 7))
+        );
+        assert_eq!(workbook.sheet("Data").unwrap().len(), 0);
+        assert_eq!(workbook.sheet("Other").unwrap().len(), cells as usize);
+        let expected = vec![format!("Data!{}", name.to_ascii_lowercase()); occurrences].join("+");
+        for at in [target, CellRef::new(cells + 6, 7)] {
+            let cell = workbook.sheet("Other").unwrap().cell(at).unwrap();
+            assert_eq!(cell.formula().unwrap().at(at).to_string(), expected);
+        }
+        allocations
+    }
+
+    const SHORT: &str = "ShOrTRaTe";
+    const LONG: &str = "LoNgMiXeDReferenceNameBeyondInlineCapacity";
+    for cells in [64, 4_096] {
+        for occurrences in [1, 32] {
+            let short = cost(cells, SHORT, occurrences, 0);
+            let long = cost(cells, LONG, occurrences, 0);
+            eprintln!(
+                "excel_scoped_name_cut: {cells} cells/{occurrences} names, short={short}, long={long}"
+            );
+            // One long context key, never a lowercase allocation per
+            // occurrence; rewritten tokens share their original buffer.
+            assert_eq!(
+                long,
+                short + 1,
+                "long-name lookup allocated per formula token"
+            );
+        }
+    }
+    let baseline = cost(64, LONG, 4, 0);
+    for unrelated in [64, 4_096] {
+        let with_registry = cost(64, LONG, 4, unrelated);
+        eprintln!(
+            "excel_scoped_name_cut: {unrelated} globals and other-sheet locals, {with_registry}"
+        );
+        assert_eq!(
+            with_registry, baseline,
+            "unrelated scopes entered the cut context"
+        );
+    }
+}
+
+#[test]
+fn iomedia_result_field_moves_identity_without_allocating_or_rebuilding_children() {
+    use yggdryl::ipc::IpcOptions;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{IOMedia, StructType};
+
+    let source = Buffer::from_bytes(b"unread header".to_vec());
+    for columns in [64, 4_096] {
+        let mut field = StructType::from_fields(
+            (0..columns).map(|index| DataType::Int64.required_field(format!("c{index:04}"))),
+        )
+        .map(DataType::from)
+        .unwrap()
+        .required_field("records");
+        field
+            .set_comment("metadata remains on the identity result")
+            .unwrap();
+        let identity = IpcOptions::new();
+        let (once, repeated) = counted_each(
+            || field.clone(),
+            |owned| identity.result_field(owned).unwrap(),
+        );
+        assert_eq!(
+            (once, repeated),
+            (0, 0),
+            "identity resolver: {columns} columns"
+        );
+
+        let declared = RecordOptions::Ipc(identity.with_field(field.clone()));
+        free("declared identity result field", || {
+            let actual = source.read_arrow_field(&declared).unwrap();
+            assert_eq!(actual, field);
+        });
+    }
+}
+
+#[test]
+fn excel_named_table_write_allocations_do_not_follow_unrelated_rows() {
+    use arrow_array::{Float64Array, RecordBatch, StringArray};
+    use yggdryl::excel::{ExcelOptions, overwrite_arrow_reader};
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("id"),
+            DataType::utf8().required_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = root.into_arrow_schema().unwrap();
+    let input = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Float64Array::from(vec![9.0, 10.0])),
+            Arc::new(StringArray::from(vec!["nine", "ten"])),
+        ],
+    )
+    .unwrap();
+    let options = ExcelOptions::new().with_table("Names");
+    let cost = |unrelated: u32| {
+        let bytes = excel_package::named_table_cost_package(2, unrelated);
+        let mut handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        let (allocations, ()) = counted(|| {
+            overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(schema.clone(), [input.clone()]),
+                &options,
+            )
+            .unwrap();
+        });
+        allocations
+    };
+    let _ = cost(64); // Warm global field projections outside the comparison.
+    let (small, large) = (cost(64), cost(4096));
+    eprintln!("named_table_overlay: unrelated64={small} unrelated4096={large}");
+    // Raw neighboring cells bypass one attribute Vec and one owned r for
+    // each of four numeric cells. Disabling this path measured 836; disabling
+    // exact edited-document capacity too recovered the old 837. Full-suite
+    // and focused runs differ by one fixed allocation (828/829), whose owner
+    // is not established. Pin the guaranteed saving and zero unrelated-row
+    // slope, without claiming the additional capacity saving on every run.
+    assert_eq!(small, large, "unselected rows must add no XML allocations");
+    // Strict package intake adds at most 40 fixed allocations: 20 for
+    // four relationship namespace resolvers, seven checked attribute sets,
+    // seven retained Type URIs, and six for the workbook resolver.
+    assert!(
+        small <= 829 + 40,
+        "raw neighboring cells must retain the saving: {small}"
+    );
+}
+
+#[test]
+fn excel_named_table_resize_allocations_do_not_follow_unrelated_rows() {
+    use arrow_array::{Float64Array, RecordBatch, StringArray};
+    use yggdryl::excel::{ExcelOptions, overwrite_arrow_reader};
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("id"),
+            DataType::utf8().required_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = root.into_arrow_schema().unwrap();
+    let options = ExcelOptions::new().with_table("Names");
+    for (mode, ids, labels) in [
+        ("grow", vec![9.0, 10.0, 11.0], vec!["nine", "ten", "eleven"]),
+        ("shrink", vec![9.0], vec!["nine"]),
+    ] {
+        let input = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Float64Array::from(ids)),
+                Arc::new(StringArray::from(labels)),
+            ],
+        )
+        .unwrap();
+        let cost = |unrelated: u32| {
+            let bytes = excel_package::named_table_cost_package(2, unrelated);
+            let mut handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+            counted(|| {
+                overwrite_arrow_reader(
+                    &mut handle,
+                    yggdryl::arrow::batch_reader(schema.clone(), [input.clone()]),
+                    &options,
+                )
+                .unwrap();
+            })
+            .0
+        };
+        let _ = cost(64);
+        let (small, large) = (cost(64), cost(4096));
+        eprintln!("named_table_{mode}: unrelated64={small} unrelated4096={large}");
+        assert_eq!(
+            small, large,
+            "{mode} must retain the raw-subtree fast path for unrelated rows"
+        );
+    }
+}
+
+#[test]
+fn excel_named_totals_resize_allocations_do_not_follow_unrelated_rows_or_cells() {
+    use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::excel::{ExcelOptions, overwrite_arrow_reader};
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("year"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = root.into_arrow_schema().unwrap();
+    let input = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int64Array::from(vec![2030, 2031, 2032])),
+            Arc::new(Int64Array::from(vec![6, 8, 10])),
+        ],
+    )
+    .unwrap();
+    let options = ExcelOptions::new().with_table("Quantities");
+    let cost = |rows, cells, local_namespace, old_row_cells| {
+        let bytes =
+            excel_package::named_totals_cost_package(rows, cells, local_namespace, old_row_cells);
+        let mut handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        counted(|| {
+            overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(schema.clone(), [input.clone()]),
+                &options,
+            )
+            .unwrap();
+        })
+        .0
+    };
+    let _ = cost(64, 1, false, 0);
+    let (small, large) = (cost(64, 1, false, 0), cost(4096, 1, false, 0));
+    eprintln!("named_totals_overlay: unrelated64={small} unrelated4096={large}");
+    let (scope_one, scope_sixteen) = (cost(64, 1, true, 0), cost(64, 16, true, 0));
+    eprintln!(
+        "named_totals_local_namespace: unrelated_cells1={scope_one} unrelated_cells16={scope_sixteen}"
+    );
+    let (one, sixteen) = (cost(64, 1, false, 1), cost(64, 1, false, 16));
+    eprintln!("named_totals_old_row: unrelated_cells1={one} unrelated_cells16={sixteen}");
+    // The larger ZIP carries deflate restart extras (two small allocations),
+    // while a size-dependent buffer avoids one geometric reallocation.
+    // Neither event is in the selected table body. The public boundary may
+    // therefore cost one extra archive allocation, but not one per row.
+    assert!(
+        large <= small + 1,
+        "table-body resize must not allocate per unrelated row: {small} -> {large}"
+    );
+    // More unrelated namespace cells begin with larger ZIP member/output
+    // buffers, avoiding one geometric reallocation; they add no row work.
+    assert!(
+        scope_sixteen <= scope_one,
+        "table-body resize must not allocate per unrelated cell: {scope_one} -> {scope_sixteen}"
+    );
+    assert_eq!(
+        one, sixteen,
+        "unrelated cells in the selected totals row must stay borrowed and raw"
+    );
+}
+
+#[test]
+fn excel_named_table_write_selected_row_plan_allocations_are_pinned() {
+    use arrow_array::{Float64Array, RecordBatch, StringArray};
+    use yggdryl::excel::{ExcelOptions, overwrite_arrow_reader};
+
+    let root = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("id"),
+            DataType::utf8().required_field("name"),
+        ])
+        .unwrap(),
+    )
+    .required_field("row");
+    let schema = root.into_arrow_schema().unwrap();
+    let options = ExcelOptions::new().with_table("Names");
+    let cost = |selected: u32| {
+        let bytes = excel_package::named_table_cost_package(selected, 64);
+        let mut handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        let input = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Float64Array::from_iter_values(
+                    (1..=selected).map(f64::from),
+                )),
+                Arc::new(StringArray::from_iter_values(
+                    (1..=selected).map(|_| "written"),
+                )),
+            ],
+        )
+        .unwrap();
+        let (allocations, ()) = counted(|| {
+            overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(schema.clone(), [input.clone()]),
+                &options,
+            )
+            .unwrap();
+        });
+        allocations
+    };
+    let _ = cost(2);
+    let (short, long) = (cost(2), cost(256));
+    eprintln!("named_table_overlay_selected: rows2={short} rows256={long}");
+    // Selected cells retain an eager splice plan, not constant-space output.
+    // The neighboring cells own 8/13 attribute allocations: four numeric
+    // cells, then one more numeric cell and one inline string at 256 rows.
+    // Disabling raw-copy measured 836/6688; disabling exact output capacity
+    // too recovered 837/6689. Full and focused runs differ by one unlocated
+    // allocation (828/6675 versus 829/6676), with identical growth.
+    // These ceilings preserve at least 8/13 savings and the improved slope;
+    // the separate benchmark catches repeated scanning of earlier splices.
+    // Strict package intake adds at most 40 fixed allocations: 20 for
+    // four relationship namespace resolvers, seven checked attribute sets,
+    // seven retained Type URIs, and six for the workbook resolver.
+    assert!(
+        short <= 829 + 40 && long <= 6676 + 40,
+        "selected row plan exceeds its allocation bound: {short}/{long}"
+    );
+    assert!(
+        long <= short + 5847,
+        "selected-row allocation growth changed: {short} -> {long}"
+    );
+}
+
+#[test]
+fn excel_named_table_metadata_observation_skips_unrelated_cells() {
+    use yggdryl::IOMedia;
+    use yggdryl::excel::ExcelOptions;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+
+    let cost = |table_rows: u32, unrelated_rows: u32| {
+        let bytes = excel_package::named_table_cost_package(table_rows, unrelated_rows);
+        let handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        let field = DataType::from(
+            StructType::from_fields([
+                DataType::Float64.required_field("id"),
+                DataType::utf8().required_field("name"),
+            ])
+            .unwrap(),
+        )
+        .required_field("row");
+        let options =
+            RecordOptions::from(ExcelOptions::new().with_table("Names")).with_field(field);
+        // Prime process-wide datatype projections outside the measured read.
+        drop(
+            handle
+                .read_arrow_reader(&options)
+                .expect("a warm named reader"),
+        );
+        let (allocations, ()) = counted(|| {
+            drop(handle.read_arrow_reader(&options).expect("a named reader"));
+        });
+        let rows: usize = handle
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(rows, table_rows as usize);
+        allocations
+    };
+    for table_rows in [2, 32] {
+        let small = cost(table_rows, 16);
+        let large = cost(table_rows, 256);
+        eprintln!(
+            "named_table_metadata_allocations: table_rows={table_rows} unrelated16={small} unrelated256={large}"
+        );
+        // Package metadata and the selected reader allocate once; the shared
+        // parser skips sheetData during membership observation, constructing
+        // no discarded rows or cell strings at either corpus size.
+        // Namespace validation adds 16 fixed allocations: two consumed
+        // worksheet resolvers (6 each) and the unpolled output resolver (4).
+        // Private package intake now moves its first chunk: 2 instead of 23
+        // allocations for these compressed packages, removing 21 fixed costs.
+        // Strict package intake adds at most 31 fixed allocations: 15 for
+        // three relationship namespace resolvers, five checked attribute
+        // sets, five retained Type URIs, and six for the workbook resolver.
+        // The declared-field reader replaces AppliedPlan's empty-batch
+        // setup with SerieReader's cast plan, saving 15 fixed allocations.
+        assert_eq!(small, large, "unselected rows must add no allocations");
+        assert!(small <= 428 + 31 - 15, "metadata allocation bound: {small}");
+    }
+}
+
+#[test]
+fn excel_named_table_inferred_field_and_full_read_skip_unrelated_rows() {
+    use yggdryl::IOMedia;
+    use yggdryl::excel::ExcelOptions;
+    use yggdryl::media::RecordOptions;
+
+    let cost = |table_rows: u32, unrelated_rows: u32| {
+        let bytes = excel_package::named_table_cost_package(table_rows, unrelated_rows);
+        let handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        let options = RecordOptions::from(ExcelOptions::new().with_table("Names"));
+        // Exclude process-wide projection initialization from the comparison.
+        drop(
+            handle
+                .read_arrow_field(&options)
+                .expect("warm inferred field"),
+        );
+        let (field_allocations, field) = counted(|| {
+            handle
+                .read_arrow_field(&options)
+                .expect("inferred named field")
+        });
+        assert_eq!(
+            field
+                .fields()
+                .iter()
+                .map(|child| child.name())
+                .collect::<Vec<_>>(),
+            ["id", "name"]
+        );
+        assert_eq!(field.fields()[0].dtype(), &DataType::Float64);
+        assert_eq!(field.fields()[1].dtype(), &DataType::utf8());
+
+        let warm_rows: usize = handle
+            .read_arrow_reader(&options)
+            .expect("warm inferred reader")
+            .map(|batch| batch.expect("warm batch").num_rows())
+            .sum();
+        assert_eq!(warm_rows, table_rows as usize);
+        let (read_allocations, rows) = counted(|| {
+            handle
+                .read_arrow_reader(&options)
+                .expect("inferred named reader")
+                .map(|batch| batch.expect("named batch").num_rows())
+                .sum::<usize>()
+        });
+        assert_eq!(rows, table_rows as usize);
+        (field_allocations, read_allocations)
+    };
+
+    let mut first: Option<(usize, usize)> = None;
+    for table_rows in [2, 32] {
+        let small = cost(table_rows, 16);
+        let large = cost(table_rows, 256);
+        eprintln!(
+            "named_table_inferred_allocations: table_rows={table_rows} unrelated16={small:?} unrelated256={large:?}"
+        );
+        // A selected table has fixed output here. Both schema inference and
+        // full read should stop once the selected body has been tallied.
+        // Growth with selected rows is the existing row/value construction;
+        // the worksheet tail contributes nothing after the table's body end.
+        // Namespace validation adds 22 for field-only / 24 for full read:
+        // two observers + inference consume 3 resolvers (6 each), while
+        // the output resolver costs 4 unpolled or 6 after reading its root.
+        // Private package intake now moves its first chunk: 2 instead of 23
+        // allocations for these compressed packages, removing 21 fixed costs.
+        // HeaderProbe replaces dtype/present/nullable Vecs and one seen Vec
+        // per body row with one shared BTreeMap node for these two columns:
+        // 3 + rows - 1 allocations removed (4 at 2 rows, 34 at 32 rows).
+        let expected = if table_rows == 2 {
+            (425, 457)
+        } else {
+            (457, 552)
+        };
+        // Strict package intake adds at most 31 fixed allocations: 15 for
+        // three relationship namespace resolvers, five checked attribute
+        // sets, five retained Type URIs, and six for the workbook resolver.
+        assert_eq!(small, large, "unselected rows must add no allocations");
+        assert!(
+            small.0 <= expected.0 + 31 && small.1 <= expected.1 + 31,
+            "inferred field/read allocation bounds: {small:?}"
+        );
+        if let Some(first) = first {
+            assert_eq!((small.0 - first.0, small.1 - first.1), (32, 95));
+        } else {
+            first = Some(small);
+        }
+    }
+}
+
+// A no-body table must derive its two nullable Null columns from the table
+// metadata even if the worksheet has thousands of unrelated cells.
+#[test]
+fn excel_named_table_inferred_no_body_skips_unrelated_rows() {
+    use yggdryl::IOMedia;
+    use yggdryl::excel::ExcelOptions;
+    use yggdryl::media::RecordOptions;
+
+    let cost = |unrelated_rows: u32| {
+        let mut parts = excel_package::named_table_parts();
+        // Keep Quantities' header and totals row, but no body row.
+        let table = &mut parts
+            .iter_mut()
+            .find(|(part, _)| *part == "xl/tables/table2.xml")
+            .unwrap()
+            .1;
+        *table = table.replace("ref=\"D1:E4\"", "ref=\"D1:E2\"");
+        let worksheet = &mut parts
+            .iter_mut()
+            .find(|(part, _)| *part == "xl/worksheets/sheet1.xml")
+            .unwrap()
+            .1;
+        let mut unrelated = String::new();
+        for extra in 0..unrelated_rows {
+            let row = 5 + extra;
+            unrelated.push_str(&format!("<row r=\"{row}\"><c r=\"G{row}\" t=\"inlineStr\"><is><t>unrelated-cell-value-{row:08}</t></is></c></row>"));
+        }
+        *worksheet = worksheet.replace("</sheetData>", &format!("{unrelated}</sheetData>"));
+        let handle = Buffer::from_bytes(excel_package::named_table_package(&parts))
+            .with_media_type(MimeType::XLSX.into());
+        let options = RecordOptions::from(ExcelOptions::new().with_table("Quantities"));
+        drop(
+            handle
+                .read_arrow_field(&options)
+                .expect("warm no-body field"),
+        );
+        let (allocations, field) = counted(|| {
+            handle
+                .read_arrow_field(&options)
+                .expect("inferred no-body field")
+        });
+        assert_eq!(
+            field
+                .fields()
+                .iter()
+                .map(|child| child.name())
+                .collect::<Vec<_>>(),
+            ["year", "qty"]
+        );
+        assert!(
+            field
+                .fields()
+                .iter()
+                .all(|child| child.dtype() == &DataType::Null && child.is_nullable())
+        );
+        assert_eq!(
+            handle
+                .read_arrow_reader(&options)
+                .unwrap()
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>(),
+            0
+        );
+        allocations
+    };
+    let small = cost(16);
+    let large = cost(256);
+    eprintln!("named_table_no_body_inferred_allocations: unrelated16={small} unrelated256={large}");
+    // Only package/table metadata is resolved; no body row is polled.
+    // Namespace validation adds 20: two consumed observers (6 each), plus
+    // unpolled inference and output resolvers (4 each), independent of rows.
+    // Private package intake now moves its first chunk: 2 instead of 23
+    // allocations for these compressed packages, removing 21 fixed costs.
+    // HeaderProbe needs no column node when the body is empty. Removing
+    // the old dtype/present/nullable Vecs therefore removes exactly three.
+    // Strict package intake adds at most 31 fixed allocations: 15 for
+    // three relationship namespace resolvers, five checked attribute sets,
+    // five retained Type URIs, and six for the workbook resolver.
+    assert_eq!(small, large, "unselected rows must add no allocations");
+    assert!(small <= 411 + 31, "no-body field allocation bound: {small}");
+}
+
+#[test]
+fn excel_regions_allocations_follow_result_count_not_worksheet_height() {
+    use yggdryl::excel::{CellRange, CellRef, ExcelRegionKind};
+
+    let cost = |rows: u32, count: u32, restarts: bool| {
+        let handle = Buffer::from_bytes(excel_package::regions_cost_package(rows, count, restarts))
+            .with_media_type(MimeType::XLSX.into());
+        drop(yggdryl::excel::regions(&handle, None).unwrap());
+        let (allocations, regions) = counted(|| yggdryl::excel::regions(&handle, None).unwrap());
+        assert_eq!(regions.len(), count as usize);
+        let height = rows / count;
+        for (index, region) in regions.iter().enumerate() {
+            let first = index as u32 * (height + 1);
+            assert_eq!(region.sheet.as_str(), "Sheet1");
+            assert_eq!(region.kind, ExcelRegionKind::Suggested);
+            assert_eq!(
+                region.range,
+                CellRange::new(CellRef::new(first, 0), CellRef::new(first + height - 1, 0))
+            );
+        }
+        allocations
+    };
+    let short_one = cost(64, 1, false);
+    let tall_one = cost(4_096, 1, false);
+    let short_many = cost(64, 32, false);
+    let tall_many = cost(4_096, 32, false);
+    eprintln!(
+        "excel_regions_allocations: regions1 short={short_one} tall={tall_one}; regions32 short={short_many} tall={tall_many}"
+    );
+    // Numeric cells remain inline, parser rows are recycled, and every live
+    // component is compacted at the row boundary. The allocation count is
+    // height-independent at each fixed output size. This does not measure
+    // peak retained bytes; the bounded frontier owns that separate invariant.
+    assert_eq!(
+        tall_one, short_one,
+        "one connected component over 64/4096 rows"
+    );
+    assert_eq!(
+        tall_many, short_many,
+        "32 returned regions over 64/4096 rows"
+    );
+    assert!(
+        short_many >= short_one,
+        "more returned rectangles do not erase fixed source work"
+    );
+    eprintln!(
+        "excel_regions_result_overhead: 31 additional regions allocate {} times",
+        short_many - short_one
+    );
+    // Namespace validation adds 12 fixed allocations: the membership and
+    // occupancy parsers each resolve two root declarations for 6 allocations.
+    // Private package intake now moves its first chunk: 2 instead of 23
+    // allocations for these compressed packages, removing 21 fixed costs.
+    // Found now retains 24-byte contact vectors: its 96-byte layout lets
+    // collection reuse capacity as 64-byte ExcelRegion values without the
+    // old single-result shrink allocation (72-byte Found). Unstable sort
+    // avoids stable-sort heap scratch for 32 results; output order is total.
+    // Strict package intake adds at most 20 fixed allocations: ten for
+    // two relationship namespace resolvers, two checked attribute sets,
+    // two retained Type URIs, and six for the workbook resolver.
+    assert!(
+        short_one <= 147 + 20 && short_many <= 150 + 20,
+        "region allocation bounds: {short_one}/{short_many}"
+    );
+    assert_eq!(short_many - short_one, 3);
+    // Crossing the ZIP writer's 64 KiB restart stride adds one Vec<u64>
+    // and one Arc<[u64]> in package intake. That is transport metadata,
+    // not row work: the default writer control deliberately pins its +2.
+    assert_eq!(cost(64, 1, true), short_one);
+    assert_eq!(cost(4_096, 1, true), tall_one + 2);
+    assert_eq!(cost(64, 32, true), short_many);
+    assert_eq!(cost(4_096, 32, true), tall_many + 2);
+}
+
+#[test]
+fn excel_selection_intake_allocates_only_a_retained_long_name() {
+    use yggdryl::excel::ExcelSelection;
+
+    let worksheet = yggdryl::from_json_scalar(r#"{"sheet":"Data","range":"B2:C4"}"#).unwrap();
+    let (allocations, selected) = counted(|| ExcelSelection::from_scalar(&worksheet).unwrap());
+    assert_eq!(allocations, 0);
+    assert_eq!(
+        selected,
+        ExcelSelection::Worksheet {
+            sheet: Some("Data".into()),
+            range: Some("B2:C4".parse().unwrap()),
+        }
+    );
+    for length in [64, 4_096] {
+        let name = "x".repeat(length);
+        let input = yggdryl::from_json_scalar(format!(r#"{{"table":"{name}"}}"#)).unwrap();
+        let (allocations, selected) = counted(|| ExcelSelection::from_scalar(&input).unwrap());
+        // The external name lands once in owned selection storage. No
+        // parse tree or intermediate property map is built at this boundary.
+        assert_eq!(allocations, 1);
+        assert_eq!(selected, ExcelSelection::Table { name: name.into() });
+    }
+}
+
+/// The first stream chunk becomes the private result buffer. Below one batch,
+/// the source object and that payload are the only allocations; there is no
+/// staging filesystem or second full-payload publication. Larger values add
+/// bounded transport chunks and geometric growth of this same result Vec.
+#[cfg(feature = "internals")]
+#[test]
+fn owned_handle_fallback_keeps_one_payload_allocation_below_a_batch() {
+    use yggdryl::IOBase;
+    use yggdryl::holder::Holder;
+    use yggdryl::internals::iobase_hierarchy::owned_handle;
+
+    let media = MediaType::from_str("application/octet-stream").unwrap();
+    for (length, expected) in [(64, 2), (4096, 2), (2 * 64 * 1024 + 17, 6)] {
+        let source = Buffer::from_bytes(vec![37; length]).with_media_type(media.clone());
+        drop(owned_handle(&source).unwrap());
+        let (allocations, owned) = counted(|| owned_handle(black_box(&source)).unwrap());
+        assert_eq!(allocations, expected, "{length} bytes");
+        assert_eq!(owned.media_type(), &media);
+        let Holder::Buffer(buffer) = owned else {
+            panic!("an owned buffer")
+        };
+        assert_eq!(buffer.as_slice(), source.as_slice());
+    }
+}
+
+fn rows_two_allocation_package(extra: usize) -> Vec<u8> {
+    let mut rows = String::from(concat!(
+        "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Sales</t></is></c></row>",
+        "<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Units</t></is></c>",
+        "<c r=\"B2\" t=\"inlineStr\"><is><t>Price</t></is></c></row>",
+        "<row r=\"3\"><c r=\"A3\"><v>2</v></c><c r=\"B3\"><v>3</v></c></row>"
+    ));
+    for row in 4..4 + extra {
+        rows.push_str(&format!(
+            "<row r=\"{row}\"><c r=\"Z{row}\"><v>8</v></c></row>"
+        ));
+    }
+    rows.push_str("<row r=\"1000\"><c r=\"Z1000\"><v>9</v></c></row>");
+    let worksheet = excel_package::worksheet(&rows).replace(
+        "</worksheet>",
+        "<mergeCells count=\"1\"><mergeCell ref=\"A1:B1\"/></mergeCells></worksheet>",
+    );
+    let types = excel_package::content_types(1, false, false);
+    let root = excel_package::root_relationships();
+    let rels = excel_package::workbook_relationships(1, false, false);
+    let workbook = excel_package::workbook(&["Sheet1"], false);
+    excel_package::package(&[
+        ("[Content_Types].xml", &types),
+        ("_rels/.rels", &root),
+        ("xl/workbook.xml", &workbook),
+        ("xl/_rels/workbook.xml.rels", &rels),
+        ("xl/worksheets/sheet1.xml", &worksheet),
+    ])
+}
+
+#[test]
+fn excel_rows_two_metadata_observation_has_no_unrelated_cell_allocation_slope() {
+    use yggdryl::IOMedia;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{RecordHeader, excel::ExcelOptions};
+
+    let nested = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("Units"),
+            DataType::Float64.required_field("Price"),
+        ])
+        .unwrap(),
+    )
+    .required_field("Sales");
+    let field = DataType::from(StructType::from_fields([nested]).unwrap()).required_field("row");
+    let packages = [
+        rows_two_allocation_package(16),
+        rows_two_allocation_package(256),
+    ];
+    for explicit in [true, false] {
+        let allocations: Vec<_> = packages
+            .iter()
+            .map(|bytes| {
+                let handle =
+                    Buffer::from_bytes(bytes.clone()).with_media_type(MimeType::XLSX.into());
+                let options = if explicit {
+                    ExcelOptions::new().with_range("A1:B3".parse().unwrap())
+                } else {
+                    ExcelOptions::new()
+                };
+                let options = RecordOptions::from(options.with_header(RecordHeader::Rows(2)))
+                    .with_field(field.clone());
+                drop(
+                    handle
+                        .read_arrow_reader(&options)
+                        .expect("warm Rows(2) plan"),
+                );
+                let (count, reader) =
+                    counted(|| handle.read_arrow_reader(&options).expect("Rows(2) plan"));
+                drop(reader);
+                count
+            })
+            .collect();
+        eprintln!(
+            "Rows header metadata, explicit={explicit}, 16/256 unrelated cells: {allocations:?}"
+        );
+        assert_eq!(
+            allocations[0], allocations[1],
+            "metadata observer allocated per unrelated cell: explicit={explicit} {allocations:?}"
+        );
+    }
+}
+
+/// A known-full table must refuse before copying its unrelated format registry.
+/// All XFs and both edited cells are identical across the two metadata corpora.
+#[test]
+fn excel_insert_style_capacity_refusal_does_not_clone_unrelated_format_codes() {
+    use excel_package::{
+        NS, content_types, package, root_relationships, table_member_map, workbook,
+        workbook_relationships, worksheet,
+    };
+    use yggdryl::excel::{CellRef, MAX_CELL_FORMATS, Workbook};
+
+    fn prepared(codes: usize) -> Workbook {
+        let mut formats = String::new();
+        for index in 0..codes {
+            formats.push_str(&format!(
+                "<numFmt numFmtId=\"{}\" formatCode=\"0.00&quot;{}&quot;\"/>",
+                164 + index,
+                index
+            ));
+        }
+        let mut xfs = String::new();
+        for index in 0..MAX_CELL_FORMATS {
+            let styled = usize::from(index == 1);
+            xfs.push_str(&format!("<xf numFmtId=\"0\" fontId=\"{styled}\" fillId=\"0\" borderId=\"{styled}\" xfId=\"0\"/>"));
+        }
+        let styles = format!(
+            "<styleSheet xmlns=\"{NS}\"><numFmts count=\"{codes}\">{formats}</numFmts><fonts count=\"2\"><font/><font><b/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"2\"><border/><border><left style=\"thin\"/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs><cellXfs count=\"{MAX_CELL_FORMATS}\">{xfs}</cellXfs></styleSheet>"
+        );
+        let bytes = package(&[
+            ("[Content_Types].xml", &content_types(1, false, true)),
+            ("_rels/.rels", &root_relationships()),
+            ("xl/workbook.xml", &workbook(&["Data"], false)),
+            (
+                "xl/_rels/workbook.xml.rels",
+                &workbook_relationships(1, false, true),
+            ),
+            ("xl/styles.xml", &styles),
+            (
+                "xl/worksheets/sheet1.xml",
+                &worksheet("<row r=\"2\"><c r=\"B2\" s=\"1\"><v>1</v></c></row>"),
+            ),
+        ]);
+        let book = Workbook::from_bytes(bytes).unwrap();
+        book.parse_all().unwrap();
+        assert_eq!(book.style_sheet().unwrap().len(), MAX_CELL_FORMATS);
+        book
+    }
+    let mut counts = Vec::new();
+    for codes in [64, 4096] {
+        let mut book = prepared(codes);
+        let before = table_member_map(&book);
+        let revision = book.sheet("Data").unwrap().revision();
+        let dirty = book.is_dirty();
+        // Warm only immutable parsed metadata and the reference index.
+        assert!(
+            matches!(book.insert_rows("Data", 2, 1), Err(yggdryl::Error::InvalidRecord { ref path, .. }) if path.as_str() == "$.styles")
+        );
+        let (allocations, error) = counted(|| book.insert_rows("Data", 2, 1).unwrap_err());
+        assert!(
+            matches!(error, yggdryl::Error::InvalidRecord { ref path, .. } if path.as_str() == "$.styles"),
+            "{error}"
+        );
+        assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        assert_eq!(book.is_dirty(), dirty);
+        assert_eq!(book.style_sheet().unwrap().len(), MAX_CELL_FORMATS);
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(CellRef::new(1, 1)),
+            Scalar::from(1.0)
+        );
+        assert_eq!(table_member_map(&book), before);
+        counts.push(allocations);
+    }
+    eprintln!("full-style insertion refusal, 64/4096 format codes: {counts:?}");
+    assert_eq!(
+        counts[0], counts[1],
+        "known-full style refusal cloned unrelated format metadata"
+    );
+}
+
+#[test]
+fn excel_rows_writer_allocates_for_batches_not_each_record() {
+    use yggdryl::IOMedia;
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{RecordHeader, excel::ExcelOptions};
+
+    let sales = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("Units"),
+            DataType::Float64.required_field("Price"),
+        ])
+        .unwrap(),
+    )
+    .required_field("Sales");
+    let field = DataType::from(StructType::from_fields([sales]).unwrap()).required_field("row");
+    let cost = |count: usize| {
+        let rows = (0..count).map(|index| {
+            Scalar::from_sequence([Scalar::from_sequence([
+                Scalar::from(index as f64),
+                Scalar::from(1.0),
+            ])])
+        });
+        let batch = Serie::from_scalars(field.clone(), rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        let mut handle = Buffer::new().with_media_type(MimeType::XLSX.into());
+        let options = RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::Rows(2)))
+            .with_field(field.clone());
+        let (allocations, ()) = counted(|| {
+            handle.overwrite_arrow_batch(batch, &options).unwrap();
+        });
+        allocations
+    };
+    let _ = cost(64); // Warm shared code before counting either corpus.
+    let (small, large) = (cost(64), cost(640));
+    eprintln!("Rows stream writes, 64/640records: {small}/{large}");
+    // Complete XLSX writes include compression and staging. Pin their
+    // measured upper budget and prohibit growth for ten times as many
+    // records; an exact total would also reject harmless lower counts.
+    assert!(
+        small <= 457 && large <= small,
+        "Rows package writes exceeded their fixed budget: {small}/{large}"
+    );
+}
+
+#[test]
+fn excel_rows_model_write_ignores_unrelated_held_cells() {
+    use yggdryl::{RecordHeader, excel::Sheet};
+
+    let group = DataType::from(
+        StructType::from_fields([
+            DataType::Float64.required_field("Units"),
+            DataType::utf8().required_field("Person"),
+        ])
+        .unwrap(),
+    )
+    .required_field("Sales");
+    let field = DataType::from(StructType::from_fields([group]).unwrap()).required_field("row");
+    let serie = Serie::from_scalars(
+        field,
+        [Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::from(1.0),
+            Scalar::from("Ann"),
+        ])])],
+    )
+    .unwrap();
+    let cost = |unrelated: u32| {
+        let mut sheet = Sheet::new("Sheet1").unwrap();
+        for row in 10..10 + unrelated {
+            sheet.set_cell((row, 25).into(), row as f64).unwrap();
+        }
+        let (allocations, ()) = counted(|| {
+            sheet
+                .write_serie((0, 0).into(), &serie, RecordHeader::Rows(2))
+                .unwrap();
+        });
+        allocations
+    };
+    let (small, large) = (cost(16), cost(256));
+    eprintln!("Rows model write, 16/256 unrelatedcells: {small}/{large}");
+    assert!(
+        large <= small + 8,
+        "Rows writing one selected record with 16 vs 256 unrelated cells allocated {small} -> {large} times"
+    );
+}
+
+/// Worksheet-inline registrations need no per-resident-cell ownership storage.
+#[test]
+fn excel_carried_scope_cut_allocates_for_registrations_not_resident_cells() {
+    use yggdryl::excel::{CellRange, Paste, Workbook};
+    let cost = |kind, registrations: u32, cells: u32| {
+        let bytes = excel_package::carried_cost_package(kind, registrations, cells);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        workbook.parse_all().unwrap();
+        let source: CellRange = format!("B2:B{}", registrations + 1).parse().unwrap();
+        let target = "J10".parse().unwrap();
+        let (allocations, result) =
+            counted(|| workbook.paste(("Data", source), ("Other", target), Paste::All, true));
+        result.unwrap();
+        assert_eq!(workbook.sheet("Data").unwrap().cell_count(), cells as usize);
+        excel_package::assert_cost_carried_scope_moved(&workbook, kind, registrations);
+        allocations
+    };
+    for kind in ["protected", "ignored", "watch"] {
+        cost(kind, 1, 1);
+        for registrations in [1, 16] {
+            let small = cost(kind, registrations, 64);
+            let large = cost(kind, registrations, 4_096);
+            eprintln!(
+                "excel_carried_scope_cut: {kind}, {registrations} registrations, 64 cells {small}, 4096 cells {large}"
+            );
+            assert_eq!(
+                large, small,
+                "unrelated resident cells changed {kind} transfer cost"
+            );
+        }
+    }
+}
+
+#[test]
+fn excel_infer_allocation_slope_is_measured_against_explicit_none() {
+    use yggdryl::IOMedia;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::{RecordHeader, excel::ExcelOptions};
+
+    let cost = |rows: u32, explicit: bool, infer: bool| {
+        let bytes = excel_package::regions_cost_package(rows, 1, false);
+        let handle = Buffer::from_bytes(bytes).with_media_type(MimeType::XLSX.into());
+        let mut options = ExcelOptions::new().with_header(if infer {
+            RecordHeader::Infer
+        } else {
+            RecordHeader::None
+        });
+        if explicit {
+            options = options.with_range(format!("A1:A{rows}").parse().unwrap());
+        }
+        let options = RecordOptions::from(options);
+        // Warm projection caches outside the counting interval.
+        drop(handle.read_arrow_field(&options).expect("warm schema"));
+        let (schema_allocations, schema) = counted(|| {
+            handle
+                .read_arrow_field(&options)
+                .expect("inferred numeric field")
+        });
+        assert_eq!(schema.fields().len(), 1);
+        assert_eq!(schema.fields()[0].dtype(), &DataType::Float64);
+        let warm: usize = handle
+            .read_arrow_reader(&options)
+            .expect("warm reader")
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(warm, rows as usize);
+        let (read_allocations, returned) = counted(|| {
+            handle
+                .read_arrow_reader(&options)
+                .expect("numeric reader")
+                .map(|batch| batch.unwrap().num_rows())
+                .sum::<usize>()
+        });
+        assert_eq!(returned, rows as usize);
+        (schema_allocations, read_allocations)
+    };
+
+    for explicit in [false, true] {
+        let small_none = cost(64, explicit, false);
+        let large_none = cost(4_096, explicit, false);
+        let small_infer = cost(64, explicit, true);
+        let large_infer = cost(4_096, explicit, true);
+        eprintln!(
+            "excel_infer_allocations explicit={explicit} none64={small_none:?} none4096={large_none:?} infer64={small_infer:?} infer4096={large_infer:?}"
+        );
+        // Infer adds fixed metadata/probe setup over None. Implicit selection
+        // also discovers occupied regions; an explicit range skips that scan.
+        // Decoding uses the common parser, with no Infer-only per-row cost.
+        let fixed = if explicit { 31 } else { 95 };
+        assert_eq!(small_infer.0, small_none.0 + fixed);
+        assert_eq!(large_infer.0, large_none.0 + fixed);
+        assert_eq!(small_infer.1, small_none.1 + fixed);
+        assert_eq!(large_infer.1, large_none.1 + fixed);
+    }
+}
+
+#[test]
+fn excel_infer_tall_merged_header_allocations_do_not_follow_merge_height() {
+    use yggdryl::IOMedia;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::{
+        RecordHeader,
+        excel::{ExcelOptions, Workbook},
+    };
+
+    fn package(height: u32) -> Vec<u8> {
+        let rows = format!(
+            concat!(
+                "<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Sales</t></is></c>",
+                "<c r=\"C1\" t=\"inlineStr\"><is><t>Owner</t></is></c></row>",
+                "<row r=\"{leaf}\"><c r=\"A{leaf}\" t=\"inlineStr\"><is><t>Units</t></is></c>",
+                "<c r=\"B{leaf}\" t=\"inlineStr\"><is><t>Price</t></is></c></row>",
+                "<row r=\"{height}\"><c r=\"A{height}\"><v>1</v></c>",
+                "<c r=\"B{height}\"><v>2</v></c>",
+                "<c r=\"C{height}\"><v>3</v></c></row>"
+            ),
+            height = height,
+            leaf = height - 1
+        );
+        let mut sheet = excel_package::worksheet(&rows);
+        let merges = format!(
+            "<mergeCells count=\"2\"><mergeCell ref=\"A1:B{}\"/><mergeCell ref=\"C1:C{}\"/></mergeCells></worksheet>",
+            height - 2,
+            height - 1
+        );
+        sheet = sheet.replace("</worksheet>", &merges);
+        let types = excel_package::content_types(1, false, false);
+        let root = excel_package::root_relationships();
+        let book = excel_package::workbook(&["Sheet1"], false);
+        let relations = excel_package::workbook_relationships(1, false, false);
+        excel_package::package(&[
+            ("[Content_Types].xml", &types),
+            ("_rels/.rels", &root),
+            ("xl/workbook.xml", &book),
+            ("xl/_rels/workbook.xml.rels", &relations),
+            ("xl/worksheets/sheet1.xml", &sheet),
+        ])
+    }
+
+    let cost = |height| {
+        let bytes = package(height);
+        let handle = Buffer::from_bytes(bytes.clone()).with_media_type(MimeType::XLSX.into());
+        let options = RecordOptions::from(ExcelOptions::new().with_header(RecordHeader::Infer));
+        drop(handle.read_arrow_field(&options).expect("warm tall schema"));
+        let (field_allocations, field) = counted(|| {
+            handle
+                .read_arrow_field(&options)
+                .expect("tall merged schema")
+        });
+        assert_eq!(field.fields().len(), 2);
+        assert_eq!(field.fields()[0].fields().len(), 2);
+        let read_rows = || {
+            handle
+                .read_arrow_reader(&options)
+                .expect("tall reader")
+                .map(|batch| batch.expect("batch").num_rows())
+                .sum::<usize>()
+        };
+        assert_eq!(read_rows(), 1);
+        let (read_allocations, returned) = counted(read_rows);
+        assert_eq!(returned, 1);
+        let held = Workbook::from_bytes(bytes)
+            .expect("tall workbook")
+            .sheet("Sheet1")
+            .expect("tall sheet")
+            .clone();
+        drop(
+            held.clone()
+                .into_serie(None, RecordHeader::Infer, Default::default())
+                .expect("warm held header"),
+        );
+        let (held_allocations, result) = counted(|| {
+            held.clone()
+                .into_serie(None, RecordHeader::Infer, Default::default())
+                .expect("held header")
+        });
+        assert_eq!(result.len(), 1);
+        (field_allocations, read_allocations, held_allocations)
+    };
+    let (short, tall) = (cost(64), cost(4_096));
+    eprintln!("Excel Infer tall merged header, height64/4096: {short:?}/{tall:?}");
+    // Two merge intervals and three occupied rows are identical. The parser
+    // observes merge endpoints and Frontier contacts, never every covered row.
+    assert_eq!(short, tall, "tall merged header allocated by covered row");
+}
+
+#[test]
+fn excel_worksheet_filter_cut_costs_criteria_not_unrelated_cells() {
+    use yggdryl::excel::{CellRef, Paste, Workbook};
+    let cost = |columns, cells, mode| {
+        let bytes = excel_package::worksheet_filter_cost_package(columns, cells);
+        let mut book = Workbook::from_bytes(bytes).unwrap();
+        book.parse_all().unwrap();
+        let (block, destination) = excel_package::worksheet_filter_cut_case(mode, columns);
+        let (allocations, result) = counted(|| {
+            book.paste(
+                ("Data", block),
+                (destination, CellRef::new(9, 9)),
+                Paste::All,
+                true,
+            )
+        });
+        result.unwrap();
+        assert_eq!(book.sheet("Data").unwrap().cell_count(), cells as usize);
+        excel_package::assert_cost_worksheet_filter_cut(&book, columns, mode);
+        allocations
+    };
+    for mode in ["same", "full", "body", "partial-interior", "partial-header"] {
+        cost(if mode == "partial-header" { 2 } else { 1 }, 1, mode);
+        let widths: &[u32] = if mode == "partial-header" {
+            &[2, 16]
+        } else {
+            &[1, 16]
+        };
+        for &columns in widths {
+            let small = cost(columns, 64, mode);
+            let large = cost(columns, 4_096, mode);
+            eprintln!(
+                "excel_worksheet_filter_cut: {mode}, {columns} criteria, 64 cells {small}, 4096 cells {large}"
+            );
+            assert_eq!(small, large, "resident cells changed filter {mode} cost");
+        }
+    }
+}
+
+#[test]
+fn excel_partial_carried_cut_allocations_do_not_follow_range_area() {
+    use yggdryl::excel::{Paste, Workbook};
+    let cost = |kind, last_row, registrations| {
+        let bytes = excel_package::partial_carried_cost_package(kind, last_row, registrations);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        workbook.parse_all().unwrap();
+        let (source, target) = excel_package::partial_carried_cost_edit(kind, registrations);
+        let (allocations, result) =
+            counted(|| workbook.paste(("Data", source), ("Other", target), Paste::All, true));
+        result.unwrap();
+        excel_package::assert_partial_carried_cost_split(&workbook, kind, registrations, last_row);
+        allocations
+    };
+    for kind in ["protected", "ignored", "hyperlink"] {
+        // Match the existing carried-cut pins: initialize process-wide
+        // parser/metadata state on a separate workbook before measuring size.
+        let warm = cost(kind, 64, 1);
+        for registrations in [1, 16] {
+            let small = cost(kind, 64, registrations);
+            let large = cost(kind, 4096, registrations);
+            let reverse_large = cost(kind, 4096, registrations);
+            let reverse_small = cost(kind, 64, registrations);
+            eprintln!(
+                "excel_partial_carried_cut: {kind}, warm={warm}, registrations={registrations}, rows64={small}/{reverse_small}, rows4096={large}/{reverse_large}"
+            );
+            assert_eq!(
+                small, reverse_small,
+                "row order changed the small-corpus cost"
+            );
+            assert_eq!(
+                large, reverse_large,
+                "row order changed the large-corpus cost"
+            );
+            // Geometry emits four strips per registration, never one entry per
+            // covered cell. XML parsing/serialization and result count remain.
+            assert_eq!(
+                small, large,
+                "covered cell count changed sparse partition cost"
+            );
+        }
+    }
+}
+
+#[test]
+fn excel_carried_formula_rules_do_not_reparse_their_shared_parent_per_rule() {
+    use yggdryl::excel::{Paste, Workbook};
+    let cost = |rules, together| {
+        let bytes = excel_package::carried_formula_rules_cost_package(rules, together);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        workbook.parse_all().unwrap();
+        let source = "A1".parse().unwrap();
+        let target = "J10".parse().unwrap();
+        let (allocations, result) =
+            counted(|| workbook.paste(("Data", source), ("Other", target), Paste::All, true));
+        result.unwrap();
+        excel_package::assert_carried_formula_rules_followed(&workbook, rules);
+        allocations
+    };
+    cost(1, true);
+    cost(1, false);
+    for (rules, single_parent_limit) in [(32, 16_847), (128, 67_279)] {
+        let together = cost(rules, true);
+        let separate = cost(rules, false);
+        eprintln!(
+            "excel_carried_formula_rules: rules={rules}, one_parent={together}, separate_parents={separate}"
+        );
+        // Measured before introducing the shared parent template. Removing
+        // repeated sibling parsing must not add work to single-rule parents.
+        assert!(
+            separate <= single_parent_limit,
+            "the shared-template optimization penalized single-rule parents"
+        );
+        // Both outputs retain the same rules and formula text. Sharing the
+        // source scope cannot justify recapturing all sibling payloads once
+        // for each output: the separate-parent corpus bounds that work.
+        assert!(
+            together <= separate,
+            "grouping equivalent CF rules introduced repeated sibling parsing"
+        );
+    }
+}
+
 #[test]
 fn a_spelling_read_by_its_words_reads_again_without_allocating() {
     // The first read cuts the spelling into words and keeps the member it
@@ -9232,6 +11793,538 @@ fn a_spelling_read_by_its_words_reads_again_without_allocating() {
         free(&format!("reading {spelling:?} again"), || {
             black_box(yggdryl::State::from_spelling(black_box(spelling)));
         });
+    }
+}
+
+/// The AST belongs to one shared Shape. The first computed query pays one
+/// shape-wide parse; another 4,096 Formula handles add no per-handle parse.
+#[test]
+fn excel_formula_compiles_once_per_shared_shape() {
+    use std::hint::black_box;
+    use yggdryl::excel::{CellRef, Formula};
+
+    let cost = |copies: usize| {
+        let host: CellRef = "C3".parse().unwrap();
+        let formula = Formula::from_file("SUM(A1:A3)+2", host);
+        let formulas = vec![formula; copies];
+        let (first, computed) = counted(|| {
+            formulas
+                .iter()
+                .filter(|formula| black_box(formula.is_computed()))
+                .count()
+        });
+        assert_eq!(computed, copies);
+        let (warm, again) = counted(|| {
+            formulas
+                .iter()
+                .filter(|formula| black_box(formula.is_computed()))
+                .count()
+        });
+        assert_eq!(again, copies);
+        assert_eq!(warm, 0, "warm shared-shape queries allocate");
+        first
+    };
+    let (small, large) = (cost(16), cost(4_096));
+    assert!(small > 0, "first computed query did not build an arena");
+    assert_eq!(
+        large, small,
+        "lazy AST allocations grew with Formula handles: {small} at 16, {large} at 4,096"
+    );
+}
+
+#[test]
+fn scalar_float_arithmetic_allocates_nothing() {
+    let left = Scalar::from(1.0_f64);
+    let right = Scalar::from(-(1.0 - 2.0_f64.powi(-52)));
+    free("scalar float add", || {
+        black_box(left.checked_add(&right).unwrap());
+    });
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_formula_number_comparison_and_finite_guard_allocate_nothing() {
+    use yggdryl::internals::excel_formula_number::{add, equal, finite};
+
+    let inputs = [
+        (0.1 + 0.2, 0.3),
+        (1.0, 1.0 + 2.0_f64.powi(-49)),
+        (-0.1 - 0.2, -0.3),
+        (f64::MAX, f64::from_bits(f64::MAX.to_bits() - 1)),
+    ];
+    for count in [64, 4096] {
+        let (allocations, matches) = counted(|| {
+            let mut matches = 0;
+            for at in 0..count {
+                let (left, right) = black_box(inputs[at % inputs.len()]);
+                matches += usize::from(equal(left, right).unwrap());
+                black_box(finite(left).unwrap());
+                black_box(add(left, -right, true).unwrap().unwrap());
+            }
+            matches
+        });
+        assert_eq!(matches, count);
+        // Digits' existing decimal formatting uses StackText; neither its
+        // finite comparison nor the raw arithmetic guard materializes text.
+        assert_eq!(allocations, 0, "{count} numeric inputs");
+    }
+}
+
+#[test]
+fn excel_numeric_entry_allocates_no_decimal_buffer() {
+    use yggdryl::excel::{CellRef, DateSystem, Entry};
+
+    for text in ["12345678901234567", "1,234,567.890123456789", "12.34%"] {
+        let Entry::Value { .. } = Entry::from_text(text, CellRef::new(0, 0), DateSystem::Year1900)
+            .expect("a numeric entry")
+        else {
+            panic!("{text:?} must be numeric");
+        };
+        for rows in [64, 4_096] {
+            let (allocations, ()) = counted(|| {
+                for _ in 0..rows {
+                    black_box(
+                        Entry::from_text(black_box(text), CellRef::new(0, 0), DateSystem::Year1900)
+                            .expect("a numeric entry"),
+                    );
+                }
+            });
+            assert_eq!(allocations, 0, "{text:?} over {rows} numeric entries");
+        }
+    }
+}
+
+#[test]
+fn expression_abs_uses_no_per_row_allocation() {
+    use yggdryl::expression::Term;
+
+    let schema = StructType::from_fields([DataType::Float64.required_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(-1.25_f64)]);
+    let bound = "abs(x)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    free("expression abs", || {
+        black_box(bound.eval(black_box(&row)).unwrap());
+    });
+}
+
+/// Calculation retains its evaluator node-value and explicit-stack buffers,
+/// removing the former two allocations per pass. Warm graph/schedule scratch
+/// must add none; the bound is checked at both formula-cell corpus sizes.
+#[test]
+fn excel_calculate_all_warm_noop_allocations_have_no_per_formula_slope() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+
+    let cost = |rows: u32, expression: &str| {
+        let mut book = Workbook::new();
+        let formula = Formula::from_file(expression, CellRef::new(0, 0));
+        let sheet = book.add_sheet("Data").unwrap();
+        for row in 0..rows {
+            let at = CellRef::new(row, 0);
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(formula.clone()),
+                )
+                .unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let revision = book.sheet("Data").unwrap().revision();
+        let (allocations, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(report.evaluated, u64::from(rows));
+        assert_eq!(report.uncomputed, 0);
+        assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        allocations
+    };
+    for expression in [
+        "1+2",
+        "ABS(-7.25)",
+        "YEAR(60)",
+        "DAY(60)",
+        "WEEKDAY(60,1)",
+        "WEEKDAY(61,17)",
+        "_xlfn.DAYS(61,60)",
+        "DATE(1900,2,29)",
+        "HOUR(60.5)",
+        "MINUTE(1/24)",
+        "SECOND(1/86400)",
+        "TIME(12,34,56)",
+        "EDATE(60,1)",
+        "EOMONTH(61,-1)",
+        "DATEVALUE(\"2024-02-29\")",
+        "TIMEVALUE(\"12:34:56\")",
+        "SUM(1,2,3)",
+        "ROUND(2.15,1)",
+        "ROUNDUP(2.15,1)",
+        "ROUNDDOWN(2.15,1)",
+        "QUOTIENT(0.3,0.1)",
+        "EVEN(2.5)",
+        "ODD(-2.5)",
+        "CEILING(0.3,0.1)",
+        "FLOOR(0.3,0.1)",
+        "MROUND(1.005,0.01)",
+        "_xlfn.CEILING.MATH(-3.2,2,1)",
+        "_xlfn.FLOOR.MATH(-3.2,2,1)",
+        "SQRT(2)",
+        "EXP(1)",
+        "LN(2.5)",
+        "LOG10(2.5)",
+        "DEGREES(1)",
+        "RADIANS(1)",
+        "COS(1)",
+        "ASIN(0.5)",
+        "LOG(3,2)",
+        "MOD(-7,3)",
+        "GCD(12,18)",
+        "LCM(12,18)",
+        "FACT(12)",
+        "SIGN(-0.001)",
+        "INT(-3.2)",
+        "TRUNC(-3.14159,3)",
+        "PI()",
+        "TRUE()",
+        "FALSE()",
+        "NOT(0)",
+        "ISNUMBER(2)",
+        "ISERROR(NA())",
+        "ISEVEN(-3.7)",
+        "N(TRUE)",
+        "NA()",
+        "ISREF(A1)",
+        "ISREF(B:B)",
+    ] {
+        let (small, large) = (cost(64, expression), cost(4_096, expression));
+        assert_eq!(
+            (small, large),
+            (0, 0),
+            "warm {expression} allocated per formula cell: 64={small}, 4096={large}"
+        );
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_dependency_queries_allocate_nothing() {
+    use yggdryl::excel::{CellRange, CellRef, MAX_COLUMNS, Workbook};
+    use yggdryl::internals::excel_formula_graph::Index;
+
+    let mut workbook = Workbook::new();
+    workbook.add_sheet("Data").unwrap();
+    let sheet = workbook.sheet_key("Data").unwrap();
+    for registrations in [64, 4096] {
+        let mut index = Index::default();
+        index
+            .insert(sheet, CellRange::all(), registrations * 3)
+            .unwrap();
+        for id in 0..registrations {
+            let row = id as u32 * 128;
+            let point = CellRef::new(row, 1);
+            index
+                .insert(sheet, CellRange::new(point, point), id * 3)
+                .unwrap();
+            index
+                .insert(
+                    sheet,
+                    CellRange::new(CellRef::new(row, 0), CellRef::new(row + 31, 7)),
+                    id * 3 + 1,
+                )
+                .unwrap();
+        }
+        assert_eq!(index.dependents(sheet, CellRef::new(0, 1)).count(), 3);
+        let (allocations, (matches, checksum)) = counted(|| {
+            let mut matches = 0;
+            let mut checksum = 0;
+            for id in 0..registrations {
+                let row = id as u32 * 128;
+                for cell in [CellRef::new(row, 1), CellRef::new(row + 1, MAX_COLUMNS - 1)] {
+                    // Query creation and full traversal are both measured;
+                    // output is consumed directly rather than collected.
+                    for dependent in index.dependents(sheet, black_box(cell)) {
+                        matches += 1;
+                        checksum += black_box(dependent);
+                    }
+                }
+            }
+            (matches, checksum)
+        });
+        assert_eq!(matches, registrations * 4);
+        assert_eq!(
+            checksum,
+            9 * registrations * registrations - 2 * registrations
+        );
+        assert_eq!(
+            allocations, 0,
+            "queries across {registrations} point/area pairs"
+        );
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_dependency_unchanged_schedule_allocates_nothing() {
+    use yggdryl::excel::{CellRef, Workbook};
+    use yggdryl::internals::excel_formula_graph::Scheduler;
+
+    let mut workbook = Workbook::new();
+    workbook.add_sheet("Data").unwrap();
+    let sheet = workbook.sheet_key("Data").unwrap();
+    for nodes in [64, 4096] {
+        let mut graph = Scheduler::default();
+        for row in 0..nodes {
+            graph
+                .set(sheet, CellRef::new(row as u32, 0), &[], false)
+                .unwrap();
+        }
+        let full = graph.prepare(true).unwrap();
+        assert_eq!(full.ordered().len(), nodes);
+        graph.acknowledge(full, &vec![true; nodes]).unwrap();
+        let (allocations, scheduled) = counted(|| {
+            (0..64)
+                .map(|_| {
+                    let pass = black_box(graph.prepare(false).unwrap());
+                    pass.ordered().len() + pass.circular().len() + pass.blocked().len()
+                })
+                .sum::<usize>()
+        });
+        assert_eq!(scheduled, 0);
+        assert_eq!(
+            allocations, 0,
+            "unchanged pass over {nodes} nonvolatile nodes"
+        );
+        // The force-all operation remains a different contract even when
+        // every cached result is already settled.
+        assert_eq!(graph.prepare(true).unwrap().ordered().len(), nodes);
+    }
+}
+
+#[test]
+fn expression_power_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([
+        DataType::Float32.required_field("base"),
+        DataType::Int64.required_field("exponent"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let bound = "pow(base, exponent)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let row = Scalar::from_sequence([Scalar::from(2.0_f32), Scalar::from(3_i64)]);
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from(8.0_f64));
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound power rows");
+    }
+}
+
+#[test]
+fn expression_sqrt_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([DataType::Float32.required_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "sqrt(x)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let row = Scalar::from_sequence([Scalar::from(9.0_f32)]);
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from(3.0_f64));
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound rows");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_reference_resolver_reads_and_name_lookups_allocate_nothing() {
+    use yggdryl::excel::{CellRef, Formula, MAX_ROWS, Workbook};
+    use yggdryl::internals::excel_workbook::{References, Resolved};
+    for rows in [64, 4096] {
+        for names in [64, 4096] {
+            let book =
+                Workbook::from_bytes(excel_package::reference_resolver_cost_package(rows, names))
+                    .unwrap();
+            let resolver = References::new(&book).unwrap();
+            let origin = CellRef::new(0, 0);
+            let point = Formula::from_file("A1", origin);
+            let area = Formula::from_file("$A:$A", origin);
+            let named = Formula::from_file("rESOLVERnAMEwITHmOREtHANiNLINEsTORAGE_0000", origin);
+            // Shared lazy arenas are setup work; all lookup/read work follows.
+            for formula in [&point, &area, &named] {
+                black_box(resolver.resolve("Data", formula, origin).unwrap());
+            }
+            let Resolved::Name(binding) = resolver.resolve("Data", &named, origin).unwrap() else {
+                panic!()
+            };
+            black_box(resolver.resolve_name_reference(&binding).unwrap());
+            let (allocations, (stored, checksum, named_rows)) = counted(|| {
+                let mut stored = 0;
+                let mut checksum = 0_u64;
+                for row in 0..rows {
+                    let Resolved::Range(view) = resolver
+                        .resolve("Data", &point, black_box(CellRef::new(row, 0)))
+                        .unwrap()
+                    else {
+                        panic!()
+                    };
+                    for (_, cell) in view.cells() {
+                        stored += 1;
+                        checksum += u64::from(black_box(cell.reference().row()));
+                    }
+                }
+                let Resolved::Range(view) = resolver.resolve("Data", &area, origin).unwrap() else {
+                    panic!()
+                };
+                assert_eq!(view.logical_len(), u128::from(MAX_ROWS));
+                stored += view.cells().count();
+                let mut named_rows = 0;
+                for _ in 0..64 {
+                    let Resolved::Name(binding) = resolver.resolve("Data", &named, origin).unwrap()
+                    else {
+                        panic!()
+                    };
+                    let Resolved::Range(view) = resolver.resolve_name_reference(&binding).unwrap()
+                    else {
+                        panic!()
+                    };
+                    named_rows += view.cells().count();
+                }
+                (stored, checksum, named_rows)
+            });
+            assert_eq!(stored, 2 * rows as usize);
+            assert_eq!(checksum, u64::from(rows) * u64::from(rows - 1) / 2);
+            assert_eq!(named_rows, 64 * rows as usize);
+            assert_eq!(allocations, 0, "{rows} stored rows, {names} names");
+        }
+    }
+}
+
+#[test]
+fn decimal_float64_scalar_cast_allocates_nothing_per_row() {
+    use yggdryl::{BigDecimal, Decimal, Decimal32, Decimal64, i256};
+
+    let values = [
+        Scalar::Decimal32(Decimal32::new(225, 2)),
+        Scalar::Decimal64(Decimal64::new(225, 2)),
+        Scalar::decimal128(225, 2),
+        Scalar::decimal256(i256::from_i128(225), 2),
+        Scalar::Decimal("2.25".parse::<Decimal>().unwrap()),
+        Scalar::BigDecimal("2.25".parse::<BigDecimal>().unwrap()),
+        Scalar::decimal256(
+            "1234567890123456789012345678901234567890"
+                .parse::<i256>()
+                .unwrap(),
+            2,
+        ),
+    ];
+    let target = DataType::Float64;
+    for value in &values {
+        assert!(
+            target
+                .cast_scalar(value)
+                .unwrap()
+                .as_f64()
+                .unwrap()
+                .is_finite()
+        );
+        for count in [64, 4_096] {
+            let (allocations, ()) = counted(|| {
+                for _ in 0..count {
+                    black_box(target.cast_scalar(black_box(value)).unwrap());
+                }
+            });
+            assert_eq!(allocations, 0, "{count} decimal casts for {:?}", value.id());
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_sheet_changes_inactive_edits_allocate_nothing() {
+    use yggdryl::excel::{CellRef, Sheet};
+    use yggdryl::internals::excel_sheet::changes_active;
+
+    for rows in [64, 4_096] {
+        let mut sheet = Sheet::new("Data").unwrap();
+        for row in 0..rows {
+            sheet.set_cell(CellRef::new(row, 0), 0.0).unwrap();
+        }
+        let (allocations, ()) = counted(|| {
+            for row in 0..rows {
+                sheet
+                    .set_cell(black_box(CellRef::new(row, 0)), f64::from(row))
+                    .unwrap();
+                black_box(sheet.cell_mut(CellRef::new(row, 0)).unwrap().value());
+            }
+        });
+        assert_eq!(sheet.cell_count(), rows as usize);
+        assert_eq!(
+            sheet.scalar(CellRef::new(rows - 1, 0)),
+            Scalar::from(f64::from(rows - 1))
+        );
+        assert!(!changes_active(&sheet));
+        assert_eq!(allocations, 0, "inactive journal, {rows} existing cells");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_sheet_changes_repeated_points_and_rollback_reuse_capacity() {
+    use yggdryl::excel::{CellRef, Sheet};
+    use yggdryl::internals::excel_sheet::{
+        acknowledge_changes, change_mark, pending_changes, restore_change_mark, track_changes,
+    };
+
+    for edits in [64, 4_096] {
+        let mut sheet = Sheet::new("Data").unwrap();
+        let at = CellRef::new(0, 0);
+        sheet.set_cell(at, 1.0).unwrap();
+        let generation = track_changes(&mut sheet);
+        acknowledge_changes(&mut sheet);
+        // Warm one point allocation. Repeated mutable borrows may affect its
+        // formula, but do not need a second map or another point allocation.
+        sheet.set_cell(at, 2.0).unwrap();
+        let (allocations, ()) = counted(|| {
+            for value in 0..edits {
+                sheet.set_cell(at, f64::from(value)).unwrap();
+                black_box(sheet.cell_mut(at).unwrap().value());
+            }
+        });
+        assert_eq!(
+            pending_changes(&sheet),
+            Some((generation, false, vec![(at, true)]))
+        );
+        assert_eq!(allocations, 0, "{edits} rewrites of one pending point");
+
+        sheet.set_cell(at, 1.0).unwrap();
+        acknowledge_changes(&mut sheet);
+        let (allocations, ()) = counted(|| {
+            for value in 0..edits {
+                let mark = change_mark(&sheet);
+                sheet.set_cell(at, f64::from(value)).unwrap();
+                // Payload rollback precedes the bounded bookkeeping reset.
+                sheet.set_cell(at, 1.0).unwrap();
+                restore_change_mark(&mut sheet, mark).unwrap();
+            }
+        });
+        assert_eq!(sheet.scalar(at), Scalar::from(1.0));
+        assert_eq!(pending_changes(&sheet), Some((generation, false, vec![])));
+        assert_eq!(
+            allocations, 0,
+            "{edits} attempts reuse acknowledged capacity"
+        );
     }
 }
 
@@ -9299,6 +12392,177 @@ fn a_nested_column_writes_its_json_with_no_allocation_per_row() {
     }
 }
 
+#[cfg(feature = "internals")]
+#[test]
+fn excel_direct_numeric_text_coercion_has_no_per_operand_allocation() {
+    use yggdryl::excel::DateSystem;
+    use yggdryl::internals::excel_formula_value::number_text;
+
+    let inputs: [(&str, f64); 3] = [
+        ("123456789012345", 123456789012345.0),
+        ("1,234.50", 1234.5),
+        ("12.5%", 0.125),
+    ];
+    for count in [64, 4096] {
+        let (allocations, matches) = counted(|| {
+            let mut matches = 0;
+            for index in 0..count {
+                let (input, expected) = black_box(inputs[index % inputs.len()]);
+                let value = number_text(input, DateSystem::Year1900).unwrap().unwrap();
+                matches += usize::from(value.to_bits() == expected.to_bits());
+            }
+            matches
+        });
+        assert_eq!(matches, count);
+        assert_eq!(allocations, 0, "{count} direct numeric text operands");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_dependency_full_schedule_reuses_warmed_buffers() {
+    use yggdryl::excel::{CellRef, Workbook};
+    use yggdryl::internals::excel_formula_graph::{Scheduler, Workspace};
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    let sheet = book.sheet_key("Data").unwrap();
+    for nodes in [64, 4_096] {
+        let mut graph = Scheduler::default();
+        for row in 0..nodes {
+            graph
+                .set(sheet, CellRef::new(row as u32, 0), &[], false)
+                .unwrap();
+        }
+        let mut workspace = Workspace::default();
+        let computed = vec![true; nodes];
+        graph.prepare_reusing(true, &mut workspace).unwrap();
+        graph
+            .acknowledge_reusing(&mut workspace, &computed)
+            .unwrap();
+        let (allocations, visits) = counted(|| {
+            let mut visits = 0;
+            for _ in 0..4 {
+                graph.prepare_reusing(true, &mut workspace).unwrap();
+                visits += black_box(workspace.ordered().len());
+                graph
+                    .acknowledge_reusing(&mut workspace, &computed)
+                    .unwrap();
+            }
+            visits
+        });
+        assert_eq!(visits, nodes * 4);
+        assert_eq!(
+            allocations, 0,
+            "four warmed full schedules across {nodes} independent nodes"
+        );
+    }
+}
+
+#[test]
+fn expression_substring_short_result_has_no_per_row_scratch() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "substring(s, 2, 2)"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let row = Scalar::from_sequence([Scalar::from("a".repeat(256))]);
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from("aa"));
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound Unicode substring rows");
+    }
+}
+
+#[test]
+fn expression_trim_short_result_avoids_an_intermediate_string_per_row() {
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound = "trim(s)".parse::<Term>().unwrap().bind(&schema).unwrap();
+    let text = format!("{}abc{}", " ".repeat(64), " ".repeat(64));
+    let row = Scalar::from_sequence([Scalar::from(text.as_str())]);
+    assert_eq!(bound.eval(&row).unwrap(), Scalar::from("abc"));
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                black_box(bound.eval(black_box(&row)).unwrap());
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound trim rows");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_formula_evaluation_policy_visits_children_without_allocation() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula::strict_root_child_count;
+
+    let formula = Formula::from_entry("SUM(A1,B1,C1)", CellRef::new(0, 3)).unwrap();
+    assert_eq!(strict_root_child_count(&formula), Some(3));
+    for count in [64, 4096] {
+        let (allocations, visited) = counted(|| {
+            let mut visited = 0;
+            for _ in 0..count {
+                visited += black_box(strict_root_child_count(black_box(&formula)).unwrap());
+            }
+            visited
+        });
+        assert_eq!(visited, count * 3);
+        assert_eq!(allocations, 0, "{count} policy visits");
+    }
+}
+
+/// The reference boundary skips known nonnumeric cells before rendering typed
+/// text. Native strings share Str storage; graph/evaluator buffers stay owned.
+#[test]
+fn excel_calculation_sum_reference_text_has_zero_warm_allocations() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let long = "not a numeric value ".repeat(512);
+    let rendered = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value) in [
+        ("native string", Scalar::from(long)),
+        ("rendered typed text", rendered),
+    ] {
+        for rows in [64_u32, 4096] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows {
+                sheet.set_cell(CellRef::new(row, 0), value.clone()).unwrap();
+            }
+            let at = CellRef::new(0, 1);
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(Formula::from_file(&format!("SUM(A1:A{rows},2)"), at)),
+                )
+                .unwrap();
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+            assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(2.0));
+            let revision = book.sheet("Data").unwrap().revision();
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+            assert_eq!(
+                cost, 0,
+                "{kind}, {rows} rows must not render or allocate per referenced cell"
+            );
+        }
+    }
+}
+
 /// Reading JSON text into a nested column allocates nothing per row for the
 /// row itself - only the growth of the buffers the rows land in - and
 /// nothing per column: the target planned once reads each document straight
@@ -9330,6 +12594,55 @@ fn a_column_of_documents_reads_into_a_nested_column_with_no_allocation_per_row()
                 "{expression}: {rows} more documents cost {grown} allocations, not {per_row} \
                  a row and the buffers' growth"
             );
+        }
+    }
+}
+
+/// COUNT/COUNTA/MIN/MAX visit borrowed reference values. In particular,
+/// COUNTA tests presence without rendering long native or typed text.
+#[test]
+fn excel_basic_aggregate_reference_text_has_zero_warm_allocations() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let long = "not a numeric value ".repeat(512);
+    let typed = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value) in [("native string", Scalar::from(long)), ("typed text", typed)] {
+        for rows in [64_u32, 4096] {
+            for function in [
+                "COUNT", "COUNTA", "MIN", "MAX", "AVERAGE", "AVERAGEA", "MINA", "MAXA", "PRODUCT",
+            ] {
+                let mut book = Workbook::new();
+                let sheet = book.add_sheet("Data").unwrap();
+                for row in 0..rows {
+                    sheet.set_cell(CellRef::new(row, 0), value.clone()).unwrap();
+                }
+                let at = CellRef::new(0, 1);
+                let expression = format!("{function}(A1:A{rows},2)");
+                sheet
+                    .insert_cell(
+                        Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                            .unwrap()
+                            .with_formula(Formula::from_file(&expression, at)),
+                    )
+                    .unwrap();
+                let first = book.calculate_all().unwrap();
+                assert_eq!((first.evaluated, first.uncomputed), (1, 0), "{expression}");
+                let expected = match function {
+                    "COUNT" => 1.0,
+                    "COUNTA" => f64::from(rows + 1),
+                    "AVERAGEA" => 2.0 / f64::from(rows + 1),
+                    "MINA" => 0.0,
+                    _ => 2.0,
+                };
+                assert_eq!(
+                    book.sheet("Data").unwrap().scalar(at),
+                    Scalar::from(expected)
+                );
+                let revision = book.sheet("Data").unwrap().revision();
+                let (cost, report) = counted(|| book.calculate_all().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+                assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+                assert_eq!(cost, 0, "{kind}, {rows} rows, {function}");
+            }
         }
     }
 }
@@ -9415,6 +12728,1502 @@ fn spilling_a_column_costs_a_constant_whatever_its_row_count() {
             );
         }
     }
+}
+
+/// The exceptional numeric sidecar is sparse and its formula read uses the
+/// cached typed operand. Once the graph is warm, source serial precision must
+/// not introduce a per-formula allocation.
+#[test]
+fn excel_temporal_serial_warm_recalculation_allocates_nothing() {
+    use yggdryl::excel::Workbook;
+
+    let cost = |rows: u32, raw: &str| {
+        let data = (1..=rows)
+            .map(|row| {
+                format!(
+                    "<row r=\"{row}\"><c r=\"A{row}\" s=\"1\"><v>{raw}</v></c>\
+             <c r=\"B{row}\" s=\"1\"><f>A{row}</f><v>0</v></c></row>"
+                )
+            })
+            .collect::<String>();
+        let bytes = excel_package::one_sheet(&data, &[], &[], &[0, 22]);
+        let mut workbook = Workbook::from_bytes(bytes).unwrap();
+        assert_eq!(workbook.calculate_all().unwrap().evaluated, u64::from(rows));
+        let revision = workbook.sheet("Sheet1").unwrap().revision();
+        let (allocations, report) = counted(|| workbook.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        assert_eq!(workbook.sheet("Sheet1").unwrap().revision(), revision);
+        allocations
+    };
+    for raw in ["60", "45292.000000001"] {
+        let (small, large) = (cost(64, raw), cost(4096, raw));
+        assert_eq!(
+            (small, large),
+            (0, 0),
+            "raw={raw}: 64={small}, 4096={large}"
+        );
+    }
+}
+
+/// Held AutoFill landing excludes workbook intake and ZIP output. Daily series
+/// uses stack-backed digit rounding, so its allocation slope matches Copy;
+/// exceptional raw serial ownership adds only the measured sparse sidecars.
+#[test]
+fn excel_temporal_fill_landing_allocations() {
+    use yggdryl::excel::{CellRange, CellRef, FillMode, Workbook};
+
+    let data = "<row r=\"1\">\
+        <c r=\"A1\" s=\"1\"><v>59</v></c>\
+        <c r=\"B1\" s=\"1\"><v>60</v></c>\
+        <c r=\"C1\" s=\"1\"><v>45292.000000001</v></c></row>";
+    let bytes = excel_package::one_sheet(data, &[], &[], &[0, 14]);
+    for (name, column, mode, small, large) in [
+        ("daily canonical", 0, FillMode::Series, 82, 4_791),
+        ("daily exceptional", 1, FillMode::Series, 82, 4_791),
+        ("copy canonical", 0, FillMode::Copy, 80, 4_789),
+        ("copy exceptional", 2, FillMode::Copy, 89, 5_469),
+    ] {
+        let source = CellRange::new(CellRef::new(0, column), CellRef::new(0, column));
+        for (rows, expected) in [(64_u32, small), (4_096, large)] {
+            let target = CellRange::new(source.start(), CellRef::new(rows - 1, column));
+            let mut warm = Workbook::from_bytes(bytes.clone()).unwrap();
+            warm.parse_all().unwrap();
+            warm.fill(
+                "Sheet1",
+                source,
+                CellRange::new(source.start(), CellRef::new(1, column)),
+                mode,
+            )
+            .unwrap();
+            let mut workbook = Workbook::from_bytes(bytes.clone()).unwrap();
+            workbook.parse_all().unwrap();
+            let (allocations, ()) = counted(|| {
+                workbook.fill("Sheet1", source, target, mode).unwrap();
+            });
+            assert!(
+                workbook
+                    .sheet("Sheet1")
+                    .unwrap()
+                    .cell(CellRef::new(rows - 1, column))
+                    .is_some()
+            );
+            assert_eq!(allocations, expected, "{name}: {rows} rows");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_fill_round15_has_no_per_value_allocation() {
+    use yggdryl::internals::excel_fill::round15_for_test;
+    for rows in [64_usize, 4_096] {
+        let (allocations, sum) = counted(|| {
+            let mut sum = 0.0;
+            for index in 0..rows {
+                let value = std::hint::black_box(45_292.123_456_789_f64 + index as f64 * 0.125);
+                sum += std::hint::black_box(round15_for_test(value));
+            }
+            sum
+        });
+        assert!(sum.is_finite());
+        assert_eq!(allocations, 0, "{rows} values");
+    }
+}
+
+/// Name definitions lend their existing arenas. Hash membership, evaluator
+/// continuations, graph walk and results reuse retained capacity after warmup;
+/// irrelevant registry size must not become a per-pass or per-cell allocation.
+#[test]
+fn excel_calculation_defined_names_have_zero_warm_allocations() {
+    for formula in ["Constant", "SecondAlias+SecondAlias", "SUM(NamedColumn)"] {
+        for rows in [64, 4096] {
+            for names in [64, 4096] {
+                let mut book =
+                    excel_package::defined_name_calculation_cost_book(rows, names, formula);
+                let first = book.calculate_all().unwrap();
+                assert_eq!((first.evaluated, first.uncomputed), (u64::from(rows), 0));
+                let revision = book.sheet("Data").unwrap().revision();
+                let (forced, report) = counted(|| book.calculate_all().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+                let (idle, report) = counted(|| book.recalculate().unwrap());
+                assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+                assert_eq!(
+                    (forced, idle),
+                    (0, 0),
+                    "{formula}: {rows} formulas, {names} unused names"
+                );
+                assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+            }
+        }
+    }
+}
+
+/// Comparison borrows shared strings and folds ASCII bytes without building
+/// lowercase Strings. Warm graph/evaluator capacities are retained, including
+/// held collation results; no source value is rendered or decimal-reparsed.
+#[test]
+fn excel_ordered_comparisons_have_zero_warm_allocations() {
+    let ascii = "AbC123".repeat(512);
+    let unicode = "same\u{e9} ".repeat(512);
+    for (kind, left, right, computed, first) in [
+        ("numeric", Scalar::from(1.0), Scalar::from(2.0), true, false),
+        ("blank", Scalar::Null, Scalar::from(false), true, true),
+        ("mixed", Scalar::from(2.0), Scalar::from("2"), true, false),
+        (
+            "long ASCII",
+            Scalar::from(format!("{ascii}x")),
+            Scalar::from(format!("{ascii}Y")),
+            true,
+            false,
+        ),
+        (
+            "identical Unicode",
+            Scalar::from(unicode.clone()),
+            Scalar::from(unicode),
+            true,
+            true,
+        ),
+        (
+            "held collation",
+            Scalar::from("\u{e9}"),
+            Scalar::from("e"),
+            false,
+            false,
+        ),
+    ] {
+        for rows in [64, 4096] {
+            let mut book =
+                excel_package::comparison_calculation_cost_book(rows, left.clone(), right.clone());
+            let expected = if computed {
+                (u64::from(rows), 0)
+            } else {
+                (0, u64::from(rows))
+            };
+            let report = book.calculate_all().unwrap();
+            assert_eq!((report.evaluated, report.uncomputed), expected);
+            let revision = book.sheet("Data").unwrap().revision();
+            if computed {
+                assert_eq!(
+                    book.sheet("Data")
+                        .unwrap()
+                        .scalar(yggdryl::excel::CellRef::new(0, 2))
+                        .as_bool(),
+                    Some(first)
+                );
+            }
+            let (forced, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), expected);
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (0, expected.1));
+            assert_eq!(
+                (forced, idle),
+                (0, 0),
+                "{kind}: {rows} comparison consumers"
+            );
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+/// The warmed graph, evaluator and replacement storage retain capacity;
+/// per-host hashing and random draws use stack state. Construction and the
+/// first pass are outside this exact zero-allocation pin at both corpus sizes.
+#[test]
+fn excel_clock_volatile_warm_pass_allocates_nothing() {
+    use yggdryl::excel::{Cell, CellRef, Clock, DateSystem, Formula, Workbook};
+    use yggdryl::{Scalar, Timezone};
+
+    for rows in [64_u32, 4_096] {
+        let mut book =
+            Workbook::new().with_clock(Clock::fixed(-2_203_977_600_000_000_000, Timezone::UTC, 73));
+        let sheet = book.add_sheet("Cases").unwrap();
+        let shape = Formula::from_file("RAND()", CellRef::new(0, 0));
+        for row in 0..rows {
+            let at = CellRef::new(row, 0);
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(0.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(shape.clone()),
+                )
+                .unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (allocations, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        assert_eq!(allocations, 0, "warm volatile RAND {rows} rows");
+    }
+}
+
+/// Sparse logical intake retains Boolean values but skips text before rendering.
+/// Three accumulator bit sets and reused graph/evaluator buffers add no per-row
+/// storage or warmed allocation, including typed text with an allocated display.
+#[test]
+fn excel_logical_reducers_have_zero_warm_range_allocations() {
+    use yggdryl::excel::CellRef;
+    let long = "not a logical value ".repeat(512);
+    let rendered = Scalar::from_sequence([Scalar::from(long.clone()), Scalar::from(17_i64)]);
+    for (kind, value, and) in [
+        ("Boolean", Scalar::from(true), true),
+        ("numeric zero", Scalar::from(0.0), false),
+        ("long native text", Scalar::from(long), true),
+        ("rendered typed text", rendered, true),
+    ] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::logical_reducer_cost_book(rows, value.clone());
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (3, 0));
+            for (row, expected) in [and, true, true].into_iter().enumerate() {
+                assert_eq!(
+                    book.sheet("Data")
+                        .unwrap()
+                        .scalar(CellRef::new(row as u32, 1))
+                        .as_bool(),
+                    Some(expected),
+                    "{kind}"
+                );
+            }
+            let revision = book.sheet("Data").unwrap().revision();
+            let (forced, result) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((result.evaluated, result.uncomputed), (3, 0));
+            let (idle, result) = counted(|| book.recalculate().unwrap());
+            assert_eq!((result.evaluated, result.uncomputed), (0, 0));
+            assert_eq!((forced, idle), (0, 0), "{kind}: {rows} sparse source cells");
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+#[test]
+fn excel_logical_reducers_have_zero_warm_scalar_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::logical_scalar_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        assert!(
+            book.sheet("Data")
+                .unwrap()
+                .cells()
+                .all(|cell| cell.value().as_bool() == Some(true))
+        );
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        assert_eq!((forced, idle), (0, 0), "{rows} direct logical consumers");
+    }
+}
+
+/// Dynamic registrations retain their peak ordinal suffix. An unchanged
+/// selection reactivates its existing memberships; it does not rebuild them.
+#[test]
+fn excel_lazy_selectors_have_zero_warm_scalar_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_scalar_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let revision = book.sheet("Data").unwrap().revision();
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        eprintln!("lazy scalar {rows}: forced={forced}, idle={idle}");
+        assert_eq!((forced, idle), (0, 0), "{rows} scalar selectors");
+        assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+    }
+}
+
+#[test]
+fn excel_lazy_selectors_have_zero_warm_sparse_range_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_range_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, 1);
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        assert_eq!(
+            book.sheet("Data")
+                .unwrap()
+                .scalar(yggdryl::excel::CellRef::new(0, 0))
+                .as_f64(),
+            Some(f64::from(rows))
+        );
+        eprintln!("lazy range {rows}: forced={forced}");
+        assert_eq!(forced, 0, "{rows} sparse source cells");
+    }
+}
+
+/// Pool capacity is bounded by peak simultaneous suspensions, with one same-
+/// evaluator arena per held root. The second identical pass reuses that peak.
+#[test]
+fn excel_lazy_selectors_reuse_peak_suspended_arenas_without_warm_allocations() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::lazy_chain_cost_book(rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (u64::from(rows), 0, 0)
+        );
+        eprintln!("lazy chain {rows}: forced={forced}");
+        assert_eq!(forced, 0, "{rows} suspended roots");
+    }
+}
+
+/// Additional initial keys use the same retained evaluator/graph buffers as
+/// IF; selected registrations and peak suspended arenas are reused on warm passes.
+#[test]
+fn excel_multi_selectors_reuse_scalar_range_and_suspended_storage() {
+    use yggdryl::excel::CellRef;
+    for rows in [64, 4096] {
+        for (label, base, text, column, formulas, expected) in [
+            (
+                "ifs scalar",
+                excel_package::lazy_scalar_cost_book(rows),
+                "IFS(A1,C1,FALSE,D1)",
+                1,
+                rows,
+                7.0,
+            ),
+            (
+                "switch scalar",
+                excel_package::lazy_scalar_cost_book(rows),
+                "SWITCH(A1,TRUE,C1,FALSE,D1,0)",
+                1,
+                rows,
+                7.0,
+            ),
+            (
+                "ifs range",
+                excel_package::lazy_range_cost_book(rows),
+                "IFS(C1,SUM(B:B),TRUE,0)",
+                0,
+                1,
+                f64::from(rows),
+            ),
+            (
+                "switch range",
+                excel_package::lazy_range_cost_book(rows),
+                "SWITCH(C1,TRUE,SUM(B:B),FALSE,0,-1)",
+                0,
+                1,
+                f64::from(rows),
+            ),
+            (
+                "ifs suspended",
+                excel_package::lazy_chain_cost_book(rows),
+                "IFS(TRUE,A2,FALSE,0)",
+                0,
+                rows,
+                7.0,
+            ),
+            (
+                "switch suspended",
+                excel_package::lazy_chain_cost_book(rows),
+                "SWITCH(1,1,A2,2,0,-1)",
+                0,
+                rows,
+                7.0,
+            ),
+        ] {
+            let mut book = excel_package::selector_formula_cost_book(base, text, column, formulas);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+            let revision = book.sheet("Data").unwrap().revision();
+            let (forced, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!(
+                (report.evaluated, report.uncomputed, report.circular_count),
+                (u64::from(formulas), 0, 0),
+                "{label}/{rows}"
+            );
+            assert_eq!(
+                book.sheet("Data")
+                    .unwrap()
+                    .scalar(CellRef::new(0, column))
+                    .as_f64(),
+                Some(expected),
+                "{label}/{rows}"
+            );
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+            eprintln!("multi selector {label}/{rows}: forced={forced}, idle={idle}");
+            assert_eq!((forced, idle), (0, 0), "{label}/{rows}");
+            assert_eq!(book.sheet("Data").unwrap().revision(), revision);
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_rounding_family_primitive_has_zero_per_item_allocation() {
+    use yggdryl::internals::excel_formula_number::{parity_round, quotient, round_direction};
+    for count in [64, 4_096] {
+        let (allocations, checksum) = counted(|| {
+            let mut checksum = 0_u64;
+            for _ in 0..count {
+                checksum ^= black_box(
+                    round_direction(black_box(3.2), -2.0, true)
+                        .unwrap()
+                        .unwrap(),
+                )
+                .to_bits();
+                checksum ^=
+                    black_box(parity_round(black_box(-2.5), true).unwrap().unwrap()).to_bits();
+                checksum ^= black_box(quotient(black_box(0.3), 0.1).unwrap().unwrap()).to_bits();
+            }
+            checksum
+        });
+        black_box(checksum);
+        assert_eq!(allocations, 0, "{count} directed numeric operands");
+    }
+}
+
+#[test]
+fn excel_trig_warm_formula_rows_allocate_nothing() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+
+    for rows in [64_u32, 4_096] {
+        let mut book = Workbook::new();
+        book.add_sheet("Cases").unwrap();
+        for row in 0..rows {
+            let at = CellRef::new(row, 0);
+            let expression = [
+                "SIN(0.5)",
+                "TAN(0.5)",
+                "ACOS(0.5)",
+                "ATAN(0.5)",
+                "ATAN2(1,0.5)",
+            ][row as usize % 5];
+            book.sheet_mut("Cases")
+                .unwrap()
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-777.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(Formula::from_file(expression, at)),
+                )
+                .unwrap();
+        }
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!(report.evaluated, 0);
+        assert_eq!((forced, idle), (0, 0), "{rows} warm trig formula cells");
+    }
+}
+
+#[test]
+fn expression_pure_math_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([DataType::Float32.required_field("x")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let bound: Vec<_> = [
+        "exp(x)",
+        "ln(x)",
+        "log10(x)",
+        "degrees(x)",
+        "radians(x)",
+        "cos(x)",
+        "asin(x)",
+        "sin(x)",
+        "tan(x)",
+        "acos(x)",
+        "atan(x)",
+        "atan2(x,1)",
+    ]
+    .into_iter()
+    .map(|text| text.parse::<Term>().unwrap().bind(&schema).unwrap())
+    .collect();
+    let row = Scalar::from_sequence([Scalar::from(1.0_f32)]);
+    for size in [64, 4_096] {
+        let (allocations, ()) = counted(|| {
+            for _ in 0..size {
+                for expression in &bound {
+                    black_box(expression.eval(black_box(&row)).unwrap());
+                }
+            }
+        });
+        assert_eq!(allocations, 0, "{size} bound rows across twelve functions");
+    }
+}
+
+#[test]
+fn excel_geometry_functions_reuse_warm_reference_and_array_handles() {
+    for (formulas, source_rows) in [(64, 64), (4096, 4096), (64, 4096)] {
+        let mut book = excel_package::geometry_cost_book(formulas, source_rows);
+        assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+        let revision = book.sheet("Cases").unwrap().revision();
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (u64::from(formulas), 0, 0)
+        );
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        eprintln!("geometry {formulas}/{source_rows}: forced={forced}, idle={idle}");
+        // Existing evaluator/descriptor capacity is retained. Array outcomes
+        // borrow AST identity; no source-cell values or dimension arrays copy.
+        assert_eq!(
+            (forced, idle),
+            (0, 0),
+            "{formulas} formulas/{source_rows} source cells"
+        );
+        assert_eq!(book.sheet("Cases").unwrap().revision(), revision);
+    }
+}
+
+#[test]
+fn excel_text_functions_reuse_unchanged_storage_and_keep_small_outputs_inline() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            eprintln!("text functions {rows} long={long}: forced={allocations} idle={idle}");
+            // Short transformed strings use SmolStrBuilder's inline storage;
+            // unchanged long results move the source Str handle, never copy.
+            assert_eq!((allocations, idle), (0, 0), "{rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_indexed_references_reuse_handles_without_copying_source_ranges() {
+    for offset in [false, true] {
+        for (formulas, source_rows) in [(64, 64), (4096, 4096), (64, 4096)] {
+            let mut book =
+                excel_package::indexed_reference_cost_book(formulas, source_rows, offset);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(formulas));
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(yggdryl::excel::CellRef::new(formulas - 1, 0))
+                    .as_f64(),
+                Some(1.0)
+            );
+            let (forced, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!(
+                (report.evaluated, report.uncomputed, report.circular_count),
+                (u64::from(formulas), 0, 0)
+            );
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(
+                report.evaluated,
+                if offset { u64::from(formulas) } else { 0 }
+            );
+            eprintln!(
+                "indexed references {formulas}/{source_rows} offset={offset}: forced={forced} idle={idle}"
+            );
+            // Geometry and the selected reference share retained descriptor
+            // capacity; neither the source size nor volatility allocates.
+            assert_eq!(
+                (forced, idle),
+                (0, 0),
+                "{formulas}/{source_rows} offset={offset}"
+            );
+        }
+    }
+}
+
+#[test]
+fn excel_text_conversion_and_compact_joins_keep_warm_allocations_zero() {
+    for joins in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_conversion_cost_book(rows, joins);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            eprintln!("text conversion {rows} joins={joins}: forced={allocations} idle={idle}");
+            // Digits/Out and short joins remain inline; whole-column blanks
+            // contribute a multiplicity rather than rows or retained values.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} joins={joins}");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_order_statistics_allocate_by_source_capacity() {
+    use yggdryl::internals::excel_formula_aggregate::Accumulator;
+    for rows in [64, 4_096] {
+        for kind in 0..3 {
+            let (allocations, answer) = counted(|| {
+                let mut source = Accumulator::ranked();
+                for row in 0..rows {
+                    source.push_number(black_box((row % 8) as f64)).unwrap();
+                }
+                match kind {
+                    0 => source.finish_kth(1.0, true).unwrap().unwrap(),
+                    1 => source.finish_percentile(0.5).unwrap().unwrap(),
+                    _ => source.finish_rank(2.0, false).unwrap().unwrap(),
+                }
+            });
+            let expected = match kind {
+                0 => 7.0,
+                1 => 3.5,
+                _ => (1 + 5 * rows / 8) as f64,
+            };
+            assert_eq!(answer, expected);
+            // The one ranked vector grows logarithmically, independent of
+            // per-row text conversion, formula nodes, or a second sort copy.
+            assert!(
+                allocations <= if rows == 64 { 12 } else { 24 },
+                "{rows} rows, kind {kind}: {allocations} allocations"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_rank_accumulator_allocates_only_for_bounded_growth() {
+    use yggdryl::internals::excel_formula_aggregate::Accumulator;
+    for (rows, upper_bound) in [(64, 12), (4_096, 24)] {
+        let (allocations, (median, mode)) = counted(|| {
+            let mut median = Accumulator::ranked();
+            let mut mode = Accumulator::ranked();
+            for row in 0..rows {
+                let value = (row % 8) as f64;
+                median.push_number(black_box(value)).unwrap();
+                mode.push_number(black_box(value)).unwrap();
+            }
+            (
+                median.finish_median().unwrap().unwrap(),
+                mode.finish_mode().unwrap().unwrap(),
+            )
+        });
+        assert_eq!((median, mode), (3.5, 0.0));
+        assert!(
+            allocations <= upper_bound,
+            "{rows} ranks allocated {allocations} times"
+        );
+    }
+}
+
+/// The criterion must inspect each text source without rebuilding a text
+/// spelling per cell on a warm recalculation. A formula may allocate fixed
+/// matcher state; corpus growth must add no per-row allocations.
+#[test]
+fn excel_countif_typed_text_range_has_no_per_row_allocation() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long nonmatching text ".repeat(32)),
+        Scalar::from(17_i64),
+    ]);
+    let mut measured = Vec::new();
+    for rows in [64_u32, 4_096] {
+        let mut book = Workbook::new();
+        let sheet = book.add_sheet("Data").unwrap();
+        for row in 0..rows {
+            sheet.set_cell(CellRef::new(row, 0), typed.clone()).unwrap();
+        }
+        let at = CellRef::new(0, 1);
+        let expression = format!("COUNTIF(A1:A{rows},\"nomatch\")");
+        sheet
+            .insert_cell(
+                Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                    .unwrap()
+                    .with_formula(Formula::from_file(&expression, at)),
+            )
+            .unwrap();
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+        assert_eq!(book.sheet("Data").unwrap().scalar(at), Scalar::from(0.0));
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        measured.push(cost);
+    }
+    assert!(
+        measured[1] <= measured[0] + 4,
+        "typed text read allocated by row: 64={}, 4096={}",
+        measured[0],
+        measured[1]
+    );
+}
+
+#[test]
+fn excel_blank_and_conditional_extrema_have_bounded_text_read_cost() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long nonempty text ".repeat(32)),
+        Scalar::from(17_i64),
+    ]);
+    for function in ["COUNTBLANK", "_xlfn.MAXIFS", "_xlfn.MINIFS"] {
+        let mut costs = Vec::new();
+        for rows in [64_u32, 4_096] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows {
+                if function == "COUNTBLANK" && row % 2 == 0 {
+                    continue;
+                }
+                sheet.set_cell(CellRef::new(row, 0), typed.clone()).unwrap();
+                if function != "COUNTBLANK" {
+                    sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+                }
+            }
+            let at = CellRef::new(0, 2);
+            let expression = if function == "COUNTBLANK" {
+                format!("COUNTBLANK(A1:A{rows})")
+            } else {
+                format!("{function}(A1:A{rows},B1:B{rows},1)")
+            };
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(Formula::from_file(&expression, at)),
+                )
+                .unwrap();
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+            let expected = if function == "COUNTBLANK" {
+                (rows / 2) as f64
+            } else {
+                0.0
+            };
+            assert_eq!(
+                book.sheet("Data").unwrap().scalar(at),
+                Scalar::from(expected)
+            );
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+            costs.push(cost);
+        }
+        assert!(
+            costs[1] <= costs[0] + 4,
+            "{function} typed text read allocated by row: 64={}, 4096={}",
+            costs[0],
+            costs[1]
+        );
+    }
+}
+
+#[test]
+fn excel_sumproduct_aligned_ranges_have_no_per_row_allocation() {
+    use yggdryl::excel::{Cell, CellRef, DateSystem, Formula, Workbook};
+    let typed = Scalar::from_sequence([
+        Scalar::from("long text factor ".repeat(32)),
+        Scalar::from(17_i64),
+    ]);
+    for text_source in [false, true] {
+        let mut costs = Vec::new();
+        for rows in [64_u32, 4_096] {
+            let mut book = Workbook::new();
+            let sheet = book.add_sheet("Data").unwrap();
+            for row in 0..rows {
+                sheet
+                    .set_cell(
+                        CellRef::new(row, 0),
+                        if text_source {
+                            typed.clone()
+                        } else {
+                            Scalar::from((row % 8) as f64)
+                        },
+                    )
+                    .unwrap();
+                sheet.set_cell(CellRef::new(row, 1), 1.0).unwrap();
+            }
+            let at = CellRef::new(0, 2);
+            let expression = format!("SUMPRODUCT(A1:A{rows},B1:B{rows})");
+            sheet
+                .insert_cell(
+                    Cell::from_scalar(at, Scalar::from(-1.0), DateSystem::Year1900)
+                        .unwrap()
+                        .with_formula(Formula::from_file(&expression, at)),
+                )
+                .unwrap();
+            let first = book.calculate_all().unwrap();
+            assert_eq!((first.evaluated, first.uncomputed), (1, 0));
+            let expected = if text_source {
+                0.0
+            } else {
+                f64::from(rows / 8 * 28)
+            };
+            assert_eq!(
+                book.sheet("Data").unwrap().scalar(at),
+                Scalar::from(expected)
+            );
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+            costs.push(cost);
+        }
+        assert!(
+            costs[1] <= costs[0] + 4,
+            "SUMPRODUCT text_source={text_source} allocated by row: 64={}, 4096={}",
+            costs[0],
+            costs[1]
+        );
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_compiled_criteria_wildcard_has_no_per_row_allocation() {
+    use yggdryl::internals::excel_formula_criteria::count_whole_matches;
+    let long = format!("e{}t", "a".repeat(511));
+    for rows in [64, 4_096] {
+        let texts = vec![long.as_str(); rows];
+        let (allocations, matched) = counted(|| count_whole_matches("e*t", &texts));
+        assert_eq!(matched, rows);
+        assert!(
+            allocations <= 3,
+            "{rows} matched rows allocated {allocations} times"
+        );
+    }
+}
+
+#[test]
+fn expression_casing_uses_inline_output_or_unchanged_shared_storage() {
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    for (expression, input) in [
+        ("lower(s)", "AbC".to_owned()),
+        ("upper(s)", "aBc".to_owned()),
+        ("lower(s)", "unchanged long lowercase ".repeat(32)),
+        ("upper(s)", "UNCHANGED LONG UPPERCASE ".repeat(32)),
+        ("lower(s)", "\u{4e2d}\u{1f600}".repeat(32)),
+    ] {
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        let row = Scalar::from_sequence([Scalar::from(input.as_str())]);
+        black_box(bound.eval(&row).unwrap());
+        for rows in [64, 4096] {
+            let (allocations, ()) = counted(|| {
+                for _ in 0..rows {
+                    black_box(bound.eval(black_box(&row)).unwrap());
+                }
+            });
+            // A short ASCII rewrite stays inline. An unchanged long result
+            // shares its Str handle instead of allocating String + SmolStr.
+            assert_eq!(
+                allocations,
+                0,
+                "{expression}, input bytes={}, rows={rows}",
+                input.len()
+            );
+        }
+    }
+}
+
+#[test]
+fn excel_text_find_replace_reuses_text_and_does_not_allocate_position_maps() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_index_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // UTF16 positions are counted over borrowed UTF8, never retained
+            // in a per-character Vec; unchanged replacement keeps Str storage.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_text_casing_uses_inline_or_shared_text_storage() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_casing_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // Short case conversion stays inline; long unchanged strings
+            // retain the same Str handle through reference intake and publication.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_text_search_reuses_compiled_pattern_and_transition_capacity() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_search_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // One cached compiled pattern and peak NFA state capacity belong
+            // to the evaluator; text positions are streamed, never collected.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} long={long}");
+            for pattern in ["Z*C", "A*C"] {
+                book.sheet_mut("Values")
+                    .unwrap()
+                    .set_cell(yggdryl::excel::CellRef::new(0, 1), pattern)
+                    .unwrap();
+                assert_eq!(book.recalculate().unwrap().evaluated, u64::from(rows));
+                let (allocations, report) = counted(|| book.calculate_all().unwrap());
+                assert_eq!(report.evaluated, u64::from(rows));
+                assert_eq!(allocations, 0, "changed pattern={pattern} rows={rows}");
+            }
+        }
+    }
+}
+
+#[test]
+fn excel_text_character_uses_inline_or_shared_text_storage() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_character_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // Short character conversion stays inline; long unchanged strings
+            // retain the same Str handle through reference intake and publication.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn expression_exact_integer_math_bound_rows_allocate_nothing() {
+    use yggdryl::expression::Term;
+    let schema = StructType::from_fields([
+        DataType::Int64.required_field("left"),
+        DataType::UInt64.required_field("right"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from(12_i64), Scalar::from(18_u64)]);
+    for (formula, expected) in [
+        ("gcd(left,right)", Scalar::from(6_u64)),
+        ("lcm(left,right)", Scalar::from(36_u64)),
+        ("factorial(left)", Scalar::from(479_001_600.0_f64)),
+    ] {
+        let bound = formula.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.eval(&row).unwrap(), expected);
+        for size in [64, 4_096] {
+            let (allocations, ()) = counted(|| {
+                for _ in 0..size {
+                    black_box(bound.eval(black_box(&row)).unwrap());
+                }
+            });
+            assert_eq!(allocations, 0, "{formula}: {size} bound rows");
+        }
+    }
+}
+
+#[test]
+fn excel_text_value_format_reuses_decimal_temporal_and_format_owners() {
+    for kind in 0..6 {
+        for rows in [64, 4096] {
+            let mut book = excel_package::text_value_format_cost_book(rows, kind);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // Decimal/date intake is stack-only; one cached parsed/refused
+            // format is reused. Formula General creates no shorter variants.
+            assert_eq!((allocations, idle), (0, 0), "kind={kind} rows={rows}");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_lookup_axis_warm_scans_allocate_nothing() {
+    use yggdryl::excel::{CellRef, Formula};
+    use yggdryl::internals::excel_formula_eval::ContextEvaluator;
+
+    for length in [64_u64, 4_096] {
+        let formula =
+            Formula::from_entry(&format!("MATCH(1,A1:A{length},0)"), CellRef::new(0, 1)).unwrap();
+        let mut evaluator = ContextEvaluator::default();
+        for (match_at, pause_at, visited) in [
+            (0, None, 1_usize),
+            (length - 1, Some(length / 2), length as usize),
+        ] {
+            // First pass reserves the evaluator's peak active slots.
+            black_box(
+                evaluator
+                    .evaluate_lookup(&formula, length, match_at, pause_at)
+                    .unwrap(),
+            );
+            let (allocations, answer) = counted(|| {
+                black_box(
+                    evaluator
+                        .evaluate_lookup(black_box(&formula), length, match_at, pause_at)
+                        .unwrap(),
+                )
+            });
+            assert_eq!(answer.unwrap().as_f64(), Some((match_at + 1) as f64));
+            assert_eq!(
+                evaluator.calls()[2],
+                visited,
+                "lookup callback count over {length} physical keys"
+            );
+            assert_eq!(
+                allocations, 0,
+                "warm lookup over {length} keys, match={match_at}, pause={pause_at:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn excel_financial_annuities_reuse_scalar_and_native_factor_storage() {
+    for long in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::financial_annuity_cost_book(rows, long);
+            assert_eq!(book.calculate_all().unwrap().evaluated, u64::from(rows));
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // Five numeric arguments and logarithmic exponent work stay on
+            // the stack; graph/evaluator buffers retain their warm capacity.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} long={long}");
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn shared_annuity_factors_do_not_allocate_per_call_or_payment_period() {
+    use yggdryl::internals::arithmetic::annuity_factors;
+    for rows in [64, 4096] {
+        let (allocations, total) = counted(|| {
+            let mut total = 0.0;
+            for index in 0..rows {
+                let (growth, payments) = annuity_factors(
+                    std::hint::black_box(0.005),
+                    std::hint::black_box(if index % 2 == 0 { 12.0 } else { 360.0 }),
+                    index % 2 == 0,
+                );
+                total += growth + payments;
+            }
+            std::hint::black_box(total)
+        });
+        assert!(total.is_finite());
+        assert_eq!(allocations, 0, "{rows}");
+    }
+}
+
+#[test]
+fn excel_financial_npv_keeps_discount_state_independent_of_cash_flow_count() {
+    for range in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::financial_npv_cost_book(rows, range);
+            let count = if range { 1 } else { u64::from(rows) };
+            assert_eq!(book.calculate_all().unwrap().evaluated, count);
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (count, 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // NPV reuses the accumulator prefix and uncertainty flag with two
+            // discount scalars; a streamed range retains no cash-flow vector.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} range={range}");
+        }
+    }
+}
+
+#[test]
+fn excel_financial_payment_reuses_storage_for_computed_and_held_domains() {
+    for rows in [64, 4096] {
+        let mut book = excel_package::financial_payment_cost_book(rows);
+        assert_eq!(
+            book.calculate_all().unwrap().evaluated,
+            u64::from(rows / 4 * 3)
+        );
+        let (allocations, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(
+            (report.evaluated, report.uncomputed),
+            (u64::from(rows / 4 * 3), u64::from(rows / 4))
+        );
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!(report.evaluated, 0);
+        assert_eq!((allocations, idle), (0, 0), "{rows}");
+    }
+}
+
+#[test]
+fn excel_variance_exact_reuses_scalar_moments_without_retaining_source_rows() {
+    for range in [false, true] {
+        for rows in [64, 4096] {
+            let mut book = excel_package::variance_exact_cost_book(rows, range);
+            let count = if range { 8 } else { u64::from(rows) };
+            assert_eq!(book.calculate_all().unwrap().evaluated, count);
+            let (allocations, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (count, 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // One optional square sum plus the existing prefix/count suffice;
+            // exact-domain guards do not allocate or make a second range pass.
+            assert_eq!((allocations, idle), (0, 0), "rows={rows} range={range}");
+        }
+    }
+}
+
+/// Rendering was paid once at typed-cell intake. Saving the same text must
+/// have exactly the native-string save allocation cost at both row counts.
+#[test]
+fn excel_typed_text_write_reuses_intake_spelling() {
+    for rows in [64, 4096] {
+        let mut costs = Vec::new();
+        for typed in [false, true] {
+            let book = excel_package::typed_text_write_cost_book(rows, typed);
+            black_box(book.into_bytes().unwrap());
+            let (cost, bytes) = counted(|| book.into_bytes().unwrap());
+            assert!(!bytes.is_empty());
+            costs.push(cost);
+        }
+        assert_eq!(
+            costs[0], costs[1],
+            "{rows} rows: native versus typed write allocations {costs:?}"
+        );
+    }
+}
+
+#[test]
+fn excel_criteria_six_range_cost_is_independent_of_source_rows() {
+    use yggdryl::excel::CellRef;
+    let mut measured = Vec::new();
+    for rows in [64_u32, 4096] {
+        let mut book = excel_package::criteria_six_cost_book(rows);
+        assert_eq!(
+            (
+                book.calculate_all().unwrap().evaluated,
+                book.recalculate().unwrap().uncomputed
+            ),
+            (6, 0)
+        );
+        let (expected, average) = (f64::from(rows / 4), 1.0);
+        for (row, value) in [
+            expected,
+            expected * 2.0,
+            average,
+            expected,
+            expected * 2.0,
+            average,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(CellRef::new(row as u32, 0))
+                    .as_f64(),
+                Some(value)
+            );
+        }
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (6, 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((idle, report.evaluated), (0, 0));
+        measured.push(cost);
+    }
+    // Per-call range/criterion vectors and each wildcard's state are fixed;
+    // the source walker must not allocate for any additional matched row.
+    assert_eq!(
+        measured[0], measured[1],
+        "64/4096 source rows: {measured:?}"
+    );
+    eprintln!("criteria6 warm allocations at64/4096={measured:?}");
+}
+
+#[test]
+fn excel_subtotal_all_variants_keep_constant_space_over_source_rows() {
+    use yggdryl::excel::CellRef;
+    let mut measured = Vec::new();
+    for rows in [64_u32, 4096] {
+        let mut book = excel_package::subtotal_cost_book(rows);
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (23, 0));
+        for row in [8_u32, 19] {
+            let count = rows - if row == 8 { 1 } else { 2 };
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(CellRef::new(row, 0))
+                    .as_f64(),
+                Some(f64::from(count))
+            );
+        }
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (23, 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((idle, report.evaluated), (0, 0));
+        measured.push(cost);
+    }
+    // The selected row set is streamed; nested/hidden exclusion must not
+    // build source-sized scratch. Graph/accumulator storage is already warm.
+    assert_eq!(
+        measured[0], measured[1],
+        "64/4096 source rows: {measured:?}"
+    );
+    eprintln!("subtotal22 warm allocations at64/4096={measured:?}");
+}
+
+// The public Excel function catalog projects the existing static registry.
+#[test]
+fn excel_function_catalog_scans_without_allocation() {
+    for scans in [64, 4_096] {
+        let (allocations, bytes) = counted(|| {
+            let mut bytes = 0;
+            for _ in 0..scans {
+                for function in yggdryl::excel::Formula::functions() {
+                    bytes += black_box(function.name.len());
+                }
+            }
+            bytes
+        });
+        black_box(bytes);
+        assert_eq!(allocations, 0, "{scans} registry scans allocated");
+    }
+}
+
+#[cfg(feature = "internals")]
+#[test]
+fn excel_criteria_tilde_mode_retains_one_matcher_allocation() {
+    use yggdryl::internals::excel_formula_criteria::count_text_criterion_matches;
+    for rows in [64, 4_096] {
+        let texts = vec!["~~tail"; rows];
+        let (allocations, matched) = counted(|| count_text_criterion_matches("~~*", &texts));
+        assert_eq!(matched, rows);
+        assert!(
+            allocations <= 3,
+            "{rows} criterion rows allocated {allocations} times"
+        );
+    }
+}
+
+#[test]
+fn excel_literal_arrays_borrow_constants_without_value_grids() {
+    for rows in [64, 4096] {
+        for long in [false, true] {
+            let mut book = excel_package::literal_array_cost_book(rows, long);
+            let warm = book.calculate_all().unwrap();
+            assert_eq!((warm.evaluated, warm.uncomputed), (u64::from(rows), 0));
+            let (cost, report) = counted(|| book.calculate_all().unwrap());
+            assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+            let (idle, report) = counted(|| book.recalculate().unwrap());
+            assert_eq!(report.evaluated, 0);
+            // Formula arenas and evaluator/graph buffers are already retained;
+            // row-major array visits borrow every literal and never build a grid.
+            assert_eq!((cost, idle), (0, 0), "rows={rows} long={long}");
+        }
+    }
+}
+
+#[test]
+fn excel_reference_algebra_reuses_warm_handles_and_sparse_source_rows() {
+    for (formulas, source_rows) in [(64, 64), (4096, 64), (64, 4096)] {
+        let mut book = excel_package::reference_algebra_cost_book(formulas, source_rows);
+        let report = book.calculate_all().unwrap();
+        assert_eq!(
+            (report.evaluated, report.uncomputed),
+            (u64::from(formulas), 0)
+        );
+        let cases = book.sheet("Cases").unwrap();
+        assert_eq!(
+            cases.scalar(yggdryl::excel::CellRef::new(1, 0)).as_f64(),
+            Some(2.0)
+        );
+        assert_eq!(
+            cases.scalar(yggdryl::excel::CellRef::new(2, 0)).as_f64(),
+            Some(3.0)
+        );
+        let (forced, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(
+            (report.evaluated, report.uncomputed),
+            (u64::from(formulas), 0)
+        );
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (0, 0));
+        assert_eq!(
+            (forced, idle),
+            (0, 0),
+            "{formulas}/{source_rows} reference algebra"
+        );
+    }
+}
+
+#[test]
+fn excel_mapped_arrays_reuse_plans_independently_of_cells_and_output_area() {
+    use yggdryl::excel::CellRef;
+    for rows in [64_u32, 4096] {
+        let mut book = excel_package::mapped_array_cost_book(rows);
+        let first = book.calculate_all().unwrap();
+        assert_eq!((first.evaluated, first.uncomputed), (u64::from(rows), 0));
+        for (row, expected) in [40.0, 24.0, 5.0, 5.0].into_iter().enumerate() {
+            assert_eq!(
+                book.sheet("Cases")
+                    .unwrap()
+                    .scalar(CellRef::new(row as u32, 0))
+                    .as_f64(),
+                Some(expected)
+            );
+        }
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (u64::from(rows), 0));
+        let (idle, report) = counted(|| book.recalculate().unwrap());
+        assert_eq!((idle, report.evaluated), (0, 0));
+        assert_eq!(cost, 0, "mapped formula cells={rows}");
+    }
+    for rows in [1, 64] {
+        let mut book = excel_package::mapped_array_broadcast_book(rows, 64);
+        assert_eq!(book.calculate_all().unwrap().uncomputed, 0);
+        let (cost, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!((report.evaluated, report.uncomputed), (1, 0));
+        assert_eq!(
+            book.sheet("Cases")
+                .unwrap()
+                .scalar(CellRef::new(0, 0))
+                .as_f64(),
+            Some((rows * 128) as f64)
+        );
+        // Neither literal inputs nor the output product need a fresh value grid.
+        assert_eq!(cost, 0, "broadcast output elements={}", rows * 64);
+    }
+}
+
+/// Design12.2's literal corpus complements, rather than replaces, the existing
+/// 64/4096 pins. Force a full warm pass so all source rows reach the same SUM
+/// accumulator; graph/parser/output capacity was established before counting.
+#[test]
+fn excel_sum_contract_one_thousand_and_one_hundred_thousand_rows_allocate_equally() {
+    use yggdryl::excel::CellRef;
+
+    let result = CellRef::new(0, 0);
+    let mut observed = Vec::new();
+    for rows in [1_000_u32, 100_000] {
+        let mut book = excel_package::reference_algebra_cost_book(1, rows);
+        book.set_entry("Cases", result, "=SUM(Values!A:A)").unwrap();
+        let first = book.calculate_all().unwrap();
+        assert_eq!(
+            (first.evaluated, first.uncomputed, first.circular_count),
+            (1, 0, 0)
+        );
+        let expected = f64::from(rows) * f64::from(rows + 1) / 2.0;
+        assert_eq!(
+            book.sheet("Cases").unwrap().scalar(result),
+            Scalar::from(expected)
+        );
+        let revision = book.sheet("Cases").unwrap().revision();
+        let (allocations, report) = counted(|| book.calculate_all().unwrap());
+        assert_eq!(
+            (report.evaluated, report.uncomputed, report.circular_count),
+            (1, 0, 0)
+        );
+        assert_eq!(
+            book.sheet("Cases").unwrap().scalar(result),
+            Scalar::from(expected)
+        );
+        assert_eq!(book.sheet("Cases").unwrap().revision(), revision);
+        observed.push((rows, allocations));
+    }
+    assert_eq!(
+        observed[0].1, observed[1].1,
+        "source-row slope: {observed:?}"
+    );
+    assert_eq!(observed[0].1, 0, "shared warm SUM scratch: {observed:?}");
+}
+
+#[test]
+fn excel_pivot_source_rows_do_not_allocate_per_record() {
+    use yggdryl::excel::CellRef;
+    // Registration::select initializes one process-wide 88-byte MarkupContext
+    // Arc. Warm it on a separate tiny workbook, as the carried-edit pins do;
+    // neither source corpus should pay that one-time package-parser cost.
+    let (mut warm, spec) = excel_package::pivot_cost_book(8);
+    warm.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, spec) = excel_package::pivot_cost_book(rows);
+        // Parse every fixed package owner and initialize shared format caches
+        // before comparing source sizes; repeated strings remain borrowed.
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (allocations, location) =
+            counted(|| book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap());
+        assert_eq!(
+            book.sheet("Report").unwrap().scalar(location.end()),
+            Scalar::from(f64::from(rows))
+        );
+        observed.push((rows, allocations));
+    }
+    assert_eq!(
+        observed[0].1, observed[1].1,
+        "pivot allocation source-row slope: {observed:?}"
+    );
+}
+
+#[test]
+fn excel_pivot_parent_subtotals_do_not_allocate_per_record() {
+    use yggdryl::excel::CellRef;
+    // Initialize the package/XML owner's lazy immutable context outside the
+    // measured closures, as the existing pivot cost test does for schemas.
+    let (mut warm, warm_spec) = excel_package::pivot_parent_cost_book(8);
+    warm.add_pivot(warm_spec, "Report", CellRef::new(2, 0))
+        .unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, spec) = excel_package::pivot_parent_cost_book(rows);
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (allocations, location) =
+            counted(|| book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap());
+        assert_eq!(
+            book.sheet("Report").unwrap().scalar(location.end()),
+            Scalar::from(1.0)
+        );
+        observed.push((rows, allocations));
+    }
+    assert_eq!(
+        observed[0].1, observed[1].1,
+        "pivot parent source-row slope: {observed:?}"
+    );
+}
+
+#[test]
+fn excel_pivot_number_format_has_no_source_row_allocation_slope() {
+    use yggdryl::excel::CellRef;
+    // The same process-wide MarkupContext Arc must be warm when this pin runs
+    // alone, independent of another test's initialization order.
+    let (mut warm, spec) = excel_package::pivot_cost_book(8);
+    warm.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap();
+    let mut observed = Vec::new();
+    for rows in [1_000, 100_000] {
+        let (mut book, mut spec) = excel_package::pivot_cost_book(rows);
+        spec.values[0].number_format = Some("#,##0.0000".into());
+        book.pivots().unwrap();
+        book.style_sheet().unwrap();
+        let (create, range) =
+            counted(|| book.add_pivot(spec, "Report", CellRef::new(2, 0)).unwrap());
+        assert_eq!(
+            book.sheet("Report").unwrap().scalar(range.end()),
+            Scalar::from(f64::from(rows))
+        );
+        book.refresh_pivot("Report", "CostPivot").unwrap();
+        let styles = book.style_sheet().unwrap().len();
+        let (refresh, _) = counted(|| book.refresh_pivot("Report", "CostPivot").unwrap());
+        assert_eq!(book.style_sheet().unwrap().len(), styles);
+        observed.push((rows, create, refresh));
+    }
+    assert_eq!(
+        observed[0].1, observed[1].1,
+        "formatted pivot create slope: {observed:?}"
+    );
+    assert_eq!(
+        observed[0].2, observed[1].2,
+        "formatted pivot refresh slope: {observed:?}"
+    );
 }
 
 #[test]

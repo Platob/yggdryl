@@ -1,0 +1,2320 @@
+{
+  "schema_version": 1,
+  "native_run_passed": true,
+  "cleanup_completed": true,
+  "native_cache_comparisons_equal": 72,
+  "rust_equivalence_checked": false,
+  "report": "rust/target/excel-desktop/p5-find-boundary-native/results.json",
+  "report_sha256": "6195f9330fe09c8bd68cd00b5461e33497648c2c82e7d1b0bf34115693fc8ba3",
+  "manifest_sha256": "5b68fbbb145aa1adb61176fe14f1ac36510378019356eeb045c1cd593afbcba5",
+  "excel": {
+    "version": "16.0",
+    "build": "20430.0",
+    "operating_system": "Windows (64-bit) NT 10.00",
+    "country_setting": 33.0,
+    "ui_language": 1036
+  },
+  "cases": [
+    {
+      "id": "find-boundary-0-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "FIND(\"\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"\",1)",
+        "formula2": "=FIND(\"\",\"\",1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"\",1)",
+        "formula2": "=FIND(\"\",\"\",1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "FIND(\"\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-1-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "FIND(\"\",\"\",2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"\",2)",
+        "formula2": "=FIND(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"\",2)",
+        "formula2": "=FIND(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\",\"\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-2-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "FIND(\"\",\"abc\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",3)",
+        "formula2": "=FIND(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",3)",
+        "formula2": "=FIND(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "FIND(\"\",\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-3-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "FIND(\"\",\"abc\",4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",4)",
+        "formula2": "=FIND(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",4)",
+        "formula2": "=FIND(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "FIND(\"\",\"abc\",4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-4-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "FIND(\"\",\"abc\",5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",5)",
+        "formula2": "=FIND(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",5)",
+        "formula2": "=FIND(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\",\"abc\",5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-5-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "FIND(\"a\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"a\",\"\",1)",
+        "formula2": "=FIND(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"a\",\"\",1)",
+        "formula2": "=FIND(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"a\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-6-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-7-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-8-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "FIND(\"\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-9-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SEARCH(\"\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"\",1)",
+        "formula2": "=SEARCH(\"\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"\",1)",
+        "formula2": "=SEARCH(\"\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-10-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SEARCH(\"\",\"\",2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"\",2)",
+        "formula2": "=SEARCH(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"\",2)",
+        "formula2": "=SEARCH(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-11-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SEARCH(\"\",\"abc\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",3)",
+        "formula2": "=SEARCH(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",3)",
+        "formula2": "=SEARCH(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "SEARCH(\"\",\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-12-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"\",\"abc\",4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",4)",
+        "formula2": "=SEARCH(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",4)",
+        "formula2": "=SEARCH(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"abc\",4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-13-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SEARCH(\"\",\"abc\",5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",5)",
+        "formula2": "=SEARCH(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",5)",
+        "formula2": "=SEARCH(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"abc\",5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-14-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SEARCH(\"a\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"a\",\"\",1)",
+        "formula2": "=SEARCH(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"a\",\"\",1)",
+        "formula2": "=SEARCH(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"a\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-15-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-16-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-17-1900",
+      "file": "functions-input-1900.xlsx",
+      "date_system": "1900",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-0-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B1",
+      "wire_formula": "FIND(\"\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"\",1)",
+        "formula2": "=FIND(\"\",\"\",1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"\",1)",
+        "formula2": "=FIND(\"\",\"\",1)",
+        "value2": {
+          "variant": "float",
+          "value": 1.0,
+          "hex": "0x1.0000000000000p+0",
+          "ieee754_hex": "3ff0000000000000",
+          "classification": "finite"
+        },
+        "display": "1",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "1",
+        "formula_text": "FIND(\"\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B1"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-1-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B2",
+      "wire_formula": "FIND(\"\",\"\",2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"\",2)",
+        "formula2": "=FIND(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"\",2)",
+        "formula2": "=FIND(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\",\"\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B2",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-2-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B3",
+      "wire_formula": "FIND(\"\",\"abc\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",3)",
+        "formula2": "=FIND(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",3)",
+        "formula2": "=FIND(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "FIND(\"\",\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B3"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-3-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B4",
+      "wire_formula": "FIND(\"\",\"abc\",4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",4)",
+        "formula2": "=FIND(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",4)",
+        "formula2": "=FIND(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "FIND(\"\",\"abc\",4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B4"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-4-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B5",
+      "wire_formula": "FIND(\"\",\"abc\",5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"abc\",5)",
+        "formula2": "=FIND(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"abc\",5)",
+        "formula2": "=FIND(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\",\"abc\",5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B5",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-5-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B6",
+      "wire_formula": "FIND(\"a\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"a\",\"\",1)",
+        "formula2": "=FIND(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"a\",\"\",1)",
+        "formula2": "=FIND(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"a\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B6",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-6-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B7",
+      "wire_formula": "FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "FIND(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B7"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-7-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B8",
+      "wire_formula": "FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "FIND(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B8",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-8-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B9",
+      "wire_formula": "FIND(\"\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "FIND(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B9"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-9-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B10",
+      "wire_formula": "SEARCH(\"\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"\",1)",
+        "formula2": "=SEARCH(\"\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"\",1)",
+        "formula2": "=SEARCH(\"\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B10",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-10-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B11",
+      "wire_formula": "SEARCH(\"\",\"\",2)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"\",2)",
+        "formula2": "=SEARCH(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"\",2)",
+        "formula2": "=SEARCH(\"\",\"\",2)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"\",2)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B11",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-11-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B12",
+      "wire_formula": "SEARCH(\"\",\"abc\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",3)",
+        "formula2": "=SEARCH(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",3)",
+        "formula2": "=SEARCH(\"\",\"abc\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "SEARCH(\"\",\"abc\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B12"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-12-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B13",
+      "wire_formula": "SEARCH(\"\",\"abc\",4)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",4)",
+        "formula2": "=SEARCH(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",4)",
+        "formula2": "=SEARCH(\"\",\"abc\",4)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"abc\",4)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B13",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-13-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B14",
+      "wire_formula": "SEARCH(\"\",\"abc\",5)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"abc\",5)",
+        "formula2": "=SEARCH(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"abc\",5)",
+        "formula2": "=SEARCH(\"\",\"abc\",5)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\",\"abc\",5)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B14",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-14-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B15",
+      "wire_formula": "SEARCH(\"a\",\"\",1)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"a\",\"\",1)",
+        "formula2": "=SEARCH(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"a\",\"\",1)",
+        "formula2": "=SEARCH(\"a\",\"\",1)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"a\",\"\",1)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B15",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-15-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B16",
+      "wire_formula": "SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 4.0,
+          "hex": "0x1.0000000000000p+2",
+          "ieee754_hex": "4010000000000000",
+          "classification": "finite"
+        },
+        "display": "4",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "4",
+        "formula_text": "SEARCH(\"Z\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B16"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-16-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B17",
+      "wire_formula": "SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "int",
+          "value": -2146826273
+        },
+        "display": "########",
+        "is_error": true,
+        "error_type": {
+          "number": 3,
+          "literal": "#VALUE!",
+          "source": "worksheet_evaluate",
+          "lcid": 1033
+        }
+      },
+      "saved_cache": {
+        "type": "e",
+        "value_text": "#VALUE!",
+        "formula_text": "SEARCH(\"\ud83d\ude00\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B17",
+          "t": "e"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    },
+    {
+      "id": "find-boundary-17-1904",
+      "file": "functions-input-1904.xlsx",
+      "date_system": "1904",
+      "sheet": "Cases",
+      "cell": "B18",
+      "wire_formula": "SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+      "mode": "cached_equal",
+      "gates": [],
+      "shape": {
+        "kind": "empty_and_utf16_search_boundary"
+      },
+      "actual": {
+        "formula": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "status": "observed",
+      "after_save": {
+        "formula": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula2": "=SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "value2": {
+          "variant": "float",
+          "value": 3.0,
+          "hex": "0x1.8000000000000p+1",
+          "ieee754_hex": "4008000000000000",
+          "classification": "finite"
+        },
+        "display": "3",
+        "is_error": false
+      },
+      "saved_cache": {
+        "type": "n",
+        "value_text": "3",
+        "formula_text": "SEARCH(\"\",\"A\ud83d\ude00Z\",3)",
+        "formula_attributes": {},
+        "attributes": {
+          "r": "B18"
+        }
+      },
+      "native_cache_comparisons": {
+        "actual": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        },
+        "after_save": {
+          "status": "equal",
+          "reason": "native value and saved cache type/value agree"
+        }
+      },
+      "gate_status": {}
+    }
+  ],
+  "utf16_unit_object_paths": []
+}

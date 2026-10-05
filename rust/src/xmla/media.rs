@@ -357,22 +357,22 @@ impl<H: IOBase> IOMedia for Xmla<H> {
 
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
         let options = self.require_options(options)?;
-        if let Some(field) = options.field() {
-            return Ok(field.clone());
-        }
-        if self.opened
+        let source = if let Some(field) = options.field() {
+            field
+        } else if self.handle.is_container() {
+            return crate::iomedia::container_field(&self.handle, &options.clone().into());
+        } else if self.opened
             && let Some(cached) = self.cached_schema.get()
         {
-            return Ok(cached.clone().with_name(options.name()));
-        }
-        if self.handle.is_container() {
-            return crate::iomedia::container_field(&self.handle, &options.clone().into());
-        }
-        let field = read_field(&self.handle, options)?;
-        if self.opened {
-            let _ = self.cached_schema.set(field.clone());
-        }
-        Ok(field)
+            cached.clone().with_name(options.name())
+        } else {
+            let source = read_field(&self.handle, options)?;
+            if self.opened {
+                let _ = self.cached_schema.set(source.clone());
+            }
+            source
+        };
+        options.result_field(source)
     }
 
     fn overwrite_arrow_reader(

@@ -3039,3 +3039,101 @@ mod leaf_variants {
         }
     }
 }
+
+#[test]
+fn substring_unicode_scalar_window_preserves_sql_positions() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([Scalar::from("a😀e\u{301}z")]);
+    for (text, expected) in [
+        ("substring(s, 2, 2)", "😀e"),
+        ("substring(s, 4, 1)", "\u{301}"),
+        ("substring(s, -2, 2)", "\u{301}z"),
+        ("substring(s, 0, 3)", "a😀"),
+        ("substring(s, 9, 4)", ""),
+        ("substring(s, 2)", "😀e\u{301}z"),
+    ] {
+        let bound = text.parse::<Term>().unwrap().bind(&schema).unwrap();
+        assert_eq!(bound.eval(&row).unwrap(), Scalar::from(expected), "{text}");
+    }
+}
+
+#[test]
+fn casing_preserves_unicode_context_and_unchanged_shared_storage() {
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Scalar, StructType};
+    let schema = StructType::from_fields([DataType::utf8().required_field("s")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+    for (input, lower, upper) in [
+        ("AbC", "abc", "ABC"),
+        ("\u{039f}\u{03a3}", "\u{03bf}\u{03c2}", "\u{039f}\u{03a3}"),
+        ("\u{0130}\u{00df}", "i\u{0307}\u{00df}", "\u{0130}SS"),
+        (
+            "a\u{1f600}\u{4e2d}Z",
+            "a\u{1f600}\u{4e2d}z",
+            "A\u{1f600}\u{4e2d}Z",
+        ),
+        ("\u{01c5}", "\u{01c6}", "\u{01c4}"),
+    ] {
+        let row = Scalar::from_sequence([Scalar::from(input)]);
+        for (expression, expected) in [("lower(s)", lower), ("upper(s)", upper)] {
+            let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+            assert_eq!(
+                bound.eval(&row).unwrap(),
+                Scalar::from(expected),
+                "{expression}: {input}"
+            );
+        }
+    }
+    for (expression, input) in [
+        ("lower(s)", "long lowercase unchanged text ".repeat(32)),
+        ("upper(s)", "LONG UPPERCASE UNCHANGED TEXT ".repeat(32)),
+        ("lower(s)", "\u{4e2d}\u{1f600}".repeat(32)),
+    ] {
+        let value = Scalar::from(input.as_str());
+        let pointer = value.as_str().unwrap().as_ptr();
+        let row = Scalar::from_sequence([value]);
+        let bound = expression.parse::<Term>().unwrap().bind(&schema).unwrap();
+        let result = bound.eval(&row).unwrap();
+        assert_eq!(result.as_str(), Some(input.as_str()));
+        assert_eq!(
+            result.as_str().unwrap().as_ptr(),
+            pointer,
+            "unchanged shared text: {expression}"
+        );
+    }
+}
+
+#[test]
+fn ascii_titlecase_keeps_unicode_letter_boundaries_and_literal_separators() {
+    use yggdryl::excel::{CellRef, Workbook};
+    let mut book = Workbook::new();
+    book.add_sheet("Data").unwrap();
+    for (row, (source, expected)) in [
+        ("o'NEILL", "O'Neill"),
+        ("ABC123def", "Abc123Def"),
+        ("A\u{4e2d}B", "A\u{4e2d}b"),
+        ("e\u{0301}CLAIR", "E\u{0301}Clair"),
+        ("A\u{1f600}Z", "A\u{1f600}Z"),
+        ("Version5.0.2", "Version5.0.2"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let at = CellRef::new(row as u32, 0);
+        book.set_entry("Data", at, &format!("=PROPER(\"{source}\")"))
+            .unwrap();
+        book.calculate_all().unwrap();
+        assert_eq!(
+            book.sheet("Data").unwrap().scalar(at).as_str(),
+            Some(expected)
+        );
+    }
+}
