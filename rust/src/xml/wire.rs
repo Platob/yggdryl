@@ -107,7 +107,7 @@ fn write_root<W: Write>(
     layout: Layout,
     max_depth: usize,
 ) -> Result<()> {
-    if is_sequence(value) {
+    if value.as_serie().is_some() {
         return Err(codec_error(format_smolstr!(
             "a sequence under the document element `{name}` would repeat the root"
         )));
@@ -790,40 +790,6 @@ pub(crate) const fn is_name_char(character: char) -> bool {
         )
 }
 
-const fn is_sequence_dtype(dtype: &DataType) -> bool {
-    matches!(
-        dtype,
-        DataType::Serie(_)
-            | DataType::SerieView(_)
-            | DataType::FixedSizeSerie(_, _)
-            | DataType::LargeSerie(_)
-            | DataType::LargeSerieView(_)
-    )
-}
-
-/// The item field of a sequence datatype, or `None` for any other.
-fn sequence_item(dtype: &DataType) -> Option<&Field> {
-    match dtype {
-        DataType::Serie(item)
-        | DataType::SerieView(item)
-        | DataType::FixedSizeSerie(item, _)
-        | DataType::LargeSerie(item)
-        | DataType::LargeSerieView(item) => Some(item),
-        _ => None,
-    }
-}
-
-const fn is_sequence(value: &Scalar) -> bool {
-    matches!(
-        value,
-        Scalar::Serie(_)
-            | Scalar::SerieView(_)
-            | Scalar::FixedSizeSerie(_)
-            | Scalar::LargeSerie(_)
-            | Scalar::LargeSerieView(_)
-    )
-}
-
 /// Whether a value - or the value a variant holds - is a sequence of nothing.
 fn is_empty_sequence(value: &Scalar) -> Result<bool> {
     match value {
@@ -1005,7 +971,7 @@ fn fill_absent_sequences(
     present: impl Fn(&str) -> bool,
 ) {
     for child in fields.iter() {
-        if is_sequence_dtype(child.dtype()) && !present(child.name()) {
+        if child.dtype().serie_item().is_some() && !present(child.name()) {
             entries.push((SmolStr::new(child.name()), Scalar::from_sequence([])));
         }
     }
@@ -1117,8 +1083,8 @@ pub(crate) fn natural(value: Scalar, field: &Field) -> Scalar {
                     .iter()
                     .map(|value| {
                         let value = natural(value.into_owned(), item);
-                        match sequence_item(item.dtype()) {
-                            Some(inner) if is_sequence(&value) => {
+                        match item.dtype().serie_item() {
+                            Some(inner) if value.as_serie().is_some() => {
                                 record(vec![(SmolStr::new(inner.name()), value)])
                             }
                             _ => value,

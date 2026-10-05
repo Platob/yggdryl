@@ -31,6 +31,10 @@ const DEFAULT_PART_SIZE: u64 = 16 * 1024 * 1024;
 /// granularity does.
 const DEFAULT_MULTIPART_THRESHOLD: u64 = 64 * 1024 * 1024;
 /// Entries per listing page when nothing else is said.
+///
+/// A thousand on every store: it is S3's own maximum, Google's maximum, and
+/// the size Azure's SDKs ask for, so one number is the default everywhere
+/// and the cost model reads the same.
 const DEFAULT_LIST_PAGE_SIZE: u16 = 1000;
 /// Attempts per request when nothing else is said: the first plus two retries.
 const DEFAULT_MAX_ATTEMPTS: u32 = 3;

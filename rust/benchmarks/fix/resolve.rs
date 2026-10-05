@@ -4,7 +4,6 @@
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
-use yggdryl::graph::{Element, Event};
 use yggdryl::{
     DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, FixRegistry,
     MimeType,
@@ -56,18 +55,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             for value in black_box(identifiers).identifier_values(black_box(&identifier_message)) {
                 black_box(value);
             }
-        });
-    });
-    // The settled identity, read through the graph traits: four copies.
-    group.bench_function("settled_identity_reads", |bencher| {
-        bencher.iter(|| {
-            let held = black_box(&identifier_message);
-            black_box((
-                held.get_currunix(),
-                held.get_creaunix(),
-                held.get_currhashcode(),
-                held.get_crosshashcode(),
-            ))
         });
     });
 

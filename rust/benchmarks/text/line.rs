@@ -252,7 +252,6 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
     group.bench_function("linesep/pinned_crlf", |bencher| {
         bencher.iter(|| drain_lines(black_box(&crlf_source), black_box(&pinned_crlf)));
     });
-    group.throughput(Throughput::Bytes(bytes.len() as u64));
 
     group.throughput(Throughput::Bytes(pairs.len() as u64));
     // What taking a row header off a pair-shaped line actually costs,

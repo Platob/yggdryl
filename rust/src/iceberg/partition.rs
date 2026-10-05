@@ -519,20 +519,11 @@ const MAX_MINUTES: u32 = QUARTER_BUCKET - 1 - BRIDGE_BUCKET_BASE;
 
 /// Read `[n]` or `(n)` after a transform keyword.
 fn bracketed(rest: &str, keyword: &str) -> Result<u32> {
-    let trimmed = rest.trim();
-    let inner = trimmed
-        .strip_prefix('[')
-        .and_then(|value| value.strip_suffix(']'))
-        .or_else(|| {
-            trimmed
-                .strip_prefix('(')
-                .and_then(|value| value.strip_suffix(')'))
-        })
-        .ok_or_else(|| Error::Parse {
-            target: "iceberg transform",
-            position: 0,
-            reason: format_smolstr!("expected {keyword}[n], got {keyword}{rest}"),
-        })?;
+    let inner = super::types::bracketed_text(rest).ok_or_else(|| Error::Parse {
+        target: "iceberg transform",
+        position: 0,
+        reason: format_smolstr!("expected {keyword}[n], got {keyword}{rest}"),
+    })?;
     inner.trim().parse::<u32>().map_err(|_| Error::Parse {
         target: "iceberg transform",
         position: 0,
@@ -868,15 +859,6 @@ impl PartitionSpec {
             .map(|field| field.field_id)
             .max()
             .unwrap_or(FIRST_PARTITION_ID - 1)
-    }
-
-    /// Return the source column names, in partition order.
-    pub fn source_names(&self, schema: &Field) -> Result<Vec<SmolStr>> {
-        let mut names = Vec::with_capacity(self.fields.len());
-        for field in &self.fields {
-            names.push(SmolStr::new(source_column(schema, field.source_id)?.name()));
-        }
-        Ok(names)
     }
 
     /// Reject a spec containing a transform this writer cannot evaluate.

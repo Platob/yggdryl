@@ -85,74 +85,13 @@ impl JsDataType {
         dtype_from_input(value).map(Self::from_core)
     }
 
-    /// Internal direct constructor for parameter-free typed Field factories.
+    /// Internal direct constructor for parameter-free typed Field factories:
+    /// a datatype's canonical name, read by the one datatype grammar.
     #[napi(factory, js_name = "_simple", skip_typescript)]
     pub fn simple(kind: String) -> Result<Self> {
-        let inner = match kind.as_str() {
-            "null" => CoreDataType::Null,
-            "boolean" => CoreDataType::Boolean,
-            "int8" => CoreDataType::Int8,
-            "int16" => CoreDataType::Int16,
-            "int32" => CoreDataType::Int32,
-            "int64" => CoreDataType::Int64,
-            "uint8" => CoreDataType::UInt8,
-            "uint16" => CoreDataType::UInt16,
-            "uint32" => CoreDataType::UInt32,
-            "uint64" => CoreDataType::UInt64,
-            "float16" => CoreDataType::Float16,
-            "float32" => CoreDataType::Float32,
-            "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::date32(),
-            "date64" => CoreDataType::date64(),
-            "binary" => CoreDataType::binary(),
-            "large_binary" => CoreDataType::large_binary(),
-            "binary_view" => CoreDataType::binary_view(),
-            "large_binary_view" => CoreDataType::large_binary_view(),
-            "utf8" => CoreDataType::utf8(),
-            "large_utf8" => CoreDataType::large_utf8(),
-            "utf8_view" => CoreDataType::utf8_view(),
-            "large_utf8_view" => CoreDataType::large_utf8_view(),
-            "ascii" => CoreDataType::ascii(),
-            "large_ascii" => CoreDataType::large_ascii(),
-            "ascii_view" => CoreDataType::ascii_view(),
-            "large_ascii_view" => CoreDataType::large_ascii_view(),
-            "cp1252" => CoreDataType::cp1252(),
-            "large_cp1252" => CoreDataType::large_cp1252(),
-            "cp1252_view" => CoreDataType::cp1252_view(),
-            "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "country" => CoreDataType::Country,
-            "ccy" => CoreDataType::Ccy,
-            "mic" => CoreDataType::Mic,
-            "cfi" => CoreDataType::Cfi,
-            "isin" => CoreDataType::Isin,
-            "cusip" => CoreDataType::Cusip,
-            "sedol" => CoreDataType::Sedol,
-            "bbg" => CoreDataType::Bbg,
-            "figi" => CoreDataType::Figi,
-            "forex" => CoreDataType::Forex,
-            "side" => CoreDataType::Side,
-            "state" => CoreDataType::State,
-            "marketdatakind" => CoreDataType::MarketDataKind,
-            "marketdatatype" => CoreDataType::MarketDataType,
-            "timeinforce" => CoreDataType::TimeInForce,
-            "unit" => CoreDataType::Unit,
-            "ric" => CoreDataType::Ric,
-            "uuid" => CoreDataType::uuid(),
-            "decimal" => CoreDataType::Decimal,
-            "bigdecimal" => CoreDataType::BigDecimal,
-            "version" => CoreDataType::Version,
-            "url" => CoreDataType::url(),
-            "urn" => CoreDataType::urn(),
-            "timezone" => CoreDataType::Timezone,
-            "mimetype" => CoreDataType::MimeType,
-            "mediatype" => CoreDataType::MediaType,
-            _ => {
-                return Err(Error::from_reason(format!(
-                    "{kind:?} is not a parameter-free datatype kind"
-                )));
-            }
-        };
-        Ok(Self::from_core(inner))
+        CoreDataType::from_str(&kind)
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Internal direct temporal constructor for typed Field factories.
@@ -397,11 +336,7 @@ impl JsDataType {
                 "union typeIds and fields must have the same length",
             ));
         }
-        let mode = match mode.as_str() {
-            "sparse" => CoreUnionMode::Sparse,
-            "dense" => CoreUnionMode::Dense,
-            _ => return Err(Error::from_reason("union mode must be 'sparse' or 'dense'")),
-        };
+        let mode = mode.parse::<CoreUnionMode>().map_err(napi_error)?;
         let mut members = Vec::with_capacity(fields.len());
         for (index, (type_id, field)) in type_ids.into_iter().zip(fields).enumerate() {
             members.push((

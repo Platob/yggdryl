@@ -18,6 +18,8 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use smol_str::SmolStr;
 
+use crate::bytes::hex_text;
+
 /// What `x-amz-content-sha256` carries when the body is not hashed.
 ///
 /// The S3 family accepts it in place of a real digest; the transport is then
@@ -60,7 +62,7 @@ pub(crate) fn signed_access_key(authorization: &str) -> Option<&str> {
 
 /// Lowercase hex SHA-256 of `bytes`.
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
+    hex_text(&Sha256::digest(bytes))
 }
 
 /// Percent-encode one raw object key for the request path: every segment is encoded with the
@@ -216,7 +218,7 @@ impl Signer {
             payload_hash,
         );
         let scope = format!("{date}/{}/{}/aws4_request", self.region, self.service);
-        let signature = hex(&hmac_sha256(
+        let signature = hex_text(&hmac_sha256(
             &self.signing_key(&date),
             string_to_sign(&datetime, &scope, &request).as_bytes(),
         ));
@@ -383,15 +385,6 @@ fn encode_into(text: &str, slash_kept: bool, out: &mut String) {
             let _ = write!(out, "%{byte:02X}");
         }
     }
-}
-
-/// Lowercase hex of `bytes`.
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }
 
 /// HMAC-SHA256 tag of `data` under `key`.

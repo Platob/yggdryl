@@ -110,7 +110,7 @@ if TYPE_CHECKING:
 else:
     MarketDataTypeField = Field
 
-_MARKETDATAKIND = simple_dtype("marketdatatype")
+_MARKETDATATYPE = simple_dtype("marketdatatype")
 
 
 def marketdatatype(
@@ -122,7 +122,7 @@ def marketdatatype(
     """What kind of market data one thing is: a ``MarketDataType``, stored as the
     code of its member."""
 
-    return new_field(MarketDataTypeField, name, _MARKETDATAKIND, nullable, metadata)
+    return new_field(MarketDataTypeField, name, _MARKETDATATYPE, nullable, metadata)
 
 
 __all__ = [

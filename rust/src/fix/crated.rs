@@ -1379,13 +1379,7 @@ impl super::FixRegistry {
             {
                 normalized.to_string()
             } else {
-                let mut name = String::from("message");
-                for byte in value.bytes() {
-                    use std::fmt::Write;
-                    write!(name, "{byte:02x}")
-                        .map_err(|error| crate::Error::absent("message name", error))?;
-                }
-                name
+                super::msgtype::derived_name(&value)
             };
             let mut message = crate::DataType::from(crate::StructType::from_fields([])?)
                 .required_field(canonical);

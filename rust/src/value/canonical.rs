@@ -742,8 +742,13 @@ fn text_reading(value: &Scalar) -> Option<&str> {
     value.as_string().map(Str::as_str)
 }
 
-/// Read one text spelling into the family a datatype declares.
-fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
+/// Read one text spelling into the family a datatype declares: the value
+/// door's reading, which a row-header capture reads through too.
+///
+/// `None` where the datatype is no family this reads, or the text spells no
+/// flag, whole number or float; `Some(Err)` keeps a decimal or temporal
+/// reader's own refusal.
+pub(crate) fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
     use DataType as D;
     Some(match dtype {
         D::Boolean => Ok(boolean_from_text(text)?),

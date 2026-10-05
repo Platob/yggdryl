@@ -144,7 +144,7 @@ impl BoundLocation {
     /// Bind an exact path returned by this filesystem.
     pub fn listed(&self, path: impl Into<String>) -> Result<Self> {
         let path = path.into();
-        let uri = relative_to(self.path(), &path)
+        let uri = crate::iobase::hierarchy::raw_relative(self.path(), &path)
             .and_then(|relative| self.uri.as_deref().map(|uri| uri_join(uri, relative)));
         Self::new(Arc::clone(&self.filesystem), path, uri)
     }
@@ -194,21 +194,6 @@ impl fmt::Display for BoundLocation {
             Some(uri) => formatter.write_str(uri),
             None => formatter.write_str(&mask_uri(self.path())),
         }
-    }
-}
-
-fn relative_to<'path>(base: &str, path: &'path str) -> Option<&'path str> {
-    if base == path {
-        return Some("");
-    }
-    if base.is_empty() {
-        return Some(path);
-    }
-    let suffix = path.strip_prefix(base)?;
-    if base.ends_with('/') {
-        Some(suffix.strip_prefix('/').unwrap_or(suffix))
-    } else {
-        suffix.strip_prefix('/')
     }
 }
 
@@ -340,7 +325,9 @@ fn credential_value_boundary(byte: u8) -> bool {
 }
 
 fn sensitive_credential_key(key: &str) -> bool {
-    let normalized = decode_query_key(key).to_ascii_lowercase().replace('-', "_");
+    let normalized = String::from_utf8_lossy(&crate::uri::percent_decode_lenient(key))
+        .to_ascii_lowercase()
+        .replace('-', "_");
     matches!(
         normalized.as_str(),
         "access_key"
@@ -363,36 +350,6 @@ fn sensitive_credential_key(key: &str) -> bool {
         || normalized.ends_with("_token")
         || normalized.ends_with("_credential")
         || normalized.ends_with("_signature")
-}
-
-fn decode_query_key(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut decoded = String::with_capacity(value.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%'
-            && let (Some(high), Some(low)) = (
-                bytes.get(index + 1).and_then(|byte| hex(*byte)),
-                bytes.get(index + 2).and_then(|byte| hex(*byte)),
-            )
-        {
-            decoded.push((high << 4 | low) as char);
-            index += 3;
-            continue;
-        }
-        decoded.push(bytes[index] as char);
-        index += 1;
-    }
-    decoded
-}
-
-fn hex(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 /// The credential-free URL a bound location reports: the filesystem's name as

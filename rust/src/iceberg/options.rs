@@ -81,11 +81,6 @@ impl WriteStaging {
         Ok(Self::Folder(url))
     }
 
-    /// Return whether files are written straight to the table.
-    pub const fn is_off(&self) -> bool {
-        matches!(self, Self::Off)
-    }
-
     /// Return the local folder files are staged under, when they are.
     pub const fn folder(&self) -> Option<&Url> {
         match self {

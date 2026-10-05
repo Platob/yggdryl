@@ -63,8 +63,6 @@ pub mod code {
     pub const EXECUTION_FAILED: u32 = 0x000A;
     /// Listing or reading a catalog failed.
     pub const CATALOG_FAILED: u32 = 0x000B;
-    /// A session header names a session this provider does not hold.
-    pub const BAD_SESSION: u32 = 0x000C;
 }
 
 /// What the provider says about itself.

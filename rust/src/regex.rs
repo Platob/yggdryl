@@ -87,7 +87,7 @@ impl DataType {
                     let dtype = if autotype {
                         inferred_capture(capture, &unicode_digits)?
                     } else {
-                        text_dtype()?
+                        DataType::utf8()
                     };
                     Ok(Field::new(name, dtype, true))
                 })
@@ -129,7 +129,7 @@ fn regex_error(error: &(impl std::fmt::Display + ?Sized)) -> Error {
 }
 
 fn inferred_capture(capture: &Hir, unicode_digits: &Class) -> Result<DataType> {
-    if let Some(dtype) = boolean_dtype(capture)? {
+    if let Some(dtype) = boolean_dtype(capture) {
         return Ok(dtype);
     }
 
@@ -143,17 +143,15 @@ fn inferred_capture(capture: &Hir, unicode_digits: &Class) -> Result<DataType> {
     }
     if allowed(capture, unicode_digits, numeric_byte)
         && contains_digit(capture, unicode_digits)
-        && let Some(dtype) = numeric_dtype(&expression)?
+        && let Some(dtype) = numeric_dtype(&expression)
     {
         return Ok(dtype);
     }
-    text_dtype()
+    Ok(DataType::utf8())
 }
 
-fn boolean_dtype(capture: &Hir) -> Result<Option<DataType>> {
-    let Some(words) = finite_literals(capture, 0) else {
-        return Ok(None);
-    };
+fn boolean_dtype(capture: &Hir) -> Option<DataType> {
+    let words = finite_literals(capture, 0)?;
     // A literal is a flag when it prints one, the case and the blanks not part
     // of the spelling - the reading a CSV column is typed by - and a literal
     // that is not UTF-8 prints nothing.
@@ -162,9 +160,9 @@ fn boolean_dtype(capture: &Hir) -> Result<Option<DataType>> {
             .iter()
             .any(|word| !std::str::from_utf8(word).is_ok_and(crate::boolean::prints_boolean))
     {
-        return Ok(None);
+        return None;
     }
-    Scalar::from(true).dtype().map(Some)
+    Some(DataType::Boolean)
 }
 
 fn finite_literals(hir: &Hir, depth: usize) -> Option<Vec<Vec<u8>>> {
@@ -299,15 +297,15 @@ const fn temporal_byte(byte: u8) -> bool {
         )
 }
 
-fn numeric_dtype(expression: &Regex) -> Result<Option<DataType>> {
+/// The number a capture's language holds: `float64` where it matches a
+/// float's spelling, `int64` where it matches a whole number's, `None` else.
+fn numeric_dtype(expression: &Regex) -> Option<DataType> {
     const FLOATS: &[&str] = &["0.123456789", "-1.5", "+1.5", "1e3", "1.0e-3", "1234.56"];
-    if let Some(value) = FLOATS
+    if FLOATS
         .iter()
-        .copied()
-        .find(|value| expression.is_match(value.as_bytes()))
+        .any(|value| expression.is_match(value.as_bytes()))
     {
-        let value = value.parse::<f64>().map_err(|error| regex_error(&error))?;
-        return Scalar::from(value).dtype().map(Some);
+        return Some(DataType::Float64);
     }
 
     const INTEGERS: &[&str] = &[
@@ -322,15 +320,10 @@ fn numeric_dtype(expression: &Regex) -> Result<Option<DataType>> {
         "1234567890",
         "123456789012345678",
     ];
-    let Some(value) = INTEGERS
+    INTEGERS
         .iter()
-        .copied()
-        .find(|value| expression.is_match(value.as_bytes()))
-    else {
-        return Ok(None);
-    };
-    let value = value.parse::<i64>().map_err(|error| regex_error(&error))?;
-    Scalar::from(value).dtype().map(Some)
+        .any(|value| expression.is_match(value.as_bytes()))
+        .then_some(DataType::Int64)
 }
 
 /// The temporal datatype a capture's language names, or `None`.
@@ -473,8 +466,4 @@ fn resolved_dtype(value: &str, dtype: impl Fn(TimeUnit) -> Option<DataType>) -> 
 /// crate's own reader refuses the spelling.
 fn temporal_scalar_dtype(value: &str, dtype: DataType) -> Option<DataType> {
     Scalar::from_temporal_text(&dtype, value).ok()?.dtype().ok()
-}
-
-fn text_dtype() -> Result<DataType> {
-    Scalar::from("").dtype()
 }

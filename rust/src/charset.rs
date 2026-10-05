@@ -597,15 +597,6 @@ impl Charset {
         self.decode_sink::<false>(input, target)
     }
 
-    /// Decode a complete buffer onto the end of a UTF-8 byte target.
-    ///
-    /// # Errors
-    ///
-    /// Returns the same refusal as [`Charset::decode`].
-    pub fn decode_bytes_into(self, input: &[u8], target: &mut Vec<u8>) -> Result<()> {
-        self.decode_sink::<false>(input, target)
-    }
-
     /// The one decode, written against whichever target a caller brought.
     fn decode_sink<const LOSSY: bool>(
         self,

@@ -5,6 +5,7 @@ use std::hash::Hasher;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::element::{earliest, latest};
 use super::facts::OperationEventFacts;
 use super::operation::ExecutionEvent;
 use super::{Element, Event, Market, Operation};
@@ -376,20 +377,6 @@ fn reference_key<E: Event + ?Sized>(event: &E) -> (Option<i64>, i64, Uuid) {
         event.get_currunix(),
         event.get_curruuid(),
     )
-}
-
-fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.min(right)),
-        (left, right) => left.or(right),
-    }
-}
-
-fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.max(right)),
-        (left, right) => left.or(right),
-    }
 }
 
 fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {

@@ -21,6 +21,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::Headers;
 use crate::boolean::bool_of;
 use crate::integer::{integer_from_scalar_as, integer_from_text_as};
+use crate::mime_type::is_http_token_byte;
 use crate::{Error, FieldPath, FieldSegment, Result, Scalar, Url};
 
 /// What a parse failure names itself as.
@@ -347,7 +348,7 @@ impl FromStr for Pagination {
             }
             ("header", Some(name)) => {
                 let name = name.trim();
-                if name.is_empty() || name.bytes().any(|byte| !is_token_byte(byte)) {
+                if name.is_empty() || name.bytes().any(|byte| !is_http_token_byte(byte)) {
                     return Err(parse_error(argument_at, "a header name after `header:`"));
                 }
                 Ok(Self::Header(SmolStr::new(name)))
@@ -711,28 +712,6 @@ fn parameter_name(text: &str, at: usize) -> Result<SmolStr> {
         return Err(parse_error(at, "a query parameter name"));
     }
     Ok(SmolStr::new(text))
-}
-
-/// RFC 9110 token bytes, which a header name is made of.
-const fn is_token_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'!' | b'#'
-                | b'$'
-                | b'%'
-                | b'&'
-                | b'\''
-                | b'*'
-                | b'+'
-                | b'-'
-                | b'.'
-                | b'^'
-                | b'_'
-                | b'`'
-                | b'|'
-                | b'~'
-        )
 }
 
 fn parse_error(position: usize, expected: &'static str) -> Error {

@@ -1085,18 +1085,6 @@ fn reported(error: &Error) -> super::response::XmlaError {
         .with_source(super::response::ACTOR)
 }
 
-/// Whether a datatype is one of the five sequence layouts.
-const fn is_sequence(dtype: &DataType) -> bool {
-    matches!(
-        dtype,
-        DataType::Serie(_)
-            | DataType::SerieView(_)
-            | DataType::FixedSizeSerie(_, _)
-            | DataType::LargeSerie(_)
-            | DataType::LargeSerieView(_)
-    )
-}
-
 /// `stated` with each column `declared` also names and `adopt` admits
 /// carrying the declared datatype, a struct column's children the same way.
 /// Under `strict` a cell may be absent only where both the document and the
@@ -1347,7 +1335,7 @@ fn read_value(element: &Element<'_>, field: &Field, column: &Column) -> Result<S
     // each judged by its own column; a nil sequence element is one null item,
     // since an absent sequence column is spelled by no element at all.
     if element.is_nil()
-        && !is_sequence(field.dtype())
+        && field.dtype().serie_item().is_none()
         && (field.is_nullable() || !matches!(field.dtype(), DataType::Struct(_)))
     {
         return Ok(Scalar::Null);
@@ -1385,7 +1373,7 @@ fn read_value(element: &Element<'_>, field: &Field, column: &Column) -> Result<S
                 };
                 let name = SmolStr::new(child_field.name());
                 let value = read_value(&child, child_field, child_column)?;
-                if is_sequence(child_field.dtype()) {
+                if child_field.dtype().serie_item().is_some() {
                     match sequences.iter_mut().find(|(held, _)| *held == name) {
                         Some((_, items)) => items.push(value),
                         None => sequences.push((name, vec![value])),
@@ -1402,7 +1390,7 @@ fn read_value(element: &Element<'_>, field: &Field, column: &Column) -> Result<S
             for child in fields.iter() {
                 // A sequence occurring no time is the empty sequence.
                 if !child.is_nullable()
-                    && !is_sequence(child.dtype())
+                    && child.dtype().serie_item().is_none()
                     && child.dtype() != &DataType::Null
                     && !entries.iter().any(|(held, _)| *held == child.name())
                 {

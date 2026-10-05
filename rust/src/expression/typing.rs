@@ -35,7 +35,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructType, TimeUnit};
+use crate::temporal::{TemporalKind, temporal_target};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructType};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -446,19 +447,6 @@ pub(crate) fn is_float(dtype: &DataType) -> bool {
     )
 }
 
-/// The precision and scale of an exact decimal, if it is one.
-pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
-    match dtype {
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale }
-        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
-        DataType::Decimal => Some((crate::Decimal::PRECISION, crate::Decimal::SCALE)),
-        DataType::BigDecimal => Some((crate::BigDecimal::PRECISION, crate::BigDecimal::SCALE)),
-        _ => None,
-    }
-}
-
 /// Return whether a datatype can be negated without changing its type.
 fn is_signed_numeric(dtype: &DataType) -> bool {
     matches!(
@@ -470,54 +458,11 @@ fn is_signed_numeric(dtype: &DataType) -> bool {
             | DataType::Float16
             | DataType::Float32
             | DataType::Float64
-    ) || decimal_parts(unwrap_dictionary(dtype)).is_some()
+    ) || unwrap_dictionary(dtype).decimal_parts().is_some()
         || matches!(
             unwrap_dictionary(dtype),
             DataType::Duration32(_) | DataType::Duration64(_)
         )
-}
-
-/// The temporal family and unit of a datatype, if it has one.
-pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
-    match dtype {
-        leaf_dtype @ (DataType::Date32 | DataType::Date64) => {
-            let leaf = &leaf_dtype
-                .date_type()
-                .expect("the variant was just matched");
-            Some((0, leaf.unit()))
-        }
-        leaf_dtype @ (DataType::Time32(_) | DataType::Time64(_)) => {
-            let leaf = &leaf_dtype
-                .time_type()
-                .expect("the variant was just matched");
-            Some((1, leaf.unit()))
-        }
-        leaf_dtype @ DataType::DateTime64 { .. } => {
-            let leaf = &leaf_dtype
-                .datetime_type()
-                .expect("the variant was just matched");
-            Some((2, leaf.unit()))
-        }
-        leaf_dtype @ (DataType::Duration32(_) | DataType::Duration64(_)) => {
-            let leaf = &leaf_dtype
-                .duration_type()
-                .expect("the variant was just matched");
-            Some((3, leaf.unit()))
-        }
-        _ => None,
-    }
-}
-
-/// How fine a unit is, so two temporals can meet at the finer one.
-const fn unit_rank(unit: TimeUnit) -> u8 {
-    match unit {
-        TimeUnit::Day => 0,
-        TimeUnit::Second => 1,
-        TimeUnit::Millisecond => 2,
-        TimeUnit::Microsecond => 3,
-        TimeUnit::Nanosecond => 4,
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 5,
-    }
 }
 
 /// The type two operands share, or `None` when they share none.
@@ -561,22 +506,21 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
     }
     // A temporal and a duration are the one mixed-family arithmetic that is
     // meaningful, and it is spelled out rather than promoted.
-    match (temporal_parts(left), temporal_parts(right), operator) {
-        (Some((family, _)), Some((3, _)), Operator::Add | Operator::Sub) if family != 3 => {
+    match (temporal_target(left), temporal_target(right), operator) {
+        (Some((family, _)), Some((TemporalKind::Duration, _)), Operator::Add | Operator::Sub)
+            if family != TemporalKind::Duration =>
+        {
             return Some(left.clone());
         }
-        (Some((3, _)), Some((family, _)), Operator::Add) if family != 3 => {
+        (Some((TemporalKind::Duration, _)), Some((family, _)), Operator::Add)
+            if family != TemporalKind::Duration =>
+        {
             return Some(right.clone());
         }
         (Some((family, left_unit)), Some((other, right_unit)), Operator::Sub)
-            if family == other && family != 3 =>
+            if family == other && family != TemporalKind::Duration =>
         {
-            let unit = if unit_rank(left_unit) >= unit_rank(right_unit) {
-                left_unit
-            } else {
-                right_unit
-            };
-            return DataType::duration64(unit).ok();
+            return DataType::duration64(left_unit.max(right_unit)).ok();
         }
         _ => {}
     }
@@ -595,7 +539,7 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         });
     }
     let shared = common_type(left, right)?;
-    if decimal_parts(&shared).is_some() {
+    if shared.decimal_parts().is_some() {
         let (left_precision, left_scale) = exact_parts(left)?;
         let (right_precision, right_scale) = exact_parts(right)?;
         let integral = |precision: u8, scale: i8| {
@@ -661,7 +605,7 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
 /// from claiming the 38 digits a decimal could have had.
 fn exact_parts(dtype: &DataType) -> Option<(u8, i8)> {
     let dtype = unwrap_dictionary(dtype);
-    if let Some(parts) = decimal_parts(dtype) {
+    if let Some(parts) = dtype.decimal_parts() {
         return Some(parts);
     }
     Some(match dtype {
@@ -762,7 +706,7 @@ fn function_field(
             DataType::Boolean
         }
         Function::Year | Function::Month | Function::Day | Function::Hour => {
-            if temporal_parts(unwrap_dictionary(&first)).is_none() {
+            if temporal_target(unwrap_dictionary(&first)).is_none() {
                 return Err(typing_error(format_smolstr!(
                     "expected a date or a timestamp for {}, got {first}",
                     function.as_str()
@@ -793,9 +737,9 @@ fn function_field(
                 })?;
             // A date has no clock, so a sub-day period over one is refused
             // here rather than answered null for every row.
-            let accepted = match temporal_parts(unwrap_dictionary(&first)) {
-                Some((0, _)) => period.takes_date(),
-                Some((2, _)) => true,
+            let accepted = match temporal_target(unwrap_dictionary(&first)) {
+                Some((TemporalKind::Date, _)) => period.takes_date(),
+                Some((TemporalKind::DateTime, _)) => true,
                 _ => false,
             };
             if !accepted {

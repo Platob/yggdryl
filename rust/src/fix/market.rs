@@ -11,7 +11,7 @@ use super::identity::{BOOK_ENTRY_TAGS, BOOK_ROOT_TAGS, TRADE_SIDE_TAGS};
 use super::msg::{AccountsAt, Carried, Expanded, PartyCodes, Unmapped};
 use super::{FixCodec, FixEntry, FixKey, FixMsg, FixRegistry};
 use crate::arrow::BatchReader;
-use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
+use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID, effective_unix};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::market::base_crosscode;
 use crate::graph::{
@@ -751,12 +751,6 @@ fn lift_identifier(facts: &mut OperationEventFacts, id: Identifier) -> bool {
         facts.insert_identifier(id)
     };
     inserted.unwrap_or(false)
-}
-
-fn effective_unix(input: &MarketData) -> i64 {
-    input.as_event().map_or(0, |event| {
-        event.get_snapunix().unwrap_or_else(|| event.get_currunix())
-    })
 }
 
 impl FixMsg {

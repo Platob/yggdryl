@@ -11,6 +11,9 @@ use crate::{Error, Result};
 /// two enums. Yggdryl keeps them in one value vocabulary and uses
 /// [`Self::is_temporal`] and [`Self::is_interval`] to distinguish the two
 /// lossless Arrow projection categories.
+///
+/// The order is [`Self::ALL`]'s: the resolutions from coarsest to finest -
+/// so the finer of two is their `max` - then the interval layouts.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimeUnit {

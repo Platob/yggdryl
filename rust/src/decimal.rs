@@ -575,6 +575,16 @@ impl DataType {
             _ => None,
         }
     }
+
+    /// The precision and scale of any decimal leaf, `None` for every other
+    /// datatype: [`Self::decimal_type`] read as the two numbers a typing or
+    /// a merge rule compares.
+    pub(crate) const fn decimal_parts(&self) -> Option<(u8, i8)> {
+        match self.decimal_type() {
+            Some(decimal) => Some((decimal.precision(), decimal.scale())),
+            None => None,
+        }
+    }
 }
 
 pub(crate) fn validate_decimal(

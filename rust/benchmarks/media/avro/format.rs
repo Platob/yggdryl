@@ -8,10 +8,10 @@
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
+use yggdryl::Scalar;
 use yggdryl::avro;
 use yggdryl::holder::Buffer;
 use yggdryl::json;
-use yggdryl::{Limits, Scalar};
 
 /// Rows per fixture.
 const ROWS: usize = crate::bench_profile::corpus(10_000, 512);
@@ -169,25 +169,10 @@ pub(crate) fn format_benchmarks(criterion: &mut Criterion) {
     group.bench_function("blocks/open_borrowed", |bencher| {
         bencher.iter(|| avro::read_blocks(black_box(&stored)).expect("the header parses"));
     });
-    group.bench_function("blocks/open_borrowed_with_limits", |bencher| {
-        bencher.iter(|| {
-            avro::read_blocks_with_limits(black_box(&stored), Limits::default())
-                .expect("the header parses")
-        });
-    });
     group.bench_function("blocks/open_owned", |bencher| {
         bencher.iter(|| {
             avro::read_blocks_owned(Buffer::from_bytes(black_box(encoded.clone())))
                 .expect("the header parses")
-        });
-    });
-    group.bench_function("blocks/open_owned_with_limits", |bencher| {
-        bencher.iter(|| {
-            avro::read_blocks_owned_with_limits(
-                Buffer::from_bytes(black_box(encoded.clone())),
-                Limits::default(),
-            )
-            .expect("the header parses")
         });
     });
     group.bench_function("blocks/first_borrowed", |bencher| {

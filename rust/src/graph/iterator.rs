@@ -1259,7 +1259,7 @@ fn is_alive<E: Walked>(element: &E) -> bool {
 
 /// The first epoch-aligned grid instant at or after `unix`, without an
 /// intermediate multiplication that can overflow at either i64 extreme.
-fn grid_at_or_after(unix: i64, step: i64) -> Option<i64> {
+pub(super) fn grid_at_or_after(unix: i64, step: i64) -> Option<i64> {
     let remainder = unix.rem_euclid(step);
     if remainder == 0 {
         Some(unix)

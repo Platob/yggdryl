@@ -1114,14 +1114,6 @@ pub(crate) fn parse_capture(
     };
     match dtype {
         crate::string_dtypes!() => Ok(Scalar::from(value)),
-        DataType::Boolean => crate::boolean::boolean_from_text(value).ok_or_else(invalid),
-        DataType::Int64 => crate::integer::integer_from_text(value)
-            .and_then(|count| dtype.scalar(count).ok())
-            .ok_or_else(invalid),
-        DataType::Float64 => crate::floating::float_from_text(value).ok_or_else(invalid),
-        DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
-            Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
-        }
         DataType::DateTime64 {
             unit,
             timezone: zone,
@@ -1134,12 +1126,14 @@ pub(crate) fn parse_capture(
                 .map_err(|_| invalid())?;
             Scalar::datetime64(read.count(), *unit, *zone).map_err(|_| invalid())
         }
-        DataType::DateTime64 { .. } => {
-            Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
-        }
-        _ => Err(format_smolstr!(
-            "autotype produced unsupported datatype {dtype}"
-        )),
+        // Every other capture datatype - autotype's flag, number and clocks -
+        // is read through the value door's own text reading, a whole number
+        // narrowed to the column's width there.
+        _ => match crate::value::read_text_as(dtype, value) {
+            Some(Ok(read)) if read.id() == dtype.id() => Ok(read),
+            Some(Ok(read)) => dtype.scalar(read).map_err(|_| invalid()),
+            Some(Err(_)) | None => Err(invalid()),
+        },
     }
 }
 

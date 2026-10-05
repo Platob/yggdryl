@@ -30,6 +30,7 @@ use memchr::memchr;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{Headers, Method, Status};
+use crate::mime_type::is_http_token_byte;
 use crate::{Charset, Error, Result};
 
 /// The longest request line, status line, field line or chunk-size line
@@ -479,28 +480,6 @@ fn refuse(position: usize, reason: impl Into<SmolStr>) -> Error {
     }
 }
 
-/// `true` for a byte of the `tchar` production (RFC 9110 5.6.2).
-const fn is_tchar(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'!' | b'#'
-                | b'$'
-                | b'%'
-                | b'&'
-                | b'\''
-                | b'*'
-                | b'+'
-                | b'-'
-                | b'.'
-                | b'^'
-                | b'_'
-                | b'`'
-                | b'|'
-                | b'~'
-        )
-}
-
 /// `true` for a byte a field value may hold: HTAB, SP, VCHAR or obs-text.
 const fn is_field_byte(byte: u8) -> bool {
     byte == b'\t' || (byte >= b' ' && byte != 0x7f)
@@ -666,7 +645,7 @@ fn parse_field_line(line: &[u8], position: usize) -> Result<(&str, String)> {
     if name.is_empty() {
         return Err(refuse(position, "expected a field name before `:`"));
     }
-    if let Some(index) = name.iter().position(|byte| !is_tchar(*byte)) {
+    if let Some(index) = name.iter().position(|byte| !is_http_token_byte(*byte)) {
         return Err(refuse(
             position + index,
             format_smolstr!("invalid byte {:#04x} in a field name", name[index]),

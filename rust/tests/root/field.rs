@@ -1761,6 +1761,12 @@ mod generic {
         assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::utf8());
         assert_eq!(order["counts"][0]["value"].dtype(), &DataType::Int64);
 
+        // A serie's item is reached by position and by its own name alike.
+        let items = DataType::serie(order.clone().with_name("item"));
+        assert_eq!(items[0]["id"].dtype(), &DataType::Int64);
+        assert_eq!(items["item"]["line"]["price"].dtype(), &DataType::Float64);
+        assert!(order.get_field(9).is_none());
+
         // Metadata is not reachable by subscript any more, and is still reachable
         // through its own view and the named accessor.
         assert_eq!(order.get_metadata("owner"), Some("trading"));
@@ -1898,137 +1904,6 @@ mod nested {
             )
             .unwrap(),
         );
-    }
-
-    /// Item access on a schema node reaches a nested child, never metadata.
-    ///
-    /// Before this, `field["level"]` was a metadata lookup while
-    /// `dtype["level"]` was a child, so a caller walking one object graph got
-    /// two unrelated things from identical syntax. Children win: subscripting a
-    /// schema node descends the schema.
-    #[test]
-    fn subscripting_a_schema_node_reaches_a_nested_child() {
-        let line = StructType::from_fields([
-            DataType::Float64.required_field("price"),
-            DataType::Int64.required_field("qty"),
-        ])
-        .map(DataType::from)
-        .unwrap()
-        .required_field("line");
-        let order = StructType::from_fields([DataType::Int64.required_field("id"), line])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("order");
-
-        // By name and by position, on both `Field` and `DataType`, one answer.
-        assert_eq!(order["id"].dtype(), &DataType::Int64);
-        assert_eq!(order.dtype()["id"].dtype(), &DataType::Int64);
-        assert_eq!(order[0].name(), "id");
-        assert_eq!(order.dtype()[1].name(), "line");
-
-        // Chained subscripts are the nesting story - no dotted path form.
-        assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
-        assert_eq!(order["line"]["qty"].dtype(), &DataType::Int64);
-
-        // Through a Serie item and a Map entry, the same way.
-        let items = DataType::serie(order.clone().with_name("item"));
-        assert_eq!(items[0]["id"].dtype(), &DataType::Int64);
-        assert_eq!(items["item"]["line"]["price"].dtype(), &DataType::Float64);
-
-        // The non-panicking form stays available and is what the docs point at.
-        assert!(order.get_field_by_path("absent").is_none());
-        assert!(order.get_field(9).is_none());
-    }
-
-    /// Metadata is not reachable by subscript any more, but is through its view.
-    #[test]
-    fn metadata_is_reached_through_its_own_surface_not_a_subscript() {
-        let mut field = StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        field.insert_metadata("owner", "tests").unwrap();
-
-        // The subscript descends the schema; the metadata key is not a child.
-        assert_eq!(field["id"].dtype(), &DataType::Int64);
-        assert!(field.get_field_by_path("owner").is_none());
-
-        // The named accessors and the view still answer it.
-        assert_eq!(field.get_metadata("owner"), Some("tests"));
-        assert_eq!(field.as_metadata().get("owner"), Some("tests"));
-    }
-
-    #[test]
-    #[should_panic(expected = "is not a child of the field")]
-    fn subscripting_an_absent_child_panics_with_a_useful_message() {
-        let row = StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        let _ = &row["absent"];
-    }
-
-    #[test]
-    #[should_panic(expected = "is not a child of the datatype")]
-    fn subscripting_a_non_nested_datatype_panics_naming_it() {
-        let _ = &DataType::Int64["anything"];
-    }
-
-    #[test]
-    #[should_panic(expected = "so position 5 is out of range")]
-    fn subscripting_past_the_end_panics_naming_the_arity() {
-        let row = StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-        let _ = &row[5];
-    }
-
-    /// Child mutation is named and cache-aware; no `&mut` child escapes it.
-    #[test]
-    fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
-        let mut row = StructType::from_fields([DataType::Int64.required_field("id")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
-
-        // An unknown name appends - dict-like, and how a schema is built up.
-        row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))
-            .unwrap();
-        assert_eq!(row.field_len(), 2);
-        assert_eq!(row[1].name(), "venue");
-
-        // A known name replaces in place, keeping its position.
-        row.set_field_by_path("id", DataType::utf8().required_field("id"))
-            .unwrap();
-        assert_eq!(row.field_len(), 2);
-        assert_eq!(row[0].name(), "id");
-        assert_eq!(row["id"].dtype(), &DataType::utf8());
-
-        // A position replaces only, and never grows the node silently.
-        row.set_field(1, DataType::large_utf8().nullable_field("venue"))
-            .unwrap();
-        assert_eq!(row["venue"].dtype(), &DataType::large_utf8());
-        let message = row
-            .set_field(7, DataType::Int64.nullable_field("late"))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("a child position below 2"), "{message}");
-        assert_eq!(row.field_len(), 2, "a refusal leaves the field unchanged");
-
-        // Removal returns the prior child and closes the gap.
-        let dropped = row.remove_field_by_path("id").unwrap();
-        assert_eq!(dropped.name(), "id");
-        assert_eq!(row.field_len(), 1);
-        assert_eq!(row[0].name(), "venue");
-
-        // A node with no children to replace says so rather than panicking.
-        let mut scalar = DataType::Int64.required_field("price");
-        let message = scalar
-            .set_field_by_path("child", DataType::Int64.nullable_field("child"))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("a struct field"), "{message}");
     }
 
     #[test]

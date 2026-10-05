@@ -747,74 +747,12 @@ impl PyDataType {
         Self::new(value)
     }
 
-    /// Internal direct constructor used by the typed field factories at the package root.
+    /// Internal direct constructor used by the typed field factories at the
+    /// package root: a parameter-free datatype's canonical name, read by the
+    /// one datatype grammar.
     #[staticmethod]
     fn _simple(kind: &str) -> PyResult<Self> {
-        let inner = match kind {
-            "null" => CoreDataType::Null,
-            "boolean" => CoreDataType::Boolean,
-            "int8" => CoreDataType::Int8,
-            "int16" => CoreDataType::Int16,
-            "int32" => CoreDataType::Int32,
-            "int64" => CoreDataType::Int64,
-            "uint8" => CoreDataType::UInt8,
-            "uint16" => CoreDataType::UInt16,
-            "uint32" => CoreDataType::UInt32,
-            "uint64" => CoreDataType::UInt64,
-            "float16" => CoreDataType::Float16,
-            "float32" => CoreDataType::Float32,
-            "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::date32(),
-            "date64" => CoreDataType::date64(),
-            "binary" => CoreDataType::binary(),
-            "large_binary" => CoreDataType::large_binary(),
-            "binary_view" => CoreDataType::binary_view(),
-            "large_binary_view" => CoreDataType::large_binary_view(),
-            "utf8" => CoreDataType::utf8(),
-            "large_utf8" => CoreDataType::large_utf8(),
-            "utf8_view" => CoreDataType::utf8_view(),
-            "large_utf8_view" => CoreDataType::large_utf8_view(),
-            "ascii" => CoreDataType::ascii(),
-            "large_ascii" => CoreDataType::large_ascii(),
-            "ascii_view" => CoreDataType::ascii_view(),
-            "large_ascii_view" => CoreDataType::large_ascii_view(),
-            "cp1252" => CoreDataType::cp1252(),
-            "large_cp1252" => CoreDataType::large_cp1252(),
-            "cp1252_view" => CoreDataType::cp1252_view(),
-            "large_cp1252_view" => CoreDataType::large_cp1252_view(),
-            "country" => CoreDataType::Country,
-            "ccy" => CoreDataType::Ccy,
-            "mic" => CoreDataType::Mic,
-            "cfi" => CoreDataType::Cfi,
-            "isin" => CoreDataType::Isin,
-            "cusip" => CoreDataType::Cusip,
-            "sedol" => CoreDataType::Sedol,
-            "bbg" => CoreDataType::Bbg,
-            "figi" => CoreDataType::Figi,
-            "side" => CoreDataType::Side,
-            "state" => CoreDataType::State,
-            "timeinforce" => CoreDataType::TimeInForce,
-            "unit" => CoreDataType::Unit,
-            "ric" => CoreDataType::Ric,
-            "forex" => CoreDataType::Forex,
-            "marketdatakind" => CoreDataType::MarketDataKind,
-            "marketdatatype" => CoreDataType::MarketDataType,
-            "uuid" => CoreDataType::uuid(),
-            "decimal" => CoreDataType::Decimal,
-            "bigdecimal" => CoreDataType::BigDecimal,
-            "version" => CoreDataType::Version,
-            "url" => CoreDataType::url(),
-            "urn" => CoreDataType::urn(),
-            "timezone" => CoreDataType::Timezone,
-            "mimetype" => CoreDataType::MimeType,
-            "mediatype" => CoreDataType::MediaType,
-            _ => {
-                return Err(PyValueError::new_err(format!(
-                    "{kind:?} is not a parameter-free datatype kind"
-                )));
-            }
-        };
-        Self::from_validated(inner)
+        Self::from_validated(CoreDataType::from_str(kind).map_err(value_error)?)
     }
 
     /// Internal temporal constructor used by the typed fields facade.
@@ -922,15 +860,7 @@ impl PyDataType {
     /// Internal Union constructor preserving exact child Fields.
     #[staticmethod]
     fn _union(fields: &Bound<'_, PyAny>, mode: &str) -> PyResult<Self> {
-        let mode = match mode {
-            "sparse" => CoreUnionMode::Sparse,
-            "dense" => CoreUnionMode::Dense,
-            _ => {
-                return Err(PyValueError::new_err(
-                    "union mode must be 'sparse' or 'dense'",
-                ));
-            }
-        };
+        let mode = mode.parse::<CoreUnionMode>().map_err(value_error)?;
         let mut native = Vec::new();
         for (index, item) in fields.try_iter()?.enumerate() {
             let item = item?;

@@ -90,7 +90,6 @@ pub(crate) fn feed_content(value: &Bound<'_, PyAny>, sink: &mut impl FnMut(&[u8]
     Ok(())
 }
 
-/// Parse an algorithm token, keeping the core's message.
 /// Feed a Python readable to exhaustion through one bounded window.
 ///
 /// The reader is drained by the core, which reuses one stream-sized window,
@@ -108,6 +107,7 @@ fn feed_reader(
     written.map_err(value_error)
 }
 
+/// Parse an algorithm token, keeping the core's message.
 pub(crate) fn algorithm_from_str(value: &str) -> PyResult<DigestAlgorithm> {
     DigestAlgorithm::from_str(value).map_err(value_error)
 }

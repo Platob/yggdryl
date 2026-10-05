@@ -27,6 +27,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::path::write_segments;
 use super::selector::{Projection, Selector};
 use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
+use crate::bytes::hex_text;
 use crate::code_scalars;
 use crate::{DataType, Scalar};
 
@@ -631,15 +632,6 @@ pub(crate) fn float_text(value: f64) -> String {
         };
     }
     format!("{value:?}")
-}
-
-/// Lowercase hex, which is how a binary literal is written and read.
-pub(crate) fn hex_text(bytes: &[u8]) -> String {
-    let mut text = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(text, "{byte:02x}");
-    }
-    text
 }
 
 impl fmt::Display for Comparison {

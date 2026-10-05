@@ -7,6 +7,7 @@ use crate::expression::{
     Ordering, Projection, TRANSFORM_BY_KEY, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, Term,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
+use crate::mime_type::is_http_token_byte;
 use crate::protocol::{
     PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
     validate_python_module, validate_python_qualname,
@@ -422,27 +423,6 @@ pub(super) fn validate_http_header_name(key: &str, name: &str) -> Result<()> {
             "HTTP field name must be a non-empty ASCII token without a colon",
         ),
     })
-}
-
-pub(super) const fn is_http_token_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric()
-        || matches!(
-            byte,
-            b'!' | b'#'
-                | b'$'
-                | b'%'
-                | b'&'
-                | b'\''
-                | b'*'
-                | b'+'
-                | b'-'
-                | b'.'
-                | b'^'
-                | b'_'
-                | b'`'
-                | b'|'
-                | b'~'
-        )
 }
 
 pub(super) fn validate_http_header_value(key: &str, value: &str) -> Result<()> {

@@ -45,11 +45,11 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Charset, DataType, DataTypeKind, Error, Field, Result, StructType};
-use crate::{TimeUnit, UnionMode};
+use crate::{Charset, DataType, DataTypeKind, Error, Field, Result, StructType, UnionMode};
 
 use crate::bytes::BytesType;
 use crate::string::StringType;
+use crate::temporal::{TemporalKind, temporal_target};
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -87,7 +87,7 @@ impl Widening {
     }
 
     /// Pick between two ranked candidates.
-    fn pick<T>(self, left: (u8, T), right: (u8, T)) -> T {
+    fn pick<R: Ord, T>(self, left: (R, T), right: (R, T)) -> T {
         let take_left = match self {
             Self::Up => left.0 >= right.0,
             Self::Down => left.0 <= right.0,
@@ -784,8 +784,8 @@ fn absorbing_text(parameters: StringType) -> Result<DataType> {
 
 /// Merge two numbers: decimals, then floats, then integers.
 fn merge_numeric(left: &DataType, right: &DataType, how: Widening) -> Result<Option<DataType>> {
-    let left_decimal = decimal_parts(left);
-    let right_decimal = decimal_parts(right);
+    let left_decimal = left.decimal_parts();
+    let right_decimal = right.decimal_parts();
     if left_decimal.is_some() || right_decimal.is_some() {
         // A decimal only meets another exact number. Pairing it with a float
         // would trade exactness for range without saying so.
@@ -903,19 +903,6 @@ const fn integer_as_decimal(dtype: &DataType) -> Option<(u8, i8)> {
     }
 }
 
-/// The precision and scale of an exact decimal, if it is one.
-const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
-    match dtype {
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale }
-        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
-        DataType::Decimal => Some((crate::Decimal::PRECISION, crate::Decimal::SCALE)),
-        DataType::BigDecimal => Some((crate::BigDecimal::PRECISION, crate::BigDecimal::SCALE)),
-        _ => None,
-    }
-}
-
 /// How wide a float is, if it is one.
 const fn float_rank(dtype: &DataType) -> Option<u8> {
     match dtype {
@@ -969,25 +956,22 @@ const fn rebuild_integer(rank: u8) -> DataType {
 
 /// Merge two temporals of the same family, meeting at one unit.
 fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<DataType> {
-    let (left_family, left_unit) = temporal_parts(left)?;
-    let (right_family, right_unit) = temporal_parts(right)?;
+    let (left_family, left_unit) = temporal_target(left)?;
+    let (right_family, right_unit) = temporal_target(right)?;
     if left_family != right_family {
         return None;
     }
-    let unit = how.pick(
-        (unit_rank(left_unit), left_unit),
-        (unit_rank(right_unit), right_unit),
-    );
+    let unit = how.pick((left_unit, left_unit), (right_unit, right_unit));
     Some(match left_family {
-        0 => {
+        TemporalKind::Date => {
             if matches!(left, DataType::Date64) || matches!(right, DataType::Date64) {
                 DataType::date64()
             } else {
                 DataType::date32()
             }
         }
-        1 => DataType::time(unit).ok()?,
-        2 => {
+        TemporalKind::Time => DataType::time(unit).ok()?,
+        TemporalKind::DateTime => {
             // A zone one side declares is kept: a naive reading of a zoned
             // column loses the offset, which is not a merge but a cast.
             let timezone = match (left, right) {
@@ -1005,49 +989,6 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
             }
         }
     })
-}
-
-/// The temporal family and unit of a datatype, if it has one.
-const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
-    match dtype {
-        leaf_dtype @ (DataType::Date32 | DataType::Date64) => {
-            let leaf = &leaf_dtype
-                .date_type()
-                .expect("the variant was just matched");
-            Some((0, leaf.unit()))
-        }
-        leaf_dtype @ (DataType::Time32(_) | DataType::Time64(_)) => {
-            let leaf = &leaf_dtype
-                .time_type()
-                .expect("the variant was just matched");
-            Some((1, leaf.unit()))
-        }
-        leaf_dtype @ DataType::DateTime64 { .. } => {
-            let leaf = &leaf_dtype
-                .datetime_type()
-                .expect("the variant was just matched");
-            Some((2, leaf.unit()))
-        }
-        leaf_dtype @ (DataType::Duration32(_) | DataType::Duration64(_)) => {
-            let leaf = &leaf_dtype
-                .duration_type()
-                .expect("the variant was just matched");
-            Some((3, leaf.unit()))
-        }
-        _ => None,
-    }
-}
-
-/// How fine a unit is, so two temporals can meet at one of them.
-const fn unit_rank(unit: TimeUnit) -> u8 {
-    match unit {
-        TimeUnit::Day => 0,
-        TimeUnit::Second => 1,
-        TimeUnit::Millisecond => 2,
-        TimeUnit::Microsecond => 3,
-        TimeUnit::Nanosecond => 4,
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 5,
-    }
 }
 
 /// Report a pair with no meeting point that is not a re-encoding.

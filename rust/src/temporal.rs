@@ -38,7 +38,7 @@
 //! # }
 //! ```
 
-pub(crate) use scalars::TemporalKind;
+pub(crate) use scalars::{TemporalKind, temporal_target};
 pub(crate) use scalars::{validate_date64, validate_time};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
@@ -1796,12 +1796,12 @@ pub(crate) mod scalars {
                         "zoned and timezone-naive temporal values cannot be subtracted",
                     ));
                 }
-                let unit = finer_unit(left_parts.unit, right_parts.unit);
+                let unit = left_parts.unit.max(right_parts.unit);
                 DataType::duration64(unit)
                     .map_err(|error| invalid_binary(operation, left, right, error.to_string()))
             }
             (TemporalKind::Duration, TemporalKind::Duration, Arithmetic::Add | Arithmetic::Sub) => {
-                let unit = finer_unit(left_parts.unit, right_parts.unit);
+                let unit = left_parts.unit.max(right_parts.unit);
                 let wide = matches!(left_parts.dtype, DataType::Duration64(_))
                     || matches!(right_parts.dtype, DataType::Duration64(_));
                 if wide {
@@ -1817,25 +1817,6 @@ pub(crate) mod scalars {
                 right,
                 "temporal arithmetic supports temporal +/- duration, temporal subtraction, and duration +/- duration",
             )),
-        }
-    }
-
-    fn finer_unit(left: TimeUnit, right: TimeUnit) -> TimeUnit {
-        if unit_rank(left) >= unit_rank(right) {
-            left
-        } else {
-            right
-        }
-    }
-
-    const fn unit_rank(unit: TimeUnit) -> u8 {
-        match unit {
-            TimeUnit::Day => 0,
-            TimeUnit::Second => 1,
-            TimeUnit::Millisecond => 2,
-            TimeUnit::Microsecond => 3,
-            TimeUnit::Nanosecond => 4,
-            TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => 5,
         }
     }
 

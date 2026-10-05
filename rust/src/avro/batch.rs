@@ -2173,8 +2173,8 @@ fn encode_cell(
     Ok(())
 }
 
-/// Locate an encode failure at its column.
-fn locate_column(error: crate::Error, column: &str) -> crate::Error {
+/// Locate an encode or schema-rendering failure at its column.
+pub(super) fn locate_column(error: crate::Error, column: &str) -> crate::Error {
     match error {
         crate::Error::Codec {
             format,

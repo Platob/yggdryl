@@ -445,16 +445,6 @@ impl<H> Counted<H> {
         }
     }
 
-    /// Count into a tally that already exists.
-    ///
-    /// Two handles sharing one tally add up, which is how a stack spanning
-    /// several objects - a table and its data files - is measured as one
-    /// number.
-    #[must_use]
-    pub fn with_calls(handle: H, calls: Arc<Calls>) -> Self {
-        Self { handle, calls }
-    }
-
     /// The live counters, to keep a reading handle on.
     #[must_use]
     pub fn calls(&self) -> &Arc<Calls> {

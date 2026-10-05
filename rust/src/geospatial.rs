@@ -469,10 +469,7 @@ macro_rules! geospatial_leaf {
 
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                for byte in self.as_bytes() {
-                    write!(formatter, "{byte:02x}")?;
-                }
-                Ok(())
+                $crate::bytes::write_hex(formatter, self.as_bytes())
             }
         }
     };

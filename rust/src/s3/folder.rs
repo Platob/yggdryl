@@ -514,9 +514,3 @@ fn refused(operation: &str, bucket: &str) -> Error {
         format!("this client is not allowed to {operation} the bucket {bucket}"),
     ))
 }
-
-/// Report a listing that cannot form a child location.
-#[allow(dead_code)]
-fn unusable(error: Error) -> Listing {
-    Listing::failing(error)
-}

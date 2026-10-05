@@ -10,7 +10,9 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::arrow::{ALIVE, DELTAS, RowFilter};
+use super::element::{earliest, latest};
 use super::facts::{MarketEventFacts, OperationEventFacts};
+use super::iterator::grid_at_or_after;
 use super::market::merge_market_event_into_reference;
 use super::market_data::MarketData;
 use super::operation::{BookRef, MdUpdateAction, OrderKind, QuoteKind};
@@ -4066,7 +4068,7 @@ fn input_unix(input: &MarketData) -> i64 {
 
 /// The instant an input takes effect at: the snapshot it belongs to, else
 /// its own.
-fn effective_unix(input: &MarketData) -> i64 {
+pub(crate) fn effective_unix(input: &MarketData) -> i64 {
     input.as_event().map_or(0, |event| {
         event.get_snapunix().unwrap_or_else(|| event.get_currunix())
     })
@@ -4350,33 +4352,8 @@ fn same_partition(left: &MarketData, right: &MarketData) -> bool {
     scope_of(left) == scope_of(right) && left.get_ticker() == right.get_ticker()
 }
 
-fn grid_at_or_after(unix: i64, step: i64) -> Option<i64> {
-    let remainder = unix.rem_euclid(step);
-    if remainder == 0 {
-        Some(unix)
-    } else {
-        unix.checked_add(step - remainder)
-    }
-}
-
 fn reference_clock<E: Event>(event: &E) -> (Option<i64>, i64) {
     (event.get_recdunix(), event.get_currunix())
-}
-
-fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.min(right)),
-        (Some(value), None) | (None, Some(value)) => Some(value),
-        (None, None) => None,
-    }
-}
-
-fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.max(right)),
-        (Some(value), None) | (None, Some(value)) => Some(value),
-        (None, None) => None,
-    }
 }
 
 fn decimal_mean(left: Decimal, right: Decimal) -> Option<Decimal> {

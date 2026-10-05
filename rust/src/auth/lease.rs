@@ -293,20 +293,17 @@ pub fn instant_from_millis(millis: i64) -> Option<SystemTime> {
     instant_of(millis, TimeUnit::Millisecond)
 }
 
-/// `instant` spelled as the services answer one: `YYYY-MM-DDThh:mm:ssZ`.
+/// `instant` spelled as the services answer one, `YYYY-MM-DDThh:mm:ssZ`: the
+/// crate's own UTC timestamp spelling at whole seconds.
 pub fn iso8601(instant: SystemTime) -> String {
     let seconds = instant
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let (year, month, day) =
-        crate::timezone::civil_from_days(i64::try_from(seconds / 86_400).unwrap_or(i64::MAX));
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        seconds / 3600 % 24,
-        seconds / 60 % 60,
-        seconds % 60
-    )
+    let seconds = i64::try_from(seconds).unwrap_or(i64::MAX);
+    crate::temporal::format_timestamp(seconds, TimeUnit::Second, &crate::Timezone::UTC)
+        .map(String::from)
+        .unwrap_or_default()
 }
 
 #[cfg(feature = "internals")]

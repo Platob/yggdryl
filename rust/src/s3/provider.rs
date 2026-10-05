@@ -159,23 +159,6 @@ impl Provider {
         }
     }
 
-    /// The listing page size to ask for when nothing else is said.
-    ///
-    /// A thousand on every store: it is S3's own maximum, Google's maximum, and
-    /// the size Azure's SDKs ask for, so one number is the default everywhere
-    /// and the cost model reads the same.
-    pub const fn default_list_page(&self) -> u16 {
-        1000
-    }
-
-    /// Whether the store puts a container in the endpoint hostname by default.
-    ///
-    /// S3 does on AWS itself. Google's JSON API never does, and Azure's
-    /// container is always a path segment.
-    pub const fn defaults_to_virtual_hosting(&self) -> bool {
-        matches!(self, Self::Aws)
-    }
-
     /// Refuse `operation`, which this store does not have.
     pub(super) fn unsupported(&self, operation: &'static str) -> Error {
         Error::unsupported(operation, self.described())

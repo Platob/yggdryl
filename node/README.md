@@ -208,7 +208,7 @@ through that same reader path. `serie.cast` casts a column in hand,
 and `ArrowCastPlan.compile` holds one cast for every column of a layout.
 Each takes `{ safe, representation }`, an absent answer taking the core's
 default; whether a value may be absent is the target field's nullability. Run
-`npm run bench:records` for the copied-IPC read, projection, cast, and write
+`npm run bench:media` for the copied-IPC read, projection, cast, and write
 paths.
 
 ```javascript
@@ -235,7 +235,7 @@ Hint identity is wrapper-local, not a global interning promise for equivalent
 fields.
 Arrow scalars use one copied one-row IPC projection into Apache Arrow JS, and
 unsupported Arrow JS layouts fail without introducing a second scalar model.
-Run `npm run bench:defaults` for JavaScript defaults, cached hints,
+Run `npm run bench:types:defaults` for JavaScript defaults, cached hints,
 compatibility normalization, and Arrow-scalar IPC materialization.
 
 ```javascript

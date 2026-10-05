@@ -1058,8 +1058,8 @@ fn fold(node: Node) -> Result<Node> {
 fn arithmetic_operand_type(field: &Field, left: DataType, right: DataType) -> Option<DataType> {
     // Temporal arithmetic keeps each side in its own type: adding a duration to
     // a timestamp is not an addition of two timestamps.
-    if super::typing::temporal_parts(&left).is_some()
-        || super::typing::temporal_parts(&right).is_some()
+    if crate::temporal::temporal_target(&left).is_some()
+        || crate::temporal::temporal_target(&right).is_some()
     {
         return None;
     }

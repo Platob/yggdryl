@@ -44,7 +44,7 @@ pub(crate) use datatype::{URL_EXTENSION_NAME, URN_EXTENSION_NAME, casts};
 pub use extensions::Extensions;
 pub(crate) use hive::hive_partitions_of;
 pub use parameters::Parameters;
-pub(crate) use parser::{percent_decode, percent_encode_segment};
+pub(crate) use parser::{percent_decode, percent_decode_lenient, percent_encode_segment};
 pub use path::{Parents, PathSegments, UriParents, UriPath};
 pub use url::{Url, UrlParents};
 pub use urn::Urn;
