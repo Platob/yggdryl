@@ -169,6 +169,11 @@ impl IOBase for FsFolder {
         self.folder_pwrite(bytes.len())
     }
 
+    /// A directory holds no bytes to create, so it refuses as its write does.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.folder_pwrite(bytes.len()).map(drop)
+    }
+
     fn size(&self) -> u64 {
         0
     }

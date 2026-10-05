@@ -6,6 +6,8 @@ import copy
 import datetime
 import decimal
 import pickle
+import subprocess
+import sys
 import types
 from collections.abc import Iterable, Iterator
 from typing import Any
@@ -415,6 +417,77 @@ class TestCandleIterator:
         assert graph.candles([], "1m") == []
         with pytest.raises(TypeError):
             graph.candles(folded, 1.5)  # type: ignore[arg-type]
+
+
+CONCURRENT_PULLS_SCRIPT = r"""
+import threading
+import time
+
+from yggdryl import graph
+
+MINUTE = 60_000_000_000
+INSTANTS = [minute * MINUTE + 1 for minute in range(6)]
+
+
+def pausing():
+    # Each pull sleeps - releasing the GIL - while the puller holds the walk.
+    for unix in INSTANTS:
+        time.sleep(0.05)
+        yield graph.BookEvent(unix, "ACME")
+
+
+expected = graph.candles([graph.BookEvent(unix, "ACME") for unix in INSTANTS], "1m")
+walk = graph.CandleIterator(pausing(), "1m")
+pulled = [[], []]
+read = []
+
+
+def pull(into):
+    for candle in walk:
+        into.append(candle)
+
+
+def options():
+    time.sleep(0.02)
+    for _ in range(5):
+        read.append(walk.options.interval)
+        time.sleep(0.03)
+
+
+threads = [threading.Thread(target=pull, args=(into,)) for into in pulled]
+threads.append(threading.Thread(target=options))
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+got = sorted(pulled[0] + pulled[1], key=lambda candle: candle.start)
+assert got == expected, (got, expected)
+assert read == [MINUTE] * 5, read
+print("ok")
+"""
+
+
+def test_two_threads_pulling_one_walk_never_hold_the_gil_waiting() -> None:
+    """A walk pulls the caller's iterable under its lock, and the iterable may
+    release the GIL: a thread waiting on that lock attached - another
+    ``next()``, or ``options`` - would keep the puller from taking the GIL
+    back, and the process would hang. Two threads drain one walk over a
+    generator that sleeps on every item while a third reads its options;
+    every candle arrives once. In a process of its own under a deadline,
+    because the failure is a hang.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", CONCURRENT_PULLS_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as hung:
+        raise AssertionError("two threads pulling one candle walk hung") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")
 
 
 class TestZones:

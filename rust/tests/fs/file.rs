@@ -214,6 +214,81 @@ mod fs {
         );
     }
 
+    /// A filesystem that keeps the trait's default `create_file` - this one,
+    /// as a host runtime's bridged filesystem does - asks for the file's
+    /// information and then writes: the one create that is not exclusive.
+    /// The leaf repairs a missing parent once, as its write does.
+    #[test]
+    fn a_create_through_a_bridged_filesystem_asks_then_writes_and_repairs_a_parent_once() {
+        let instrumented = Arc::new(InstrumentedFileSystem::new(MemoryFileSystem::new()));
+        let calls = Arc::clone(&instrumented.calls);
+        let filesystem: Arc<dyn FileSystem> = instrumented;
+        let mut file =
+            FsFile::from_path(Arc::clone(&filesystem), "missing/deep/value.bin", None).unwrap();
+
+        file.create_bytes(b"value").unwrap();
+        assert_eq!(calls.file_info.load(Ordering::Relaxed), 2);
+        assert_eq!(calls.output_stream.load(Ordering::Relaxed), 2);
+        assert_eq!(calls.create_dir.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            read(filesystem.as_ref(), "missing/deep/value.bin").unwrap(),
+            b"value"
+        );
+
+        // A value there is the conflict, asked and never written over.
+        let error = file.create_bytes(b"other").unwrap_err();
+        assert!(matches!(error, Error::Conflict { .. }), "{error}");
+        assert!(
+            error.to_string().contains("missing/deep/value.bin"),
+            "{error}"
+        );
+        assert_eq!(calls.file_info.load(Ordering::Relaxed), 3);
+        assert_eq!(calls.output_stream.load(Ordering::Relaxed), 2);
+        assert_eq!(file.read_all_bytes().unwrap(), b"value");
+    }
+
+    /// The local filesystem's create publishes the whole value by a link of
+    /// a private sibling: a second creator is the conflict, the first bytes
+    /// stand, and the folder holds the file alone.
+    #[test]
+    fn a_create_through_the_local_filesystem_keeps_the_first_bytes_and_no_sibling() {
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
+        root.push(format!("yggdryl-fs-create-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let filesystem: Arc<dyn FileSystem> = Arc::new(LocalFileSystem::new());
+        let path = root.join("v1.metadata.json").to_string_lossy().into_owned();
+
+        let mut file = FsFile::from_path(Arc::clone(&filesystem), &path, None).unwrap();
+        file.create_bytes(b"{\"v\":1}").unwrap();
+        let error = file.create_bytes(b"{}").unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+        assert_eq!(read(filesystem.as_ref(), &path).unwrap(), b"{\"v\":1}");
+        let names: Vec<String> = std::fs::read_dir(&root)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["v1.metadata.json"]);
+
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A filesystem with an exclusive create of its own - the memory one -
+    /// is asked nothing first: its one call is the create.
+    #[test]
+    fn a_create_through_an_exclusive_filesystem_is_its_one_call() {
+        let memory = Arc::new(MemoryFileSystem::new());
+        let filesystem: Arc<dyn FileSystem> = memory;
+        let mut file = FsFile::from_path(Arc::clone(&filesystem), "a/value.bin", None).unwrap();
+        file.create_bytes(b"value").unwrap();
+        assert_eq!(read(filesystem.as_ref(), "a/value.bin").unwrap(), b"value");
+        assert!(file.create_bytes(b"other").unwrap_err().is_conflict());
+        assert_eq!(read(filesystem.as_ref(), "a/value.bin").unwrap(), b"value");
+    }
+
     /// A text line names the object it came from by its handle's URL, which
     /// is what a written table keeps: Arrow's own local filesystem, which
     /// calls itself `local`, is a `file` naming no host, and a filesystem

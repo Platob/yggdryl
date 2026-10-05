@@ -536,6 +536,10 @@ impl IOBase for PublicationProbe {
         self.handle.pwrite(offset, bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> yggdryl::Result<()> {
+        self.handle.create_bytes(bytes)
+    }
+
     fn size(&self) -> u64 {
         self.handle.size()
     }

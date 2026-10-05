@@ -344,6 +344,131 @@ fn a_commit_under_a_token_the_table_moved_past_is_a_conflict_or_a_rebase() {
     assert_eq!(forbidden(&store), Vec::<String>::new());
 }
 
+/// Eight handles on one table, three appends each with nothing between
+/// them: the control plane's version token is the only thing deciding which
+/// publication lands, so every row lands once, every publication either
+/// lands or is a conflict, each conflict costs one reading of where the
+/// pointer stands and one read of the document it names, and the store is
+/// never listed nor deleted from.
+#[test]
+fn racing_handles_publish_every_append_once_through_the_control_plane() {
+    const HANDLES: u8 = 8;
+    const APPENDS: u8 = 3;
+    let fake = S3TablesFake::start();
+    let store = store();
+    let catalog = catalog(&fake, &store);
+    catalog
+        .create_namespace("desk", &Properties::new())
+        .expect("a namespace");
+    catalog
+        .tables()
+        .create("desk.quotes", &declared(), &Properties::new())
+        .expect("a table");
+
+    // A thousand attempts 1 to 16 ms apart inside ten minutes: the budget is
+    // never what ends a commit, since of twenty-four commits one handle is
+    // beaten at most once per commit another lands. Each handle reads its
+    // document before the race, so what the race reads is the race's.
+    let racing = yggdryl::iceberg::IcebergOptions::new()
+        .with_commit_retries(1_000)
+        .with_commit_min_backoff_ms(1)
+        .with_commit_max_backoff_ms(16)
+        .with_commit_total_timeout_ms(600_000);
+    let tables: Vec<Table> = (0..HANDLES)
+        .map(|_| {
+            let mut table = catalog.table("desk.quotes").expect("the table");
+            let Table::Iceberg(iceberg) = &mut table else {
+                panic!("expected an Iceberg table, got {table:?}");
+            };
+            iceberg.set_options(racing.clone());
+            assert_eq!(iceberg.metadata_version().expect("its version"), 0);
+            table
+        })
+        .collect();
+    fake.clear_requests();
+    store.clear_requests();
+
+    let start = Arc::new(std::sync::Barrier::new(usize::from(HANDLES)));
+    let threads: Vec<_> = tables
+        .into_iter()
+        .enumerate()
+        .map(|(handle, mut table)| {
+            let start = Arc::clone(&start);
+            std::thread::spawn(move || {
+                start.wait();
+                for append in 0..APPENDS {
+                    let id = u8::try_from(handle).expect("eight handles") * APPENDS + append + 1;
+                    table
+                        .append_serie(rows(&[(i64::from(id), id)]).into(), None)
+                        .unwrap_or_else(|error| {
+                            panic!("handle {handle}, append {append}: {error}")
+                        });
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().expect("a handle");
+    }
+
+    // Every publication went to the control plane and either landed or was
+    // refused as moved; each refusal was followed by one reading of where
+    // the pointer stands, then one read of the document it named.
+    let publications: Vec<u16> = fake
+        .requests()
+        .into_iter()
+        .filter(|request| request.method == "PUT" && request.path.ends_with("/metadata-location"))
+        .map(|request| request.status)
+        .collect();
+    let landed = publications.iter().filter(|status| **status == 200).count();
+    let conflicts = publications.iter().filter(|status| **status == 409).count();
+    assert_eq!(landed, usize::from(HANDLES * APPENDS), "{publications:?}");
+    assert_eq!(landed + conflicts, publications.len(), "{publications:?}");
+    println!("racing handles: {landed} publications landed, {conflicts} refused as moved");
+    let readings = fake
+        .requests()
+        .into_iter()
+        .filter(|request| request.method == "GET" && request.path.ends_with("/metadata-location"))
+        .count();
+    assert_eq!(
+        readings, conflicts,
+        "one reading of the pointer per conflict"
+    );
+    let documents_read = store
+        .requests()
+        .into_iter()
+        .filter(|request| {
+            request.method == "GET"
+                && request
+                    .key
+                    .as_deref()
+                    .is_some_and(|key| key.ends_with(".metadata.json"))
+        })
+        .count();
+    assert_eq!(
+        documents_read, conflicts,
+        "one read of the winner's document per conflict"
+    );
+    assert_eq!(forbidden(&store), Vec::<String>::new());
+
+    // Twenty-four publications on top of the first document, and every row
+    // read once.
+    let state = fake.table("lake", "desk", "quotes").expect("the table");
+    assert!(
+        state
+            .metadata_location
+            .as_deref()
+            .is_some_and(|location| location.contains("/metadata/00024-")),
+        "{state:?}"
+    );
+    let mut ids: Vec<u8> = read(&catalog.table("desk.quotes").expect("the table"))
+        .into_iter()
+        .map(|(_, _, id)| id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, (1..=HANDLES * APPENDS).collect::<Vec<u8>>());
+}
+
 #[test]
 fn a_create_states_its_format_version_or_takes_the_lowest_the_schema_needs() {
     let fake = S3TablesFake::start();

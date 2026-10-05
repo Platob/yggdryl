@@ -130,7 +130,7 @@ jobs:
           shared-key: stable-full
           save-if: false
       - name: Install Maturin
-        run: python -m pip install "maturin>=1.9,<2"
+        run: python -m pip install "maturin>=1.15,<2"
       # maturin copies python/wheel-data/ into the wheel and builds no binary
       # of its own, so the command is staged before the wheel is built.
       #
@@ -377,7 +377,7 @@ jobs:
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       # The script the release runs against every wheel it publishes that a
-      # runner can import (docs/testing.md names the three it cannot). It lived
+      # runner can load (docs/testing.md names the ones it cannot). It lived
       # in a `release.yml` heredoc that nothing executed until a release ran,
       # which is how a renamed module reached 0.1.9 and stopped it. Running it
       # here costs a second and moves that failure to the pull request.
@@ -392,6 +392,102 @@ jobs:
           python/yggdryl
           python/tests/typing_bindings.py
           python/tests/typing_fields.py
+
+  # A free-threaded CPython loads neither the `abi3` wheel the `python` lane
+  # tests nor any wheel built for a GIL interpreter, so free-threading is a
+  # build of its own: `cp314-cp314t` from free-threaded 3.14 and
+  # `cp315-abi3.abi3t`, PEP 803's free-threaded stable ABI, from 3.15 - one
+  # maturin invocation, because both are outside the `abi3` family the
+  # `python-wheel` job builds. The whole suite runs on 3.14t, where a
+  # `#[pyclass]` shared across threads, a `detach` and the GIL staying off
+  # are exercised for real. Free threading starts at 3.14: CPython declared
+  # it supported there and PyO3 dropped 3.13t with it (#5865), so every PyO3
+  # that builds abi3t refuses a free-threaded CPython below 3.14, and 3.12
+  # has no free-threaded build at all. PyArrow publishes no wheel for 3.15 on
+  # any
+  # platform yet, and `import yggdryl` imports it, so on 3.15 and 3.15t the
+  # smoke script loads the extension module alone and says what it skipped.
+  python-freethreaded:
+    name: Python binding (free-threaded 3.14t, abi3t 3.15)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      # 3.15 is a release candidate, which setup-python installs only when
+      # prereleases are allowed. The last listed comes first on PATH, so
+      # `python3.15` is the GIL build rather than a name the free-threaded
+      # one also installs; every interpreter below is asserted besides.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: |
+            3.15t
+            3.15
+            3.14t
+          allow-prereleases: true
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
+      - name: Install Maturin
+        run: python3.14t -m pip install "maturin>=1.15,<2"
+      # Debug, as in `python-wheel`: CI never measures.
+      - name: Stage the yggdryl command
+        run: python3.14t scripts/stage_cli.py --debug
+      - name: Build the free-threaded wheels
+        run: >-
+          python3.14t -m maturin build --locked --profile dev
+          --manifest-path python/Cargo.toml
+          --interpreter python3.14t python3.15 --out python/dist-ft
+      - name: The wheels are the two the lane owes
+        run: |
+          python3.14t - <<'EOF'
+          import glob
+          import os
+          import zipfile
+
+          wheels = sorted(glob.glob("python/dist-ft/*.whl"))
+          # `yggdryl-<version>-<python tag>-<abi tag>-<platform tag>.whl`
+          built = sorted("-".join(os.path.basename(wheel).split("-")[2:4]) for wheel in wheels)
+          assert built == ["cp314-cp314t", "cp315-abi3.abi3t"], wheels
+          abi3t, = [wheel for wheel in wheels if "-cp315-abi3.abi3t-" in wheel]
+          modules = [
+              name
+              for name in zipfile.ZipFile(abi3t).namelist()
+              if name.startswith("yggdryl/_native") and name.endswith((".so", ".pyd"))
+          ]
+          assert modules == ["yggdryl/_native.abi3t.so"], modules
+          print(f"{abi3t} holds {modules[0]}")
+          EOF
+      # The `python` lane's tools but `polars`, which publishes no
+      # free-threaded wheel, so its suites skip here and nowhere else.
+      # `typing_extensions` is imported by the hints suite; `mypy` brings it
+      # to the other lane.
+      - name: Install test tools (3.14t)
+        run: |
+          python3.14t -m venv "$RUNNER_TEMP/ft"
+          echo "$RUNNER_TEMP/ft/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ft/bin/python" -c "import sys; assert not sys._is_gil_enabled(), sys.version"
+          "$RUNNER_TEMP/ft/bin/python" -m pip install --only-binary ":all:" \
+            "pyarrow>=18" "pytest>=8" "pandas>=2" tzdata xxhash "requests>=2.32" "typing_extensions>=4.4"
+      - name: Install wheel (3.14t)
+        run: python -m pip install --no-deps python/dist-ft/*-cp314-cp314t-*.whl
+      - name: Smoke test the wheel the way the release does (3.14t)
+        run: python scripts/check_wheel_smoke.py
+      - name: Tests (3.14t)
+        run: python -m pytest python/tests
+      # Each 3.15 installs the abi3t wheel by name and no PyArrow, which is
+      # what proves pip takes the tag on either build and the extension loads
+      # there, with the GIL left off on 3.15t.
+      - name: Load the abi3t extension (3.15, 3.15t)
+        run: |
+          for version in 3.15 3.15t; do
+            venv="$RUNNER_TEMP/smoke-$version"
+            "python$version" -m venv "$venv"
+            "$venv/bin/python" -c "import sys, sysconfig; free = 't' if sysconfig.get_config_var('Py_GIL_DISABLED') == 1 else ''; assert '%d.%d%s' % (*sys.version_info[:2], free) == '$version', sys.version"
+            "$venv/bin/python" -m pip install --no-deps python/dist-ft/*-cp315-abi3.abi3t-*.whl
+            "$venv/bin/python" scripts/check_wheel_smoke.py --extension-only
+          done
 
   spark-interop:
     # The Iceberg exchange with Apache Spark, the format's reference

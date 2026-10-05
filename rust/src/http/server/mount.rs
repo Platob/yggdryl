@@ -2,7 +2,8 @@
 //!
 //! `GET` and `HEAD` read a leaf - whole, as one byte range, or as a `304`
 //! against its validators - and list a container as JSON; `PUT` writes a
-//! leaf whole; `DELETE` removes one; `OPTIONS` names the five. The prefix
+//! leaf whole, or under `If-None-Match: *` creates it where nothing is;
+//! `DELETE` removes one; `OPTIONS` names the five. The prefix
 //! itself is the mounted holder, and a path below it is
 //! [`IOBase::child_by_path`], resolved under the mount's lock and served
 //! outside it; a leaf's bytes are never read whole here, they stream when
@@ -161,7 +162,18 @@ fn read(
 
 /// `PUT`: write the leaf whole; `201` when it was not there, else `204`;
 /// `409` on a container.
+///
+/// `If-None-Match: *` makes it a create (RFC 9110 section 13.1.2): the leaf's
+/// own [`IOBase::create_bytes`], whose conflict is `412` with the leaf as it
+/// was, and `201` where it lands; a container, whose listing is a current
+/// representation, is `412` too. Any other `If-None-Match` leaves the `PUT`
+/// as it is.
 fn put(shared: &Arc<RwLock<Mounted>>, rest: &str, incoming: &Incoming) -> Result<Answer> {
+    let exclusive = incoming
+        .head
+        .headers
+        .get("if-none-match")
+        .is_some_and(|value| value.trim() == "*");
     let declared = incoming
         .head
         .headers
@@ -184,13 +196,23 @@ fn put(shared: &Arc<RwLock<Mounted>>, rest: &str, incoming: &Incoming) -> Result
     };
     let kind = holder.kind();
     if kind.is_container() {
+        if exclusive {
+            return Ok(precondition_failed(rest));
+        }
         return Ok(Answer::text(
             Status::CONFLICT,
             &format!("{rest:?} is a container and takes no body"),
         ));
     }
-    let created = kind == IOKind::Unknown;
-    holder.write_all_bytes(&incoming.body)?;
+    let created = exclusive || kind == IOKind::Unknown;
+    if exclusive {
+        match holder.create_bytes(&incoming.body) {
+            Err(error) if error.is_conflict() => return Ok(precondition_failed(rest)),
+            result => result?,
+        }
+    } else {
+        holder.write_all_bytes(&incoming.body)?;
+    }
     if let Some(media_type) = declared {
         holder.set_media_type(media_type.clone());
         mounted.declared.insert(rest.to_owned(), media_type);
@@ -200,6 +222,14 @@ fn put(shared: &Arc<RwLock<Mounted>>, rest: &str, incoming: &Incoming) -> Result
     } else {
         Status::NO_CONTENT
     }))
+}
+
+/// The `412` a create answers where something already is.
+fn precondition_failed(rest: &str) -> Answer {
+    Answer::text(
+        Status::PRECONDITION_FAILED,
+        &format!("{rest:?} already holds a value, and If-None-Match: * creates only where none is"),
+    )
 }
 
 /// `DELETE`: remove what is there; `404` when nothing was.

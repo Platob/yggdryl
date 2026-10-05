@@ -691,7 +691,7 @@ impl PyIcebergOptions {
     }
 
     /// How many data files a scan decodes at once. Default: the host's own
-    /// parallelism, kept in 1..=8.
+    /// parallelism, the whole host (`std::thread::available_parallelism`).
     #[getter]
     fn read_parallelism(&self) -> usize {
         self.inner.read_parallelism()
@@ -841,6 +841,7 @@ impl PyIcebergOptions {
 #[pyclass(
     name = "IcebergCatalog",
     module = "yggdryl._native",
+    frozen,
     extends = crate::warehouse::PyCatalog,
     skip_from_py_object
 )]
@@ -918,6 +919,7 @@ impl PyIcebergCatalog {
 #[pyclass(
     name = "IcebergNamespace",
     module = "yggdryl._native",
+    frozen,
     extends = crate::warehouse::PyNamespace,
     skip_from_py_object
 )]
@@ -957,6 +959,7 @@ impl PyIcebergNamespace {
 #[pyclass(
     name = "IcebergTable",
     module = "yggdryl._native",
+    frozen,
     extends = crate::warehouse::PyTable,
     skip_from_py_object
 )]
@@ -999,11 +1002,18 @@ fn held<'a>(slf: &'a PyRef<'_, PyIcebergTable>) -> PyResult<&'a IcebergTable<Han
     iceberg_of(slf.as_super().as_super().inner()?)
 }
 
-/// Borrow the Iceberg table below this object, mutably.
-fn held_mut<'a>(
-    slf: &'a mut PyRefMut<'_, PyIcebergTable>,
-) -> PyResult<&'a mut IcebergTable<Handle>> {
-    iceberg_of_mut(slf.as_super().as_super().inner_mut()?)
+/// Borrow the `IOBase` layer of this object mutably.
+///
+/// `Table` is frozen, so no `PyRefMut` reaches through it: the base is borrowed
+/// as itself, and that borrow - the one flag every layer of the object shares -
+/// fails as `RuntimeError` while another borrow holds it.
+fn base_mut<'py>(slf: &Bound<'py, PyIcebergTable>) -> PyResult<PyRefMut<'py, PyIOBase>> {
+    Ok(slf.as_super().as_super().try_borrow_mut()?)
+}
+
+/// Borrow the Iceberg table below a mutably borrowed base.
+fn held_mut(base: &mut PyIOBase) -> PyResult<&mut IcebergTable<Handle>> {
+    iceberg_of_mut(base.inner_mut()?)
 }
 
 /// The object an Iceberg table crosses as: the `Table` base over the handle,
@@ -1150,7 +1160,7 @@ impl PyIcebergTable {
     /// a location does not say which store holds it.
     #[getter]
     fn root(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let root = table.root().get().map_err(value_error)?;
         if let Some(holder) = crate::iobase::container_holder(root)? {
@@ -1165,7 +1175,7 @@ impl PyIcebergTable {
     /// The table's base location, as a URI.
     #[getter]
     fn location(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table.metadata().map_err(value_error)?.location().to_owned())
     }
@@ -1173,7 +1183,7 @@ impl PyIcebergTable {
     /// The revision of the specification the metadata is written to.
     #[getter]
     fn format_version(slf: &Bound<'_, Self>) -> PyResult<i32> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .metadata()
@@ -1185,7 +1195,7 @@ impl PyIcebergTable {
     /// The stable identifier of the table itself.
     #[getter]
     fn table_uuid(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .metadata()
@@ -1197,7 +1207,7 @@ impl PyIcebergTable {
     /// The version number of the current metadata document.
     #[getter]
     fn version(slf: &Bound<'_, Self>) -> PyResult<u32> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table.metadata_version().map_err(value_error)
     }
@@ -1205,7 +1215,7 @@ impl PyIcebergTable {
     /// The name of the current metadata document.
     #[getter]
     fn metadata_file_name(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table.metadata_file_name().map_err(value_error)
     }
@@ -1213,7 +1223,7 @@ impl PyIcebergTable {
     /// The location of the current metadata document, as a URI.
     #[getter]
     fn metadata_location(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table.metadata_location().map_err(value_error)
     }
@@ -1221,7 +1231,7 @@ impl PyIcebergTable {
     /// The schema new data is written against.
     #[getter]
     fn schema(slf: &Bound<'_, Self>) -> PyResult<PyField> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table
             .schema()
@@ -1233,7 +1243,7 @@ impl PyIcebergTable {
     /// The partition spec new data is written against.
     #[getter]
     fn spec(slf: &Bound<'_, Self>) -> PyResult<PyPartitionSpec> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table
             .metadata()
@@ -1250,7 +1260,7 @@ impl PyIcebergTable {
     /// failure: it simply reads as no rows.
     #[getter]
     fn current_snapshot(slf: &Bound<'_, Self>) -> PyResult<Option<PySnapshot>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .current_snapshot()
@@ -1262,7 +1272,7 @@ impl PyIcebergTable {
     /// Every retained snapshot, oldest first.
     #[getter]
     fn snapshots(slf: &Bound<'_, Self>) -> PyResult<Vec<PySnapshot>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .metadata()
@@ -1277,7 +1287,7 @@ impl PyIcebergTable {
     /// Every schema the table has had, by identifier.
     #[getter]
     fn schemas(slf: &Bound<'_, Self>) -> PyResult<Vec<PyField>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .metadata()
@@ -1291,7 +1301,7 @@ impl PyIcebergTable {
 
     /// Every manifest the current snapshot points at.
     fn manifests(slf: &Bound<'_, Self>) -> PyResult<Vec<PyManifestFile>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .manifests()
@@ -1310,7 +1320,7 @@ impl PyIcebergTable {
     /// retains is a `ValueError` naming it and the ones it does, the same
     /// failure [`scan_at`](Self::scan_at) reports for the same reason.
     fn manifests_at(slf: &Bound<'_, Self>, snapshot_id: i64) -> PyResult<Vec<PyManifestFile>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let metadata = table.metadata().map_err(value_error)?;
         let snapshot = metadata.snapshot_by_id(snapshot_id).ok_or_else(|| {
@@ -1335,7 +1345,7 @@ impl PyIcebergTable {
     /// Every live data file of the current snapshot, with the spec it was
     /// written under.
     fn data_files(slf: &Bound<'_, Self>) -> PyResult<Vec<(PyDataFile, PyPartitionSpec)>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         Ok(table
             .data_files()
@@ -1360,13 +1370,14 @@ impl PyIcebergTable {
     /// `options` configures this scan.
     #[pyo3(signature = (field = None, *, options = None, **properties))]
     fn scan<'py>(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let field = field
             .map(|field| core_root_field_from_value(field, DEFAULT_ROOT_NAME))
@@ -1389,14 +1400,15 @@ impl PyIcebergTable {
     /// they mean on [`scan`](Self::scan).
     #[pyo3(signature = (filters = None, field = None, *, options = None, **properties))]
     fn scan_where<'py>(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         filters: Option<&Bound<'_, PyAny>>,
         field: Option<&Bound<'_, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
@@ -1418,7 +1430,7 @@ impl PyIcebergTable {
     /// A name the table does not carry is an error naming the refs it does.
     #[pyo3(signature = (name, filters = None, field = None, *, options = None, **properties))]
     fn scan_ref<'py>(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         name: &str,
         filters: Option<&Bound<'_, PyAny>>,
@@ -1426,7 +1438,8 @@ impl PyIcebergTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = field
@@ -1454,7 +1467,7 @@ impl PyIcebergTable {
         filter: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let filter = crate::expression::filter_from_value(filter)?;
         let field = schema
@@ -1476,7 +1489,7 @@ impl PyIcebergTable {
         py: Python<'py>,
         filter: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let filter = crate::expression::filter_from_value(filter)?;
         let plan = table.plan_matching(filter).map_err(value_error)?;
@@ -1495,12 +1508,13 @@ impl PyIcebergTable {
     /// configuration.
     #[pyo3(signature = (batches, *, options = None, **properties))]
     fn append(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
         with_call_options(table, resolved, |table| {
@@ -1517,12 +1531,13 @@ impl PyIcebergTable {
     /// [`append`](Self::append).
     #[pyo3(signature = (batches, *, options = None, **properties))]
     fn overwrite(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
         with_call_options(table, resolved, |table| {
@@ -1543,13 +1558,14 @@ impl PyIcebergTable {
     /// and retries with fresh input.
     #[pyo3(signature = (filters, batches, *, options = None, **properties))]
     fn overwrite_where(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
@@ -1576,14 +1592,15 @@ impl PyIcebergTable {
     /// storing a silently wrapped one.
     #[pyo3(signature = (batches, merge_by, *, safe = true, options = None, **properties))]
     fn merge(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         batches: &Bound<'_, PyAny>,
         merge_by: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&*table), batches)?;
@@ -1604,7 +1621,7 @@ impl PyIcebergTable {
     /// [`merge`](Self::merge).
     #[pyo3(signature = (filters, batches, merge_by, *, safe = true, options = None, **properties))]
     fn merge_where(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
         merge_by: &Bound<'_, PyAny>,
@@ -1612,7 +1629,8 @@ impl PyIcebergTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let keys = crate::expression::selector_from_value(merge_by)?;
@@ -1631,8 +1649,9 @@ impl PyIcebergTable {
     /// override lives on this handle alone - it is never written to the
     /// table; [`update_properties`](Self::update_properties) is what stores a
     /// setting on the table itself.
-    fn set_options(mut slf: PyRefMut<'_, Self>, options: &Bound<'_, PyAny>) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+    fn set_options(slf: &Bound<'_, Self>, options: &Bound<'_, PyAny>) -> PyResult<()> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table.set_options(core_iceberg_options_from_value(options)?);
         Ok(())
     }
@@ -1640,7 +1659,7 @@ impl PyIcebergTable {
     /// Resolve this table's effective options, field by field: the explicit
     /// override, then the table property of the same name, then the default.
     fn options(slf: &Bound<'_, Self>) -> PyResult<PyIcebergOptions> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table
             .options()
@@ -1649,8 +1668,9 @@ impl PyIcebergTable {
     }
 
     /// Add a schema, make it current, and write a new metadata document.
-    fn evolve_schema(mut slf: PyRefMut<'_, Self>, schema: &Bound<'_, PyAny>) -> PyResult<i32> {
-        let table = held_mut(&mut slf)?;
+    fn evolve_schema(slf: &Bound<'_, Self>, schema: &Bound<'_, PyAny>) -> PyResult<i32> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let schema = core_root_field_from_value(schema, DEFAULT_ROOT_NAME)?;
         table.evolve_schema(schema).map_err(value_error)
     }
@@ -1664,7 +1684,7 @@ impl PyIcebergTable {
     /// keeps the columns it names, exactly as `scan` does.
     #[pyo3(signature = (snapshot_id, filters = None, schema = None, *, options = None, **properties))]
     fn scan_at<'py>(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         py: Python<'py>,
         snapshot_id: i64,
         filters: Option<&Bound<'_, PyAny>>,
@@ -1672,7 +1692,8 @@ impl PyIcebergTable {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let resolved = iceberg_call_options(options, properties, table.explicit_options())?;
         let pairs = filter_pairs_from_value(filters)?;
         let field = schema
@@ -1696,7 +1717,7 @@ impl PyIcebergTable {
     /// read.
     #[pyo3(signature = (filters = None))]
     fn plan(slf: &Bound<'_, Self>, filters: Option<&Bound<'_, PyAny>>) -> PyResult<PyScanPlan> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let pairs = filter_pairs_from_value(filters)?;
         let plan = table.plan(&borrowed_pairs(&pairs)).map_err(value_error)?;
@@ -1715,7 +1736,7 @@ impl PyIcebergTable {
         snapshot_id: i64,
         filters: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<PyScanPlan> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let pairs = filter_pairs_from_value(filters)?;
         let plan = table
@@ -1730,14 +1751,16 @@ impl PyIcebergTable {
     /// commit's parent is always the current snapshot - so a branch is read
     /// with [`scan_ref`](Self::scan_ref) and moved with
     /// [`fast_forward`](Self::fast_forward).
-    fn create_branch(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+    fn create_branch(slf: &Bound<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table.create_branch(name, snapshot_id).map_err(value_error)
     }
 
     /// Create a tag at one retained snapshot, as one metadata commit.
-    fn create_tag(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+    fn create_tag(slf: &Bound<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table.create_tag(name, snapshot_id).map_err(value_error)
     }
 
@@ -1745,8 +1768,9 @@ impl PyIcebergTable {
     ///
     /// A name the table does not have is an error rather than an empty
     /// commit.
-    fn remove_ref(mut slf: PyRefMut<'_, Self>, name: &str) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+    fn remove_ref(slf: &Bound<'_, Self>, name: &str) -> PyResult<()> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table
             .remove_snapshot_ref(name)
             .map(|_| ())
@@ -1759,8 +1783,9 @@ impl PyIcebergTable {
     /// parent identifiers, so a fast-forward can never lose history: it is the
     /// one way a branch other than `main` moves, since a commit's parent is
     /// always the current snapshot.
-    fn fast_forward(mut slf: PyRefMut<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+    fn fast_forward(slf: &Bound<'_, Self>, name: &str, snapshot_id: i64) -> PyResult<()> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table
             .fast_forward_branch(name, snapshot_id)
             .map_err(value_error)
@@ -1773,12 +1798,13 @@ impl PyIcebergTable {
     /// Statistics metadata is removed, while physical files remain.
     #[pyo3(signature = (older_than_ms = None, retain_last = None, snapshot_ids = None))]
     fn expire_snapshots(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         older_than_ms: Option<i64>,
         retain_last: Option<usize>,
         snapshot_ids: Option<Vec<i64>>,
     ) -> PyResult<Vec<i64>> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let snapshot_ids = snapshot_ids.unwrap_or_default();
         table
             .expire_snapshots(older_than_ms, retain_last, &snapshot_ids)
@@ -1790,7 +1816,7 @@ impl PyIcebergTable {
     /// The `main` branch follows the current snapshot, so a table that has
     /// been written to always answers for it.
     fn snapshot_by_ref(slf: &Bound<'_, Self>, name: &str) -> PyResult<PySnapshot> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table
             .snapshot_by_ref(name)
@@ -1806,7 +1832,7 @@ impl PyIcebergTable {
     /// then to Iceberg's own 512 MiB default.
     #[getter]
     fn target_file_size(slf: &Bound<'_, Self>) -> PyResult<u64> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         table.target_file_size_bytes().map_err(value_error)
     }
@@ -1816,8 +1842,9 @@ impl PyIcebergTable {
     ///
     /// A table with nothing to compact is left exactly as it is: no snapshot
     /// is committed and the returned [`PyCompaction`] is all zeros.
-    fn compact(mut slf: PyRefMut<'_, Self>) -> PyResult<PyCompaction> {
-        let table = held_mut(&mut slf)?;
+    fn compact(slf: &Bound<'_, Self>) -> PyResult<PyCompaction> {
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         table
             .compact()
             .map(PyCompaction::from_core)
@@ -1829,7 +1856,7 @@ impl PyIcebergTable {
     /// The columns are `made_current_at`, `snapshot_id`, `parent_id`, and
     /// `is_current_ancestor`, the names `PyIceberg`'s `history` table uses.
     fn inspect_history<'py>(slf: &Bound<'_, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let reader = table.inspect_history().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
@@ -1843,7 +1870,7 @@ impl PyIcebergTable {
         slf: &Bound<'_, Self>,
         py: Python<'py>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let reader = table.inspect_snapshots().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
@@ -1854,7 +1881,7 @@ impl PyIcebergTable {
     /// The columns are `file_path`, `file_format`, `spec_id`, the rendered
     /// `partition` chain, `record_count`, and `file_size_in_bytes`.
     fn inspect_files<'py>(slf: &Bound<'_, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let reader = table.inspect_files().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
@@ -1867,11 +1894,12 @@ impl PyIcebergTable {
     /// by both ends up removed. A call given neither commits nothing at all.
     #[pyo3(signature = (updates = None, removes = None))]
     fn update_properties(
-        mut slf: PyRefMut<'_, Self>,
+        slf: &Bound<'_, Self>,
         updates: Option<&Bound<'_, PyAny>>,
         removes: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
-        let table = held_mut(&mut slf)?;
+        let mut base = base_mut(slf)?;
+        let table = held_mut(&mut base)?;
         let updates = match updates {
             Some(value) => string_pairs_from_value(value)?,
             None => Vec::new(),
@@ -1904,7 +1932,7 @@ impl PyIcebergTable {
     /// clean exit and discards on an exception.
     fn update_schema(slf: &Bound<'_, Self>) -> PyResult<PySchemaUpdate> {
         let update = {
-            let borrowed = slf.borrow();
+            let borrowed = slf.try_borrow()?;
             let metadata = held(&borrowed)?.metadata().map_err(value_error)?;
             SchemaUpdate::from_metadata(metadata).map_err(value_error)?
         };
@@ -1915,7 +1943,7 @@ impl PyIcebergTable {
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let slf = slf.borrow();
+        let slf = slf.try_borrow()?;
         let table = held(&slf)?;
         let metadata = table.metadata().map_err(value_error)?;
         Ok(format!(
@@ -2046,8 +2074,8 @@ impl PySchemaUpdate {
     /// identifier. The update is spent either way.
     fn commit(&mut self, py: Python<'_>) -> PyResult<i32> {
         let update = self.update.take().ok_or_else(spent_schema_update)?;
-        let mut table = self.table.bind(py).borrow_mut();
-        held_mut(&mut table)?
+        let mut base = base_mut(self.table.bind(py))?;
+        held_mut(&mut base)?
             .update_schema(&update)
             .map_err(value_error)
     }

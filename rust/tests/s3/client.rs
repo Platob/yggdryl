@@ -945,7 +945,7 @@ mod wire {
 
     use yggdryl::{Error, IOBase};
 
-    use crate::mod_::{BUCKET, file, folder, path, payload, store};
+    use crate::mod_::{BUCKET, file, folder, options, path, payload, store};
 
     #[test]
     fn a_refused_signature_is_the_stores_own_verdict() {
@@ -1054,6 +1054,49 @@ mod wire {
         assert_eq!(
             missing.read_all_bytes().expect("absence reads empty"),
             Vec::<u8>::new()
+        );
+    }
+
+    /// A `409` or `412` is a conflict only where the store's code says the
+    /// thing being created is there: a write that asked nothing of the key is
+    /// told what the store said, and a bucket create reads the bucket codes.
+    #[test]
+    fn a_409_or_412_is_a_conflict_only_by_the_code_that_says_so() {
+        let store = store();
+        let mut handle = file(&store, "lake/part.parquet");
+        for (status, code) in [(412, "PreconditionFailed"), (409, "OperationAborted")] {
+            store.fail_next(status, code, 1);
+            store.clear_requests();
+            let error = handle.write_all_bytes(b"PAR1").expect_err("a refusal");
+            assert!(
+                matches!(
+                    &error,
+                    Error::Remote { status: answered, code: named, operation: "PutObject", .. }
+                        if *answered == status && named == code
+                ),
+                "{error:?}"
+            );
+            assert!(!error.is_conflict(), "{error}");
+            assert_eq!(store.request_count(), 1, "a verdict is not retried");
+        }
+
+        // Another account's bucket of the name is the bucket a create found;
+        // the bucket this account owns already is the create done; a `409`
+        // naming anything else is the store's own refusal.
+        let root =
+            yggdryl::s3::folder_with("s3://fresh/", options(&store)).expect("a bucket handle");
+        store.fail_next(409, "BucketAlreadyExists", 1);
+        let taken = root.create().expect_err("a name another account holds");
+        assert!(matches!(taken, Error::Conflict { .. }), "{taken}");
+        assert!(taken.to_string().contains("s3://fresh/"), "{taken}");
+        store.fail_next(409, "BucketAlreadyOwnedByYou", 1);
+        root.create()
+            .expect("owning the bucket already is the create done");
+        store.fail_next(409, "OperationAborted", 1);
+        let aborted = root.create().expect_err("a conflicting operation");
+        assert!(
+            matches!(&aborted, Error::Remote { status: 409, code, .. } if code == "OperationAborted"),
+            "{aborted:?}"
         );
     }
 }

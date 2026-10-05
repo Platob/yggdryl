@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import copy
 import pickle
+import subprocess
+import sys
 from decimal import Decimal
 
 import pyarrow as pa
@@ -1086,3 +1088,71 @@ def test_an_unregistered_function_is_refused_by_name() -> None:
         @user_defined_function
         def untyped(value):  # type: ignore[no-untyped-def]
             return value
+
+
+RECORDS_PULLS_SCRIPT = r"""
+import threading
+import time
+
+from yggdryl import Field, Selector
+from yggdryl.expression import user_defined_function
+
+
+@user_defined_function(namespace="slow")
+def double(value: int) -> int:
+    # Runs under the stream's lock, and sleeping releases the GIL.
+    time.sleep(0.02)
+    return value * 2
+
+
+ROWS = Field("rows", "struct<size: int64>", nullable=False)
+records = Selector("slow.double(size) as doubled").apply_records(
+    [{"size": size} for size in range(12)], ROWS
+)
+pulled = [[], []]
+taken = []
+
+
+def pull(into):
+    for row in records:
+        into.append(row["doubled"])
+
+
+def take():
+    time.sleep(0.05)
+    taken.extend(records.into_arrow_reader().read_all().column("doubled").to_pylist())
+
+
+threads = [threading.Thread(target=pull, args=(into,)) for into in pulled]
+threads.append(threading.Thread(target=take))
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+got = sorted(pulled[0] + pulled[1] + taken)
+assert got == [size * 2 for size in range(12)], (pulled, taken)
+print("ok")
+"""
+
+
+def test_records_pulled_from_two_threads_never_hold_the_gil_waiting() -> None:
+    """``Records`` advance their stream under one lock, and a row may call a
+    registered user function, which takes the GIL and may release it: a
+    ``next()`` or an ``into_arrow_reader`` waiting on that lock attached would
+    keep the advancing thread from taking the GIL back, and the process would
+    hang. Two threads pull one stream over a function that sleeps while a
+    third takes what is left; every row arrives once. In a process of its own
+    under a deadline, because the failure is a hang.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", RECORDS_PULLS_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as hung:
+        raise AssertionError("two threads pulling one record stream hung") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")

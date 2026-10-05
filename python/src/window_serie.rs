@@ -167,7 +167,7 @@ impl PyWindowSerie {
         py: Python<'_>,
         read: impl FnOnce(WindowSerie<'_>) -> PyResult<T>,
     ) -> PyResult<T> {
-        let serie = self.serie.bind(py).borrow();
+        let serie = self.serie.bind(py).try_borrow()?;
         read(
             serie
                 .inner
@@ -183,7 +183,7 @@ impl PyWindowSerie {
         T: Send,
         F: for<'a> FnOnce(WindowSerie<'a>) -> yggdryl::Result<T> + Send,
     {
-        let serie = self.serie.bind(py).borrow().inner.clone();
+        let serie = self.serie.bind(py).try_borrow()?.inner.clone();
         let (offset, len) = (self.offset, self.len);
         py.detach(move || read(serie.window(offset, len)?))
             .map_err(value_error)
@@ -196,7 +196,7 @@ impl PyWindowSerie {
         py: Python<'_>,
         write: impl FnOnce(WindowSerieMut<'_>) -> yggdryl::Result<T>,
     ) -> PyResult<T> {
-        let mut serie = self.serie.bind(py).borrow_mut();
+        let mut serie = self.serie.bind(py).try_borrow_mut()?;
         let window = serie
             .inner
             .window_mut(self.offset, self.len)
@@ -206,7 +206,7 @@ impl PyWindowSerie {
 
     /// A value for row writes: through the serie's field when it has one.
     fn value_of(&self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-        match self.serie.bind(py).borrow().inner.field() {
+        match self.serie.bind(py).try_borrow()?.inner.field() {
             Some(field) => from_py_under(field, value),
             None => from_py(value),
         }
@@ -229,7 +229,7 @@ impl PyWindowSerie {
             ));
         }
         if let Ok(serie) = other.cast::<PySerie>() {
-            let len = serie.borrow().inner.len();
+            let len = serie.try_borrow()?.inner.len();
             return Ok((serie.clone().unbind(), 0, len));
         }
         Err(PyTypeError::new_err(format!(
@@ -244,7 +244,7 @@ impl PyWindowSerie {
     /// costs the one copy of its buffers the write makes.
     fn source_of(py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<(Serie, usize, usize)> {
         let (serie, offset, len) = Self::viewed(other)?;
-        let source = serie.bind(py).borrow().inner.clone();
+        let source = serie.bind(py).try_borrow()?.inner.clone();
         Ok((source, offset, len))
     }
 }
@@ -569,7 +569,7 @@ impl PyWindowSerie {
         end: usize,
         rows: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let field = self.serie.bind(py).borrow().inner.field().cloned();
+        let field = self.serie.bind(py).try_borrow()?.inner.field().cloned();
         let rows = rows_from_py(field.as_ref(), rows)?;
         self.write(py, |mut window| window.splice(start..end, rows))
     }
@@ -674,7 +674,7 @@ impl PyWindowSerie {
         let Ok((serie, offset, len)) = Self::viewed(other) else {
             return Ok(py.NotImplemented());
         };
-        let other = serie.bind(py).borrow();
+        let other = serie.bind(py).try_borrow()?;
         let other = other.inner.window(offset, len).map_err(value_error)?;
         let ordering = self.read(py, |window| Ok(window.cmp(&other)))?;
         compare(ordering, operation).into_py_any(py)

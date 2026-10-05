@@ -4437,7 +4437,7 @@ export declare class IcebergOptions {
   set targetFileSize(bytes: number)
   /**
    * How many data files a scan decodes at once. Default: the host's own
-   * parallelism, kept in 1..=8.
+   * parallelism, the whole host (`std::thread::available_parallelism`).
    */
   get readParallelism(): number
   /**
@@ -5268,6 +5268,14 @@ export declare class IOBase {
   readText(): string
   /** Replace what is here with `data`, as `fs.writeFileSync`. */
   writeBytes(data: Uint8Array): number
+  /**
+   * Write `data` as the whole value only where nothing is here yet, as
+   * `fs.writeFileSync` with the `wx` flag: a value already here throws a
+   * conflict naming the location and is left as it was. Of several
+   * creators racing for one location exactly one returns, on every store
+   * whose create is exclusive.
+   */
+  createBytes(data: Uint8Array): number
   /** Replace what is here with `text`, encoded as UTF-8. */
   writeText(text: string): number
   /**

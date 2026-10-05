@@ -13,7 +13,10 @@ implementation, cross-checked by the reference client:
 2. ``boto3`` writes objects under ``from-boto3/``, including the keys that a
    URL, a signature, and a key each spell differently;
 3. ``cargo test --features s3 --test interop s3::aws::`` writes its own objects
-   under ``from-rust/`` and reads back what ``boto3`` wrote. Its reading half
+   under ``from-rust/`` and reads back what ``boto3`` wrote. It also creates
+   two objects under ``If-None-Match: *``, riding ``PutObject`` and
+   ``CompleteMultipartUpload``, and asserts that MinIO refuses a second
+   create of each with the first value standing. Its reading half
    prints ``SKIPPED`` when the external objects are missing, and this driver
    fails on that word, so a skipped half can never read as a pass;
 4. ``boto3`` reads back every object the Rust side wrote and asserts the bytes,

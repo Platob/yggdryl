@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{PyBytes, PyIterator, PyList, PyTuple};
 use yggdryl::excel::{
     Cell, CellKind, CellRange, CellRef, DateSystem, Row, Sheet, SheetState, Workbook,
@@ -28,9 +29,16 @@ use crate::{cast_options, compare, python_hash, value_error};
 type Shared = Arc<Mutex<Workbook>>;
 
 /// Lock a shared workbook, naming a poisoned one.
+///
+/// The lock is waited on detached: a sheet is parsed on first access under
+/// it, and the parse reads the package through its handle - a
+/// `pyarrow.fs.PyFileSystem` handler among them, which may release the GIL -
+/// so a thread waiting on the lock while attached would keep the parsing
+/// thread from taking the GIL back, and both would wait for good. Every
+/// caller is a method Python called, so `attach` hands back the thread's own
+/// attachment.
 fn lock(shared: &Shared) -> PyResult<MutexGuard<'_, Workbook>> {
-    shared
-        .lock()
+    Python::attach(|py| shared.lock_py_attached(py))
         .map_err(|_| PyRuntimeError::new_err("the workbook was poisoned by a panic"))
 }
 
@@ -1139,7 +1147,12 @@ fn owned_holder(handle: &PyIOBase) -> PyResult<Holder> {
 
 /// An Office Open XML workbook: its sheets in tab order, each parsed on first
 /// access, written back as one package.
-#[pyclass(name = "Workbook", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "Workbook",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 pub(crate) struct PyWorkbook {
     inner: Shared,
 }

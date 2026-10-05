@@ -492,9 +492,10 @@ impl<H: IOBase> IOBase for Buffered<H> {
     // Everything the cache does not change is the wrapped handle's answer,
     // expanded from the one delegation macro. What the list leaves out is
     // exactly what this wrapper owns: the two positional primitives, the
-    // resize that invalidates, the open/close pair that holds the cache, and
-    // the `clear`/`remove` pair - a cache that outlived either would answer a
-    // later read with bytes that are gone.
+    // resize that invalidates, the whole-value write and the create, the
+    // open/close pair that holds the cache, and the `clear`/`remove` pair -
+    // a cache that outlived any of them would answer a later read with bytes
+    // that are gone.
     crate::delegate_iobase!(handle: pstream_bytes, size, capacity, reserve, uri, url, bound_location,
         mtime, media_type, set_media_type, applied_codec, flush, parent, child_by_path, ls, kind, is_container, is_atomic,
         is_tabular);
@@ -570,6 +571,31 @@ impl<H: IOBase> IOBase for Buffered<H> {
         table.apply_write(offset, landed, previous, current, &self.options);
         table.set_size(current);
         Ok(written)
+    }
+
+    /// Create through to the inner handle, dropping every page first.
+    ///
+    /// A page cached while the location held nothing, or the value a refused
+    /// create leaves standing, is fetched again rather than trusted, so the
+    /// cache never answers for a value the create decided.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.table().clear();
+        self.handle.create_bytes(bytes)
+    }
+
+    /// Replace the value through the inner handle's own whole-value write,
+    /// dropping every page first and keeping the length it wrote.
+    ///
+    /// Forwarded rather than spelled as the inherited truncate, write and
+    /// flush, so a handle whose whole-value write is its own - a local file
+    /// publishing through a renamed sibling - is reached by it. A page cached
+    /// before the write never answers for the value it replaced, and the read
+    /// after it asks for no length.
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.table().clear();
+        self.handle.write_all_bytes(bytes)?;
+        self.table().set_size(bytes.len() as u64);
+        Ok(())
     }
 
     /// Resize the inner value and drop every page at or past the new size.

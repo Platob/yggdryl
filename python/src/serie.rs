@@ -99,7 +99,7 @@ impl PySerie {
         T: Send,
         F: FnOnce(Serie) -> yggdryl::Result<T> + Send,
     {
-        let serie = slf.borrow().inner.clone();
+        let serie = slf.try_borrow()?.inner.clone();
         slf.py().detach(move || read(serie)).map_err(value_error)
     }
 }
@@ -1238,7 +1238,7 @@ impl PySerie {
         let py = slf.py();
         let options = cast_options(safe, representation)?;
         let target = target_of(field)?;
-        let serie = slf.borrow().inner.clone();
+        let serie = slf.try_borrow()?.inner.clone();
         let cast = py
             .detach(move || serie.cast(&target, options))
             .map_err(value_error)?;
@@ -1380,7 +1380,10 @@ impl PySerie {
     ) -> PyResult<()> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.borrow_mut().inner.spill(&options).map_err(value_error)
+        slf.try_borrow_mut()?
+            .inner
+            .spill(&options)
+            .map_err(value_error)
     }
 
     /// `spill`, answering this serie so calls chain; a refused folder
@@ -1395,7 +1398,7 @@ impl PySerie {
     ) -> PyResult<Bound<'py, Self>> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_spilled(&options)
             .map_err(value_error)?;
@@ -1504,7 +1507,7 @@ impl PySerie {
         nulls_first: bool,
     ) -> PyResult<Bound<'py, Self>> {
         let options = sort_options(descending, nulls_first);
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_sorted(options)
             .map_err(value_error)?;
@@ -1513,13 +1516,19 @@ impl PySerie {
 
     /// Keep the first occurrence of every value, in place.
     fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.borrow_mut().inner.as_unique().map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_unique()
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
     /// Reverse the rows in place.
     fn as_reversed<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.borrow_mut().inner.as_reversed().map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_reversed()
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
@@ -1529,7 +1538,7 @@ impl PySerie {
         indices: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let indices = serie_argument(indices, "indices")?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_taken(&indices)
             .map_err(value_error)?;
@@ -1542,7 +1551,7 @@ impl PySerie {
         mask: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let mask = serie_argument(mask, "mask")?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_filtered(&mask)
             .map_err(value_error)?;
@@ -1556,7 +1565,10 @@ impl PySerie {
         by: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let by = orderings_of(by)?;
-        slf.borrow_mut().inner.as_sort_by(by).map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_sort_by(by)
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
@@ -1564,7 +1576,7 @@ impl PySerie {
     /// serie object: every read and write goes through the serie when it is
     /// asked, window-relative.
     fn window(slf: &Bound<'_, Self>, offset: usize, length: usize) -> PyResult<PyWindowSerie> {
-        slf.borrow()
+        slf.try_borrow()?
             .inner
             .window(offset, length)
             .map_err(value_error)?;
@@ -1637,7 +1649,7 @@ impl PySerie {
         requested_schema: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<(Bound<'py, PyCapsule>, Bound<'py, PyCapsule>)> {
         let py = slf.py();
-        let serie = slf.borrow().inner.clone();
+        let serie = slf.try_borrow()?.inner.clone();
         let serie = match requested_schema {
             Some(requested) => {
                 let field = serie.require_field().map_err(value_error)?;
@@ -1732,7 +1744,7 @@ impl PySerie {
 
     /// The call that rebuilds this serie, its rows spelled as Python values.
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let serie = slf.borrow();
+        let serie = slf.try_borrow()?;
         let rows = serie.as_py(slf.py())?.bind(slf.py()).repr()?.to_string();
         Ok(match serie.field() {
             Some(field) => {
@@ -1998,7 +2010,7 @@ impl PySerieReader {
     ) -> PyResult<Bound<'py, Self>> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        match slf.borrow_mut().held() {
+        match slf.try_borrow_mut()?.held() {
             Some(reader) => reader.as_spilled(&options).map_err(value_error)?,
             None => return Err(handed_over()),
         };
@@ -2520,7 +2532,7 @@ impl PyStructSerie {
         slf: &Bound<'py, Self>,
         requested_schema: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let serie = slf.as_super().borrow().inner.clone();
+        let serie = slf.as_super().try_borrow()?.inner.clone();
         let reader = SerieReader::from_serie(serie).map_err(value_error)?;
         reader_capsule(slf.py(), reader, requested_schema)
     }

@@ -329,14 +329,7 @@ impl<H: IOBase> Transcoded<H> {
             return Ok(());
         }
         let plain = self.plain.take().unwrap_or_default();
-        let text = std::str::from_utf8(&plain).map_err(|error| {
-            super::undecodable(
-                Charset::Utf8.as_str(),
-                error.valid_up_to(),
-                plain.get(error.valid_up_to()).copied().unwrap_or_default(),
-            )
-        })?;
-        let encoded = self.charset.encode(text)?;
+        let encoded = self.charset.encode(plain_text(&plain)?)?;
         self.handle.write_all_bytes(&encoded)?;
         drop(encoded);
         self.plain = Some(plain);
@@ -344,6 +337,17 @@ impl<H: IOBase> Transcoded<H> {
         self.invalidate();
         Ok(())
     }
+}
+
+/// The decoded value as the text it must be before a charset encodes it.
+fn plain_text(plain: &[u8]) -> Result<&str> {
+    std::str::from_utf8(plain).map_err(|error| {
+        super::undecodable(
+            Charset::Utf8.as_str(),
+            error.valid_up_to(),
+            plain.get(error.valid_up_to()).copied().unwrap_or_default(),
+        )
+    })
 }
 
 /// Copy `buffer.len()` bytes of `plain` from `offset`, returning what fit.
@@ -448,6 +452,24 @@ impl<H: IOBase> IOBase for Transcoded<H> {
         self.dirty = true;
         self.invalidate();
         Ok(bytes.len())
+    }
+
+    /// Encode the text once through the charset and create it on the
+    /// wrapped handle, which owns the exclusive attempt.
+    ///
+    /// An open handle then holds what was created, anything it had staged
+    /// superseded by the published value; a refused create leaves the
+    /// decoded value, staged changes included, as it was.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let encoded = self.charset.encode(plain_text(bytes)?)?;
+        self.handle.create_bytes(&encoded)?;
+        if let Some(plain) = self.plain.as_mut() {
+            plain.clear();
+            plain.extend_from_slice(bytes);
+        }
+        self.dirty = false;
+        self.invalidate();
+        Ok(())
     }
 
     /// The decoded length, measured by the same pass that indexes the value.

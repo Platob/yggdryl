@@ -13,6 +13,7 @@ import datetime
 import json
 import pathlib
 import pickle
+import threading
 import time
 
 import pyarrow as pa
@@ -623,6 +624,54 @@ class TestCommits:
             table.current_snapshot.parent_snapshot_id == table.snapshots[0].snapshot_id
         )
 
+    def test_eight_threads_appending_at_once_land_every_commit_once(
+        self, table: IcebergTable, tmp_path: pathlib.Path
+    ) -> None:
+        # Each thread holds its own table over its own handle, as a writer in
+        # another process would, and a beaten commit rebases rather than
+        # fails: the budget is set so it is never what ends one. Under a
+        # free-threaded interpreter the eight commit at the same instant.
+        threads, appends = 8, 3
+        patient = IcebergOptions(
+            commit_retries=1000,
+            commit_min_backoff_ms=1,
+            commit_max_backoff_ms=16,
+            commit_total_timeout_ms=600_000,
+        )
+        handles = [IcebergTable(IOBase(tmp_path / "trades")) for _ in range(threads)]
+        barrier = threading.Barrier(threads)
+        failures: list[BaseException] = []
+
+        def appender(index: int) -> None:
+            try:
+                barrier.wait()
+                for append in range(appends):
+                    handles[index].append(
+                        _rows(1 + 3 * (index * appends + append)), options=patient
+                    )
+            except BaseException as error:  # noqa: BLE001 - reported below
+                failures.append(error)
+
+        workers = [
+            threading.Thread(target=appender, args=(index,)) for index in range(threads)
+        ]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join()
+        assert failures == []
+
+        landed = IcebergTable(IOBase(tmp_path / "trades"))
+        assert landed.version == 1 + threads * appends
+        ids = landed.scan().read_all().column("id").to_pylist()
+        assert sorted(ids) == list(range(1, 1 + 3 * threads * appends))
+        # One chain: every snapshot's parent is the one committed before it.
+        snapshots = landed.snapshots
+        assert len(snapshots) == threads * appends
+        assert snapshots[0].parent_snapshot_id is None
+        for parent, child in zip(snapshots, snapshots[1:]):
+            assert child.parent_snapshot_id == parent.snapshot_id
+
     def test_overwriting_replaces_every_row(self, table: IcebergTable) -> None:
         table.append(_rows())
         table.overwrite(_rows(10))
@@ -647,11 +696,9 @@ class TestCommits:
         assert rows.column("id").to_pylist() == [3]
 
         import pandas
-        import polars
 
         table.append(pandas.DataFrame({"id": [4], "venue": ["XPAR"]}))
-        table.append(polars.DataFrame({"id": [5], "venue": ["XAMS"]}).lazy())
-        assert table.scan().read_all().column("id").to_pylist() == [3, 4, 5]
+        assert table.scan().read_all().column("id").to_pylist() == [3, 4]
 
         with pytest.raises(TypeError, match="expected rows"):
             table.append(12)
@@ -660,9 +707,19 @@ class TestCommits:
         # replaces nothing on a partitioned table; the scope that names every
         # row is what empties it.
         table.overwrite([])
-        assert table.scan().read_all().num_rows == 3
+        assert table.scan().read_all().num_rows == 2
         table.overwrite_where(None, [])
         assert table.scan().read_all().num_rows == 0
+
+    def test_a_polars_frame_appends_through_the_record_surface(
+        self, table: IcebergTable
+    ) -> None:
+        # The polars door alone, so the test above runs whole where polars
+        # has no wheel (the free-threaded lane) and only this one skips.
+        polars = pytest.importorskip("polars")
+        table.append([{"id": 3, "venue": "XLON"}])
+        table.append(polars.DataFrame({"id": [5], "venue": ["XAMS"]}).lazy())
+        assert table.scan().read_all().column("id").to_pylist() == [3, 5]
 
     def test_a_named_write_types_rows_against_the_table_it_lands_in(
         self, tmp_path: pathlib.Path

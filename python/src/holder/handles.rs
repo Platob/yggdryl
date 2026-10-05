@@ -183,7 +183,7 @@ impl PyLocalPath {
     /// know which role it is; this decides without asking the file system, and
     /// carries any media type the `LocalPath` declared across.
     fn as_file(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let holder = match base.as_super().inner()? {
             Holder::LocalPath(path) => Holder::LocalFile(path.as_file().map_err(value_error)?),
             _ => {
@@ -197,7 +197,7 @@ impl PyLocalPath {
 
     /// Read this location as a directory, whether or not it exists.
     fn as_directory(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let holder = match base.as_super().inner()? {
             Holder::LocalPath(path) => {
                 Holder::LocalFolder(path.as_directory().map_err(value_error)?)
@@ -292,7 +292,7 @@ impl PyFsPath {
     /// Infallible and free: no call reaches the filesystem, because the role
     /// is what the caller declares rather than what the store reports.
     fn as_file(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let holder = match base.as_super().inner()? {
             Holder::FsPath(path) => Holder::FsFile(path.as_file()),
             _ => return Err(PyValueError::new_err("this handle is no longer an FsPath")),
@@ -302,7 +302,7 @@ impl PyFsPath {
 
     /// Read this foreign-filesystem location as a directory.
     fn as_directory(slf: &Bound<'_, Self>, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         let holder = match base.as_super().inner()? {
             Holder::FsPath(path) => Holder::FsFolder(path.as_directory()),
             _ => return Err(PyValueError::new_err("this handle is no longer an FsPath")),
@@ -535,13 +535,13 @@ impl PyBuffered {
     /// The number of bytes the cache currently holds.
     #[getter]
     fn cached_bytes(slf: &Bound<'_, Self>) -> PyResult<u64> {
-        Ok(cache(&slf.borrow())?.cached_bytes())
+        Ok(cache(&slf.try_borrow()?)?.cached_bytes())
     }
 
     /// The number of pages the cache currently holds.
     #[getter]
     fn cached_pages(slf: &Bound<'_, Self>) -> PyResult<usize> {
-        Ok(cache(&slf.borrow())?.cached_pages())
+        Ok(cache(&slf.try_borrow()?)?.cached_pages())
     }
 
     /// Return whether the page at `index` is resident.
@@ -549,7 +549,7 @@ impl PyBuffered {
     /// Pages are indexed by `page_index(offset)`, so this answers what a
     /// benchmark or a diagnostic asks: did that read come from the cache.
     fn has_cached_page(slf: &Bound<'_, Self>, index: u64) -> PyResult<bool> {
-        Ok(cache(&slf.borrow())?.has_cached_page(index))
+        Ok(cache(&slf.try_borrow()?)?.has_cached_page(index))
     }
 
     /// The page size this cache is actually running with, in bytes.
@@ -559,7 +559,7 @@ impl PyBuffered {
     /// `page_index` divides by.
     #[getter]
     fn page_size(slf: &Bound<'_, Self>) -> PyResult<usize> {
-        Ok(cache(&slf.borrow())?.options().page_size())
+        Ok(cache(&slf.try_borrow()?)?.options().page_size())
     }
 
     /// The byte budget this cache is actually running with.
@@ -568,18 +568,18 @@ impl PyBuffered {
     /// still holds one.
     #[getter]
     fn max_bytes(slf: &Bound<'_, Self>) -> PyResult<u64> {
-        Ok(cache(&slf.borrow())?.options().max_bytes())
+        Ok(cache(&slf.try_borrow()?)?.options().max_bytes())
     }
 
     /// How long a page survives without being touched, in seconds.
     #[getter]
     fn ttl(slf: &Bound<'_, Self>) -> PyResult<f64> {
-        Ok(cache(&slf.borrow())?.options().ttl().as_secs_f64())
+        Ok(cache(&slf.try_borrow()?)?.options().ttl().as_secs_f64())
     }
 
     /// The index of the page holding `offset`.
     fn page_index(slf: &Bound<'_, Self>, offset: u64) -> PyResult<u64> {
-        Ok(cache(&slf.borrow())?.options().page_index(offset))
+        Ok(cache(&slf.try_borrow()?)?.options().page_index(offset))
     }
 
     /// The byte offset the page at `index` starts at.
@@ -587,7 +587,7 @@ impl PyBuffered {
     /// An index past the end saturates rather than wrapping, so it reads as
     /// past the end rather than as a small offset.
     fn page_start(slf: &Bound<'_, Self>, index: u64) -> PyResult<u64> {
-        Ok(cache(&slf.borrow())?.options().page_start(index))
+        Ok(cache(&slf.try_borrow()?)?.options().page_start(index))
     }
 
     /// The handle underneath the cache, as its own role.

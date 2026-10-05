@@ -603,6 +603,20 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         Scalar._from_pickle(("currency", "USD"))
 
 
+def test_an_unsigned_state_out_of_range_is_one_exception_on_every_build() -> None:
+    # Every unsigned tag refuses a negative or too-wide payload as
+    # `OverflowError` - `u128` too, which PyO3 alone spells `ValueError` for a
+    # negative one on a version-specific 3.13+ build - and a payload that is
+    # no integer as `TypeError`.
+    for tag, bits in (("u8", 8), ("u16", 16), ("u32", 32), ("u64", 64), ("u128", 128)):
+        for payload in (-1, 2**bits):
+            with pytest.raises(OverflowError):
+                Scalar._from_pickle((tag, payload))
+        with pytest.raises(TypeError):
+            Scalar._from_pickle((tag, 1.5))
+    assert Scalar._from_pickle(("u128", 2**128 - 1)).as_py() == 2**128 - 1
+
+
 @pytest.mark.parametrize(
     ("legacy", "kind"),
     [

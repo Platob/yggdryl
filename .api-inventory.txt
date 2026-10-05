@@ -1231,6 +1231,7 @@ pub trait FileSystem: Send + Sync + Any  (the complete synchronous Arrow filesys
   fn open_input_stream(&self, path: &str) -> Result<Box<dyn ByteReader>>
   fn open_output_stream(&self, path: &str, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>>  (truncating)
   fn open_append_stream(&self, path: &str, metadata: Option<&OutputMetadata>) -> Result<Box<dyn ByteWriter>>
+  fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()>  (one file where the path holds nothing; a file or a directory already there is Error::Conflict, left as it was, a missing parent the absence the caller repairs; the default is file_info then open_output_stream and not exclusive, LocalFileSystem overrides it with create_new and MemoryFileSystem inserts under its one lock)
   fn as_any(&self) -> &dyn Any  (the concrete backend, for a language binding)
 
 ### yggdryl::fs::transfer  [rust/src/fs/transfer.rs]
@@ -2309,7 +2310,6 @@ pub struct ZipPath
   pub const DEFAULT_USER_AGENT: &'static str
   pub const DEFAULT_ACCEPT_ENCODINGS: [Codec; 3]
   pub const DEFAULT_MAX_BODY_SIZE: u64
-  pub const MAX_DEFAULT_CONCURRENCY: usize
   pub const MAX_CONCURRENCY: usize
   pub const DEFAULT_MAX_PAUSE: Duration
   pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
@@ -2834,6 +2834,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>>
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
+  fn create_bytes(&mut self, bytes: &[u8]) -> Result<()>  (required, beside write_all_bytes: the whole value written only where the location holds none, published on return; a value already there is Error::Conflict naming the location and left byte-identical, a container its own write refusal; one call to the handle beneath, won or lost, so of N concurrent creators exactly one returns Ok on local storage, the local and memory filesystems, ZIP, S3, Azure, GCS, an HTTP request and a Buffer; a bridged filesystem and an HTTP origin ignoring preconditions are not exclusive)
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
   fn applied_codec(&self) -> Codec  (the coding a decoded view applies; identity for stored bytes, what `compress_into`/`decompress_into` refuse otherwise)
   fn uri(&self) -> Option<&Uri>

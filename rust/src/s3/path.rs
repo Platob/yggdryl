@@ -321,6 +321,10 @@ impl IOBase for S3Path {
         self.with_resolved_mut(|handle| handle.write_all_bytes(bytes))?
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.with_resolved_mut(|handle| handle.create_bytes(bytes))?
+    }
+
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.with_resolved_mut(|handle| handle.append_bytes(bytes))?
     }

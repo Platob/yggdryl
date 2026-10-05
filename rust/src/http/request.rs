@@ -743,6 +743,9 @@ impl Request {
     /// only when it is idempotent. An error the rule returns is the
     /// request's; an answer not sent again is handed back whole. A body
     /// streamed by [`Self::send_reader`] is never sent again.
+    // The rule's one writer is `Request::with_sigv4`, so without `aws` the
+    // method would be dead code and the field stays `None`.
+    #[cfg(feature = "aws")]
     #[must_use]
     pub(crate) fn with_resend_on(
         mut self,
@@ -1248,6 +1251,40 @@ impl Request {
 
     /// One `PUT` of `bytes` as the resource's whole value.
     fn upload(&self, bytes: &[u8]) -> Result<()> {
+        let put = self.put_of(bytes)?;
+        let (mut answer, url) = put.exchange_range_free()?;
+        if answer.status.is_success() {
+            self.learn(&answer.headers, None);
+            return Ok(());
+        }
+        Err(refusal(Method::Put, &mut answer, &url))
+    }
+
+    /// One `PUT` of `bytes` carrying `If-None-Match: *`, which RFC 9110
+    /// answers `412` where the resource has a current representation.
+    ///
+    /// The `PUT` is declared non-idempotent, so it goes again only when no
+    /// server saw it: a second attempt after one that landed would read the
+    /// create's own value as the conflict. A `412` - or a `409`, as a store
+    /// answering the Azure way says it - is the [`Error::Conflict`] naming the
+    /// URL.
+    fn create(&self, bytes: &[u8]) -> Result<()> {
+        let mut put = self.put_of(bytes)?.with_idempotent(false);
+        put.headers.insert("if-none-match", "*")?;
+        let (mut answer, url) = put.exchange_range_free()?;
+        if answer.status.is_success() {
+            self.learn(&answer.headers, None);
+            return Ok(());
+        }
+        match answer.status.code() {
+            409 | 412 => Err(Error::conflict("resource", "resource", &url)),
+            _ => Err(refusal(Method::Put, &mut answer, &url)),
+        }
+    }
+
+    /// The `PUT` of `bytes` as the resource's whole value, `Content-Type` the
+    /// media type and `Content-Encoding` the codings it names.
+    fn put_of(&self, bytes: &[u8]) -> Result<Self> {
         let mut put = self.as_method(Method::Put);
         put.body = Body::from(bytes);
         let media_type = self.media_type();
@@ -1262,12 +1299,7 @@ impl Request {
             put.headers
                 .insert("content-encoding", &codings.join(", "))?;
         }
-        let (mut answer, url) = put.exchange_range_free()?;
-        if answer.status.is_success() {
-            self.learn(&answer.headers, None);
-            return Ok(());
-        }
-        Err(refusal(Method::Put, &mut answer, &url))
+        Ok(put)
     }
 
     /// Drop the stage and the cache without publishing.
@@ -1476,6 +1508,43 @@ impl IOBase for Request {
             dirty: true,
         });
         self.publish()
+    }
+
+    /// Create the resource with one `PUT` carrying `If-None-Match: *`;
+    /// nothing is loaded first.
+    ///
+    /// The origin decides: one that honours the precondition - the crate's
+    /// own [`Server`](crate::http::Server) does - answers `412` where the
+    /// resource is, which is the [`Error::Conflict`] naming the URL, the
+    /// resource left as it was; an origin that ignores preconditions
+    /// overwrites, and nothing on this side can tell. A create that lands
+    /// supersedes what this handle had staged; one refused forgets only what
+    /// it knew of the stored value, and keeps a write still waiting to
+    /// publish.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        if let Err(error) = self.create(bytes) {
+            let mut state = self.state()?;
+            if state.stage.as_ref().is_some_and(|stage| !stage.dirty) {
+                state.stage = None;
+            }
+            state.meta = None;
+            return Err(error);
+        }
+        let mut state = self.state()?;
+        if state.opened {
+            state.stage = Some(Stage {
+                bytes: bytes.to_vec(),
+                dirty: false,
+            });
+            state.meta = Some(Some(Meta {
+                size: Some(bytes.len() as u64),
+                mtime: None,
+            }));
+        } else {
+            state.stage = None;
+            state.meta = None;
+        }
+        Ok(())
     }
 
     /// Append after the current end: one `GET` and one `PUT`.

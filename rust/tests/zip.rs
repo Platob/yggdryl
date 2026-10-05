@@ -7,6 +7,8 @@
 //! reaches `yggdryl::internals`, which exists only under the `internals`
 //! feature, and the file that reaches it is declared behind that feature here.
 
+#[path = "zip/leaf.rs"]
+mod leaf;
 #[cfg(feature = "internals")]
 #[path = "zip/mod_.rs"]
 mod mod_;

@@ -16,6 +16,7 @@
 
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
+use pyo3::sync::MutexExt;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -2566,7 +2567,7 @@ impl PyExpression {
 // ---------------------------------------------------------------------------
 
 /// Native rows streaming out of an expression, each a mapping under `field`.
-#[pyclass(name = "Records", module = "yggdryl._native")]
+#[pyclass(name = "Records", module = "yggdryl._native", frozen)]
 pub(crate) struct PyRecords {
     field: CoreField,
     // A mutex, not for contention: the row stream is `Send` and not `Sync`,
@@ -2582,20 +2583,30 @@ impl PyRecords {
         }
     }
 
-    fn next_row(&self) -> PyResult<Option<Scalar>> {
-        let mut rows = self
-            .rows
-            .lock()
-            .map_err(|_| value_error("the record stream was poisoned by an earlier panic"))?;
-        match rows.as_mut().and_then(Iterator::next) {
+    /// The next row, the lock taken and the stream advanced detached: a row
+    /// may call a registered user function, which takes the GIL and may
+    /// release it, and a thread waiting on the lock attached would keep the
+    /// advancing thread from taking it back.
+    fn next_row(&self, py: Python<'_>) -> PyResult<Option<Scalar>> {
+        let next = py.detach(|| {
+            self.rows
+                .lock()
+                .map(|mut rows| rows.as_mut().and_then(Iterator::next))
+                .map_err(drop)
+        });
+        match next
+            .map_err(|()| value_error("the record stream was poisoned by an earlier panic"))?
+        {
             Some(row) => Ok(Some(row.map_err(value_error)?)),
             None => Ok(None),
         }
     }
 
-    fn take(&self) -> PyResult<CoreRecords> {
+    /// Take the stream, its lock waited on detached: another thread may hold
+    /// it across a row that runs Python.
+    fn take(&self, py: Python<'_>) -> PyResult<CoreRecords> {
         self.rows
-            .lock()
+            .lock_py_attached(py)
             .map_err(|_| value_error("the record stream was poisoned by an earlier panic"))?
             .take()
             .ok_or_else(|| value_error("these records were already consumed"))
@@ -2615,7 +2626,7 @@ impl PyRecords {
     }
 
     fn __next__(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        match self.next_row()? {
+        match self.next_row(py)? {
             Some(row) => Ok(Some(crate::scalar::as_py_with_field(
                 py,
                 &row,
@@ -2637,7 +2648,7 @@ impl PyRecords {
     /// The remaining rows as a `pyarrow.RecordBatchReader`, batched lazily.
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.take()?.into_arrow_reader().map_err(value_error)?;
+        let reader = self.take(py)?.into_arrow_reader().map_err(value_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -2704,7 +2715,12 @@ type ColumnStatistics = (Option<PyScalar>, Option<PyScalar>, Option<u64>);
 /// The same shape whether the numbers came from a Parquet footer, an Iceberg
 /// manifest, or a Hive path: what a column holds at least, at most, and how
 /// many of its rows are null.
-#[pyclass(name = "Bounds", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "Bounds",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyBounds {
     inner: CoreBounds,

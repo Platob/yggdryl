@@ -254,6 +254,20 @@ impl IOBase for LocalPath {
         self.with_resolved_mut(|handle| handle.pwrite(offset, bytes))?
     }
 
+    /// Create through what the location resolves to: an undecided location
+    /// is a leaf, whose exclusive open is the create, and a directory refuses
+    /// the bytes as its write does.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.with_resolved_mut(|handle| handle.create_bytes(bytes))?
+    }
+
+    /// Replace through what the location resolves to: an undecided location
+    /// is a leaf, whose replace renames a private sibling over the path, and
+    /// a directory refuses the bytes as its write does.
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.with_resolved_mut(|handle| handle.write_all_bytes(bytes))?
+    }
+
     fn size(&self) -> u64 {
         self.with_resolved(0, |handle| handle.size()).unwrap_or(0)
     }

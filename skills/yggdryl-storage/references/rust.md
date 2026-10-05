@@ -95,6 +95,29 @@ assert_eq!(handle.pread(0, &mut head)?, 6);
 assert_eq!(&head, b"symbol");
 ```
 
+## Create a value only where none is
+
+`create_bytes` writes the whole value only where the location holds none and
+publishes on return; a value already there is `Error::Conflict` naming the
+location, the stored bytes untouched. The refusal comes from the one write -
+`O_EXCL` locally, `If-None-Match: *` on S3, Azure and HTTP,
+`ifGenerationMatch=0` on GCS, a buffer's emptiness - so never guard it with
+`exists`: of several creators racing for one location exactly one wins. A
+filesystem bridged from a host runtime and an HTTP origin that ignores
+preconditions are not exclusive.
+
+```rust
+use yggdryl::holder::Buffer;
+use yggdryl::{Error, IOBase};
+
+let mut handle = Buffer::new();
+handle.create_bytes(br#"{"version":1}"#)?;
+
+let refused = handle.create_bytes(br#"{"version":2}"#);
+assert!(matches!(refused, Err(Error::Conflict { .. })));
+assert_eq!(handle.read_all_bytes()?, br#"{"version":1}"#);
+```
+
 ## Stream bounded chunks and use a cursor
 
 `pstream_bytes` yields owned chunks lazily and never asks for `size`; a

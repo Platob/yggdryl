@@ -690,6 +690,13 @@ impl IOBase for Session {
         ))
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        Err(super::client::is_a_directory(
+            bytes.len(),
+            "an HTTP session",
+        ))
+    }
+
     fn size(&self) -> u64 {
         0
     }

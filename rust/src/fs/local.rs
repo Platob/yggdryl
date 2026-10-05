@@ -189,6 +189,17 @@ impl FileSystem for LocalFileSystem {
         Ok(Box::new(LocalWriter::new(file, position)))
     }
 
+    /// The local leaf's create: the bytes written to a private sibling and
+    /// synced, then linked at `path` by one hard link whose `AlreadyExists`
+    /// is the conflict, whoever made the path first - so the file is whole
+    /// or absent to a reader and to a crash, and the sibling never remains.
+    /// A missing parent is the absence it answers, never repaired here.
+    fn create_file(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        crate::local::LocalFile::create_whole(Path::new(path), bytes, false)
+            .map(drop)
+            .map_err(|error| file_operation_error(error, path))
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

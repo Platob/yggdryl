@@ -95,7 +95,7 @@ impl yggdryl::IOMedia for Counting {
 }
 
 impl IOBase for Counting {
-    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate,
+    yggdryl::delegate_iobase!(handle: create_bytes, pwrite, size, capacity, reserve, truncate,
         uri, url, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {

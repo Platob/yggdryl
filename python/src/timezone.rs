@@ -54,7 +54,12 @@ fn py_none(py: Python<'_>) -> Py<PyAny> {
 }
 
 /// A canonical IANA time zone, with the offset rules this build knows.
-#[pyclass(name = "Timezone", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "Timezone",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyTimezone {
     inner: Timezone,

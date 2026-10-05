@@ -10,7 +10,9 @@
 //! Each level of the chain also prunes:
 //!
 //! - a **manifest list row** carries one [`FieldSummary`] per partition field,
-//!   so a manifest whose summary excludes a value is skipped without being read;
+//!   so a manifest whose summary excludes a value is skipped without being
+//!   read, and the manifests it keeps are read side by side on the read
+//!   parallelism, their entries taken in plan order;
 //! - a **manifest entry** carries the file's partition tuple, so a file outside
 //!   the addressed partition is skipped without being opened;
 //! - a **data file** carries per-column bounds and null counts, so a file whose
@@ -607,10 +609,24 @@ fn bound(bounds: &[(i32, Vec<u8>)], id: i32) -> Option<&[u8]> {
 /// leading sort key an ordered record read opens a partition's files by
 /// ([`partition_groups`]).
 ///
+/// The plan runs in three steps, and its answer is the sequential one byte
+/// for byte. The summaries prune first, on the calling thread with no read,
+/// each kept manifest's handle resolved there. The kept manifests are then
+/// read side by side - each one round trip on a store - on up to
+/// `parallelism` threads, at most that many in flight, their entries
+/// answered in plan order ([`crate::parallel::ordered`]); one thread, or one
+/// kept manifest, reads them one after another and spawns nothing. Last, on
+/// the calling thread, every entry is validated, inherits what its manifest
+/// supplies and is pruned on its own statistics, manifest by manifest in
+/// plan order. A read is a read whatever thread sends it, so a plan costs
+/// the same calls at every parallelism.
+///
 /// # Errors
 ///
 /// Returns an error when a manifest that had to be read cannot be reached or
-/// decoded.
+/// decoded - the first in plan order whose step failed, as a sequential
+/// plan would report it.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn plan(
     manifests: &[ManifestFile],
     spec_of: &dyn Fn(i32) -> Result<PartitionSpec>,
@@ -619,19 +635,34 @@ pub(super) fn plan(
     schema: &Field,
     for_read: bool,
     ordered: Option<i32>,
+    parallelism: usize,
 ) -> Result<ScanPlan> {
     let mut plan = ScanPlan::default();
+    // Step one: prune on the summaries and resolve each kept manifest's
+    // handle, reading nothing. A failure here stops the walk where a
+    // sequential plan would have stopped, and is reported only once every
+    // manifest before it has had its own chance to fail first.
+    let mut kept: Vec<(&ManifestFile, PartitionSpec)> = Vec::new();
+    let mut handles: Vec<Holder> = Vec::new();
+    let mut stopped = None;
     for manifest in manifests {
         if manifest.content == ManifestContent::Deletes {
             if manifest.added_files_count == Some(0) && manifest.existing_files_count == Some(0) {
                 continue;
             }
-            return Err(unsupported_deletes(
+            stopped = Some(unsupported_deletes(
                 &manifest.manifest_path,
                 "delete manifest",
             ));
+            break;
         }
-        let spec = spec_of(manifest.partition_spec_id)?;
+        let spec = match spec_of(manifest.partition_spec_id) {
+            Ok(spec) => spec,
+            Err(error) => {
+                stopped = Some(error);
+                break;
+            }
+        };
         let summary = manifest_bounds(manifest, &spec, schema);
         if !conjuncts
             .iter()
@@ -640,19 +671,38 @@ pub(super) fn plan(
             plan.skipped.push(manifest.clone());
             continue;
         }
-        plan.manifests_read += 1;
+        match manifest_at(&manifest.manifest_path) {
+            Ok(handle) => {
+                plan.manifests_read += 1;
+                kept.push((manifest, spec));
+                handles.push(handle);
+            }
+            Err(error) => {
+                stopped = Some(error);
+                break;
+            }
+        }
+    }
 
-        let handle = manifest_at(&manifest.manifest_path)?;
-        // A read-only plan decodes just the columns pruning consults; a plan
-        // whose entries may be carried into a rewritten manifest decodes
-        // everything, because a carried entry must keep its statistics.
-        let entries = if for_read {
-            super::manifest::read_planned_manifest(&handle, !conjuncts.is_empty(), ordered)?
+    // Step two: read the kept manifests side by side, answered in plan
+    // order. A read-only plan decodes just the columns pruning consults; a
+    // plan whose entries may be carried into a rewritten manifest decodes
+    // everything, because a carried entry must keep its statistics.
+    let with_stats = !conjuncts.is_empty();
+    let threads = parallelism.min(handles.len()).max(1);
+    let read = move |handle: Holder| {
+        if for_read {
+            super::manifest::read_planned_manifest(&handle, with_stats, ordered)
         } else {
-            super::manifest::read_manifest(&handle)?
-        };
+            super::manifest::read_manifest(&handle)
+        }
+    };
+    let entries = crate::parallel::ordered(handles, threads, 1, read).with_lane_depth(1);
+
+    // Step three: every entry, in plan order, on the calling thread.
+    for ((manifest, spec), entries) in kept.into_iter().zip(entries) {
         let mut next_row_id = manifest.first_row_id;
-        for mut entry in entries {
+        for mut entry in entries? {
             validate_data_entry(&entry, manifest, &spec)?;
             if entry.status == EntryStatus::Deleted {
                 continue;
@@ -678,7 +728,10 @@ pub(super) fn plan(
             }
         }
     }
-    Ok(plan)
+    match stopped {
+        Some(error) => Err(error),
+        None => Ok(plan),
+    }
 }
 
 /// Fill one null data-file row id from its v3 manifest range.
@@ -1030,34 +1083,25 @@ impl arrow_array::RecordBatchReader for Scan {
     }
 }
 
-/// One worker-to-consumer message: a refined batch of one file, or `None` to
-/// say that file has no more.
-type PartMessage = (
-    usize,
-    Option<std::result::Result<RecordBatch, arrow_schema::ArrowError>>,
-);
-
-/// What the consumer holds of one file that is ahead of the release cursor.
-#[derive(Default)]
-struct PartState {
-    /// Refined batches received and not yet released, in decode order.
-    batches: std::collections::VecDeque<std::result::Result<RecordBatch, arrow_schema::ArrowError>>,
-    /// Whether the file's worker has sent everything it will.
-    done: bool,
-}
+/// What a worker hands the consumer: one refined batch, or the failure
+/// that ended its file. The file's end is the worker dropping its sender.
+type Decoded = std::result::Result<RecordBatch, arrow_schema::ArrowError>;
 
 /// A reader that decodes several planned files at once, releasing their
 /// batches strictly in plan order.
 ///
-/// Memory is bounded by a sliding window: at most `window` files - the
-/// resolved read parallelism - are ever in flight, because a new worker is
-/// spawned only when the release cursor finishes a file, so the channel and
-/// the reorder buffer together hold at most that many files' batches.
+/// Memory is bounded per worker: at most `window` files - the resolved read
+/// parallelism - are in flight, because a new worker is spawned only when
+/// the release cursor finishes a file, and each worker runs at most
+/// [`crate::parquet::READ_AHEAD_BATCHES`] refined batches ahead of the
+/// cursor before it waits on its own channel, so what the scan holds is the
+/// window's fetched column chunks plus that many batches per file, never a
+/// file ahead of the cursor decoded whole.
 ///
 /// **Dropping the reader detaches the workers rather than joining them.** A
 /// worker owns everything it touches - its handle, its `Arc` of the shared
 /// pipeline, its sender - so nothing borrowed outlives the drop; the dropped
-/// receiver disconnects the channel, and each worker exits at its next send
+/// receivers disconnect the channels, and each worker exits at its next send
 /// instead of decoding a file nobody wants. Joining here would make dropping
 /// a reader block on a decode already in progress, which is worse than
 /// letting one finish its current batch quietly.
@@ -1068,35 +1112,23 @@ struct ParallelScan {
     refine: Arc<Refine>,
     /// The files not yet handed to a worker, in plan order.
     jobs: std::vec::IntoIter<ScanPart>,
-    /// The plan position the next spawned worker will decode.
-    spawned: usize,
-    /// Per-file reorder state, indexed by plan position.
-    states: Vec<PartState>,
-    /// The plan position whose batches are being released.
-    released: usize,
+    /// The files in flight, in plan order, each the receiving end of its
+    /// worker's bounded channel; the front is the file being released.
+    in_flight: std::collections::VecDeque<std::sync::mpsc::Receiver<Decoded>>,
     /// How many files may be in flight at once.
     window: usize,
-    /// The senders' origin, kept so late workers can be given one.
-    sender: std::sync::mpsc::Sender<PartMessage>,
-    /// Where every worker's batches arrive.
-    receiver: std::sync::mpsc::Receiver<PartMessage>,
 }
 
 impl ParallelScan {
     /// Start the first window of workers over the planned files.
     fn new(parts: Vec<ScanPart>, schema: SchemaRef, refine: Arc<Refine>, window: usize) -> Self {
-        let total = parts.len();
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let window = window.max(1);
         let mut scan = Self {
             schema,
             refine,
             jobs: parts.into_iter(),
-            spawned: 0,
-            states: (0..total).map(|_| PartState::default()).collect(),
-            released: 0,
-            window: window.max(1),
-            sender,
-            receiver,
+            in_flight: std::collections::VecDeque::with_capacity(window),
+            window,
         };
         for _ in 0..scan.window {
             scan.spawn_next();
@@ -1109,50 +1141,27 @@ impl ParallelScan {
         let Some(part) = self.jobs.next() else {
             return;
         };
-        let index = self.spawned;
-        self.spawned += 1;
         let refine = Arc::clone(&self.refine);
-        let sender = self.sender.clone();
+        let (sender, receiver) = std::sync::mpsc::sync_channel(crate::parquet::READ_AHEAD_BATCHES);
+        self.in_flight.push_back(receiver);
         // Deliberately detached: see the type docs for why drop does not join.
-        let _ = std::thread::spawn(move || read_part(index, &part, &refine, &sender));
+        let _ = std::thread::spawn(move || read_part(&part, &refine, &sender));
     }
 }
 
 impl Iterator for ParallelScan {
-    type Item = std::result::Result<RecordBatch, arrow_schema::ArrowError>;
+    type Item = Decoded;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.released >= self.states.len() {
-                return None;
-            }
-            if let Some(result) = self.states[self.released].batches.pop_front() {
-                return Some(result);
-            }
-            if self.states[self.released].done {
-                // The cursor file is drained, so the window has room for one
-                // more worker.
-                self.released += 1;
-                self.spawn_next();
-                continue;
-            }
-            match self.receiver.recv() {
-                Ok((index, Some(result))) => {
-                    if let Some(state) = self.states.get_mut(index) {
-                        state.batches.push_back(result);
-                    }
-                }
-                Ok((index, None)) => {
-                    if let Some(state) = self.states.get_mut(index) {
-                        state.done = true;
-                    }
-                }
-                // Unreachable while this reader holds a sender; kept so a bug
-                // reads as an error rather than an infinite wait.
+            let front = self.in_flight.front()?;
+            match front.recv() {
+                Ok(result) => return Some(result),
+                // The worker dropped its sender: the cursor file is drained,
+                // so the window has room for one more worker.
                 Err(_) => {
-                    return Some(Err(scan_error(invalid(SmolStr::new_static(
-                        "expected a decode worker to answer, got a closed channel",
-                    )))));
+                    self.in_flight.pop_front();
+                    self.spawn_next();
                 }
             }
         }
@@ -1168,23 +1177,19 @@ impl arrow_array::RecordBatchReader for ParallelScan {
 /// Decode one planned file on a worker thread.
 ///
 /// Every batch is refined here, in the worker, so the parallelism covers the
-/// cast-and-filter work and not only the decode; each is sent as
-/// `(file_index, batch)` and a final `(file_index, None)` says the file is
-/// finished. Every send doubles as the liveness check: a dropped reader
-/// disconnects the channel and the worker returns at its next send. The body
-/// is unwind-guarded so a panicking decode reports an error instead of
-/// leaving the consumer waiting for a marker that would never come.
-fn read_part(
-    index: usize,
-    part: &ScanPart,
-    refine: &Refine,
-    sender: &std::sync::mpsc::Sender<PartMessage>,
-) {
+/// cast-and-filter work and not only the decode; each is sent down the
+/// worker's bounded channel, which holds the worker when it runs
+/// [`crate::parquet::READ_AHEAD_BATCHES`] ahead of the cursor, and the file
+/// is finished when the sender drops. Every send doubles as the liveness
+/// check: a dropped reader disconnects the channel and the worker returns at
+/// its next send. The body is unwind-guarded so a panicking decode reports an
+/// error instead of ending the file silently.
+fn read_part(part: &ScanPart, refine: &Refine, sender: &std::sync::mpsc::SyncSender<Decoded>) {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let reader = match refine.open(part) {
             Ok(reader) => reader,
             Err(error) => {
-                let _ = sender.send((index, Some(Err(scan_error(error)))));
+                let _ = sender.send(Err(scan_error(error)));
                 return;
             }
         };
@@ -1194,20 +1199,16 @@ fn read_part(
                 Ok(batch) => refine.batch(&mut plans, &batch, &part.partition, &part.residual),
                 Err(error) => Err(error),
             };
-            if sender.send((index, Some(produced))).is_err() {
+            if sender.send(produced).is_err() {
                 return;
             }
         }
     }));
     if outcome.is_err() {
-        let _ = sender.send((
-            index,
-            Some(Err(scan_error(invalid(SmolStr::new_static(
-                "expected the file to decode, got a panicking reader thread",
-            ))))),
-        ));
+        let _ = sender.send(Err(scan_error(invalid(SmolStr::new_static(
+            "expected the file to decode, got a panicking reader thread",
+        )))));
     }
-    let _ = sender.send((index, None));
 }
 
 /// Keep the rows of one batch its file's statistics did not already settle.
@@ -2022,7 +2023,8 @@ pub mod internals {
         super::inherit_first_row_id(entry, next_row_id)
     }
 
-    /// Plan a scan over manifests without a table to hold them.
+    /// Plan a scan over manifests without a table to hold them, reading
+    /// the kept manifests on up to `parallelism` threads.
     pub fn plan(
         manifests: &[ManifestFile],
         spec_of: &dyn Fn(i32) -> Result<PartitionSpec>,
@@ -2030,6 +2032,7 @@ pub mod internals {
         conjuncts: &[Bound],
         schema: &Field,
         for_read: bool,
+        parallelism: usize,
     ) -> Result<ScanPlan> {
         super::plan(
             manifests,
@@ -2039,6 +2042,7 @@ pub mod internals {
             schema,
             for_read,
             None,
+            parallelism,
         )
     }
 

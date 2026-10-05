@@ -272,4 +272,22 @@ mod handles {
             &"deuxième plus long\n".as_bytes()[4..10]
         );
     }
+
+    #[test]
+    fn a_create_encodes_through_the_charset_and_a_refused_one_writes_nothing() {
+        let mut handle = Transcoded::new(Buffer::new(), Charset::Cp1252);
+        handle.create_bytes("symbol,désk\n".as_bytes()).unwrap();
+        assert_eq!(
+            handle.handle().read_all_bytes().unwrap(),
+            b"symbol,d\xe9sk\n"
+        );
+        assert_eq!(handle.read_all_bytes().unwrap(), "symbol,désk\n".as_bytes());
+
+        let error = handle.create_bytes(b"other").unwrap_err();
+        assert!(error.is_conflict(), "{error}");
+        assert_eq!(
+            handle.handle().read_all_bytes().unwrap(),
+            b"symbol,d\xe9sk\n"
+        );
+    }
 }

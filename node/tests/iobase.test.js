@@ -583,6 +583,44 @@ test('a write creates and a read returns it', (t) => {
   assert.equal(handle.readBytes().length, 0)
 })
 
+test('a create writes only where nothing is', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const location = path.join(root, 'quotes.csv')
+  const handle = new IOBase(location)
+
+  // The first create is a write, answering the byte count writeBytes does.
+  assert.equal(handle.createBytes(Buffer.from('AAPL,187.23')), 11)
+  assert.deepEqual(fs.readFileSync(location), Buffer.from('AAPL,187.23'))
+
+  // A second creator, through this handle or another, is refused by name and
+  // the stored value is left as it was.
+  for (const creator of [handle, new IOBase(location)]) {
+    assert.throws(
+      () => creator.createBytes(Buffer.from('MSFT,410.10')),
+      /quotes\.csv.*got an existing/,
+    )
+  }
+  assert.deepEqual(fs.readFileSync(location), Buffer.from('AAPL,187.23'))
+  assert.deepEqual(handle.readBytes(), Buffer.from('AAPL,187.23'))
+
+  // A handle bridged from a filesystem carries the typed code its other
+  // failures carry; a native handle throws the core's message alone.
+  const bridged = IOBase.fromFs(memoryFs(), 'quotes.csv')
+  assert.equal(bridged.createBytes(Buffer.from('AAPL,187.23')), 11)
+  assert.throws(
+    () => bridged.createBytes(Buffer.from('MSFT,410.10')),
+    (error) => error.code === 'AlreadyExists' && /got an existing/.test(error.message),
+  )
+  assert.deepEqual(bridged.readBytes(), Buffer.from('AAPL,187.23'))
+
+  // A buffer creates where it is empty, the way a file does where it is absent.
+  const buffer = IOBase.fromBytes()
+  assert.equal(buffer.createBytes(Buffer.from('x')), 1)
+  assert.throws(() => buffer.createBytes(Buffer.from('y')), /got an existing/)
+  assert.deepEqual(buffer.readBytes(), Buffer.from('x'))
+})
+
 test('positional access needs no mode and rejects impossible offsets', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

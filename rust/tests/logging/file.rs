@@ -125,7 +125,8 @@ impl yggdryl::IOMedia for Talkative {
 }
 
 impl IOBase for Talkative {
-    yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pwrite, size,
+    yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pwrite, create_bytes,
+        size,
         capacity, reserve, truncate, uri, url, media_type, set_media_type, flush, open, opened,
         close, parent, child_by_path, ls, kind);
 
@@ -221,7 +222,8 @@ impl yggdryl::IOMedia for Driven {
 }
 
 impl IOBase for Driven {
-    yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pwrite, size,
+    yggdryl::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pwrite, create_bytes,
+        size,
         capacity, reserve, truncate, uri, url, media_type, set_media_type, flush, open, opened,
         close, parent, child_by_path, ls, kind);
 

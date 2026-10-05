@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::sync::{Arc, Mutex};
 
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyOverflowError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyIterator;
 use yggdryl::{Error as CoreError, OwnedDifferences};
@@ -78,6 +78,24 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
+}
+
+/// Read a Python integer as a `u128`, a negative or too-wide one refused as
+/// `OverflowError` on every wheel.
+///
+/// `PyO3` spells the negative case `ValueError` on a version-specific 3.13+
+/// extension and `OverflowError` under the stable ABI, and one door owes one
+/// exception, so its `ValueError` is restated as the `OverflowError` the
+/// other build raises, with `PyO3`'s own message. A value that is no integer
+/// stays the `TypeError` it is.
+pub(crate) fn u128_from_py(value: &Bound<'_, PyAny>) -> PyResult<u128> {
+    value.extract::<u128>().map_err(|error| {
+        if error.is_instance_of::<PyValueError>(value.py()) {
+            PyOverflowError::new_err(error.value(value.py()).to_string())
+        } else {
+            error
+        }
+    })
 }
 
 /// Coerce the two cast answers Python spells separately into one native value.
@@ -200,6 +218,14 @@ impl<T> Iterator for Pulled<T> {
                 .next()
                 .map(|item| item.and_then(|item| (self.read)(&item)))
                 .transpose()
+                // Built here, before `failed` holds it: `Failed::peek` clones
+                // it under its lock, and a lazy error would build its
+                // exception there - an allocation that can stop the world on
+                // a free-threaded interpreter while a thread waits on that
+                // lock attached.
+                .inspect_err(|error| {
+                    error.value(py);
+                })
         });
         match pulled {
             Ok(Some(value)) => Some(value),

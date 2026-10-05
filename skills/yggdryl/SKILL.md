@@ -17,6 +17,7 @@ and Python, `camelCase` in JavaScript).
 | --- | --- | --- | --- |
 | package | `yggdryl = "0.1"` in `Cargo.toml` | `pip install yggdryl` | `npm install yggdryl` |
 | minimum | Rust 1.94 | Python 3.10, `pyarrow>=18` | Node 18, `apache-arrow` (a dependency) |
+| wheels | - | `cp310` version-specific; `cp311-abi3` for every GIL-enabled CPython from 3.11; `cp314-cp314t` for free-threaded 3.14, which has no stable ABI (free threading starts there: PyO3 0.29 builds for no free-threaded CPython below 3.14, and a GIL-enabled 3.12 or 3.13 loads `cp311-abi3`); `cp315-abi3.abi3t` for GIL-enabled and free-threaded 3.15 and later; importing never re-enables the GIL | one `.node` per platform |
 | optional parts | features, all off by default: `parquet`, `iceberg` (implies `parquet`), `http`, `http2` (implies `http`), `http3` (implies `http2`), `aws` (implies `http`), `s3` (implies `aws`) | everything built in | everything built in |
 | extras | Arrow is `arrow-*` 59 | the `yggdryl` CLI ships in the wheel | - |
 

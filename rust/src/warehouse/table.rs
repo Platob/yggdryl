@@ -228,6 +228,10 @@ impl IOBase for Table {
         self.as_io_mut().write_all_bytes(bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_io_mut().create_bytes(bytes)
+    }
+
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.as_io_mut().append_bytes(bytes)
     }

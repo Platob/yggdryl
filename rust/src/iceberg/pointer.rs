@@ -3,7 +3,8 @@
 //!
 //! A table laid out as `HadoopTables` lays one out names its current
 //! document itself: `metadata/version-hint.text`, else the highest number a
-//! listing of `metadata/` shows. A table a catalog service keeps - an Amazon
+//! listing of `metadata/` shows, then every next version's document there
+//! is. A table a catalog service keeps - an Amazon
 //! S3 Tables table, a REST catalog's - is named by the service instead, and
 //! the folder beside it may take neither a listing nor a delete. A
 //! [`MetadataPointer`] is that service, reduced to the two questions a table
@@ -88,7 +89,8 @@ use crate::{Result, Url};
 /// The pointer is the table's one compare-and-swap: [`Self::publish`] names
 /// a document on condition the pointer still stands at the token a reading
 /// answered, so of two writers committing on one token one wins and the
-/// other is told - which plain storage, with no such primitive, cannot do.
+/// other is told - as the exclusive create of a version's document does for
+/// a table its folder names.
 pub trait MetadataPointer: std::fmt::Debug + Send + Sync {
     /// The document the table names now and the token a publication is
     /// conditioned on; a table with no document yet states no location.

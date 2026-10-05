@@ -214,6 +214,11 @@ impl IOBase for ZipNode {
         self.folder_pwrite(bytes.len())
     }
 
+    /// A prefix holds no bytes to create, so it refuses as its write does.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.folder_pwrite(bytes.len()).map(drop)
+    }
+
     fn size(&self) -> u64 {
         0
     }

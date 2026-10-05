@@ -12,7 +12,7 @@
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
 use yggdryl::s3::{GoogleOptions, Provider, S3Options};
-use yggdryl::{IOBase, IOFolder, IOKind};
+use yggdryl::{Error, IOBase, IOFolder, IOKind};
 
 /// The bucket both sides exchange through.
 const BUCKET: &str = "yggdryl-interop";
@@ -137,6 +137,74 @@ fn a_large_object_is_sent_as_a_resumable_session_of_chunks() {
     handle.write_all_bytes(&bytes).expect("a write");
     assert_eq!(handle.size(), bytes.len() as u64);
     assert_eq!(handle.read_all_bytes().expect("a read"), bytes);
+}
+
+/// `IOBase::create_bytes` against a store that evaluates the condition itself.
+///
+/// A create is one `multipart/related` insert under `ifGenerationMatch=0`, and
+/// above the multipart threshold the condition rides the `POST` that opens the
+/// resumable session, which the store holds the session to. The emulator
+/// evaluates it on both - an insert as it arrives, a session where its last
+/// chunk finalizes the object - so each second create below is the store's
+/// own `412`, never a question this client asked first. Releases before
+/// 1.55.0 finalize every session unconditioned and let the second large
+/// create overwrite, which is why the driver pins one at least that new.
+#[test]
+fn a_second_create_of_an_object_is_a_conflict_and_the_first_stands() {
+    if endpoint().is_none() {
+        skipped("YGGDRYL_GCS_ENDPOINT names no emulator");
+        return;
+    }
+    bucket();
+
+    let key = format!("{FROM_RUST}/created/claim.json");
+    // A store a developer keeps between runs still holds the last run's.
+    object(&key).remove(false).expect("a clean key");
+    object(&key)
+        .create_bytes(b"{\"version\":1}")
+        .expect("nothing at the key");
+    assert_eq!(
+        object(&key).read_all_bytes().expect("a read"),
+        b"{\"version\":1}"
+    );
+    let refused = object(&key)
+        .create_bytes(b"{\"version\":2}")
+        .expect_err("an object is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert!(refused.to_string().contains(&key), "{refused}");
+    assert_eq!(
+        object(&key).read_all_bytes().expect("a read"),
+        b"{\"version\":1}"
+    );
+
+    // In chunks: two of 4 MiB at most, under the session the `POST` opened.
+    let key = format!("{FROM_RUST}/created/large.bin");
+    let resumed = || {
+        yggdryl::s3::file_at_with(
+            Provider::Google,
+            BUCKET,
+            &key,
+            options()
+                .with_part_size(4 * 1024 * 1024)
+                .with_multipart_threshold(1024 * 1024),
+        )
+        .expect("an object handle")
+    };
+    let first: Vec<u8> = (0..6 * 1024 * 1024)
+        .map(|index| (index % 251) as u8)
+        .collect();
+    resumed().remove(false).expect("a clean key");
+    let mut handle = resumed();
+    handle.create_bytes(&first).expect("nothing at the key");
+    // A session and its two chunks, not one `multipart/related` insert.
+    assert_eq!(handle.stats().puts, 2, "{:?}", handle.stats());
+    assert_eq!(resumed().read_all_bytes().expect("a read"), first);
+
+    let refused = resumed()
+        .create_bytes(&vec![b'n'; 2 * 1024 * 1024])
+        .expect_err("an object is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert_eq!(resumed().read_all_bytes().expect("a read"), first);
 }
 
 #[test]

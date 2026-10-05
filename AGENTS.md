@@ -174,7 +174,7 @@ passes.
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language under `docs/` and `skills/` - there is no per-page filter, so this is a pre-push check, not a loop |
-| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it in every CPython a `smoke: true` build row lists, against the wheels of manylinux and musllinux on x86_64 and aarch64, macOS x86_64 (under Rosetta 2) and arm64, and Windows x64; it smokes neither the Windows arm64 wheel, whose platform PyArrow publishes no wheel for, nor the two musllinux CPython 3.10 wheels, which uv's musl CPython 3.10 cannot import and whose extension the release reads for initial-exec thread-locals instead |
+| the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips, and on a free-threaded interpreter the GIL stays off. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it whole in every CPython a `smoke: true` build row lists that PyArrow has a wheel for, free-threaded 3.14 included, against the wheels of manylinux and musllinux on x86_64 and aarch64, macOS x86_64 (under Rosetta 2) and arm64, and Windows x64. On CPython 3.15 and 3.15t, on every row, it loads the `cp315-abi3.abi3t` wheel's extension alone - PyArrow publishes no cp315 wheel and `import yggdryl` imports it - under `--extension-only` and prints a `SKIPPED` line naming the Iceberg round trip and the XMLA serve; the half is the row's choice, never the environment's, so a lane owing the whole smoke fails on a missing or broken PyArrow, and the day PyArrow ships a cp315 wheel the row drops the flag. It never loads the Windows arm64 `cp311-abi3` and `cp314-cp314t` wheels, whose platform PyArrow publishes no wheel for, nor the two musllinux CPython 3.10 wheels, which uv's musl CPython 3.10 cannot import and whose extension the release reads for initial-exec thread-locals instead |
 
 The measured costs that shape the loop: an already-built harness is under a
 second (`--test root` is 946 tests in 0.6s), the first build of a
@@ -1052,6 +1052,30 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   overwrite/append flush on completion. `open` caches expensive metadata for its
   scope, `close` publishes and drops it, closed reads are fresh, wrappers use
   `delegate_iobase!` and override only changed behavior.
+- On local storage a whole-value write (`write_all_bytes`, `clear`) publishes
+  through a private sibling `.{name}.{pid}.{n}.tmp`, synced and renamed over
+  the file the path names (links followed), and a create links a synced
+  sibling at the path (`LocalFile::create_whole`, `AlreadyExists` the
+  conflict) - never a resize in place - so a handle mapping the old file reads
+  it whole and a crash leaves no half value; a held file follows the path at
+  its next write by one `stat`, and `pwrite`, `truncate` and the trimming
+  flush are the only verbs that can shorten a mapped file.
+- `create_bytes` is the one exclusive create, and it has no default: it writes
+  the whole value only where the location holds none and publishes on return;
+  where one already is, it refuses with `Error::Conflict` from the one attempt,
+  never from a probe. The exclusion is the store's own: a synced sibling
+  hard-linked at the path on `local/` and on the local `FileSystem`
+  (`O_EXCL` where a link is refused), `create_new` on a `FileSystem` that
+  overrides `create_file`; the archive's
+  index under its lock for a ZIP member, through one archive (two mounts of one
+  archive file have two indexes); `If-None-Match: *` on S3 (`PutObject`,
+  `CompleteMultipartUpload`), Azure (`Put Blob`, `Put Block List`) and HTTP;
+  `ifGenerationMatch=0` on Google's insert or initiating `POST`; a buffer's
+  emptiness. An exclusive request is sent again only where the store cannot
+  have acted on it. The two creates that are not exclusive -
+  `FileSystem::create_file`'s default for a bridged filesystem, and an HTTP
+  origin that ignores preconditions - each say so where they are implemented,
+  and the Iceberg commit says what it rests on.
 - `Buffered<H>` is idempotent, bounded by bytes and last-access TTL, writes
   through, invalidates touched pages, pins the first and current final page. No
   cache crate, no background thread.
@@ -1111,6 +1135,7 @@ tests in `rust/tests/http/` assert exactly:
 | `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | 1 `GET` + 1 per resume |
 | `size`, `mtime`, `kind` while closed | 1 `HEAD`; 0 while open |
 | `write_all_bytes`, `clear` | 1 `PUT` |
+| `create_bytes`, won or lost | 1 `PUT` with `If-None-Match: *`, sent again only when no server saw it; a `412` or `409` is `Error::Conflict` |
 | `pwrite` then `flush`, `append_bytes` | 1 `GET` + 1 `PUT` |
 | `remove` | 1 `DELETE`; a `404` is success |
 | `send`, `stream` | 1 per attempt + 1 per redirect hop + 1 per resume |
@@ -1297,6 +1322,7 @@ Each method states its request count and the accounting tests assert it exactly:
 | whole read, full stream drain | 1 `GET` | 1 `GET` | 1 `GET` |
 | whole write | 1 `PUT` | 1 `multipart/related` `POST` | 1 `PUT` |
 | large write | parts + 2 | chunks + 1 | blocks + 1 |
+| exclusive create (`create_bytes`), won or lost | 1 `PUT` with `If-None-Match: *`; large: parts + 2, the condition on `CompleteMultipartUpload`; + 1 `PUT` per `409 ConditionalRequestConflict`, under the retry budget (a multipart create: the upload abandoned and sent again, parts + 2 more) | 1 `POST` with `ifGenerationMatch=0`; large: chunks + 1, the condition on the initiating `POST` | 1 `PUT` with `If-None-Match: *`; large: blocks + 1, the condition on `Put Block List` |
 | listing, flat or recursive | 1 per 1000 entries | 1 per 1000 | 1 per 1000 |
 | prefix removal | 1 listing + 1 bulk delete per 1000 keys | per 100 | per 256 |
 | construction, child resolution, trailing-slash location | 0 | 0 | 0 |
@@ -1305,7 +1331,11 @@ A listing states every entry's size, so a listed object never re-asks; `open`
 caches metadata, never bytes; pooled connections mean a body is always drained;
 a 3xx is never followed, because the one redirect that matters corrects the
 signing region here and Google reuses 308 for a chunk that landed. Payload
-signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
+signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS. A create's
+refusal is the conflict only by the store's code for an object at the key -
+S3's `412 PreconditionFailed`, Google's `412 conditionNotMet`, Azure's `409
+BlobAlreadyExists` or `412 ConditionNotMet` - and every other `409` and `412`
+is the store's own `Error::Remote`.
 
 ## IOMedia and records
 
@@ -1518,8 +1548,16 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   dependency whose I/O or Arrow model conflicts.
 - Plan snapshot -> manifest list -> manifest -> files from metadata, never by
   walking `data/`; prune on partition summaries and safe statistics, resolve
-  residuals by row filtering, report read/skipped counts, and keep parallel scans
-  in plan order - they differ from sequential only in speed.
+  residuals by row filtering, report read/skipped counts, read the manifests a
+  plan keeps side by side on `read.parallelism` with their entries taken in
+  plan order, and keep parallel scans in plan order - they differ from
+  sequential only in speed; every parallelism default (`read.parallelism`,
+  `write.parallelism`, `HttpOptions::concurrency`) is the whole host, and
+  each thread costs a bounded piece of memory: a scan worker its file's
+  projected compressed chunks and at most `parquet::READ_AHEAD_BATCHES`
+  refined batches ahead of the release cursor (its own `sync_channel`, never
+  a file decoded whole), a commit writer one whole encoded data file plus
+  32 MiB of Arrow input over its group's spilled chunks.
 - `SchemaUpdate` owns evolution: preserve field IDs and never reuse dropped ones;
   promotions are Int32->Int64, Float32->Float64, same-scale decimal widening,
   and v3's `unknown` - a variant its field declares `unknown` - to any type;
@@ -1541,19 +1579,45 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   types and reads no long as a nanosecond timestamp: a manifest whose spec
   holds an identity field over one is parsed through a view spelling that
   column `long`, and its tuple is read back under the header as written.
-- A table's current document is named by its folder - the version hint,
-  else a listing of `metadata/` - or, where a catalog service keeps it, by
-  a `MetadataPointer` (`open_pointed`, `create_pointed`): one answer and one
-  read to open, and a commit is its files, one
-  `metadata/{version:05}-{uuid}.metadata.json` from `00000` and one
-  publication under the token held - the pointer the compare-and-swap,
-  a refused one rebasing an append or a metadata-only commit and failing an
-  overwrite, a merge or a compaction. No read or commit of a pointed table
-  lists, writes a hint or removes; its own `ls` is refused and its `remove`
-  is the pointer's - one `DeleteTable` for an Amazon S3 Tables table, a
-  refusal from a pointer whose catalog drops nothing - since the catalog
-  that keeps the pointer keeps the table; the folder contract stays byte
-  for byte what it was.
+- A table's current document is named by its folder or by a pointer.
+  Folder: the version hint - one that cannot be read, is empty, names no
+  version or names no whole document being no hint - else a listing of
+  `metadata/`, is where the walk starts; every next version's document is then read, in both spellings
+  (plain and `.gz`), until neither is there - `HadoopTableOperations`' walk -
+  so an open is the hint, the document in both its spellings, and two reads
+  that find nothing; a version both of whose spellings hold a whole document
+  is forked, and a reader refuses it naming both.
+  Folder commit: a commit claims version N with one `IOBase::create_bytes` of
+  `metadata/vN.metadata.json`, and a refused create is the beaten commit,
+  which rebases an append or a metadata-only commit and ends an overwrite, a
+  merge or a compaction in a `CommitConflict`; a winner whose document is not
+  visible or not readable yet counts as beaten too. The commit then writes the
+  hint whole with one `IOBase::write_all_bytes` - a local file through a
+  sibling renamed over it, an object in one `PUT` - and a hint write that
+  fails once the document is durable is logged at warn while the commit
+  answers `Ok`, since every reader walks past the hint; no commit lists
+  `metadata/` or writes an attempt file. A create lists `metadata/` once
+  before it claims `v1.metadata.json` and refuses with `Error::Conflict` where
+  any metadata document is there (another catalog's
+  `00001-{uuid}.metadata.json`, a `v1.gz.metadata.json`). A landed claim
+  reads its version's other spelling once before its staged files commit,
+  and where that spelling holds a byte withdraws its document and is beaten:
+  of two claims under two codecs at most one commits. The claim is exclusive
+  wherever `create_bytes` is, and best-effort on a bridged filesystem, on an
+  HTTP origin that ignores preconditions, and under two codecs where both
+  land before either checks (both withdraw), a reader refused in the instant
+  before a withdrawal, a third writer that built on a claim before its
+  check, and a refused withdrawal, which is reported as the fork. Pointer: where a catalog
+  service keeps the table, a `MetadataPointer` names the document
+  (`open_pointed`, `create_pointed`): one answer and one read to open, and a
+  commit is its files, one `metadata/{version:05}-{uuid}.metadata.json` from
+  `00000` and one publication under the token held - the pointer the
+  condition, a refused one rebasing an append or a metadata-only commit and
+  failing an overwrite, a merge or a compaction. No read or commit of a
+  pointed table lists, writes a hint or removes; its own `ls` is refused and
+  its `remove` is the pointer's - one `DeleteTable` for an Amazon S3 Tables
+  table, a refusal from a pointer whose catalog drops nothing - since the
+  catalog that keeps the pointer keeps the table.
 - A table is reached by its location alone through `IcebergTable::from_url`,
   `create_from_url` and `open_or_create_from_url`: a folder any backend
   holds, or under `s3tables` the table a table bucket keeps, at the request
@@ -2006,6 +2070,7 @@ and not a silent update.
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
 | Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/yggdryl` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
+| Python binding (free-threaded 3.14t, abi3t 3.15) | the `cp314-cp314t` and `cp315-abi3.abi3t` wheels build from `--interpreter python3.14t python3.15`, the abi3t one carrying `yggdryl/_native.abi3t.so` and nothing else as its extension; the whole suite and the wheel smoke pass on 3.14t with the GIL off (polars absent, `typing_extensions` present); the abi3t extension loads under 3.15 and 3.15t with the GIL off | §3's free-threading steps |
 | Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, the `yggdryl` command built so the book tests drive it rather than skip, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
 | Documentation examples | every fenced block under `docs/` and `skills/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
@@ -2132,6 +2197,31 @@ Python-only:
   through Python item by item is written with it held, each pull being one
   that would take it back. `python/tests/test_fix.py` pins it in a child
   interpreter under a deadline, because the failure is a hang.
+  On a free-threaded interpreter the extension leaves the GIL disabled
+  (`#[pymodule]` defaults to `gil_used = false`, pinned by
+  `python/tests/test_init.py`). A class with no mutating method is `frozen`
+  and is read from any number of threads at once; a mutable object used by
+  two threads at one instant raises `RuntimeError: Already borrowed`, so a
+  binding borrows with `try_borrow`/`try_borrow_mut` (and the
+  `Py::try_borrow(py)` forms) and never the panicking `borrow`, whose failure
+  is a `BaseException` no caller catches - on a frozen class too, because a
+  frozen class extending a mutable base (`Url` over `Uri`, every handle over
+  `IOBase`) shares that base's borrow flag, and only a class frozen to its
+  root borrows infallibly; `python/tests/test_serie.py` pins it by racing
+  `cast` against `set` on one serie. A lock a binding object holds is taken
+  detached (`py.detach`) or through `lock_py_attached(py)` wherever its
+  critical section can reach Python - a caller's iterable pulled, a user
+  function called, a `pyarrow.fs.PyFileSystem` handler read, a route this
+  process serves, a record logged - because a thread blocking on the lock
+  while attached stops the holder from ever taking the interpreter back: the
+  candle walk, the workbook, the cursor, the record stream and the page walk
+  each pin it with two threads in a child interpreter under a deadline, the
+  hang being the failure. An exception a value's intake raises
+  is one type on every wheel: `u128_from_py` in `python/src/lib.rs` reads an
+  unsigned integer so a negative or too-wide one is `OverflowError` where
+  `PyO3` spells it `ValueError` on a version-specific 3.13+ extension and
+  `OverflowError` under the stable ABI, and `DataType.uuid_value`,
+  `Digest.from_int` and the scalar pickle read through it.
   A cast is `Serie.cast`, `ChunkedSerie.cast` or an `ArrowCastPlan`, passing
   the caller's `safe` and `representation`. No binding casts,
   rebuilds rows from, or walks an Arrow array itself.
@@ -2165,6 +2255,33 @@ $V -m mypy --strict --config-file python/pyproject.toml \
   wheel it builds must carry `yggdryl-<version>.data/scripts/yggdryl`.
 - Both pyarrow legs (`pyarrow==18.*`, `pyarrow>=18`) are CI's; run one locally,
   and only pin a second interpreter when a failure names the version.
+- Free threading is CI's `python-freethreaded` lane: the whole suite on a
+  free-threaded 3.14 (`uv venv --python 3.14t python/.venv-ft`, the same
+  packages but `polars`, which publishes no free-threaded wheel, so its suites
+  skip there and nowhere else; `typing_extensions` is `mypy`'s and the hints
+  suite imports it, so install `mypy` too), and the abi3t wheel - `maturin
+  build --manifest-path python/Cargo.toml --interpreter python3.15 --out
+  python/dist`, tagged `cp315-abi3.abi3t`, its extension `_native.abi3t.so` -
+  loaded on a GIL-enabled and a free-threaded 3.15. PyArrow publishes no 3.15
+  wheel yet, so on 3.15 `scripts/check_wheel_smoke.py --extension-only` loads
+  the extension module alone and says what it skipped; the flag is the lane's
+  statement, and the day PyArrow ships one the lane drops it. The release
+  builds the same two wheels on every row as a second maturin step over
+  `interpreters-ft`, one build per stable-ABI family. Free threading starts
+  at 3.14 and no lane claims less: CPython declared free threading supported
+  from 3.14, and PyO3 dropped the experimental 3.13t with it (PyO3 #5865) -
+  every PyO3 that builds abi3t refuses a free-threaded CPython below 3.14
+  (`pyo3-ffi`'s `MIN_FREE_THREADED_VERSION`, failing `maturin develop` under
+  a 3.13t interpreter), and the last PyO3 that built 3.13t has no abi3t, so
+  the two cannot be had from one lock file; 3.12 has no free-threaded build
+  at all (PEP 703's first is 3.13), and the abi3t wheel is 3.15's - no
+  earlier CPython loads it - so a GIL-enabled 3.12 or 3.13 loads
+  `cp311-abi3` and a free-threaded 3.13 has no wheel. Run the 3.14t suite locally when a change touches a
+  `#[pyclass]`'s mutability, a `detach`, or anything a thread can share;
+  `python/.venv-ft` is where it is installed. A test file
+  never imports `polars` at module level - a module-level `importorskip`
+  skips the whole file where polars has no wheel, every unrelated test in it
+  included - so the import sits in the tests that use it.
 - Iceberg-with-Spark has its own CI job and is opt-in locally - `python
   scripts/setup_spark_interop.py`, then `python -m pytest
   python/tests/test_spark_interop.py -m spark_interop` - so run it only when

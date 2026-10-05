@@ -73,6 +73,7 @@ const byEntries: IOBase[] = [...handle.childrenWhere([['year', '2024']], true)]
 const bytes: Buffer = handle.readBytes()
 const text: string = handle.readText()
 const written: number = handle.writeBytes(Buffer.from('AAPL'))
+const created: number = handle.createBytes(Buffer.from('AAPL'))
 const wroteText: number = handle.writeText('AAPL')
 handle.writeScalar({ id: 1 })
 const value: unknown = handle.readScalar()

@@ -58,13 +58,61 @@
 //!
 //! # Concurrent writers
 //!
-//! Commits are optimistic. Before publishing version N+1 a commit re-checks
-//! the current version with the same lookup [`IcebergTable::open`] uses; a commit
-//! that finds itself beaten *rebases* when that is safe - it reloads the
-//! winner's document and re-applies its own intent on top, with exponential
-//! jittered backoff between attempts, bounded by
-//! [`IcebergOptions::commit_retries`] and
-//! [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
+//! Commits are optimistic, and a version is claimed by creating its
+//! document. A commit publishes version N+1 by writing
+//! `metadata/v{N+1}.metadata.json` with [`IOBase::create_bytes`], which
+//! writes only where no document of that name is and refuses with
+//! [`Error::Conflict`] where one already is, so of two writers at one
+//! version exactly one publishes it and the other is told - on every store
+//! whose create is exclusive: `create_new` (`O_EXCL`) on local storage and
+//! the local filesystem, `If-None-Match: *` on Amazon S3, Azure Blob Storage
+//! and an HTTP resource, `ifGenerationMatch=0` on Google Cloud Storage, the
+//! archive's index under its lock for a ZIP member written through one
+//! archive, a buffer's own emptiness. Nothing is listed to claim a version
+//! but the first, and nothing is written after the claim but the hint.
+//! Where the create is not exclusive the claim is best-effort, and the
+//! later of two writers' documents stands: a filesystem bridged from
+//! outside the crate, which asks for the file's information and then
+//! writes, an HTTP origin that ignores preconditions, and two mounts of one
+//! ZIP archive, which hold an index each.
+//!
+//! A version has two names, and the create excludes one: a commit under
+//! `write.metadata.compression-codec` gzip claims `v{N+1}.gz.metadata.json`
+//! where a racing one claims `v{N+1}.metadata.json`. So a claim that lands
+//! reads the other spelling of its version once, before its staged files
+//! are committed; where that spelling holds a byte, the claim is withdrawn -
+//! its document removed - and the attempt is beaten as a refused create is.
+//! Of two claims under two codecs at most one commits, since the one whose
+//! check comes second always sees the other; both withdraw when they land
+//! before either checks, and the jittered retries settle which lands next.
+//! A reader that meets both spellings of one version whole refuses with an
+//! error naming both, since choosing one by its own codec would drop the
+//! other's commit from the chain; a commit that meets them waits as a
+//! beaten attempt and reports the fork once its budget is spent. What stays
+//! best-effort: a reader in the instant between a second claim and its
+//! withdrawal is refused rather than answered; a third writer that read the
+//! first claim in the instant before that claim's own check, and claimed
+//! the next version on it, has built on a document the check then
+//! withdraws; and a withdrawal the store refuses leaves the version forked,
+//! which the commit reports with every file its document names kept.
+//!
+//! A table's first document is the one claim a listing goes before: the
+//! name `v1.metadata.json` cannot see a table laid out under another - a
+//! catalog's `00001-{uuid}.metadata.json`, a first document spelled
+//! `v1.gz.metadata.json` - so [`IcebergTable::create`] lists `metadata/`
+//! once and refuses with [`Error::Conflict`] where any metadata document is
+//! there, rather than hiding that table behind a hint of its own. Two
+//! creates racing under two spellings both pass that listing, and the
+//! claim's own check of the other spelling settles them as it settles two
+//! commits.
+//!
+//! Before it claims, a commit reads the version hint, which spares a claim
+//! the hint already says is lost; the create is what decides. A commit that
+//! finds itself beaten *rebases* when that is safe - it reads where the
+//! table now stands, as [`IcebergTable::open`] does, reloads the winner's
+//! document and re-applies its own intent on top, with exponential jittered
+//! backoff between attempts, bounded by [`IcebergOptions::commit_retries`]
+//! and [`IcebergOptions::commit_total_timeout_ms`] - and otherwise reports a
 //! [`CommitConflict`] naming both versions. An append and a metadata-only
 //! change rebase; [`IcebergTable::commit_overwrite_where`], [`IcebergTable::commit_merge_where`], and
 //! [`IcebergTable::compact`] cannot, because they planned against files a concurrent
@@ -73,15 +121,34 @@
 //! leaves no visible change - at worst it orphans data files no snapshot
 //! names.
 //!
-//! **The version check is racy on plain storage.** [`IOBase`] has no
-//! compare-and-swap, so two writers can still observe the same version and
-//! publish the same document number, one silently over the other. Retries
-//! shrink that window; they cannot close it. Serialized writers - a catalog,
-//! a lock, one writer per table - are what closes it.
+//! The hint is written after the document, whole, with one
+//! [`IOBase::write_all_bytes`]: a local file is replaced through a sibling
+//! renamed over it, so a reader that mapped the hint before keeps reading
+//! it, and an object store's `PUT` replaces an object whole. It can lag: a
+//! commit that has created its document and not yet written the hint, one
+//! stopped between the two, and one whose write lands after a later
+//! commit's all leave it naming an older version. A read therefore takes
+//! the hint as where to start and never as the answer, as
+//! `HadoopTableOperations` does: from the version it names - else the one a
+//! listing of `metadata/` settles on - the next version's document is read
+//! in both spellings, one version at a time, until neither is there, so an
+//! open reads the newest document's two spellings and the two past it, and
+//! sees every commit that has returned. For the same reason the document is
+//! the commit and the hint is not: a hint write that fails once the
+//! document is durable is logged at warn and the commit answers `Ok`, its
+//! hint naming the version before, which every reader walks past. A hint
+//! that cannot be read, is empty, or names no version - one a writer
+//! outside the crate is rewriting in place, or one a store sizes before it
+//! reads it as it is replaced - is no hint, and the listing answers where
+//! the walk starts. A document still
+//! being written - one whose read fails, empty, or not yet whole - is not
+//! the table's yet, and the walk ends before it. A commit whose claim is
+//! lost to a winner whose document cannot be read yet waits and looks
+//! again, as one beaten by a visible winner does.
 //!
 //! A table opened or created through a [`MetadataPointer`]
-//! ([`IcebergTable::open_pointed`], [`IcebergTable::create_pointed`]) has
-//! that compare-and-swap: the pointer names its current document and
+//! ([`IcebergTable::open_pointed`], [`IcebergTable::create_pointed`]) is
+//! named by the pointer instead: the pointer names its current document and
 //! publishes the next one on condition it still stands where the last
 //! reading left it, so nothing is listed, no hint is written, and a commit
 //! that lost is told rather than overwritten. Nothing a pointed commit wrote
@@ -675,12 +742,18 @@ impl<H: IOBase> IcebergTable<H> {
     /// order zero when the spec partitions nothing. [`Self::create_sorted`]
     /// takes another.
     ///
+    /// The create lists `metadata/` once before it claims `v1.metadata.json`
+    /// by creating it, and writes the version hint after: a table laid out
+    /// under another name is refused rather than hidden behind a new hint.
+    ///
     /// # Errors
     ///
-    /// Returns a conflict when the handle already contains a table, or an
-    /// error when the handle is not a container, the schema is not a non-null
-    /// struct root, a declared order names what no sort field holds, or the
-    /// metadata document cannot be written.
+    /// Returns a conflict when the handle already contains a table - a
+    /// metadata document under any name `metadata/` lists, or a racing
+    /// creator's first document - or an error when the handle is not a
+    /// container, the schema is not a non-null struct root, a declared order
+    /// names what no sort field holds, or the metadata document cannot be
+    /// written.
     pub fn create(
         root: H,
         format_version: FormatVersion,
@@ -760,13 +833,14 @@ impl<H: IOBase> IcebergTable<H> {
         let mut table = Self::at(path_of(&root), root);
         match pointer {
             None => {
+                refuse_existing_metadata(&container(table.root.child_by_path(METADATA_DIR)?)?)?;
                 table.adopt(Opened {
                     metadata,
                     version: 0,
                     metadata_file_name: SmolStr::new_static(""),
                     pointed: None,
                 });
-                table.create_metadata()?;
+                table.commit_metadata(None)?;
             }
             Some(pointer) => {
                 // The pointer is read once: a table it already names a
@@ -1231,7 +1305,11 @@ impl<H: IOBase> IcebergTable<H> {
     /// [`IOBase::children_where`] filters a lake with. Nothing here lists a
     /// directory: the snapshot names a manifest list, whose summaries skip
     /// whole manifests, whose entries carry the partition tuples and column
-    /// statistics that skip individual files. The plan reports what it skipped,
+    /// statistics that skip individual files. The manifests the summaries
+    /// keep are read side by side on [`IcebergOptions::read_parallelism`]
+    /// threads, and the plan takes their entries in manifest order, so it is
+    /// the same plan, at the same call count, on any number of threads. The
+    /// plan reports what it skipped,
     /// so "a filtered read touches only the files the metadata says it must" is
     /// a number a caller can check.
     ///
@@ -1370,9 +1448,14 @@ impl<H: IOBase> IcebergTable<H> {
         for_read: bool,
         ordered: Option<i32>,
     ) -> Result<ScanPlan> {
-        let location = self.opened()?.metadata.location();
+        let metadata = &self.opened()?.metadata;
+        let location = metadata.location();
+        // The manifests a plan keeps are read side by side on the scan's own
+        // parallelism, resolved by the one three-layer rule.
+        let parallelism =
+            IcebergOptions::read_settings(self.options.as_ref(), metadata)?.parallelism;
         log::debug!(
-            "planning iceberg scan of {location} over {} manifests",
+            "planning iceberg scan of {location} over {} manifests on up to {parallelism} threads",
             manifests.len()
         );
         let plan = super::scan::plan(
@@ -1392,6 +1475,7 @@ impl<H: IOBase> IcebergTable<H> {
             schema,
             for_read,
             ordered,
+            parallelism,
         )?;
         // How much the filters removed is the read signal worth watching: a
         // plan that opens every file is a plan whose predicate bought nothing.
@@ -1438,9 +1522,10 @@ impl<H: IOBase> IcebergTable<H> {
     /// with jittered exponential backoff up to
     /// [`IcebergOptions::commit_retries`] times within
     /// [`IcebergOptions::commit_total_timeout_ms`], and reporting a
-    /// [`CommitConflict`] when the retries run out. The check is best-effort
-    /// on plain storage - [`IOBase`] has no compare-and-swap, so retries
-    /// shrink the undetected-race window without closing it.
+    /// [`CommitConflict`] when the retries run out. The version is claimed
+    /// by an exclusive create of its document, so a beaten commit is told on
+    /// every store whose create is exclusive; the module docs name where it
+    /// is best-effort.
     ///
     /// ```no_run
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -1477,25 +1562,27 @@ impl<H: IOBase> IcebergTable<H> {
 
     /// Write one prepared document as the next version, retrying when beaten.
     ///
-    /// This is the one gate every commit goes through. Each attempt re-checks
-    /// the current version with [`find_metadata`]; a newer version than this
-    /// handle's counts as being beaten once. What happens next is
-    /// `on_conflict`'s: [`OnConflict::Rebase`] adopts the winner's document so
-    /// `apply` re-runs on it, while [`OnConflict::Fail`] only waits and looks
-    /// again, because version numbers never move backwards and the caller said
-    /// re-applying is unsafe - its attempts exist to bound the wait and to
-    /// count an honest report. Being beaten more than
-    /// [`IcebergOptions::commit_retries`] times or reserving more cumulative
-    /// backoff than [`IcebergOptions::commit_total_timeout_ms`] restores the
-    /// in-memory state and returns a [`CommitConflict`].
-    ///
-    /// The check-then-write pair is not atomic - [`IOBase`] has no
-    /// compare-and-swap - so a writer landing between the two still goes
-    /// undetected; the module docs say so plainly.
+    /// This is the one gate every commit goes through. Each attempt first
+    /// reads the hint ([`find_metadata`] with the version held), and a newer
+    /// version there counts as being beaten once; then it claims the next
+    /// version by creating its document, and a claim refused because the
+    /// document is there counts as being beaten once too, the table read
+    /// again past the hint ([`find_metadata_document`]) - a winner whose
+    /// document is not visible yet, or whose reading fails, included, since
+    /// the version is taken either way and the next attempt looks again.
+    /// What happens next is `on_conflict`'s: [`OnConflict::Rebase`]
+    /// adopts the winner's document so `apply` re-runs on it, while
+    /// [`OnConflict::Fail`] only waits and looks again, because version
+    /// numbers never move backwards and the caller said re-applying is
+    /// unsafe - its attempts exist to bound the wait and to count an honest
+    /// report. Being beaten more than [`IcebergOptions::commit_retries`]
+    /// times or reserving more cumulative backoff than
+    /// [`IcebergOptions::commit_total_timeout_ms`] restores the in-memory
+    /// state and returns a [`CommitConflict`].
     ///
     /// `staging` is the data commit's, when there is one: it is committed
-    /// the moment the versioned document is durable, so a failure after
-    /// that - the hint write, say - leaves every file the document names.
+    /// the moment the versioned document is durable, which is the commit
+    /// made - nothing after it, the hint write included, fails the commit.
     fn commit_document(
         &mut self,
         on_conflict: OnConflict,
@@ -1520,10 +1607,10 @@ impl<H: IOBase> IcebergTable<H> {
             Err(error)
         };
         let reconcile_visible = |table: &mut Self, error: Error| {
-            // A backend may publish the metadata document and hint, then
-            // report the hint write as failed. Re-read through the same
-            // discovery path a new handle uses and adopt that visible version
-            // when it is sound. A failed reload must never mask `error`; the
+            // A backend may land the metadata document, then report its
+            // create as failed and fail the read back too. Re-read through
+            // the same discovery path a new handle uses and adopt that
+            // visible version when it is sound. A failed reload must never mask `error`; the
             // saved state is the only conservative in-memory answer when
             // visibility itself is uncertain.
             match find_metadata_document(&metadata_dir).and_then(|visible| {
@@ -1595,6 +1682,29 @@ impl<H: IOBase> IcebergTable<H> {
                     continue;
                 }
                 Ok(_) => {}
+                // Two documents of one version are two claims under two
+                // codecs, and each withdraws its own once it sees the other:
+                // until one has, the attempt is beaten, and a fork that
+                // stands past the budget is reported as itself.
+                Err(error) if is_forked(&error) => {
+                    let wait = match retry_wait_ms(
+                        &settings,
+                        &mut beaten,
+                        &mut backoff_spent_ms,
+                        expected_version,
+                        held_version.saturating_add(1),
+                    ) {
+                        Ok(wait) => wait,
+                        Err(_) => return restore(self, error),
+                    };
+                    log::debug!(
+                        "iceberg commit met a version claimed twice, waiting {wait} ms: {error}"
+                    );
+                    if wait > 0 {
+                        std::thread::sleep(std::time::Duration::from_millis(wait));
+                    }
+                    continue;
+                }
                 Err(error) => return restore(self, error),
             }
 
@@ -1602,36 +1712,57 @@ impl<H: IOBase> IcebergTable<H> {
                 Ok(updated) => updated,
                 Err(error) => return restore(self, error),
             };
-            self.opened_mut()?.metadata = updated;
+            let planned = std::mem::replace(&mut self.opened_mut()?.metadata, updated);
             if let Err(error) = self.commit_metadata(staging) {
                 if !error.is_conflict() {
                     return reconcile_visible(self, error);
                 }
-                let winner = find_metadata_document(&metadata_dir).and_then(|visible| {
+                // The attempt's document is not the table's: the handle holds
+                // the one it planned against again, which a rebase replaces
+                // with the winner's and a winner not visible yet leaves for
+                // the next attempt to apply to once more.
+                self.opened_mut()?.metadata = planned;
+                // The version this attempt claimed is another writer's. Where
+                // the table stands is read as a fresh handle reads it, past a
+                // hint the winner has not written yet; a winner whose document
+                // is not whole yet leaves nothing newer to see, and a reading
+                // that fails - the hint replaced under it, say - sees nothing
+                // either: that is a beaten attempt all the same, and the next
+                // one looks again.
+                let claimed = held_version.saturating_add(1);
+                let winner = match find_metadata_document(&metadata_dir).and_then(|visible| {
                     visible
                         .map(|(version, metadata_file_name, document)| {
                             TableMetadata::from_json(&document)
                                 .map(|metadata| (version, metadata_file_name, metadata))
                         })
                         .transpose()
-                });
-                let Ok(Some((version, metadata_file_name, metadata))) = winner else {
-                    return reconcile_visible(self, error);
+                }) {
+                    Ok(winner) => winner.filter(|(version, _, _)| *version > held_version),
+                    Err(reading) => {
+                        log::debug!(
+                            "iceberg commit beaten to version {claimed} found the winner \
+                             unreadable yet: {reading}"
+                        );
+                        None
+                    }
                 };
-                if version <= self.opened()?.version {
-                    return reconcile_visible(self, error);
-                }
+                let seen = winner
+                    .as_ref()
+                    .map_or(claimed, |(version, _, _)| (*version).max(claimed));
                 let wait = match retry_wait_ms(
                     &settings,
                     &mut beaten,
                     &mut backoff_spent_ms,
                     expected_version,
-                    version,
+                    seen,
                 ) {
                     Ok(wait) => wait,
                     Err(error) => return restore(self, error),
                 };
-                if on_conflict == OnConflict::Rebase {
+                if on_conflict == OnConflict::Rebase
+                    && let Some((version, metadata_file_name, metadata)) = winner
+                {
                     self.adopt(Opened {
                         metadata,
                         version,
@@ -1640,7 +1771,7 @@ impl<H: IOBase> IcebergTable<H> {
                     });
                 }
                 log::debug!(
-                    "iceberg commit of {} was beaten to version {version} on write; \
+                    "iceberg commit of {} was beaten to version {claimed} on write; \
                      retry {beaten}, waiting {wait} ms",
                     self.opened()?.metadata.location(),
                 );
@@ -2063,10 +2194,10 @@ impl<H: IOBase> IcebergTable<H> {
     /// already written, so only the manifest list and the document are rebuilt
     /// on the winner's metadata - fresh parent, fresh sequence number - with
     /// backoff between attempts, bounded by [`IcebergOptions::commit_retries`]
-    /// and [`IcebergOptions::commit_total_timeout_ms`]. The version check is
-    /// best-effort on plain storage: [`IOBase`] has no compare-and-swap, so
-    /// retries shrink the undetected-race window without closing it, and
-    /// serialized writers are what closes it.
+    /// and [`IcebergOptions::commit_total_timeout_ms`]. The version is
+    /// claimed by an exclusive create of its document, so a beaten append is
+    /// told on every store whose create is exclusive; the module docs name
+    /// where it is best-effort.
     ///
     /// # Errors
     ///
@@ -2792,45 +2923,30 @@ impl<H: IOBase> IcebergTable<H> {
         leaf(self.root.child_by_path(&relative)?)
     }
 
-    /// Write the first document, trying again while every racing creator
-    /// yielded.
-    ///
-    /// A creator that finds another's attempt at version one removes its own
-    /// and yields, so creators writing side by side can all yield and leave no
-    /// table. Storage has no compare-and-swap to break that tie; but each
-    /// removes its own attempt before looking again, so the last to look finds
-    /// the version free and tries once more after a jittered wait, under the
-    /// commit retry budget. A creator that finds a document there - published
-    /// or still in flight - was beaten and reports the typed conflict.
-    fn create_metadata(&mut self) -> Result<()> {
-        let settings =
-            IcebergOptions::commit_settings(self.options.as_ref(), &self.opened()?.metadata)?;
-        let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
-        let mut beaten = 0_u32;
-        let mut backoff_spent_ms = 0_u64;
-        loop {
-            let conflict = match self.commit_metadata(None) {
-                Err(error) if error.is_conflict() => error,
-                done => return done,
-            };
-            if !metadata_names_at_version(&metadata_dir, 1)?.is_empty() {
-                return Err(conflict);
-            }
-            let Ok(wait) = retry_wait_ms(&settings, &mut beaten, &mut backoff_spent_ms, 1, 0)
-            else {
-                return Err(conflict);
-            };
-            log::debug!(
-                "iceberg create of {} yielded to a racing creator; retry {beaten}, waiting {wait} ms",
-                self.opened()?.metadata.location(),
-            );
-            if wait > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(wait));
-            }
-        }
-    }
-
     /// Write the current metadata as the next numbered document.
+    ///
+    /// The version is claimed by creating its document, `v{version}`, the one
+    /// name a hint resolves: [`IOBase::create_bytes`] writes only where no
+    /// document is, so a version another writer created first is refused as
+    /// the typed conflict naming it and nothing is written - the first
+    /// document of a table as much as any later one, where it is a racing
+    /// creator that won.
+    ///
+    /// A version has two names, plain and gzip, and the create excludes one:
+    /// so once it lands, the other spelling of the version is read once, and
+    /// where it holds a byte - a commit under the other codec claimed the
+    /// version too - this claim is withdrawn, its document removed, and the
+    /// attempt answers the conflict a refused create does. Of two such
+    /// claims at most one commits; both may withdraw, and the ladder's
+    /// jittered retries settle which lands. A withdrawal that fails leaves
+    /// the version forked, which is reported - with every file the document
+    /// names kept - rather than retried.
+    ///
+    /// A document that passed that check is the commit's point of no
+    /// return, and the commit: the hint is written after it with one
+    /// [`IOBase::write_all_bytes`], and a failure to write it is logged at
+    /// warn rather than returned, since every reader walks past the version
+    /// a hint names.
     fn commit_metadata(&mut self, staging: Option<&Staging>) -> Result<()> {
         // A bad in-memory state is refused before a document exists, so a
         // broken table can only be read, never written.
@@ -2848,75 +2964,94 @@ impl<H: IOBase> IcebergTable<H> {
         let mut metadata = held.metadata.clone();
         metadata.finalize_official(previous)?;
         let (suffix, encoded) = encoded_document(&metadata)?;
-        let attempt = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
-        let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
-        let mut handle = leaf(
-            self.root
-                .child_by_path(&format!("{METADATA_DIR}/{attempt}"))?,
-        )?;
-        handle.write_all_bytes(&encoded)?;
-
-        // UUID filenames make the write itself the create/commit attempt.
-        // Another document at this version means a table or concurrent writer
-        // already won; remove only our unpublished candidate and report it.
-        // A listing that fails removes it too: the attempt names files a
-        // data commit rolls back, and left behind it would claim the version
-        // against every later writer.
-        let competitors = match metadata_names_at_version(&metadata_dir, next_version) {
-            Ok(names) => names
-                .into_iter()
-                .filter(|candidate| candidate != &attempt)
-                .collect::<Vec<_>>(),
-            Err(error) => {
-                drop(handle.remove(false));
-                return Err(error);
-            }
-        };
-        if !competitors.is_empty() {
-            handle.remove(false)?;
-            return Err(Error::conflict(
-                "Iceberg metadata version",
-                "Iceberg metadata version",
-                format!("{next_version}: {}", competitors.join(", ")),
-            ));
-        }
-
-        // Winning the attempt publishes the document under the name a hint
-        // names: `v{version}`. A catalog stores the exact UUID filename and can
-        // afford any spelling, but this surface has only the hint, and every
-        // reader of a catalog-free table - this module's own included - resolves
-        // it that way. The attempt stays in place across the publish so that a
-        // racing writer never sees the version free: `metadata_names_at_version`
-        // counts both spellings, and one of them is always there.
         let name = format_smolstr!("v{next_version}{suffix}.metadata.json");
-        let mut document = leaf(self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?)?;
-        if let Err(error) = document.write_all_bytes(&encoded) {
-            // Nothing durable names the commit's files yet, and the attempt
-            // - which does - goes with them rather than staying to claim the
-            // version.
-            drop(handle.remove(false));
-            return Err(error);
+        let path = format!("{METADATA_DIR}/{name}");
+        let mut document = leaf(self.root.child_by_path(&path)?)?;
+        match document.create_bytes(&encoded) {
+            Ok(()) => {}
+            Err(error) if error.is_conflict() => {
+                return Err(Error::conflict(
+                    "Iceberg metadata version",
+                    "Iceberg metadata version",
+                    format!("{next_version}: {name}"),
+                ));
+            }
+            // A create whose answer was lost may have landed: the name read
+            // back holding exactly this document is the commit made, and
+            // anything else leaves the failure standing.
+            Err(error) => {
+                let landed = leaf(self.root.child_by_path(&path)?)?
+                    .read_all_bytes()
+                    .is_ok_and(|stored| stored == encoded);
+                if !landed {
+                    return Err(error);
+                }
+            }
         }
-        // The versioned document is durable and names every file the commit
-        // published: this is the point of no return. A fresh handle resolves
-        // the version to this document whatever the hint write reports next,
-        // so from here nothing is rolled back.
+        // The create excludes this spelling alone: a commit under the other
+        // codec may hold the version under the other. Its spelling is read
+        // once, and any byte there - or a read that cannot say - withdraws
+        // this claim before anything names it committed.
+        let other_name = format_smolstr!(
+            "v{next_version}{}.metadata.json",
+            if suffix.is_empty() { ".gz" } else { "" }
+        );
+        let other = leaf(
+            self.root
+                .child_by_path(&format!("{METADATA_DIR}/{other_name}"))?,
+        )?
+        .read_all_bytes();
+        let contested = match other {
+            Ok(bytes) if bytes.is_empty() => None,
+            Ok(_) => Some(Error::conflict(
+                "Iceberg metadata version",
+                "Iceberg metadata version",
+                format!("{next_version}: {other_name}"),
+            )),
+            Err(error) => Some(error),
+        };
+        if let Some(contested) = contested {
+            if let Err(removal) = document.remove(false) {
+                // The claim stands beside the other: every file it names is
+                // kept, and the fork is reported for an operator to settle.
+                if let Some(staging) = staging {
+                    staging.commit();
+                }
+                return Err(Error::iceberg(format_smolstr!(
+                    "expected one metadata document of version {next_version}, got {name} \
+                     beside {other_name}: withdrawing {name} after {contested} failed: {removal}"
+                )));
+            }
+            return Err(contested);
+        }
+
+        // The versioned document is durable, alone at its version, and names
+        // every file the commit published: this is the point of no return,
+        // and the commit made. A
+        // fresh handle resolves the version to this document whatever the
+        // hint write reports next, so from here nothing fails the commit.
         if let Some(staging) = staging {
             staging.commit();
         }
 
-        // The hint is how a catalog-free reader finds the current document.
-        let mut hint = leaf(
-            self.root
-                .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?,
-        )?;
-        hint.write_all_bytes(next_version.to_string().as_bytes())?;
-
-        // The attempt has served its whole purpose. Its removal is the commit's
-        // last act rather than a step of it: the published document and the hint
-        // are already durable, so a backend that refuses leaves an unreferenced
-        // duplicate rather than an unfinished commit.
-        drop(handle.remove(false));
+        // The hint is where a catalog-free reader starts looking for the
+        // current document, written whole: a local file through a sibling
+        // renamed over it, so a reader that mapped the one before keeps it,
+        // an object in one `PUT`. One another commit writes after this one
+        // stands, as one this write fails to replace does: a reader steps
+        // past whatever version a hint names.
+        let written = self
+            .root
+            .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))
+            .and_then(leaf)
+            .and_then(|mut hint| hint.write_all_bytes(next_version.to_string().as_bytes()));
+        if let Err(error) = written {
+            log::warn!(
+                "iceberg commit of version {next_version} of {} stands, its version hint \
+                 left naming an older version: {error}",
+                metadata.location(),
+            );
+        }
         self.adopt(Opened {
             metadata,
             version: next_version,
@@ -3536,7 +3671,7 @@ impl<H: IOBase> IcebergTable<H> {
 impl<H: IOBase> IOBase for IcebergTable<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
-    crate::delegate_iobase!(root: pread, pwrite, size, capacity, reserve,
+    crate::delegate_iobase!(root: pread, pwrite, create_bytes, size, capacity, reserve,
         truncate, uri, url, bound_location, mtime, media_type, set_media_type, flush, parent,
         child_by_path);
 
@@ -5617,16 +5752,29 @@ fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr,
     }
 }
 
-/// Return the metadata document with the highest version, exact name, and number.
+/// Return the newest metadata document, its exact name, and its number.
 ///
 /// A folder that holds none is `None` rather than an error, because that is the
 /// question "is this a table" and the answer "no" is not a failure.
 ///
+/// The hint is where the search starts, never where it ends: a commit writes it
+/// after its document, so it can name a version a later commit has passed. From
+/// the version it names - else, where it names none that holds a document, the
+/// one a listing of `metadata/` settles on - [`newest_from`] reads the next
+/// version's document until there is none.
+///
+/// A commit writes the hint whole, but a writer outside the crate may
+/// rewrite it in place, and a store that sizes a file before it reads it
+/// can fail on one replaced in between. A hint that cannot be read, is
+/// empty, or does not read as a version is therefore no hint, and so is one
+/// naming a document a probe reads empty or cannot decode: the listing
+/// answers where the walk starts.
+///
 /// `known` is the version the caller already holds: when the hint names
-/// exactly it, the document is not read again and the answer carries `None`
-/// in its place - the version is what the caller asked, and a document it
-/// already has is not worth a round trip. Every other answer carries the
-/// document.
+/// exactly it, the hint is taken at its word, nothing else is read, and the
+/// answer carries `None` for the document. That is a commit's look before it
+/// claims the next version, whose exclusive create is what decides; every
+/// other answer carries the document.
 fn find_metadata(
     metadata_dir: &Holder,
     known: Option<u32>,
@@ -5638,38 +5786,168 @@ fn find_metadata(
     }
 
     let hint = leaf(metadata_dir.child_by_path(VERSION_HINT)?)?;
-    let hinted_version = String::from_utf8_lossy(&hint.read_all_bytes()?)
-        .trim()
-        .parse::<u32>()
-        .ok();
-
-    // Prefer the conventional Hadoop filename named by a usable hint.
-    if let Some(version) = hinted_version {
-        if known == Some(version) {
-            return Ok(Some((
-                version,
-                format_smolstr!("v{version}.metadata.json"),
-                None,
-            )));
+    let hinted_version = match hint.read_all_bytes() {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).trim().parse::<u32>().ok(),
+        Err(error) => {
+            log::debug!("iceberg version hint read as no hint: {error}");
+            None
         }
-        for name in [
-            format!("v{version}.metadata.json"),
-            format!("v{version}.gz.metadata.json"),
-        ] {
-            let document = leaf(metadata_dir.child_by_path(&name)?)?;
-            let bytes = document.read_all_bytes()?;
-            if !bytes.is_empty() {
-                return Ok(Some((
-                    version,
-                    SmolStr::new(name),
-                    Some(parse_metadata_bytes(&bytes)?),
-                )));
-            }
-        }
+    };
+    if let Some(version) = hinted_version
+        && known == Some(version)
+    {
+        return Ok(Some((
+            version,
+            format_smolstr!("v{version}.metadata.json"),
+            None,
+        )));
     }
 
-    // No conventional hint target: inspect exact filenames. A UUID filename
-    // is never rewritten into a synthetic `vN` path.
+    // Prefer the conventional Hadoop filename named by a usable hint; a
+    // document it names that does not decode is left to the listing, which
+    // refuses it unless it is the newest name.
+    let hinted = match hinted_version {
+        Some(version) => versioned_document(metadata_dir, version, false)?
+            .map(|(name, document)| (version, name, document)),
+        None => None,
+    };
+    let found = match hinted {
+        Some(found) => found,
+        None => match listed_metadata(metadata_dir, hinted_version)? {
+            Some(found) => found,
+            None => return Ok(None),
+        },
+    };
+    let (version, name, document) = newest_from(metadata_dir, found)?;
+    Ok(Some((version, name, Some(document))))
+}
+
+/// Step from `found` to the newest document: read the next version's, in
+/// both spellings, until neither is there - `HadoopTableOperations`' reading,
+/// two reads past the newest document.
+///
+/// A next document that is empty or does not decode is one a commit is still
+/// writing - a create publishes the name before the bytes on some stores -
+/// and the walk ends before it. A version both of whose spellings hold a
+/// whole document forked, and the walk refuses it naming both.
+fn newest_from(
+    metadata_dir: &Holder,
+    (mut version, mut name, mut document): (u32, SmolStr, Scalar),
+) -> Result<(u32, SmolStr, Scalar)> {
+    while let Some(next) = version.checked_add(1) {
+        let gzip_first = name.ends_with(".gz.metadata.json");
+        let Some((next_name, next_document)) = versioned_document(metadata_dir, next, gzip_first)?
+        else {
+            break;
+        };
+        (version, name, document) = (next, next_name, next_document);
+    }
+    Ok((version, name, document))
+}
+
+/// Version `version`'s document in its Hadoop spelling - plain and gzip,
+/// both read, `gzip_first` saying which first - and the name holding it, or
+/// `None` when neither holds a whole one.
+///
+/// A name that is empty, does not decode, or whose read fails holds no
+/// document yet: a store that sizes a file before it reads it fails on one a
+/// create is still writing, or one a failed create took back, and a failure
+/// that lasts is the listing's to report, which reads what it lists. Two
+/// whole documents are two claims of the version under two codecs: the
+/// table forked, and that is refused ([`forked`]) rather than chosen
+/// between.
+fn versioned_document(
+    metadata_dir: &Holder,
+    version: u32,
+    gzip_first: bool,
+) -> Result<Option<(SmolStr, Scalar)>> {
+    let suffixes = if gzip_first { [".gz", ""] } else { ["", ".gz"] };
+    let mut found: Option<(SmolStr, Scalar)> = None;
+    for suffix in suffixes {
+        let name = format_smolstr!("v{version}{suffix}.metadata.json");
+        let bytes = match leaf(metadata_dir.child_by_path(&name)?)?.read_all_bytes() {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            Ok(_) => continue,
+            Err(error) => {
+                log::debug!("iceberg metadata {name} read as not written yet: {error}");
+                continue;
+            }
+        };
+        let Ok(document) = parse_metadata_bytes(&bytes) else {
+            continue;
+        };
+        match &found {
+            None => found = Some((name, document)),
+            Some((first, _)) => return Err(forked(version, first, &name)),
+        }
+    }
+    Ok(found)
+}
+
+/// The other Hadoop spelling of a `v{N}[.gz].metadata.json` name: the
+/// gzip one of a plain name and the plain one of a gzip name, `None` for a
+/// name of any other shape.
+fn other_spelling(name: &str) -> Option<SmolStr> {
+    let stem = name.strip_prefix('v')?.strip_suffix(".metadata.json")?;
+    let (version, gzip) = match stem.strip_suffix(".gz") {
+        Some(version) => (version, true),
+        None => (stem, false),
+    };
+    if version.is_empty() || !version.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    Some(format_smolstr!(
+        "v{version}{}.metadata.json",
+        if gzip { "" } else { ".gz" }
+    ))
+}
+
+/// Two whole documents of one version under its two spellings, the source
+/// of the error [`forked`] answers, so the commit ladder knows the fork from
+/// any other failure.
+#[derive(Debug)]
+struct Forked;
+
+impl std::fmt::Display for Forked {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("one metadata version claimed under two codecs")
+    }
+}
+
+impl std::error::Error for Forked {}
+
+/// The typed refusal of a version holding two whole documents, `first` and
+/// `second`: two commits claimed it under two codecs, and a reader that
+/// chose between them would drop one acknowledged commit from the chain.
+fn forked(version: u32, first: &str, second: &str) -> Error {
+    Error::Iceberg {
+        reason: format_smolstr!(
+            "expected one metadata document of version {version}, got two: {first} and \
+             {second}; two commits claimed the version under two codecs and the table forked"
+        ),
+        source: Some(Box::new(Forked)),
+    }
+}
+
+/// Whether `error` is the refusal [`forked`] answers.
+fn is_forked(error: &Error) -> bool {
+    matches!(error, Error::Iceberg { source: Some(source), .. } if source.is::<Forked>())
+}
+
+/// The document a listing of `metadata/` settles on, for a folder whose hint
+/// names none: the hinted version where a listed name carries it, else the
+/// highest, its exact name kept.
+///
+/// The newest name may be one a commit is still writing, so where its bytes
+/// cannot be read, are empty or do not decode the name below it answers
+/// instead; any other document that does not read or decode is the table's
+/// failure.
+fn listed_metadata(
+    metadata_dir: &Holder,
+    hinted_version: Option<u32>,
+) -> Result<Option<(u32, SmolStr, Scalar)>> {
+    // Exact filenames: a UUID filename is never rewritten into a synthetic
+    // `vN` path.
     let mut candidates: Vec<(u32, SmolStr, Holder)> = Vec::new();
     for entry in metadata_dir.ls(false, false) {
         let entry = entry?;
@@ -5685,22 +5963,17 @@ fn find_metadata(
         candidates.push((version, SmolStr::new(name), entry));
     }
 
-    if candidates.is_empty() {
+    let Some(highest_version) = candidates.iter().map(|candidate| candidate.0).max() else {
         return Ok(None);
-    }
+    };
     candidates.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
-    let highest_version = candidates
-        .iter()
-        .map(|candidate| candidate.0)
-        .max()
-        .ok_or_else(|| invalid(SmolStr::new_static("expected a metadata candidate")))?;
     let chosen_version = hinted_version
         .filter(|hint| candidates.iter().any(|candidate| candidate.0 == *hint))
         .unwrap_or(highest_version);
     // A catalog normally stores the exact UUID filename. This catalog-free
     // surface has only a numeric hint, so concurrent same-version candidates
     // resolve by exact filename order rather than backend listing order.
-    let chosen = candidates
+    let mut chosen = candidates
         .iter()
         .rposition(|candidate| candidate.0 == chosen_version)
         .ok_or_else(|| {
@@ -5708,9 +5981,37 @@ fn find_metadata(
                 "expected a matching metadata candidate",
             ))
         })?;
-    let (version, name, document) = candidates.swap_remove(chosen);
-    let bytes = document.read_all_bytes()?;
-    Ok(Some((version, name, Some(parse_metadata_bytes(&bytes)?))))
+    loop {
+        let (version, name, document) = &candidates[chosen];
+        let newest = chosen > 0 && chosen + 1 == candidates.len();
+        match document.read_all_bytes() {
+            Ok(bytes) if !(newest && bytes.is_empty()) => match parse_metadata_bytes(&bytes) {
+                Ok(document) => {
+                    // The other spelling of the version, where the listing
+                    // shows one holding a whole document, is a fork.
+                    let other = other_spelling(name).and_then(|other| {
+                        candidates
+                            .iter()
+                            .find(|candidate| candidate.1 == other)
+                            .filter(|candidate| {
+                                candidate.2.read_all_bytes().is_ok_and(|bytes| {
+                                    !bytes.is_empty() && parse_metadata_bytes(&bytes).is_ok()
+                                })
+                            })
+                    });
+                    if let Some((_, other, _)) = other {
+                        return Err(forked(*version, name, other));
+                    }
+                    return Ok(Some((*version, name.clone(), document)));
+                }
+                Err(error) if !newest => return Err(error),
+                Err(_) => {}
+            },
+            Err(error) if !newest => return Err(error),
+            _ => {}
+        }
+        chosen -= 1;
+    }
 }
 
 /// Whether any schema the table ever had spells a column of the current
@@ -5765,22 +6066,6 @@ fn metadata_version_from_name(name: &str) -> Option<u32> {
     }
 }
 
-/// List exact metadata filenames at one version, deterministically.
-fn metadata_names_at_version(metadata_dir: &Holder, version: u32) -> Result<Vec<SmolStr>> {
-    let mut names = Vec::new();
-    for entry in metadata_dir.ls(false, false) {
-        let entry = entry?;
-        let Some(name) = entry.url().and_then(|url| url.file_name()) else {
-            continue;
-        };
-        if metadata_version_from_name(name) == Some(version) {
-            names.push(SmolStr::new(name));
-        }
-    }
-    names.sort();
-    Ok(names)
-}
-
 /// Decode Iceberg metadata exactly as the official reader does: gzip is
 /// detected from its magic bytes, independent of the filename.
 fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
@@ -5790,6 +6075,36 @@ fn parse_metadata_bytes(bytes: &[u8]) -> Result<Scalar> {
         bytes.to_vec()
     };
     crate::json::from_bytes(&decoded)
+}
+
+/// Refuse to create a table where `metadata_dir` already holds a metadata
+/// document under any name [`metadata_version_from_name`] reads - one
+/// listing, nothing read, a missing directory listing nothing.
+///
+/// A create claims `v1.metadata.json` alone, so this is what keeps it from
+/// hiding a table laid out under another name behind a hint of its own.
+fn refuse_existing_metadata(metadata_dir: &Holder) -> Result<()> {
+    for entry in metadata_dir.ls(false, false) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if error.is_absent() => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let Some(url) = entry.url() else {
+            continue;
+        };
+        if url
+            .file_name()
+            .is_some_and(|name| metadata_version_from_name(name).is_some())
+        {
+            return Err(Error::conflict(
+                "Iceberg table",
+                "Iceberg metadata document",
+                url,
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Report a folder that holds no Iceberg metadata document.

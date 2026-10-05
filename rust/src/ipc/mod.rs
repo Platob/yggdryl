@@ -1070,6 +1070,11 @@ impl<H: IOBase> IOBase for Ipc<H> {
         self.handle.truncate(size)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+        self.invalidate_cached_metadata();
+        self.handle.create_bytes(bytes)
+    }
+
     fn set_media_type(&mut self, media_type: crate::MediaType) {
         self.invalidate_cached_metadata();
         self.handle.set_media_type(media_type);

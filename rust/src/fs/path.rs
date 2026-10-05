@@ -135,6 +135,10 @@ impl IOBase for FsPath {
         self.as_file().write_all_bytes(bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_file().create_bytes(bytes)
+    }
+
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.as_file().append_bytes(bytes)
     }

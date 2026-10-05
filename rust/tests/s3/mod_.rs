@@ -208,11 +208,12 @@ mod accounting {
 
     /// What an Iceberg table costs over the store, per operation.
     ///
-    /// The table never lists `data/` and never asks a file its role or its
+    /// The table never lists the store and never asks a file its role or its
     /// size: every file it touches is one the metadata names, so the counts
     /// below are the metadata chain - the hint, the document, the manifest list,
-    /// the manifests - plus the data files a scan opens or a commit uploads, and
-    /// the one listing a commit makes to claim its version, and nothing else.
+    /// the manifests - plus the data files a scan opens or a commit uploads,
+    /// the one conditional `PUT` that claims a commit's version and the hint
+    /// it replaces, and nothing else.
     #[cfg(feature = "iceberg")]
     mod iceberg {
 
@@ -315,7 +316,15 @@ mod accounting {
         /// scans cost. Before staging and the leaf handles, the same sequence
         /// cost 9, 25, 40, 40, 5, 21, 9 and 29 requests: a listing to settle
         /// every handle's role, a `HEAD` for every size, and the data file's
-        /// footer read back from the store after each upload.
+        /// footer read back from the store after each upload. Before a commit
+        /// claimed its version with one conditional `PUT`, the create and the
+        /// three commits cost two requests more each - an attempt document's
+        /// `PUT` and a listing to find a competing one, and a `DELETE` - and
+        /// the open two fewer, since it trusted the hint. Before the hint was
+        /// written whole in one `PUT`, each commit cost a `DELETE` more, the
+        /// hint removed before it was created again; before a claim read its
+        /// version's other spelling, and an open read the current document's
+        /// other spelling, each cost one `GET` fewer.
         #[test]
         fn what_a_table_costs_over_the_store() {
             let store = crate::mod_::store();
@@ -323,8 +332,11 @@ mod accounting {
             let schema = schema();
             let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
 
-            // The claim, the document and the hint, the one listing that
-            // detects a competing claim, and the claim's removal.
+            // One listing of `metadata/`, which finds no document under any
+            // name - so the create hides no table laid out under another -
+            // then the document's `PUT` under `If-None-Match: *`, the claim of
+            // version 1, one `GET` of its other spelling, `v1.gz`, which finds
+            // no claim beside it, and the hint's `PUT`, written whole.
             let (mut table, create) = cost(&store, || {
                 IcebergTable::create(root.clone(), FormatVersion::V2, schema.clone(), spec)
                     .expect("creates")
@@ -333,10 +345,10 @@ mod accounting {
                 "create",
                 &create,
                 Tally {
-                    total: 5,
-                    put: 3,
+                    total: 4,
+                    put: 2,
+                    get: 1,
                     list: 1,
-                    delete: 1,
                     ..Tally::default()
                 },
             );
@@ -346,8 +358,11 @@ mod accounting {
             );
 
             // One upload per file - the data file, the manifest, the manifest
-            // list - then the hint read that re-checks the version and the
-            // create's own five. Nothing reads a footer or a size back.
+            // list - then the hint read that re-checks the version, the
+            // document's one conditional `PUT` that claims it, one `GET` of
+            // the version's other spelling, and the hint's one `PUT`. Nothing
+            // reads a footer or a size back, nothing is listed and nothing
+            // removed.
             let ((), append_one) = cost(&store, || {
                 table.commit_append(rows(&[1], &["XNAS"])).expect("appends")
             });
@@ -355,11 +370,9 @@ mod accounting {
                 "append one partition",
                 &append_one,
                 Tally {
-                    total: 9,
-                    put: 6,
-                    get: 1,
-                    list: 1,
-                    delete: 1,
+                    total: 7,
+                    put: 5,
+                    get: 2,
                     ..Tally::default()
                 },
             );
@@ -375,11 +388,9 @@ mod accounting {
                 "append three partitions",
                 &append_three,
                 Tally {
-                    total: 12,
-                    put: 8,
-                    get: 2,
-                    list: 1,
-                    delete: 1,
+                    total: 10,
+                    put: 7,
+                    get: 3,
                     ..Tally::default()
                 },
             );
@@ -397,23 +408,26 @@ mod accounting {
                 "upsert one partition of three",
                 &upsert,
                 Tally {
-                    total: 14,
-                    put: 7,
-                    get: 5,
-                    list: 1,
-                    delete: 1,
+                    total: 12,
+                    put: 6,
+                    get: 6,
                     ..Tally::default()
                 },
             );
 
-            // The hint and the document, and no listing of the directory.
+            // The hint, the document it names in both its spellings - the
+            // gzip one answering `404`, read so that a version claimed under
+            // two codecs is refused rather than chosen between - and the next
+            // version's two spellings, which answer `404`: a hint is where the
+            // search for the newest document starts. No listing of the
+            // directory.
             let (opened, open) = cost(&store, || IcebergTable::open(root.clone()).expect("opens"));
             pin(
                 "open",
                 &open,
                 Tally {
-                    total: 2,
-                    get: 2,
+                    total: 5,
+                    get: 5,
                     ..Tally::default()
                 },
             );
@@ -469,7 +483,142 @@ mod accounting {
                     ..Tally::default()
                 },
             );
-            assert!(root.stats().lists >= 1);
+            assert_eq!(
+                root.stats().lists,
+                1,
+                "nothing in the table's life lists but its create, once"
+            );
+        }
+
+        /// Every id a scan reads, sorted.
+        fn ids(reader: yggdryl::arrow::BatchReader) -> Vec<i64> {
+            let mut ids: Vec<i64> = reader
+                .flat_map(|batch| {
+                    let batch = batch.expect("a batch");
+                    batch
+                        .column_by_name("id")
+                        .expect("the id column")
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .expect("ids")
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            ids.sort_unstable();
+            ids
+        }
+
+        /// Eight writers, each holding version 1 of one table on the store,
+        /// append twice each with nothing between them: the store's
+        /// conditional `PUT` of each version's document is the only thing
+        /// deciding who claims it, so every commit lands exactly once and the
+        /// versions count the commits. Then one uncontended append costs what
+        /// a commit costs: the race leaves nothing behind it to pay for.
+        #[test]
+        fn racing_appenders_over_the_store_each_land_every_commit_once() {
+            const WRITERS: i64 = 8;
+            const COMMITS: i64 = 2;
+            let store = crate::mod_::store();
+            let root: S3Folder = crate::mod_::folder(&store, "lake/racing/");
+            IcebergTable::create(
+                root.clone(),
+                FormatVersion::V2,
+                schema(),
+                PartitionSpec::unpartitioned(),
+            )
+            .expect("creates");
+
+            // A thousand attempts 1 to 16 ms apart inside ten minutes: the
+            // budget is never what ends a commit, since of sixteen commits
+            // one writer is beaten at most once per commit another lands.
+            let racing = IcebergOptions::new()
+                .with_commit_retries(1_000)
+                .with_commit_min_backoff_ms(1)
+                .with_commit_max_backoff_ms(16)
+                .with_commit_total_timeout_ms(600_000);
+            let start = Arc::new(std::sync::Barrier::new(WRITERS as usize));
+            let handles: Vec<_> = (0..WRITERS)
+                .map(|writer| {
+                    let root = root.clone();
+                    let start = Arc::clone(&start);
+                    let racing = racing.clone();
+                    std::thread::spawn(move || {
+                        let mut table = IcebergTable::open(root).expect("opens");
+                        table.set_options(racing);
+                        start.wait();
+                        for commit in 0..COMMITS {
+                            table
+                                .commit_append(rows(&[writer * 10 + commit], &["XNAS"]))
+                                .unwrap_or_else(|error| {
+                                    panic!("writer {writer}, commit {commit}: {error}")
+                                });
+                        }
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle.join().expect("a writer");
+            }
+
+            let mut table = IcebergTable::open(root.clone()).expect("opens");
+            let expected: Vec<i64> = (0..WRITERS)
+                .flat_map(|writer| (0..COMMITS).map(move |commit| writer * 10 + commit))
+                .collect();
+            assert_eq!(ids(table.scan(None).expect("a scan")), expected);
+            let version = table.metadata_version().unwrap();
+            assert_eq!(version, 1 + (WRITERS * COMMITS) as u32);
+
+            // The race may leave the hint naming an older version, which the
+            // first commit after it reads past; the hint that commit writes
+            // names the version the next one holds.
+            table.set_options(racing);
+            table
+                .commit_append(rows(&[900], &["XNAS"]))
+                .expect("appends");
+            let ((), append) = cost(&store, || {
+                table
+                    .commit_append(rows(&[901], &["XNAS"]))
+                    .expect("appends")
+            });
+            // One `PUT` each for the data file, the manifest and the manifest
+            // list; one `GET` of the manifest list of the snapshot before,
+            // whose manifests the new list carries, and one of the hint, which
+            // names the version this handle holds; one `PUT` of the document
+            // under `If-None-Match: *`, the claim of the version and the one
+            // request that decides it under its spelling, and one `GET` of
+            // the other spelling, which finds no claim beside it; and the
+            // hint's one `PUT`, written whole.
+            pin(
+                "one uncontended append after the race",
+                &append,
+                Tally {
+                    total: 8,
+                    put: 5,
+                    get: 3,
+                    ..Tally::default()
+                },
+            );
+            let claim = format!("lake/racing/metadata/v{}.metadata.json", version + 2);
+            let claimed: Vec<_> = store
+                .requests()
+                .into_iter()
+                .filter(|request| request.key.as_deref() == Some(claim.as_str()))
+                .map(|request| {
+                    let condition = request
+                        .headers
+                        .iter()
+                        .find(|(name, _)| name == "if-none-match")
+                        .map(|(_, value)| value.clone());
+                    (request.method, condition, request.status)
+                })
+                .collect();
+            assert_eq!(
+                claimed,
+                [("PUT".to_owned(), Some("*".to_owned()), 200)],
+                "the claim is one conditional PUT"
+            );
+            assert_eq!(table.metadata_version().unwrap(), version + 2);
         }
 
         /// A refused upload fails the commit before anything else goes out: no

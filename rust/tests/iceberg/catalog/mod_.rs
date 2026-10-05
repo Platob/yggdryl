@@ -1231,14 +1231,19 @@ mod call_counts {
             "get on an existing table"
         );
 
-        // The first use reads the hint and the document it names; every
-        // later one reads nothing.
+        // The first use reads the hint, the document it names in both its
+        // spellings - `v1.gz.metadata.json`, which finds nothing, is read so
+        // that a version two commits claimed under two codecs is refused as
+        // the fork it is - and the next version's two spellings,
+        // `v2.metadata.json` and `v2.gz.metadata.json`, which find nothing: a
+        // hint is where the search for the newest document starts, since a
+        // commit writes it after its document. Every later use reads nothing.
         let table = iceberg(opened.unwrap());
         let calls = filesystem.costs(|| {
             table.metadata().unwrap();
         });
         assert_eq!(
-            calls, "file_info=1 open_input_stream=2",
+            calls, "file_info=1 open_input_stream=5",
             "the first use reads the current document"
         );
         let calls = filesystem.costs(|| {
@@ -1271,10 +1276,14 @@ mod call_counts {
 
         // Three levels down at the cost every level has, the fourth read the
         // namespace's own document for what the table inherits, then the
-        // create's own operations: one presence answer, the metadata folder
-        // listed once, and the writes - the first output open reports a
-        // missing parent, one recursive create repairs it, and the output
-        // open is retried exactly once. Nothing walks the ancestry twice.
+        // create's own operations: one presence answer, one listing of
+        // `metadata/` - which finds no document under any name, so no other
+        // table is hidden - the exclusive create of `v1.metadata.json` - the
+        // first reports a missing parent, one recursive create repairs it,
+        // and the create is retried exactly once - one read of the version's
+        // other spelling, `v1.gz.metadata.json`, which finds no claim beside
+        // it, then the hint, written whole in one output stream. Nothing
+        // walks the ancestry twice.
         let calls = filesystem.costs(|| {
             catalog
                 .tables()
@@ -1283,8 +1292,8 @@ mod call_counts {
         });
         assert_eq!(
             calls,
-            "create_dir=1 delete_file=1 file_info=4 list=4 open_input_stream=4 \
-             open_output_stream=4",
+            "create_dir=1 create_file=2 file_info=4 list=4 open_input_stream=5 \
+             open_output_stream=1",
             "create under three namespace levels"
         );
 
@@ -1298,7 +1307,8 @@ mod call_counts {
         namespaces(&catalog, "sales");
 
         // The absent branch: the get's descent, which ends at the missing
-        // child's presence answer, then the create's own descent and writes.
+        // child's presence answer, then the create's own descent, its one
+        // listing of `metadata/`, and its writes.
         let absent = filesystem.costs(|| {
             catalog
                 .tables()
@@ -1307,8 +1317,8 @@ mod call_counts {
         });
         assert_eq!(
             absent,
-            "create_dir=1 delete_file=1 file_info=4 list=3 open_input_stream=4 \
-             open_output_stream=4",
+            "create_dir=1 create_file=2 file_info=4 list=3 open_input_stream=5 \
+             open_output_stream=1",
             "open_or_create when absent"
         );
 

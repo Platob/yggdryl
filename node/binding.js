@@ -5349,7 +5349,7 @@ function filesystemErrorCode(message) {
   if (/DirectoryNotEmpty|ENOTEMPTY/.test(message)) return 'DirectoryNotEmpty'
   if (/NotADirectory|ENOTDIR/.test(message)) return 'NotADirectory'
   if (/IsADirectory|EISDIR/.test(message)) return 'IsADirectory'
-  if (/AlreadyExists|EEXIST/.test(message)) return 'AlreadyExists'
+  if (/AlreadyExists|EEXIST|got an existing/.test(message)) return 'AlreadyExists'
   if (/PermissionDenied|EACCES|EPERM/.test(message)) return 'PermissionDenied'
   if (/NotFound|ENOENT/.test(message)) return 'NotFound'
   if (/Unsupported|ENOTSUP|EOPNOTSUPP|does not support/.test(message))
@@ -5400,6 +5400,7 @@ for (const name of [
   'readText',
   'readRangeBytes',
   'writeBytes',
+  'createBytes',
   'writeText',
   'pwrite',
   'appendBytes',

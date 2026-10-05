@@ -70,7 +70,7 @@ impl PyChunkedSerie {
         T: Send,
         F: FnOnce(ChunkedSerie) -> yggdryl::Result<T> + Send,
     {
-        let chunked = slf.borrow().inner.clone();
+        let chunked = slf.try_borrow()?.inner.clone();
         slf.py().detach(move || read(chunked)).map_err(value_error)
     }
 }
@@ -468,7 +468,7 @@ impl PyChunkedSerie {
     /// leaf class.
     fn into_serie(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
         let py = slf.py();
-        let chunked = slf.borrow().inner.clone();
+        let chunked = slf.try_borrow()?.inner.clone();
         let serie = py
             .detach(move || chunked.into_serie())
             .map_err(value_error)?;
@@ -487,7 +487,7 @@ impl PyChunkedSerie {
     ) -> PyResult<Self> {
         let options = cast_options(safe, representation)?;
         let target = target_of(field)?;
-        let chunked = slf.borrow().inner.clone();
+        let chunked = slf.try_borrow()?.inner.clone();
         slf.py()
             .detach(move || chunked.cast(&target, options))
             .map(Self::from_inner)
@@ -650,7 +650,10 @@ impl PyChunkedSerie {
     ) -> PyResult<()> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.borrow_mut().inner.spill(&options).map_err(value_error)
+        slf.try_borrow_mut()?
+            .inner
+            .spill(&options)
+            .map_err(value_error)
     }
 
     /// `spill`, answering this chunked serie so calls chain.
@@ -664,7 +667,7 @@ impl PyChunkedSerie {
     ) -> PyResult<Bound<'py, Self>> {
         let py = slf.py();
         let options = spill_options_of(options.as_deref(), byte_size.bind(py), folder.bind(py))?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_spilled(&options)
             .map_err(value_error)?;
@@ -753,7 +756,7 @@ impl PyChunkedSerie {
         nulls_first: bool,
     ) -> PyResult<Bound<'py, Self>> {
         let options = sort_options(descending, nulls_first);
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_sorted(options)
             .map_err(value_error)?;
@@ -768,20 +771,29 @@ impl PyChunkedSerie {
         by: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let by = orderings_of(by)?;
-        slf.borrow_mut().inner.as_sort_by(by).map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_sort_by(by)
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
     /// Keep the first occurrence of every value, in place, each chunk
     /// filtered where it stands.
     fn as_unique<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.borrow_mut().inner.as_unique().map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_unique()
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
     /// Reverse the rows in place: the chunks reversed, each where it stands.
     fn as_reversed<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, Self>> {
-        slf.borrow_mut().inner.as_reversed().map_err(value_error)?;
+        slf.try_borrow_mut()?
+            .inner
+            .as_reversed()
+            .map_err(value_error)?;
         Ok(slf.clone())
     }
 
@@ -791,7 +803,7 @@ impl PyChunkedSerie {
         indices: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let indices = serie_argument(indices, "indices")?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_taken(&indices)
             .map_err(value_error)?;
@@ -804,7 +816,7 @@ impl PyChunkedSerie {
         mask: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, Self>> {
         let mask = serie_argument(mask, "mask")?;
-        slf.borrow_mut()
+        slf.try_borrow_mut()?
             .inner
             .as_filtered(&mask)
             .map_err(value_error)?;
@@ -851,7 +863,7 @@ impl PyChunkedSerie {
         requested_schema: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let py = slf.py();
-        let chunked = slf.borrow().inner.clone();
+        let chunked = slf.try_borrow()?.inner.clone();
         if chunked.field().dtype().as_fields().is_some() {
             let reader = SerieReader::from_chunked(chunked).map_err(value_error)?;
             return reader_capsule(py, reader, requested_schema);

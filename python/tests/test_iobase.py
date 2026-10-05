@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import gzip as stdlib_gzip
 import pathlib
+import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -281,6 +283,29 @@ class TestPathlibParity:
 
         handle.unlink()
         assert handle.read_bytes() == b""
+
+    def test_a_create_writes_only_where_nothing_is(self, tmp_path: pathlib.Path) -> None:
+        location = tmp_path / "quotes.csv"
+        handle = IOBase(location)
+
+        # The first create is a write, answering the byte count write_bytes does.
+        assert handle.create_bytes(b"AAPL,187.23") == 11
+        assert location.read_bytes() == b"AAPL,187.23"
+
+        # A second creator, through this handle or another, is refused by name
+        # and the stored value is left as it was.
+        for creator in (handle, IOBase(location)):
+            with pytest.raises(FileExistsError, match="quotes.csv"):
+                creator.create_bytes(b"MSFT,410.10")
+        assert location.read_bytes() == b"AAPL,187.23"
+        assert handle.read_bytes() == b"AAPL,187.23"
+
+        # A buffer creates where it is empty, the way a file does where it is absent.
+        buffer = IOBase.from_bytes()
+        assert buffer.create_bytes(b"x") == 1
+        with pytest.raises(FileExistsError):
+            buffer.create_bytes(b"y")
+        assert buffer.read_bytes() == b"x"
 
     def test_positional_access_needs_no_mode(self, tmp_path: pathlib.Path) -> None:
         handle = IOBase(tmp_path / "positional.bin")
@@ -1317,3 +1342,122 @@ class TestWriteResults:
         folder = IOBase(lake)
         assert folder.append_serie(quote_table()) == IOResult(2, 2)
         assert len(rows_of(folder)) == 4
+
+
+CURSOR_READS_SCRIPT = r"""
+import threading
+import time
+
+import pyarrow as pa
+import pyarrow.fs as pafs
+
+from yggdryl import IOBase
+
+PAYLOAD = b"0123456789abcdef"
+
+
+class Pausing(pafs.FileSystemHandler):
+    # Every open sleeps - releasing the GIL - while the cursor's reader lock
+    # is held by the read that opens it.
+    def get_type_name(self):
+        return "pausing"
+
+    def normalize_path(self, path):
+        return path.strip("/")
+
+    def get_file_info(self, paths):
+        return [
+            pafs.FileInfo(path.strip("/"), pafs.FileType.File, size=len(PAYLOAD))
+            for path in paths
+        ]
+
+    def get_file_info_selector(self, selector):
+        return []
+
+    def create_dir(self, path, recursive):
+        pass
+
+    def delete_dir(self, path):
+        pass
+
+    def delete_dir_contents(self, path, missing_dir_ok=False):
+        pass
+
+    def delete_root_dir_contents(self):
+        pass
+
+    def delete_file(self, path):
+        pass
+
+    def move(self, src, dest):
+        pass
+
+    def copy_file(self, src, dest):
+        pass
+
+    def open_input_stream(self, path):
+        time.sleep(0.2)
+        return pa.BufferReader(PAYLOAD)
+
+    def open_input_file(self, path):
+        time.sleep(0.2)
+        return pa.BufferReader(PAYLOAD)
+
+    def open_output_stream(self, path, metadata=None):
+        raise NotImplementedError(path)
+
+    def open_append_stream(self, path, metadata=None):
+        raise NotImplementedError(path)
+
+
+cursor = IOBase.from_fs(pafs.PyFileSystem(Pausing()), "value").cursor()
+read = []
+moved = []
+
+
+def first():
+    read.append(cursor.read(4))
+
+
+def second():
+    time.sleep(0.05)
+    read.append(cursor.read(4))
+
+
+def seek():
+    time.sleep(0.05)
+    moved.append(cursor.seek(0, 1))
+
+
+threads = [threading.Thread(target=work) for work in (first, second, seek)]
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+assert len(read) == 2 and all(len(chunk) == 4 and chunk in PAYLOAD for chunk in read), read
+assert len(moved) == 1, moved
+cursor.close()
+print("ok")
+"""
+
+
+def test_a_cursor_read_over_a_python_filesystem_never_holds_the_gil_waiting() -> None:
+    """A cursor over a ``pyarrow.fs.PyFileSystem`` handler opens and reads its
+    file under the cursor's reader lock, and the handler may release the GIL:
+    a second read or a seek waiting on that lock attached would keep the
+    reading thread from taking the GIL back, and the process would hang. Two
+    reads and a seek race over a handler whose opens sleep. In a process of
+    its own under a deadline, because the failure is a hang.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", CURSOR_READS_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as hung:
+        raise AssertionError("a cursor read waiting on another hung") from hung
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("ok")

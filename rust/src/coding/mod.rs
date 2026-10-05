@@ -433,6 +433,23 @@ impl<H: IOBase> IOBase for Coding<H> {
         Ok(bytes.len())
     }
 
+    /// Encode the value once and create it on the wrapped handle, which owns
+    /// the exclusive attempt.
+    ///
+    /// An open handle then holds what was created, anything it had staged
+    /// superseded by the published value; a refused create leaves the
+    /// decoded value, staged changes included, as it was.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let encoded = self.codec.dump_with_level(bytes, self.level)?;
+        self.handle.create_bytes(&encoded)?;
+        if let Some(plain) = self.plain.as_mut() {
+            plain.clear();
+            plain.extend_from_slice(bytes);
+        }
+        self.dirty = false;
+        Ok(())
+    }
+
     fn size(&self) -> u64 {
         if let Some(plain) = self.materialized() {
             return plain.len() as u64;

@@ -183,6 +183,10 @@ impl IOBase for ZipPath {
         self.as_leaf_mut().write_all_bytes(bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.as_leaf_mut().create_bytes(bytes)
+    }
+
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.as_leaf_mut().append_bytes(bytes)
     }

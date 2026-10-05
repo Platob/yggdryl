@@ -576,7 +576,7 @@ b1
         }
 
         impl IOBase for Counted {
-            yggdryl::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, uri, url,
+            yggdryl::delegate_iobase!(handle: create_bytes, pread, pwrite, size, capacity, reserve, truncate, uri, url,
                 media_type, set_media_type, flush, kind);
 
             fn pstream_bytes(

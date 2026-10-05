@@ -347,6 +347,10 @@ impl IOBase for MediaTable {
         self.handle_mut()?.write_all_bytes(bytes)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        self.handle_mut()?.create_bytes(bytes)
+    }
+
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
         self.handle_mut()?.append_bytes(bytes)
     }

@@ -306,7 +306,7 @@ mod records {
     }
 
     impl IOBase for Counting {
-        yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, uri, url, media_type,
+        yggdryl::delegate_iobase!(handle: create_bytes, pwrite, size, capacity, reserve, truncate, uri, url, media_type,
             set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
             is_tabular, is_io);
 

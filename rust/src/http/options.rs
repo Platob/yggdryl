@@ -89,10 +89,10 @@ impl HttpOptions {
     pub const DEFAULT_ACCEPT_ENCODINGS: [Codec; 3] = [Codec::Gzip, Codec::Deflate, Codec::Zstd];
     /// The most a whole-body read holds: 256 MiB.
     pub const DEFAULT_MAX_BODY_SIZE: u64 = 256 * 1024 * 1024;
-    /// The most threads that send requests side by side by default: eight.
-    pub const MAX_DEFAULT_CONCURRENCY: usize = 8;
     /// The most threads any walk sends on: 256, one per connection the pool
-    /// keeps idle, so every thread finds its connection again.
+    /// keeps idle, so every thread finds its connection again. The default
+    /// [`Self::concurrency`] is the whole host's parallelism within this
+    /// bound.
     pub const MAX_CONCURRENCY: usize = 256;
     /// The longest a `Retry-After` or a rate limit is waited for: thirty
     /// seconds.
@@ -638,7 +638,9 @@ impl HttpOptions {
         self.stream_batch_size
     }
 
-    /// How many requests go out side by side.
+    /// How many requests go out side by side. Default: the whole host's
+    /// parallelism ([`std::thread::available_parallelism`], 1 where the host
+    /// will not say), within `1..=`[`Self::MAX_CONCURRENCY`].
     #[must_use]
     pub const fn concurrency(&self) -> usize {
         self.concurrency
@@ -692,11 +694,9 @@ pub(crate) const fn bounded_concurrency(concurrency: usize) -> usize {
     }
 }
 
-/// The parallelism the machine has, at most [`HttpOptions::MAX_DEFAULT_CONCURRENCY`].
+/// The parallelism the whole host has, within `1..=`[`HttpOptions::MAX_CONCURRENCY`].
 fn default_concurrency() -> usize {
-    std::thread::available_parallelism()
-        .map_or(1, NonZero::get)
-        .min(HttpOptions::MAX_DEFAULT_CONCURRENCY)
+    bounded_concurrency(std::thread::available_parallelism().map_or(1, NonZero::get))
 }
 
 /// An elapsed length, read as seconds by the one reader every timeout reads.

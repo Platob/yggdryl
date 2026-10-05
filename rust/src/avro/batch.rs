@@ -2504,6 +2504,11 @@ impl<H: IOBase> IOBase for Avro<H> {
         self.handle.truncate(size)
     }
 
+    fn create_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+        self.invalidate_dimensions();
+        self.handle.create_bytes(bytes)
+    }
+
     /// An Avro object container is a record encoding, so this handle holds
     /// rows whatever media type the bytes underneath happen to carry - no
     /// probe, no listing, no read.

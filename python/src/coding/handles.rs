@@ -57,7 +57,7 @@ impl PyCoded {
     /// `IOBase.codec` asks which coding; this asks how hard it works.
     #[getter]
     fn level(slf: &Bound<'_, Self>) -> PyResult<u8> {
-        let base = slf.borrow();
+        let base = slf.try_borrow()?;
         match base.as_super().inner()? {
             yggdryl::holder::Holder::Coded(coded) => Ok(coded.level().get()),
             _ => Err(pyo3::exceptions::PyValueError::new_err(

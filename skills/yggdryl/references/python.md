@@ -2,7 +2,16 @@
 
 `pip install yggdryl` (Python 3.10+, `pyarrow>=18`). The wheel carries every
 part of the core - Parquet, Iceberg, the object stores - and the `yggdryl`
-command. The package mirrors the crate: one module per type at the root
+command. One stable-ABI wheel serves every GIL-enabled CPython from 3.11
+(`cp311-abi3`) and one every CPython from 3.15, free-threaded or not
+(`cp315-abi3.abi3t`); free-threaded 3.14 has no stable ABI and takes its own
+(`cp314-cp314t`), and free threading starts there - PyO3 0.29 builds for no
+free-threaded CPython below 3.14, so a GIL-enabled 3.12 or 3.13 loads
+`cp311-abi3`. On a free-threaded interpreter the GIL stays disabled after
+`import yggdryl`: every door that waits on the core detaches, immutable
+classes are frozen and read from any number of threads at once, and a mutable
+object used by two threads at the same instant raises `RuntimeError: Already
+borrowed` rather than corrupting, so a thread takes a handle of its own. The package mirrors the crate: one module per type at the root
 (`yggdryl.integer`, `yggdryl.temporal`, `yggdryl.string`, ...) and one per
 implementation (`yggdryl.json`, `yggdryl.iceberg`, `yggdryl.xxhash`), with
 every type and factory re-exported from `yggdryl` itself. It ships `py.typed`

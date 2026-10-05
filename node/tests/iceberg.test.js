@@ -921,9 +921,9 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(untouched.readParallelMinFiles, 2)
   assert.equal(untouched.readParallelMinFileSize, 64 * 1024)
   assert.ok(untouched.dataMimeType.equals(MimeType.PARQUET))
-  // Read parallelism defaults to what the host offers, kept inside 1..=8,
-  // and the write parallelism defaults to it.
-  assert.ok(untouched.readParallelism >= 1 && untouched.readParallelism <= 8)
+  // Read parallelism defaults to every thread the host offers, and the
+  // write parallelism defaults to it.
+  assert.equal(untouched.readParallelism, require('node:os').availableParallelism())
   assert.equal(untouched.writeParallelism, untouched.readParallelism)
   // The staging folder is unset until a layer speaks: the table decides.
   assert.equal(untouched.writeStaging, null)

@@ -282,7 +282,7 @@ impl PyField {
         module: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let invalid_root = {
-            let field = slf.borrow();
+            let field = slf.try_borrow()?;
             !field.inner.is_struct() || field.inner.is_nullable()
         };
         if invalid_root {
@@ -2053,7 +2053,7 @@ impl PyField {
 /// through the view is therefore visible on the field, a write on the field is
 /// visible through the view, and two views of one field see each other's
 /// writes. Every mutation goes through the field's own frozen-schema gate.
-#[pyclass(name = "ProtocolField", module = "yggdryl._native")]
+#[pyclass(name = "ProtocolField", module = "yggdryl._native", frozen)]
 pub(crate) struct PyProtocolField {
     field: Py<PyField>,
     scheme: CoreScheme,
@@ -3644,7 +3644,7 @@ impl PyFieldMetadataIterator {
 /// object and reaches the core through it on every call, so writes are visible
 /// in both directions. Mutation routes through the field's own cache-aware
 /// metadata methods.
-#[pyclass(name = "FieldMetadata", module = "yggdryl._native")]
+#[pyclass(name = "FieldMetadata", module = "yggdryl._native", frozen)]
 pub(crate) struct PyFieldMetadata {
     field: Py<PyField>,
 }

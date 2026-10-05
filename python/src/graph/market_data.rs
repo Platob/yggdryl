@@ -384,7 +384,7 @@ graph_methods!(PyMarketData, "MarketData"; [
 /// Behind a lock, as [`crate::fix::PyFixMessages`] is: a cursor a single
 /// caller advances, never contended, and the lock is what makes the boxed
 /// trait object's `Send` enough for a `pyclass`.
-#[pyclass(name = "MarketDataRowIterator", module = "yggdryl._native")]
+#[pyclass(name = "MarketDataRowIterator", module = "yggdryl._native", frozen)]
 pub(crate) struct PyMarketDataRowIterator {
     inner: Mutex<Box<dyn FusedIterator<Item = yggdryl::Result<CoreMarketData>> + Send>>,
     /// Where the Python source behind `inner` failed, when there is one.

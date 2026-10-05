@@ -50,6 +50,20 @@ PyArrow's unsafe cast rules. Conversion from arbitrary Python objects into a
 PyArrow Scalar is Python-specific; native scalar validation and materialization
 are shared through the default-enabled core `yggdryl::arrow` runtime.
 
+The wheel set is four builds: `cp310`, version-specific, because the buffer
+protocol joined the limited API at 3.11; `cp311-abi3`, one extension for every
+GIL-enabled CPython from 3.11; `cp314-cp314t` for free-threaded 3.14, which has
+no stable ABI; and `cp315-abi3.abi3t`, one extension for GIL-enabled and
+free-threaded CPython 3.15 and later. Free threading starts at 3.14: PyO3
+0.29 builds for no free-threaded CPython below it, 3.12 has no free-threaded
+build, and the abi3t wheel is 3.15's, so a GIL-enabled 3.12 or 3.13 loads
+`cp311-abi3`. Importing the extension on a
+free-threaded interpreter leaves the GIL disabled, and every door that waits
+on the core detaches from the interpreter. Immutable classes are frozen and
+are read from any number of threads at once; a mutable object used by two
+threads at the same instant raises `RuntimeError: Already borrowed` rather
+than corrupting, so a thread takes a handle of its own.
+
 ```python
 from yggdryl import Field, MediaType, MimeType
 

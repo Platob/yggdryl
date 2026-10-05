@@ -154,6 +154,24 @@ impl IOBase for Buffer {
         Ok(bytes.len())
     }
 
+    /// Write the value where the buffer holds none.
+    ///
+    /// Emptiness is a buffer's nothing - it has no location apart from its
+    /// bytes - so a buffer holding any byte refuses, naming its identity,
+    /// and keeps them; `&mut self` is the one attempt's exclusion.
+    fn create_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        if !self.bytes.is_empty() {
+            let identity = self.url().map_or_else(String::new, ToString::to_string);
+            return Err(crate::Error::conflict("buffer", "buffer", identity));
+        }
+        self.bytes
+            .try_reserve_exact(bytes.len())
+            .map_err(|_| oversized(bytes.len() as u64))?;
+        self.bytes.extend_from_slice(bytes);
+        self.invalidate();
+        Ok(())
+    }
+
     fn size(&self) -> u64 {
         self.bytes.len() as u64
     }

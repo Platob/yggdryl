@@ -332,8 +332,10 @@ fn appends_and_overwrites_publish_through_the_pointer_and_remove_nothing() {
     // The document before names the one before it, as Iceberg's log does.
     assert_eq!(table.metadata().unwrap().metadata_log().len(), 3);
 
-    // The folder contract, for contrast, lists `metadata/` to claim its
-    // version and removes its attempt once the document is out.
+    // The folder contract, for contrast, claims its version with one
+    // exclusive create of `v{n}.metadata.json` and then writes the hint
+    // whole, because its folder names the document where the pointer does
+    // here; like the pointed path, it lists and removes nothing.
     let (plain_filesystem, plain) = counted_folder("plain");
     let mut plain = IcebergTable::create(
         plain,
@@ -346,9 +348,12 @@ fn appends_and_overwrites_publish_through_the_pointer_and_remove_nothing() {
         plain.commit_append(rows(&[("XNAS", 1)])).unwrap();
     });
     assert!(
-        plain_costs.contains("list=") && plain_costs.contains("delete_file="),
+        plain_costs.contains("create_file=1")
+            && !plain_costs.contains("delete_file=")
+            && !plain_costs.contains("list="),
         "{plain_costs}"
     );
+    assert!(holds(&plain_filesystem, "plain/metadata/version-hint.text"));
 }
 
 #[test]

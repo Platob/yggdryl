@@ -817,6 +817,10 @@ impl IOBase for Response {
         Err(refuse_write())
     }
 
+    fn create_bytes(&mut self, _bytes: &[u8]) -> Result<()> {
+        Err(refuse_write())
+    }
+
     /// The stated `Content-Length`, else the held length, else what the
     /// stream knows.
     fn size(&self) -> u64 {

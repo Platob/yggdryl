@@ -13,7 +13,7 @@
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
 use yggdryl::s3::{AzureOptions, Provider, S3Options};
-use yggdryl::{IOBase, IOFolder, IOKind};
+use yggdryl::{Error, IOBase, IOFolder, IOKind};
 
 /// The container both sides exchange through.
 const CONTAINER: &str = "yggdryl-interop";
@@ -164,6 +164,72 @@ fn a_large_blob_is_staged_as_blocks_and_committed_as_a_list() {
     handle.write_all_bytes(&bytes).expect("a write");
     assert_eq!(handle.size(), bytes.len() as u64);
     assert_eq!(handle.read_all_bytes().expect("a read"), bytes);
+}
+
+/// `IOBase::create_bytes` against a store that evaluates the condition itself.
+///
+/// A create is one `Put Blob` under `If-None-Match: *`, and above the
+/// multipart threshold the condition rides `Put Block List`, the request that
+/// decides the blob: a staged block is no blob. Azurite evaluates it on both,
+/// answering `409 BlobAlreadyExists` as the service does rather than a `412`,
+/// so each second create below is the store's own refusal, never a question
+/// this client asked first.
+#[test]
+fn a_second_create_of_a_blob_is_a_conflict_and_the_first_stands() {
+    if endpoint().is_none() {
+        skipped("YGGDRYL_AZURE_ENDPOINT names no Azurite");
+        return;
+    }
+    container();
+
+    let key = format!("{FROM_RUST}/created/claim.json");
+    // A store a developer keeps between runs still holds the last run's.
+    blob(&key).remove(false).expect("a clean key");
+    blob(&key)
+        .create_bytes(b"{\"version\":1}")
+        .expect("nothing at the key");
+    assert_eq!(
+        blob(&key).read_all_bytes().expect("a read"),
+        b"{\"version\":1}"
+    );
+    let refused = blob(&key)
+        .create_bytes(b"{\"version\":2}")
+        .expect_err("a blob is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert!(refused.to_string().contains(&key), "{refused}");
+    assert_eq!(
+        blob(&key).read_all_bytes().expect("a read"),
+        b"{\"version\":1}"
+    );
+
+    // In blocks: two of 4 MiB at most, so the block list is what publishes.
+    let key = format!("{FROM_RUST}/created/large.bin");
+    let blocked = || {
+        yggdryl::s3::file_at_with(
+            Provider::Azure,
+            CONTAINER,
+            &key,
+            options()
+                .with_part_size(4 * 1024 * 1024)
+                .with_multipart_threshold(1024 * 1024),
+        )
+        .expect("a blob handle")
+    };
+    let first: Vec<u8> = (0..6 * 1024 * 1024)
+        .map(|index| (index % 251) as u8)
+        .collect();
+    blocked().remove(false).expect("a clean key");
+    let mut handle = blocked();
+    handle.create_bytes(&first).expect("nothing at the key");
+    // Two `Put Block` and the `Put Block List`, not one `Put Blob`.
+    assert_eq!(handle.stats().puts, 3, "{:?}", handle.stats());
+    assert_eq!(blocked().read_all_bytes().expect("a read"), first);
+
+    let refused = blocked()
+        .create_bytes(&vec![b'n'; 2 * 1024 * 1024])
+        .expect_err("a blob is at the key");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused}");
+    assert_eq!(blocked().read_all_bytes().expect("a read"), first);
 }
 
 #[test]
