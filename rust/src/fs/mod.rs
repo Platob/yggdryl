@@ -9,7 +9,7 @@
 //! [`BoundLocation`] retains the filesystem equality domain, the exact opaque
 //! filesystem path, the caller's optional URI spelling, and a masked
 //! diagnostic form as separate facts. Injected paths are never parsed as URLs;
-//! only [`ResolvedFileSystemUri`] crosses the URI boundary. [`FsPath`],
+//! a location reaches its backend through [`Holder::from_url`]. [`FsPath`],
 //! [`FsFile`], [`FsFolder`], their parents and children, listings, and globs
 //! all carry that same binding.
 //!
@@ -50,7 +50,6 @@ mod path;
 mod stream;
 mod system;
 mod transfer;
-mod uri;
 
 pub use file::FsFile;
 pub use folder::FsFolder;
@@ -61,7 +60,6 @@ pub use path::FsPath;
 pub use stream::{ByteReader, ByteWriter, RandomAccessReader};
 pub use system::{FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata};
 pub use transfer::{copy_bound, move_bound};
-pub use uri::{ResolvedFileSystem, ResolvedFileSystemUri, S3AddressingStyle, S3FileSystemOptions};
 
 /// Hold the resource `url` names on `filesystem`.
 ///

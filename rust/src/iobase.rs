@@ -38,6 +38,7 @@
 //! ```
 
 use std::io::{Read as _, Write as _};
+use std::path::Path;
 
 use crate::{ByteStream, Cursor, Error, IOKind, IOMedia, Listing, MediaType, Result, Uri, Url};
 use crate::{Codec, Level};
@@ -206,6 +207,28 @@ pub(crate) fn copy_value(source: &(impl IOBase + ?Sized), target: &mut dyn IOBas
     Ok(copied)
 }
 
+/// Rename `source` onto `target` on the local file system, replacing what is
+/// there.
+///
+/// One `rename`; a target folder not there yet is created and the rename
+/// tried once more, because a move is a write at its destination and a
+/// write creates its parents. The source was read as present just before,
+/// so the absence a first `rename` reports is the destination's.
+fn rename_local(source: &Path, target: &Path) -> std::io::Result<()> {
+    match std::fs::rename(source, target) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(parent) = target
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::rename(source, target)
+        }
+        result => result,
+    }
+}
+
 mod bytes;
 pub(crate) mod hierarchy;
 mod lifecycle;
@@ -338,6 +361,18 @@ pub trait IOBase: Send + IOMedia {
 
     /// Return the filesystem/path binding when this handle has one.
     fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
+        None
+    }
+
+    /// Return the `file:` URL of the local file or location this handle is.
+    ///
+    /// Answered by a [`Holder`] holding a [`LocalFile`](crate::local::LocalFile)
+    /// or a [`LocalPath`](crate::local::LocalPath): bare local storage, with
+    /// nothing between the handle and the bytes on disk. A wrapper over one
+    /// answers `None`, as every other backend does, because its cache or its
+    /// coding sits between the two and a rename beneath it would bypass it.
+    /// What [`move_into`](Self::move_into) reads to rename rather than copy.
+    fn local_url(&self) -> Option<&Url> {
         None
     }
 
@@ -1138,20 +1173,133 @@ pub trait IOBase: Send + IOMedia {
         copy_value(self, target)
     }
 
-    /// Move this value into `target` when both locations expose that capability.
+    /// Move this value into `target`, replacing its contents and leaving
+    /// nothing at the source.
     ///
-    /// Same-filesystem moves use exactly one native operation. A
-    /// cross-filesystem move first completes the bounded copy and only then
-    /// deletes the source.
+    /// Returns the number of bytes moved. An absent source is refused by name
+    /// before the target is touched, on the one [`kind`](Self::kind) read
+    /// this contract states - one `HEAD` on an object store - confirmed by
+    /// one bounded read where the kind is unknown, so a store that refused
+    /// the question refuses the move with its own reason rather than as
+    /// absence, and a source whose bytes answer where its kind did not - an
+    /// HTTP resource whose `HEAD` is refused - still moves. A move onto its
+    /// own location, the two handles'
+    /// [`url`](Self::url) equal, moves nothing and answers the value's size
+    /// on local storage, where a location is the whole identity, and is
+    /// refused on a store, where a URL does not say which client reaches it
+    /// and two stores spelling one key would copy the value onto itself and
+    /// then remove it. Two handles bound to one foreign filesystem move in
+    /// exactly one native operation, and two bound to different ones
+    /// complete the bounded copy before the source is deleted. Two local
+    /// handles - each answering [`local_url`](Self::local_url): the local
+    /// roles, and a text or record configuration over one, which passes the
+    /// bytes through unchanged - are one `rename`: the source is published
+    /// and its mapping dropped first, a target folder not there yet is
+    /// created and the rename tried once more, and a rename the volume
+    /// boundary refuses falls back to the copy below. Every other pair - an
+    /// object, a buffer, a coding, a cache, on either side - is
+    /// [`Self::copy_into`] then [`Self::remove`] on this handle: the copy
+    /// stages the value whole and publishes the target only once all of it
+    /// has crossed, and the source is removed only once the copy has
+    /// succeeded, so a failed copy leaves the source as it was and a failed
+    /// removal leaves the value at both ends and reports the failure.
+    ///
+    /// ```
+    /// use yggdryl::{IOBase, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut source = Buffer::from_bytes(b"AAPL,1".to_vec());
+    /// let mut target = Buffer::from_bytes(b"stale".to_vec());
+    /// assert_eq!(source.move_into(&mut target)?, 6);
+    /// assert_eq!(target.read_all_bytes()?, b"AAPL,1");
+    /// assert_eq!(source.size(), 0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::NotAtomic`] naming the kind, before anything is read,
+    /// when this handle is a container: its stream is its leaves' end to end,
+    /// no one value; the store's own refusal of the read that confirms an
+    /// unknown kind; [`Error::Absent`] naming this handle's location when
+    /// nothing is there;
+    /// [`Error::Conflict`] naming the location when a store handle is moved
+    /// onto its own. Otherwise the first read, write, rename or removal
+    /// failure.
     fn move_into(&mut self, target: &mut dyn IOBase) -> Result<u64> {
-        let source = self
-            .bound_location()
-            .ok_or_else(|| Error::unsupported("move_into from an unbound handle", "memory"))?;
-        let target_location = target
-            .bound_location()
-            .ok_or_else(|| Error::unsupported("move_into to an unbound handle", "memory"))?;
-        let size = crate::fs::move_bound(source, target_location)?;
-        Ok(size)
+        if let (Some(source), Some(target_location)) =
+            (self.bound_location(), target.bound_location())
+        {
+            return crate::fs::move_bound(source, target_location);
+        }
+        // A container's stream is its leaves', end to end: moving that into
+        // one resource would be a concatenation, not a move of a value.
+        reject_container(self, "move")?;
+        // The one read before the move: an absent source would otherwise be
+        // streamed as the empty value and land as an empty target. A kind no
+        // store answered is confirmed by one bounded read, so a store that
+        // refused the question refuses the move with its own reason rather
+        // than as absence, and a source whose bytes answer where its kind did
+        // not - an HTTP resource whose `HEAD` is refused - still moves.
+        if self.kind() == IOKind::Unknown && self.read_range_bytes(0, 1)?.is_empty() {
+            let location = self
+                .uri()
+                .map_or_else(|| "an unlocated handle".to_owned(), ToString::to_string);
+            return Err(Error::absent("file", location));
+        }
+        let local = self
+            .local_url()
+            .zip(target.local_url())
+            .map(|(source, destination)| (source.clone(), destination.clone()));
+        let same_location = self
+            .url()
+            .zip(target.url())
+            .is_some_and(|(source, destination)| source == destination);
+        if same_location {
+            // One spelling for both ends. On local storage a location is the
+            // whole identity, so the move is a no-op answering the size; on
+            // a store a URL does not say which client reaches it, and two
+            // stores spelling one key would copy the value onto itself and
+            // then remove it, so the move is refused by that location.
+            if local.is_some() {
+                return Ok(self.size());
+            }
+            let location = target.url().map_or_else(String::new, ToString::to_string);
+            return Err(Error::conflict(
+                "target at another location",
+                "value at the source's own",
+                location,
+            ));
+        }
+        if let Some((source, destination)) = local {
+            let source = source.into_path()?;
+            let destination = destination.into_path()?;
+            let moved = self.size();
+            // Read before the rename, as the copy reads it before publishing:
+            // a local handle infers its type from its name, which the source
+            // keeps and the target does not share.
+            let media_type = self.media_type().clone();
+            // Publish what is staged and drop both mappings: a mapped file
+            // cannot be renamed, or replaced, on every platform.
+            self.close()?;
+            target.close()?;
+            match rename_local(&source, &destination) {
+                Ok(()) => {
+                    target.set_media_type(media_type);
+                    return Ok(moved);
+                }
+                // Across a volume boundary a rename is exactly the copy then
+                // the removal below, so that is what runs.
+                Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {}
+                Err(error) => {
+                    return Err(Error::from_io_at(error, "file", destination.display()));
+                }
+            }
+        }
+        let moved = copy_value(&*self, target)?;
+        self.remove(false)?;
+        Ok(moved)
     }
 
     /// Encode this value into `target` with `codec`, replacing its contents.

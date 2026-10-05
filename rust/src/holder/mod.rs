@@ -291,7 +291,14 @@ impl Holder {
     /// since a location spelling a container (a glob, a trailing `/`)
     /// streams leaves that each take off the coding their own name declares,
     /// and takes none. Every other property is left to the backend, which
-    /// ignores what it does not know.
+    /// ignores what it does not know. An object-store location's query
+    /// states the store's properties too, in the names its reader takes
+    /// (`s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`),
+    /// beneath `properties`, so a property stated twice is the caller's, and
+    /// is taken off the location the handle reports, which names the
+    /// resource and not how it is reached; a parameter naming no property
+    /// the store reads is refused by name, since an object takes no query.
+    /// A `file:` or an `http:` URL's query is the resource's own and stays.
     ///
     /// ```
     /// use yggdryl::holder::Holder;
@@ -308,8 +315,9 @@ impl Holder {
     /// # Errors
     ///
     /// Returns the identifier's own refusal when it names no location, an
-    /// error when the scheme is one no backend of this build holds, or a
-    /// property this method reads does not parse.
+    /// error when the scheme is one no backend of this build holds, a
+    /// property this method reads does not parse, or an object-store
+    /// location's query names a parameter no store reads.
     pub fn from_url<K, V>(
         location: impl AsRef<Uri>,
         properties: impl IntoIterator<Item = (K, V)>,
@@ -354,10 +362,34 @@ impl Holder {
         } else if url.scheme().is_object_store() {
             #[cfg(feature = "s3")]
             {
+                // The query first, so a property the caller states too is
+                // the caller's; a name the store's reader has no door for is
+                // refused, because an object takes no query of its own.
+                let mut stated = Vec::new();
+                for (name, value) in &url.parameters(true)? {
+                    if !crate::s3::S3Options::is_property(name) {
+                        return Err(crate::Error::Parse {
+                            target: "object store location",
+                            position: 0,
+                            reason: smol_str::format_smolstr!(
+                                "the query parameter {name:?} names no property an object \
+                                 store reads"
+                            ),
+                        });
+                    }
+                    stated.push((name.to_owned(), value.to_owned()));
+                }
                 let options = crate::s3::S3Options::from_properties(
-                    properties.iter().map(|(name, value)| (name, value)),
+                    stated
+                        .iter()
+                        .chain(properties.iter())
+                        .map(|(name, value)| (name, value)),
                 )?;
-                crate::s3::located_with(&url.to_string(), options)?
+                // Taken off the location: it names the resource, not how it
+                // is reached.
+                let mut location = url.clone();
+                location.set_query(None)?;
+                crate::s3::located_with(&location.to_string(), options)?
             }
             #[cfg(not(feature = "s3"))]
             {
@@ -1079,6 +1111,20 @@ impl IOBase for Holder {
 
     fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_io().bound_location()
+    }
+
+    /// The local file and location roles answer their own URL, and a text
+    /// or record configuration over one answers its handle's, since both
+    /// pass the bytes through unchanged; a cache, a coding and every other
+    /// variant keep the default.
+    fn local_url(&self) -> Option<&Url> {
+        match self {
+            Self::LocalFile(inner) => inner.local_url(),
+            Self::LocalPath(inner) => inner.local_url(),
+            Self::Text(inner) => inner.handle().local_url(),
+            Self::Media(inner) => inner.handle().local_url(),
+            _ => None,
+        }
     }
 
     fn mtime(&self) -> Option<i64> {

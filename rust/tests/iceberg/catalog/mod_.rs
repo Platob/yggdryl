@@ -1329,3 +1329,99 @@ mod call_counts {
         );
     }
 }
+
+/// The catalog over an object store: the warehouse's children arrive as
+/// undecided locations, which the folder role re-casts as the prefixes they
+/// name on the same client, so a namespace and a table are created, listed
+/// and read back on the fake store with no filesystem between.
+#[cfg(feature = "s3")]
+mod object_store {
+    use super::{
+        Catalog, IOBase, IOKind, IOMedia, IcebergCatalog, Namespace, ObjectValue, Table, created,
+        names, reader, rows, taxis,
+    };
+    use crate::server::FakeS3;
+    use yggdryl::holder::Holder;
+    use yggdryl::s3::{self, Credentials, Provider, S3Options};
+
+    /// The bucket the warehouse is in.
+    const BUCKET: &str = "trades";
+
+    /// Options reaching `store` and consulting nothing outside the test.
+    fn options(store: &FakeS3) -> S3Options {
+        S3Options::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"))
+    }
+
+    /// The warehouse prefix held in its folder role.
+    fn prefix(store: &FakeS3) -> Holder {
+        Holder::S3Folder(
+            s3::folder_with(&format!("s3://{BUCKET}/warehouse"), options(store)).unwrap(),
+        )
+    }
+
+    /// The warehouse prefix held undecided, as a location.
+    fn location(store: &FakeS3) -> Holder {
+        Holder::S3Path(
+            s3::path_at_with(Provider::Aws, BUCKET, "warehouse", options(store)).unwrap(),
+        )
+    }
+
+    /// A running store with the bucket, and the catalog `lake` over the
+    /// warehouse in it, held as `role` says.
+    fn lake(role: fn(&FakeS3) -> Holder) -> (FakeS3, Catalog) {
+        let store = FakeS3::start();
+        store.create_bucket(BUCKET);
+        let catalog = Catalog::from(IcebergCatalog::bound("lake", role(&store)));
+        (store, catalog)
+    }
+
+    #[test]
+    fn a_namespace_and_a_table_are_created_and_read_back_on_an_object_store() {
+        for (name, role) in [
+            ("prefix", prefix as fn(&FakeS3) -> Holder),
+            ("location", location),
+        ] {
+            let (store, catalog) = lake(role);
+            assert!(
+                !catalog.tables().contains("sales.orders").unwrap(),
+                "{name}"
+            );
+
+            // Each name on the way down resolves to an undecided location and
+            // is re-cast as the prefix it names; nothing refuses the backend.
+            let table = created(&catalog, "sales.orders");
+            assert!(matches!(table, Table::Iceberg(_)), "{name}: {table:?}");
+            assert_eq!(table.to_string(), "lake.sales.orders", "{name}");
+            let keys = store.keys(BUCKET);
+            for key in [
+                "warehouse/sales/metadata/namespace.json",
+                "warehouse/sales/orders/metadata/version-hint.text",
+            ] {
+                assert!(keys.contains(&key.to_owned()), "{name}: {key} in {keys:?}");
+            }
+
+            let sales = catalog.namespaces().get("sales").unwrap();
+            assert!(matches!(sales, Namespace::Iceberg(_)), "{name}: {sales:?}");
+            assert_eq!(ObjectValue::kind(&sales), IOKind::Namespace, "{name}");
+            assert_eq!(names(catalog.namespaces().iter()), ["sales"], "{name}");
+            assert_eq!(names(sales.tables().iter()), ["orders"], "{name}");
+
+            let mut opened = catalog.tables().get("sales.orders").unwrap();
+            assert_eq!(IOBase::kind(&opened), IOKind::Table, "{name}");
+            let options = opened.record_options().unwrap();
+            opened
+                .append_arrow_reader(reader(taxis(&[2, 1], &[Some("XNAS"), None])), &options)
+                .unwrap();
+            assert_eq!(
+                rows(&opened),
+                [(1, None), (2, Some("XNAS".to_owned()))],
+                "{name}"
+            );
+        }
+    }
+}

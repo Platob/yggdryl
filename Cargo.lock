@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-buffer 59.2.0",
@@ -4412,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-cli"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "clap",
  "crossterm",
@@ -4422,7 +4422,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-node"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-ipc 59.2.0",
@@ -4438,7 +4438,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-python"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-data 59.2.0",

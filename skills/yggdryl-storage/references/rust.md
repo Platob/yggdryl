@@ -512,8 +512,22 @@ assert!(S3Options::from_properties([("s3.request-timeout", "soon")]).is_err());
 
 ## Bind an Arrow-style filesystem
 
-`fs::FileSystem` is the seam for foreign storage; the path is opaque and
-reaches the filesystem literally (`%2F` stays `%2F`).
+`fs::FileSystem` is the bridge for storage this crate does not hold - a
+foreign filesystem a binding hands over; the path is opaque and reaches the
+filesystem literally (`%2F` stays `%2F`). A local path or an object-store
+location never crosses it: `Holder::local`, `s3::file` and `Holder::from_url`
+are the doors, a catalog over an `S3Path` or `S3Folder` keeps the client it
+was given, and `move_into` is one `rename` between two handles on local
+storage - a `LocalFile` or a `LocalPath`, or a `Text` or record media
+wrapper over one, which pass the bytes through unchanged; never a
+`Buffered` cache or a `Coded` view - and the copy then the source's removal
+between any other pair, the value staged whole as `copy_into` stages it
+(five requests between two objects, no server-side `CopyObject`); a move
+onto its own location moves nothing on local storage and is
+`Error::Conflict` on a store, whose URL does not say which client reaches
+it, and an absent source is `Error::Absent` on one `kind` read before the
+target is touched - a store refusing that read refusing the move with its
+own error.
 
 ```rust
 use std::sync::Arc;
@@ -666,6 +680,12 @@ assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2,
   anything.
 - `Holder::from_url` with an `s3:`/`gs:`/`az:` scheme needs the `s3` feature;
   without it the scheme is refused.
+- `Holder::from_url` reads an object-store location's query
+  (`?endpoint_override=minio%3A9000&scheme=http`) as the store's properties
+  beneath the ones passed - a passed property wins whatever its spelling -
+  and takes it off the location the handle reports; a parameter no store
+  reads (`?versionId=3`) is an `Error::Parse` naming it. A `file:` or
+  `http:` URL's query is the resource's own.
 - `Counted` tallies what a backend implements, not the derived defaults
   (`glob`, `copy_into`, `read_scalar`), so the tally shows what those decompose
   into; a child from `child_by_path` is the backend's own, not another `Counted`.

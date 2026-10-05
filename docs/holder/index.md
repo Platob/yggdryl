@@ -12,7 +12,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Call counts](#call-counts) | `Counted`, the `IOBase` call budget every derived operation is held to | default |
 | [Buffer](#buffer) | in-memory bytes | default |
 | [Local](#local) | `LocalPath`, `LocalFolder`, mapped `LocalFile` | default |
-| [Filesystems](#filesystems) | Arrow-style `FileSystem`, `FsPath`, `FsFolder`, `FsFile` | default |
+| [Filesystems](#filesystems) | a `pyarrow.fs` filesystem read as the native role it stands for; the Arrow-style `FileSystem` bridge - `FsPath`, `FsFolder`, `FsFile` - for a foreign one | default |
 | [Object stores](#object-stores) | `S3Path`, `S3Folder`, `S3File` over Amazon S3, Google Cloud Storage and Azure Blob Storage | `s3` feature |
 | [HTTP](#http) | `Session`, `Request`, `Response`, `Stream` over any `http`/`https` URL, and `Server` hosting any handle | `http` feature; `http2`, `http3` |
 | [Buffered](#buffered) | the page cache over any handle | default |
@@ -93,7 +93,7 @@ holder.as_io() -> &dyn IOBase                  // the variant as the trait objec
 | --- | --- | --- |
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
 | `LocalFolder`, `LocalPath`, `LocalFile` | a local directory, an undecided local location, a mapped local leaf | `holder.LocalFolder`, `holder.LocalPath`, `holder.LocalFile` |
-| `FsFolder`, `FsPath`, `FsFile` | the same three on an Arrow `FileSystem` | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile` |
+| `FsFolder`, `FsPath`, `FsFile` | the same three bridged over a foreign Arrow `FileSystem`; a filesystem this build holds itself - PyArrow's local, S3, GCS and Azure ones, a subtree over one - is the local or object-store role above instead | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile`, each answering `LocalFolder`/`S3Folder` and the like for a filesystem held natively |
 | `S3Folder`, `S3Path`, `S3File` | a prefix or container, an undecided location, one object on an [object store](#object-stores) | `holder.S3Folder`, `holder.S3Path`, `holder.S3File` |
 | `HttpSession`, `HttpRequest`, `HttpResponse`, `HttpStream` | a session over a base URL, the resource a URL names, one answer's body, a body left on the wire, over [HTTP](#http) | `http.Session`, `http.Request`, `http.Response`, `http.Stream` |
 | `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](#zip) | Rust only |
@@ -432,7 +432,7 @@ The bindings spell the read `read_range_bytes` / `readRangeBytes` and keep `pwri
 
 ### Addresses
 
-`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://localhost/<pid>/<address>` identity. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
+`uri` is the identifier the bytes are reached through; `url` narrows it when it names a place. A buffer is stored nowhere and still answers a `mem://localhost/<pid>/<sequence>` identity, the sequence counted per process and never an address, which every empty buffer would share. `mtime()` (Rust only) answers UTC nanoseconds for a store that records one, and `None` otherwise.
 
 No host is ever made up. A local file names none: `file:///path` is this machine by RFC 8089 on every platform, so no host is added to a file URL that did not state one, and `file://localhost/path` or `file://<HOSTNAME>/path` read as that same local path (on Unix; Windows keeps `\\localhost\share` the share it names). A buffer and a location on a filesystem that answers in this process name `localhost`, the one name the crate writes for this machine. `HOSTNAME` (`yggdryl::HOSTNAME`, `yggdryl.HOSTNAME`, `HOSTNAME` in JavaScript) is the machine's own name, read once from the operating system and spelled as a URL host - lower case, each byte a host cannot hold as `-`, `localhost` when the system reports nothing a host can spell; intake reads it as this machine, and no URL the crate writes names it. A remote store names its own: the bucket of `s3://bucket/key`, the endpoint its URL states, else its environment and files (the session's [configured endpoint](#where-each-service-is-reached) for Amazon S3, `STORAGE_EMULATOR_HOST`, `AZURE_STORAGE_BLOB_ENDPOINT`), else its published endpoint. A child, a parent and every handle `ls` or `glob` answers name the host of the handle they came from.
 
@@ -450,8 +450,8 @@ No host is ever made up. A local file names none: `file:///path` is this machine
     assert_eq!(IOBase::uri(&folder), IOBase::url(&folder).map(AsRef::<Uri>::as_ref));
     assert_eq!(IOBase::uri(&folder).unwrap().scheme().as_str(), "file");
 
-    // A buffer is not stored anywhere, so its address is an identity - on
-    // this machine.
+    // A buffer is not stored anywhere, so a sequence counted per process is
+    // its identity - on this machine.
     let buffer = Buffer::from_bytes(b"symbol\n".to_vec());
     assert_eq!(buffer.uri().unwrap().scheme().as_str(), "mem");
     assert_eq!(buffer.url().unwrap().hostname(), Some("localhost"));
@@ -3613,7 +3613,60 @@ A reader takes a handle, not a path, so one function runs over a file, a `Buffer
 
 ## Filesystems
 
-`yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam; `from_fs` binds a filesystem and an opaque path, which is never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally. `MemoryFileSystem` and `LocalFileSystem` ship as references; Python binds `pyarrow.fs`, JavaScript a synchronous handler protocol.
+A filesystem a caller already holds is read as the store it stands for, and the bridge is kept for one this build does not hold. Python's `from_fs` - and `FsPath`, `FsFile`, `FsFolder` by name - classify a `pyarrow.fs.FileSystem` before anything is built: `LocalFileSystem` is the [local](#local) role at the platform path, `S3FileSystem`, `GcsFileSystem` and `AzureFileSystem` the [object store](#object-stores) role over the container and key the path spells, under the options the filesystem was built with (what its `__reduce__` states, in PyArrow's own argument names, which `S3Options::from_properties` reads), and a `SubTreeFileSystem` its base filesystem under its base path. The class answered is the native one, `filesystem` is `None`, `path` the platform path or `container/key` as the store names it, `uri=` is refused beside it, and nothing is contacted. A store filesystem stating an argument the native client has no reader for stays on the bridge, where PyArrow reads its own argument: an `AzureFileSystem` with `blob_storage_authority`, `blob_storage_scheme`, `dfs_storage_authority` or `dfs_storage_scheme` stated beyond the account's own `*.core.windows.net` hosts over `https`, an `S3FileSystem` with `tls_ca_file_path` or `default_metadata`, a `GcsFileSystem` with `target_service_account` or `default_metadata` - stated meaning given, since PyArrow states `None`, the empty text or those hosts back for every filesystem; `force_virtual_addressing` crosses only when true, and a number PyArrow states back as `-1`, a timeout it was not given, is no option. Every other filesystem - a `PyFileSystem` over a handler, which is also how fsspec arrives, the mock, HDFS - crosses the bridge: `yggdryl::fs::FileSystem` is the Arrow-compatible seam, `from_fs` binds the filesystem and an opaque path, which is never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally - and JavaScript's `fromFs` binds a synchronous handler the same way. `MemoryFileSystem` and `LocalFileSystem` ship as references of the seam, and no door of the crate's own routes a local path or an object-store location through it.
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+    from yggdryl.holder import FsPath, LocalFolder, LocalPath, S3Path
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    local = pafs.LocalFileSystem()
+
+    # PyArrow's local filesystem is the local role at the platform path: no
+    # filesystem object stands between the handle and the bytes.
+    leaf = IOBase.from_fs(local, (root / "trades.bin").as_posix())
+    assert isinstance(leaf, LocalPath)
+    assert leaf.filesystem is None
+    assert pathlib.Path(leaf.path) == root / "trades.bin"
+    leaf.write_bytes(b"AAPL,100")
+    assert (root / "trades.bin").read_bytes() == b"AAPL,100"
+
+    # A subtree over it is the same store under the base path, and the role
+    # classes answer the native role by the same reading.
+    subtree = pafs.SubTreeFileSystem(root.as_posix(), local)
+    assert pathlib.Path(FsPath(subtree, "trades.bin").path) == root / "trades.bin"
+    assert isinstance(IOBase.from_fs(subtree, "lake").create_dir(), LocalFolder)
+
+    # An S3 filesystem is the native client under the options it was built
+    # with - a number PyArrow states back as -1, a timeout it was not given,
+    # is no option - here pointed at nothing: construction sends nothing, and
+    # the path is the container and the key.
+    store = pafs.S3FileSystem(
+        anonymous=True,
+        region="eu-west-1",
+        scheme="http",
+        endpoint_override="127.0.0.1:9",
+    )
+    part = IOBase.from_fs(store, "trades/lake/part.bin")
+    assert isinstance(part, S3Path)
+    assert part.filesystem is None
+    assert part.path == "trades/lake/part.bin"
+    assert str(part.url) == "s3://trades/lake/part.bin"
+
+    # A filesystem stating what the native client cannot read - here a
+    # default metadata table - stays on the bridge, the filesystem answering.
+    bridged = pafs.S3FileSystem(anonymous=True, default_metadata={"content-type": "binary"})
+    assert isinstance(FsPath(bridged, "trades/lake/part.bin"), FsPath)
+    assert FsPath(bridged, "trades/lake/part.bin").filesystem is bridged
+    ```
+
+The bridge keeps the whole filesystem and stream contract for what it carries. On a store held natively the Arrow-shaped verbs answer the native fact, each acting once: `info` reads the kind, the size and the modification time in one `open` and `close` scope of its own, off the GIL - an `S3File` one `HEAD` - and keeps what a handle already open holds; `create_dir` is `mkdir`, parents included whatever `recursive` says, and answers the container role; `delete_dir` is `remove(recursive=False)` on the container, `delete_dir_contents` its `clear()`, and `delete_file` `remove(recursive=False)` on the plain handle with no kind read before it, so absence is the success every native store reports it as - whatever `missing_dir_ok` says, which forgives only a clear that itself reports absence - an empty directory is removed by either and a populated one refused as not empty. `normalize_path` and `delete_root_dir_contents` are refused by name, as is `metadata=` on `open_output_stream` and `open_append_stream`. On a wrapper - a page cache, a coding, a text or record configuration - `mkdir`, `delete_dir` and `delete_dir_contents` reach the plain handle beneath it on its own store: `IOBase(tmp / 'lake' / 'trades.txt.gz').mkdir()` makes that directory and answers `LocalFolder`. `path` is the platform path, or the container and the raw key as the store names it - `trades/lake/a b/part.bin`, never the URL's `a%20b` - and `same_location` is the identifier alone. `IOBase(handle)`, `joinpath()` with nothing to join and the handle `move_into` answers hold a native handle again as the role it is, on its own client under its own options - an `S3File` stays one, a bucket root or a trailing-slash `S3Path` is its own `S3Folder` - never rebuilt from its URL.
 
 A bound handle's `url` is diagnostic, credentials masked: its scheme is the filesystem's `type_name` (`fs` where that is no scheme), and its host is where the filesystem answers ([no host is made up](#addresses)) - none for `file` and Arrow's `local` (`file:///tmp/lake`), the bucket for a store (`s3://bucket/key` from `s3`, `gcs`, `abfs`), the store's published endpoint for a root naming no bucket (`s3://s3.amazonaws.com/`), and `localhost` for every other filesystem, which is taken to answer in this process (`memory://localhost/bucket/x`, a handler's `fs://localhost/...`).
 
@@ -3693,14 +3746,17 @@ FsFile::from_path(Arc<dyn FileSystem>, path, uri: Option<String>) -> Result<FsFi
 
 ### The three foreign roles
 
-`from_fs` answers the role and composition the name declares, and every composition keeps the bound location. `FsPath`, `FsFile` and `FsFolder` commit to a role and address the stored bytes.
+`from_fs` answers the role and composition the name declares, and every composition keeps the bound location. `FsPath`, `FsFile` and `FsFolder` commit to a role on a bridged filesystem and address the stored bytes; named over a filesystem this build holds, each answers the native role instead - `LocalPath`, `LocalFile`, `LocalFolder` or `S3Path`, `S3File`, `S3Folder` - and `create_dir` answers the container role of whichever store made it.
 
 === "Python"
 
     ```python
+    import pathlib
+    import tempfile
+
     import pyarrow.fs as pafs
     from yggdryl import IOBase
-    from yggdryl.holder import FsFolder, FsPath
+    from yggdryl.holder import FsFile, FsFolder, FsPath, LocalFile, LocalFolder, LocalPath
     from yggdryl.media import Text
 
     filesystem = pafs._MockFileSystem()
@@ -3725,42 +3781,140 @@ FsFile::from_path(Arc<dyn FileSystem>, path, uri: Option<String>) -> Result<FsFi
     stored = FsPath(filesystem, "bucket/trades.txt.gz")
     assert stored.read_bytes()[:2] == b"\x1f\x8b"
     assert handle.info().size == stored.size()
+
+    # Named over a filesystem this build holds, the three answer the native
+    # role, and the caller's spelling of a bridged location is refused.
+    local = pafs.LocalFileSystem()
+    root = pathlib.Path(tempfile.mkdtemp())
+    assert isinstance(FsPath(local, (root / "trades.txt.gz").as_posix()), LocalPath)
+    assert isinstance(FsFile(local, (root / "trades.txt.gz").as_posix()), LocalFile)
+    assert isinstance(FsFolder(local, root.as_posix()), LocalFolder)
+    try:
+        FsPath(local, (root / "trades.txt.gz").as_posix(), uri="s3://bucket/trades.txt.gz")
+    except ValueError as refused:
+        assert "uri=" in str(refused)
+    else:
+        raise AssertionError("a native store takes no uri=")
     ```
 
 ### Resolve a URI once
 
-`from_uri` is the only boundary where a URI chooses and configures a filesystem. An `options` mapping overrides the query and is forwarded to `pyarrow.fs.S3FileSystem`.
+`from_uri` is `Holder::from_url`, the core's one location door, for every scheme the build holds - a `file:` URL the local role, an object-store URL the native store, an `http:` one the request, an `s3tables:` one the catalog object it names - and no `pyarrow.fs` filesystem is built on the way; the constructor is the same door under no properties. The location's query is the core's too: an object-store URL's query states the store's properties, in the names its reader takes - this crate's own, PyArrow's, PyIceberg's: `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1` - read beneath the properties the caller states, so a stated property wins whatever its spelling (an `endpoint` property over the query's `endpoint_override`), and taken off the location the handle reports, so `url` and `repr` name the resource and not how it is reached. A query parameter naming no property an object store reads is refused by name before anything is held - `?versionId=3` is a `ValueError`, since an object takes no query - and a `file:` or `http:` URL's query is the resource's own and stays. The constructor, `from_uri`, JavaScript's `fromUri`, Rust's `Holder::from_url` and a plan's location read a query alike because they are one door, and no binding reads one itself. `options` is a mapping of the store's properties in any vocabulary the core reads - this crate's own names, PyIceberg's `s3.*`, PyArrow's `endpoint_override`, each store's environment names, the HTTP options' - beside `media_type` and `codec`, which every location takes, and `**properties` are the same by keyword, each winning over the mapping's and the mapping's over the query's. A property's value is a `str`, a `bool`, an `int` or a `float`; any other is refused with a `TypeError` naming the property, never spelled by `str()`. A keyword no store or location reads is skipped with an `UnknownPropertyWarning` naming the closest; a mapping key naming none is ignored, as the core ignores it. JavaScript's `fromUri(uri, options?)` is the same door over a plain object - an option winning over the query whatever its spelling; a string, a boolean or a number is the property's text, `null` leaves it unstated, any other value is refused by name - and Rust is `Holder::from_url(location, properties)` itself, a refused query parameter an `Error::Parse` whose reason names it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{IOBase, MimeType, Url};
+
+    let root = LocalFolder::temporary()?.path()?.join(format!("yggdryl-doc-from-uri-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("events.csv"), b"symbol,price\nAAPL,1\n")?;
+
+    // The scheme picks the backend and a property types the bytes: a file:
+    // URL is the local role, with no filesystem seam between it and the store.
+    let url = Url::from_path(root.join("events.csv"))?;
+    let handle = Holder::from_url(&url, [("media_type", "text/csv")])?;
+    assert!(matches!(handle, Holder::LocalPath(_)));
+    assert_eq!(handle.media_type().base(), &MimeType::CSV);
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
+
+    std::fs::remove_dir_all(&root)?;
+    ```
 
 === "Python"
 
     ```python
+    import pathlib
+    import tempfile
+
     from yggdryl import IOBase
+    from yggdryl.holder import LocalPath, S3Path
 
-    local = IOBase.from_uri("file:///tmp/events.bin")
+    target = pathlib.Path(tempfile.mkdtemp()) / "events.bin"
+    local = IOBase.from_uri(target.as_uri())
+    assert isinstance(local, LocalPath)
+    assert local.filesystem is None
+    assert pathlib.Path(local.path) == target
 
+    # An object-store URL is the native store under the properties given, in
+    # PyArrow's names here and the crate's own by keyword, and nothing is sent.
     s3 = IOBase.from_uri(
-        "s3://bucket/v=a%2Fb"
-        "?endpoint_override=minio%3A9000"
-        "&scheme=http"
-        "&region=eu-west-1",
-        options={
-            "anonymous": True,
-            "force_path_style": True,
-        },
+        "s3://bucket/v=a%2Fb",
+        options={"anonymous": True, "endpoint_override": "127.0.0.1:9", "scheme": "http"},
+        region="eu-west-1",
     )
+    assert isinstance(s3, S3Path)
+    assert s3.filesystem is None
+    assert s3.bound_uri is None
+    # The path is the key as the store names it; the URL is what escapes it.
+    assert s3.path == "bucket/v=a/b"
+    assert str(s3.url) == "s3://bucket/v=a%2Fb"
 
-    assert s3.path == "bucket/v=a%2Fb"
+    # A query states the same properties, read beneath the ones given and
+    # taken off the location the handle reports; a mapping and a keyword win
+    # over it.
+    spelled = IOBase.from_uri(
+        "s3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http&region=eu-west-1",
+        anonymous=True,
+    )
+    assert isinstance(spelled, S3Path)
+    assert str(spelled.url) == "s3://bucket/lake/key.bin"
+    assert spelled.path == "bucket/lake/key.bin"
+    assert "endpoint_override" not in repr(spelled)
     ```
 
-| Input | Filesystem configuration | Bound path |
-| --- | --- | --- |
-| `s3://bucket/key`, `s3a://`, `s3n://` | default S3 | `bucket/key` |
-| `s3://key:secret@bucket/key` | credentials from user information | `bucket/key` |
-| `s3://key:secret@minio:9000/bucket/key` | endpoint `minio:9000` | `bucket/key` |
-| `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1` | explicit endpoint, transport, region | `bucket/key` |
-| `s3://bucket.s3.eu-west-1.amazonaws.com/key` | virtual addressing, inferred region | `bucket/key` |
+=== "JavaScript"
 
-`bound_uri` may carry secrets; errors, logs and `repr` use `masked_uri`. `same_location` needs filesystem equality plus byte-for-byte path equality.
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    // The constructor's door under the store's properties: a string, a
+    // boolean or a number is the property's text, null leaves it unstated,
+    // and construction sends nothing.
+    const part = IOBase.fromUri('s3://trades/lake/year=2026/part.parquet', {
+      region: 'eu-west-1',
+      endpoint: 'http://127.0.0.1:9',
+      anonymous: true,
+      session_token: null,
+    })
+    assert.equal(part.url.toString(), 's3://trades/lake/year=2026/part.parquet')
+    assert.equal(part.url.bucket, 'trades')
+    assert.equal(part.filesystem, null)
+    assert.equal(part.mediaType.toString(), 'application/vnd.apache.parquet')
+    assert.deepEqual(part.partitions, [{ column: 'year', value: '2026' }])
+
+    // An object-store URL's query states the store's properties too, read
+    // beneath the options and taken off the location the handle reports; an
+    // option wins over it whatever its spelling.
+    const spelled = IOBase.fromUri(
+      's3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http&region=eu-west-1',
+      { anonymous: true },
+    )
+    assert.equal(spelled.url.toString(), 's3://bucket/lake/key.bin')
+    assert.equal(spelled.url.query, null)
+    assert.equal(spelled.url.key, 'lake/key.bin')
+
+    // A value no property can read is refused by name.
+    assert.throws(() => IOBase.fromUri('s3://trades/k', { region: ['eu-west-1'] }), /"region"/)
+    ```
+
+| Input | Store | `path` |
+| --- | --- | --- |
+| `s3://bucket/key`, `s3a://`, `s3n://` | Amazon S3, the spelling kept on `url` | `bucket/key` |
+| `s3://key:secret@bucket/key` | the pair in the user information, taken off the location the handle reports | `bucket/key` |
+| `s3://key:secret@minio:9000/bucket/key` | endpoint `minio:9000`: a first part with a port, an IP literal, `localhost`, or ending `.com`/`.io`/`.net` is the host | `bucket/key` |
+| `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1` | the store's properties in the names its reader takes, read beneath `options` and the keywords - a stated property wins whatever its spelling - and taken off the location the handle reports | `bucket/key` |
+| `s3://bucket/key?versionId=3` | refused by name before anything is held: an object takes no query, and no store reads `versionId` | none |
+| `s3://bucket/v=a%2Fb` | the key as the store names it, the URL's escape decoded once | `bucket/v=a/b` |
+| `s3://bucket.s3.eu-west-1.amazonaws.com/key` | virtual-hosted addressing, the region inferred from the host | `bucket/key` |
+| `gs://bucket/key`, `az://container@account.blob.core.windows.net/key` | Google Cloud Storage, Azure Blob Storage | `bucket/key`, `container/key` |
+| `file:///tmp/events.bin` | the local role | the platform path |
+
+A pair the URL spells, and the query it states the store's properties in, never reach `url` or `repr`. `bound_uri` and `masked_uri` are a bridged filesystem's spellings and `None` here; `path` is the container and the raw key as the store names it. `same_location` on two native handles is the identifier alone; on two bridged ones, filesystem equality plus byte-for-byte path equality; a bridged and a native handle never share one.
 
 ### Streams, copy and move
 
@@ -3771,13 +3925,17 @@ FsFile::from_path(Arc<dyn FileSystem>, path, uri: Option<String>) -> Result<FsFi
 | `open_output_stream` | truncating streamed write, flush, tell, close |
 | `open_append_stream` | streamed append, flush, tell, close |
 
-Each open retains one backend stream. On one filesystem a copy or move is exactly one native call; across two, a copy streams in bounded chunks and publishes only after success.
+Each open on a bridged filesystem retains one of its backend streams; on a store held natively the four are cursors over the handle, and `metadata=` on the two output streams is refused by name, since no native store takes one. Two handles bound to one bridged filesystem copy or move in exactly one native call, and two bound to different ones copy through the bridge before the source is deleted. Every other pair copies as `copy_into` does - the value staged whole, the target published only once all of it has crossed - and a move is the core's `move_into`: that copy then the source's removal, with two exceptions. A move onto its own location, the two `url`s equal, moves nothing and answers the value's size on local storage, where a location is the whole identity, and is refused on a store (`Error::Conflict` naming the location, Python `FileExistsError`), because a store URL does not say which client reaches it and two stores spelling one key would copy the value onto itself and then remove it. And two local handles are one `rename` - the local roles, and a text or record configuration over one (`Text`, the record media wrappers: `IOBase(tmp / 'a.arrows')` onto `IOBase(tmp / 'b.arrows')`), which pass the bytes through unchanged, while a page cache (`Buffered`) or a coding (`Coded`, a `.gz` name) never renames - the source published and its mapping dropped first, a target folder not there yet created once and the rename tried again, a rename the volume boundary refuses falling back to the copy; so a rename onto a directory is the platform's own refusal (`PermissionError` on Windows, `IsADirectoryError` where the rename says so) and the source stays. An absent source is refused by name (`Error::Absent`, Python `FileNotFoundError`) before the target is touched, on the one `kind` read the move states - one `HEAD` on an object store - confirmed by one bounded read where the kind is unknown: a store that refused the question refuses the move with its own reason (Python `OSError`, never `FileNotFoundError`), and a source whose bytes answer where its kind did not - an HTTP resource whose `HEAD` is refused - still moves. A container refuses before either side is touched; a failed copy leaves the source as it was, and a failed removal leaves the value at both ends and reports it. Between two objects the value crosses through the client - a server-side copy (`CopyObject`) is not what a move does yet - at the five requests the object stores' cost table states. In Python `copy_into` and `move_into` run off the GIL like every other verb, and the handle `move_into` answers is the target held again on its own store, as `IOBase(handle)` holds one. JavaScript's four opens and `moveInto` are the bridge's own and take handles bound through `fromFs`; a native JavaScript handle copies with `copyInto`.
 
 === "Python"
 
     ```python
+    import pathlib
+    import tempfile
+
     import pyarrow.fs as pafs
     from yggdryl import IOBase
+    from yggdryl.holder import LocalPath
 
     filesystem = pafs._MockFileSystem()
     IOBase.from_fs(filesystem, "bucket").create_dir()
@@ -3794,6 +3952,37 @@ Each open retains one backend stream. On one filesystem a copy or move is exactl
     assert copied == source.info().size
     assert moved.same_location(archive)
     assert not target.exists()
+
+    # Two local handles - here PyArrow's local filesystem, read as the local
+    # role - move by one rename, into a folder not there yet.
+    root = pathlib.Path(tempfile.mkdtemp())
+    local = pafs.LocalFileSystem()
+    leaf = IOBase.from_fs(local, (root / "events.bin").as_posix())
+    leaf.write_bytes(b"literal")
+    kept = IOBase.from_fs(local, (root / "archive" / "events.bin").as_posix())
+    landed = leaf.move_into(kept)
+    assert landed.same_location(kept)
+    assert kept.read_bytes() == b"literal"
+    assert not leaf.exists()
+
+    # A move onto its own location moves nothing on local storage; an absent
+    # source is refused by name before the target is touched.
+    assert kept.move_into(IOBase.from_fs(local, kept.path)).read_bytes() == b"literal"
+    try:
+        leaf.move_into(IOBase.from_fs(local, (root / "never.bin").as_posix()))
+    except FileNotFoundError as refused:
+        assert "events.bin" in str(refused)
+    else:
+        raise AssertionError("an absent source is refused")
+    assert not (root / "never.bin").exists()
+
+    # Any other pair is the copy then the source's removal: a target that
+    # composes a coding over the local role lands the value coded.
+    coded = IOBase(root / "archive" / "events.txt.gz")
+    kept.move_into(coded)
+    assert coded.read_bytes() == b"literal"
+    assert LocalPath(root / "archive" / "events.txt.gz").read_bytes()[:2] == b"\x1f\x8b"
+    assert not kept.exists()
     ```
 
 ### JavaScript handler protocol
@@ -3991,11 +4180,12 @@ The request count is the contract, asserted by tests.
 | a large write | `parts + 2` | `chunks + 1` | `blocks + 1` |
 | an append | one `GET` and one write; no `GET` while open | the same | the same |
 | a removal | one `DELETE`, no probe | one `objects.delete` | one `DELETE` |
+| a move onto another object | five: one `HEAD` (the kind), one `GET` (the source), one `GET` (the target's old value, which a failed copy restores), one `PUT`, one `DELETE`; onto its own location one `HEAD` and the refusal; where the store refuses the `HEAD`, one bounded `GET` and the store's refusal | one `objects.get`, two `GET`s, one `multipart/related` `POST`, one `objects.delete` | one `HEAD`, two `GET`s, one `PUT`, one `DELETE` |
 | a listing, one level or a subtree | one request per 1000 entries | the same | the same |
 | the stream of a prefix, a `lake/` location or a glob | its listing, then one `GET` per object as the stream reaches it | the same | the same |
 | emptying or removing a prefix | one listing and one bulk delete per 1000 keys | per 100 | per 256 |
 
-A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`.
+A recursive listing is one flat listing, because keys in byte order already are depth-first pre-order. A ranged read learns the length from `Content-Range`, and `S3File::with_known_size` takes one a manifest already stated, which is how an [Iceberg](../media/iceberg.md) scan reads each data file with one `GET`. A move between two objects is the copy and the removal, the value crossing through the client: a server-side copy (`CopyObject`) is not what a move does yet.
 
 | Iceberg operation | requests |
 | --- | ---: |

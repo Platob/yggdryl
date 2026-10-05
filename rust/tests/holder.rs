@@ -2,6 +2,9 @@
 
 #[path = "support/counting.rs"]
 mod counting;
+#[cfg(feature = "s3")]
+#[path = "support/server.rs"]
+mod server;
 
 #[path = "holder/buffer.rs"]
 mod buffer;

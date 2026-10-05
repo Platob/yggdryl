@@ -878,32 +878,112 @@ impl<'a> Row<'a> {
         }
     }
 
-    /// Appends the entries a row states under a map of text to text - the
-    /// metadata, or an identifier map, each key spelled as its [`IdKey`]
-    /// spells it in the order the map holds them, which is that spelling's -
-    /// whether it states any.
-    fn pairs(&self, column: Column, keys: &mut StringBuilder, values: &mut StringBuilder) -> bool {
+    /// Appends the entries a row states under a map of text to text, in key
+    /// order, whether it states any: an identifier map's base keys, one per
+    /// type, the type's answer; the metadata beside the side information of
+    /// every identifier map the row holds - each key but a base one, spelled
+    /// under its map's name as its [`IdKey`] spells it,
+    /// `securityids.ullink:isin`. A metadata key spelling the side
+    /// information the row files is refused, located on it: the identifier
+    /// is stated in its map, never beside it.
+    fn pairs(
+        &self,
+        at: usize,
+        column: Column,
+        keys: &mut StringBuilder,
+        values: &mut StringBuilder,
+    ) -> Result<bool> {
         if column == Column::Market(MarketColumn::Metadata) {
-            let metadata = self.market.get_metadata();
-            for (key, value) in metadata {
-                keys.append_value(key);
-                values.append_value(value);
-            }
-            return !metadata.is_empty();
+            return self.side_pairs(at, keys, values);
         }
         let Some(ids) = self.ids(column) else {
-            return false;
+            return Ok(false);
         };
-        for id in ids {
-            // A key of two member words is one static string, any other at
-            // most three writes; none is spelled into a buffer of its own.
-            id.key()
-                .write_into(keys)
-                .expect("a string builder takes any text");
-            keys.append_value("");
-            values.append_value(id.value());
+        let mut any = false;
+        for id in ids.iter().filter(|id| id.key().is_base()) {
+            append_id(id, keys, values);
+            any = true;
         }
-        true
+        Ok(any)
+    }
+
+    /// The metadata merged with the side information of the identifier
+    /// maps the row holds - the security identifiers of every market leaf,
+    /// an operation's own identifiers and parties - four sorted sequences
+    /// walked by key, each key written once through its own spelling, a
+    /// side entry's under its map's name.
+    fn side_pairs(
+        &self,
+        at: usize,
+        keys: &mut StringBuilder,
+        values: &mut StringBuilder,
+    ) -> Result<bool> {
+        let metadata = self.market.get_metadata();
+        let mut plain = metadata.iter().peekable();
+        let mut sides = [
+            (
+                MarketColumn::SecurityIds.name(),
+                sourced(self.ids(Column::Market(MarketColumn::SecurityIds))).peekable(),
+            ),
+            (
+                OperationColumn::Identifiers.name(),
+                sourced(self.ids(Column::Operation(OperationColumn::Identifiers))).peekable(),
+            ),
+            (
+                OperationColumn::PartyIds.name(),
+                sourced(self.ids(Column::Operation(OperationColumn::PartyIds))).peekable(),
+            ),
+        ];
+        let mut any = false;
+        loop {
+            // The side entries in the order they are spelled: no map's name
+            // is a prefix of another's, so the names order first.
+            let side = sides
+                .iter_mut()
+                .enumerate()
+                .filter_map(|(set, (name, ids))| ids.peek().map(|id| (set, *name, *id)))
+                .min_by(|(_, left_name, left), (_, right_name, right)| {
+                    (left_name, left.key()).cmp(&(right_name, right.key()))
+                });
+            match (plain.peek(), side) {
+                (None, None) => return Ok(any),
+                (Some((key, value)), None) => {
+                    keys.append_value(key.as_str());
+                    values.append_value(value.as_str());
+                    plain.next();
+                }
+                (None, Some((set, name, id))) => {
+                    append_side_id(name, id, keys, values);
+                    sides[set].1.next();
+                }
+                (Some((key, value)), Some((set, name, id))) => {
+                    match id.key().cmp_text_under(name, key.as_str()) {
+                        std::cmp::Ordering::Less => {
+                            append_side_id(name, id, keys, values);
+                            sides[set].1.next();
+                        }
+                        std::cmp::Ordering::Greater => {
+                            keys.append_value(key.as_str());
+                            values.append_value(value.as_str());
+                            plain.next();
+                        }
+                        std::cmp::Ordering::Equal => {
+                            return Err(invalid(
+                                format_smolstr!(
+                                    "$[{at}].{}['{key}']",
+                                    MarketColumn::Metadata.name()
+                                ),
+                                format_smolstr!(
+                                    "expected a metadata key spelling no side information of the row, got the {} {key}: state it in its map",
+                                    id.kind().as_str()
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+            any = true;
+        }
     }
 
     /// The identifiers a row states under an identifier column, none where
@@ -1114,8 +1194,8 @@ impl Slot {
                 let mut offsets = Vec::with_capacity(rows.len() + 1);
                 offsets.push(0_i32);
                 let mut valid = Vec::with_capacity(rows.len());
-                for row in rows {
-                    valid.push(row.pairs(column, &mut keys, &mut values));
+                for (at, row) in rows.iter().enumerate() {
+                    valid.push(row.pairs(at, column, &mut keys, &mut values)?);
                     offsets.push(offset(keys.len())?);
                 }
                 let entries_array = StructArray::try_new(
@@ -2023,12 +2103,14 @@ impl Leaf {
         }
     }
 
-    /// The identifiers one identifier cell states, read raw and closed by
-    /// the base rule; `None` for a null. Each key is read through `keys`,
-    /// once per distinct text of a stream; a key no [`IdKey`] reads, a value
-    /// its type refuses and two values under one key are refused on the key,
-    /// below the column: `$[3].identifiers['k']`.
-    fn ids(
+    /// The identifiers one identifier cell states, read raw - closed by the
+    /// base rule once the side information the row's metadata holds of
+    /// their types is read beside them; `None` for a null. Each key is read
+    /// through `keys`, once per distinct text of a stream; a key no
+    /// [`IdKey`] reads, a value its type refuses and two values under one
+    /// key are refused on the key, below the column:
+    /// `$[3].identifiers['k']`.
+    fn ids_raw(
         &self,
         row: usize,
         path: &Path<'_>,
@@ -2048,7 +2130,6 @@ impl Leaf {
             ids.read_entry(text, keys.read(text), value)
                 .map_err(|error| path.field(name).reroot(error))?;
         }
-        ids.close();
         Ok(Some(ids))
     }
 
@@ -2317,6 +2398,48 @@ impl Landed {
         self.market[position(&MarketColumn::ALL, &column)].as_ref()
     }
 
+    /// The landed leaf of one operation column, where the struct holds it.
+    fn operation_leaf(&self, column: OperationColumn) -> Option<&Leaf> {
+        self.operation[position(&OperationColumn::ALL, &column)].as_ref()
+    }
+
+    /// The identifiers a row states under one identifier column - `leaf`,
+    /// none where the batch lacks it - beside the side information its
+    /// metadata files for that map: every metadata key spelled under the
+    /// column's `name` and reading as a sourced key, read raw with the
+    /// cell's own entries and closed once by the base rule; `None` where
+    /// neither states any.
+    fn ids_with_side(
+        &self,
+        leaf: Option<&Leaf>,
+        row: usize,
+        path: &Path<'_>,
+        name: &str,
+    ) -> Result<Option<Identifiers>> {
+        let mut keys = self.keys.borrow_mut();
+        let mut ids = match leaf {
+            Some(leaf) => leaf.ids_raw(row, path, name, &mut keys)?,
+            None => None,
+        };
+        if let Some(pairs) = self
+            .market_leaf(MarketColumn::Metadata)
+            .and_then(|leaf| leaf.pairs(row))
+        {
+            for (text, value) in pairs {
+                let Some(key) = side_key(text, name, &mut keys) else {
+                    continue;
+                };
+                ids.get_or_insert_with(Identifiers::new)
+                    .read_entry(text, Some(key), value)
+                    .map_err(|error| path.field(MarketColumn::Metadata.name()).reroot(error))?;
+            }
+        }
+        Ok(ids.map(|mut ids| {
+            ids.close();
+            ids
+        }))
+    }
+
     /// A dated `BOOK` row: a complete book where it states its `alive`
     /// entries - none is a statement too - a book holding only its deltas
     /// where `alive` is null and `deltas` a list, and a snapshot control
@@ -2390,7 +2513,7 @@ impl Landed {
         let mut element = OperationElement::<K>::new();
         let mut claims = IdentityClaims::default();
         self.read_element(row, &mut element, &mut claims);
-        self.read_market(row, &mut element, path)?;
+        self.read_market(row, &mut element, path, Lift::All)?;
         self.read_crosscode(row, &mut element);
         self.read_operation(row, &mut element, path)?;
         element.finalize();
@@ -2398,6 +2521,12 @@ impl Landed {
         self.check_element(row, &element, path)?;
         self.check_market(row, &element, path)?;
         self.check_operation(row, &element, path)?;
+        self.check_metadata(
+            row,
+            &element,
+            Some((element.get_identifiers(), element.get_partyids())),
+            path,
+        )?;
         Ok(element)
     }
 
@@ -2424,7 +2553,7 @@ impl Landed {
         let mut claims = IdentityClaims::default();
         target.set_currunix(self.currunix(row, path)?);
         self.read_event(row, target, &mut claims);
-        self.read_market(row, target, path)?;
+        self.read_market(row, target, path, Lift::All)?;
         self.read_crosscode(row, target);
         self.read_operation(row, target, path)?;
         Ok(claims)
@@ -2440,7 +2569,13 @@ impl Landed {
         claims.validate(canonical, path)?;
         self.check_event(row, canonical, path)?;
         self.check_market(row, canonical, path)?;
-        self.check_operation(row, canonical, path)
+        self.check_operation(row, canonical, path)?;
+        self.check_metadata(
+            row,
+            canonical,
+            Some((canonical.get_identifiers(), canonical.get_partyids())),
+            path,
+        )
     }
 
     fn trade(&self, row: usize, path: &Path<'_>) -> Result<TradeEvent> {
@@ -2470,7 +2605,7 @@ impl Landed {
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
-        self.read_market(row, &mut event, path)?;
+        self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
         let control =
             SnapshotEvent::from_control(event, self.control(row, path)?.unwrap_or_default());
@@ -2489,6 +2624,7 @@ impl Landed {
         claims.validate(&control, path)?;
         self.check_event(row, &control, path)?;
         self.check_market(row, &control, path)?;
+        self.check_metadata(row, &control, None, path)?;
         Ok(control)
     }
 
@@ -2500,7 +2636,7 @@ impl Landed {
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
         self.read_event(row, &mut event, &mut claims);
-        self.read_market(row, &mut event, path)?;
+        self.read_market(row, &mut event, path, Lift::Security)?;
         self.read_crosscode(row, &mut event);
         // A book holds no execution: a row stating one is not a book this
         // crate wrote, and an empty or null cell states none.
@@ -2552,6 +2688,7 @@ impl Landed {
         claims.validate(&book, path)?;
         self.check_event(row, &book, path)?;
         self.check_market(row, &book, path)?;
+        self.check_metadata(row, &book, None, path)?;
         Self::check_book(stated, &book, path)?;
         Ok(book)
     }
@@ -2802,7 +2939,20 @@ impl Landed {
         row: usize,
         target: &mut E,
         path: &Path<'_>,
+        lift: Lift,
     ) -> Result<()> {
+        // The security identifiers first - the cell beside the side
+        // information the metadata holds of them - since the ISIN column
+        // is a projection of them.
+        if let Some(ids) = self.ids_with_side(
+            self.market_leaf(MarketColumn::SecurityIds),
+            row,
+            path,
+            MarketColumn::SecurityIds.name(),
+        )? {
+            let located = |error: Error| path.field(MarketColumn::SecurityIds.name()).reroot(error);
+            target.set_securityids(ids, true).map_err(located)?;
+        }
         for (column, leaf) in MarketColumn::ALL.into_iter().zip(&self.market) {
             let Some(leaf) = leaf else {
                 continue;
@@ -2814,12 +2964,7 @@ impl Landed {
             } else if column == MarketColumn::ExecUnix {
                 target.set_execunix(leaf.clock(row), true);
             } else if column == MarketColumn::SecurityIds {
-                let Some(ids) = leaf.ids(row, path, column.name(), &mut self.keys.borrow_mut())?
-                else {
-                    continue;
-                };
-                let located = |error: Error| path.field(column.name()).reroot(error);
-                target.set_securityids(ids, true).map_err(located)?;
+                // Landed before the loop, beside its side information.
             } else if column == MarketColumn::IsinCode {
                 // A projection of `securityids`, read after it: it fills an
                 // absent ISIN and must agree with a stated one.
@@ -2852,9 +2997,15 @@ impl Landed {
             } else if column == MarketColumn::Metadata {
                 if let Some(pairs) = leaf.pairs(row) {
                     // Inserted one by one: collecting stages the entries in
-                    // a buffer the map does not keep.
+                    // a buffer the map does not keep. A key filed under the
+                    // name of a map the row holds is that map's side
+                    // information, read beside the map's own cell.
+                    let mut keys = self.keys.borrow_mut();
                     let mut metadata = Metadata::new();
                     for (key, value) in pairs {
+                        if lift.lifts(key, &mut keys) {
+                            continue;
+                        }
                         metadata.insert(SmolStr::new(key), SmolStr::new(value));
                     }
                     target.set_metadata(Some(metadata), true);
@@ -2915,6 +3066,22 @@ impl Landed {
         target: &mut E,
         path: &Path<'_>,
     ) -> Result<()> {
+        // Each identifier map: its cell beside the side information the
+        // metadata files under its name, whether or not the batch has the
+        // cell.
+        for column in [OperationColumn::Identifiers, OperationColumn::PartyIds] {
+            let Some(ids) =
+                self.ids_with_side(self.operation_leaf(column), row, path, column.name())?
+            else {
+                continue;
+            };
+            let located = |error: Error| path.field(column.name()).reroot(error);
+            if column == OperationColumn::Identifiers {
+                target.set_identifiers(ids, true).map_err(located)?;
+            } else {
+                target.set_partyids(ids, true).map_err(located)?;
+            }
+        }
         for (column, leaf) in OperationColumn::ALL.into_iter().zip(&self.operation) {
             let Some(leaf) = leaf else {
                 continue;
@@ -2922,17 +3089,7 @@ impl Landed {
             match column {
                 OperationColumn::Tradable => target.set_tradable(leaf.boolean(row), true),
                 OperationColumn::Identifiers | OperationColumn::PartyIds => {
-                    let Some(ids) =
-                        leaf.ids(row, path, column.name(), &mut self.keys.borrow_mut())?
-                    else {
-                        continue;
-                    };
-                    let located = |error: Error| path.field(column.name()).reroot(error);
-                    if column == OperationColumn::Identifiers {
-                        target.set_identifiers(ids, true).map_err(located)?;
-                    } else {
-                        target.set_partyids(ids, true).map_err(located)?;
-                    }
+                    // Landed before the loop, beside their side information.
                 }
                 OperationColumn::OrdQty => target.set_ordqty(leaf.decimal(row), true),
                 OperationColumn::TimeInForce => {
@@ -3084,6 +3241,7 @@ impl Landed {
             } else if column == MarketColumn::SecurityIds {
                 check_ids(
                     leaf,
+                    self.market_leaf(MarketColumn::Metadata),
                     row,
                     canonical.get_securityids(),
                     path,
@@ -3105,16 +3263,8 @@ impl Landed {
             } else if column == MarketColumn::FxRates {
                 leaf.check_rates(row, canonical.get_fxrates(), path, column.name())?;
             } else if column == MarketColumn::Metadata {
-                let derived = canonical.get_metadata();
-                check_pairs(
-                    leaf,
-                    row,
-                    derived.len(),
-                    |key| derived.get(key).map(SmolStr::as_str),
-                    path,
-                    column.name(),
-                    derived,
-                )?;
+                // Checked by `check_metadata`, beside every map's side
+                // information.
             } else {
                 let name = column.name();
                 match column {
@@ -3174,6 +3324,71 @@ impl Landed {
         Ok(())
     }
 
+    /// Every metadata entry the row states must be one `canonical` carries:
+    /// its own metadata, or the side information of its identifier maps, a
+    /// sourced key filed under the name of a map the leaf holds (`sets` an
+    /// operation's own identifiers and parties, beside the security
+    /// identifiers every market leaf holds) with that map's value for it;
+    /// and the cell must state every entry of the metadata and every
+    /// sourced identifier the map cells leave out.
+    fn check_metadata<E: Market + ?Sized>(
+        &self,
+        row: usize,
+        canonical: &E,
+        sets: Option<(&Identifiers, &Identifiers)>,
+        path: &Path<'_>,
+    ) -> Result<()> {
+        let Some(leaf) = self.market_leaf(MarketColumn::Metadata) else {
+            return Ok(());
+        };
+        let metadata = canonical.get_metadata();
+        let securityids = canonical.get_securityids();
+        let (identifiers, partyids) = match sets {
+            Some((identifiers, partyids)) => (Some(identifiers), Some(partyids)),
+            None => (None, None),
+        };
+        let sets = [
+            (MarketColumn::SecurityIds.name(), Some(securityids)),
+            (OperationColumn::Identifiers.name(), identifiers),
+            (OperationColumn::PartyIds.name(), partyids),
+        ];
+        // What the map cells leave out, which the metadata must state.
+        let left_out = |ids: Option<&Identifiers>, cell: Option<&Leaf>| {
+            sourced(ids).filter(|id| !stated_in(cell, row, id)).count()
+        };
+        let len = metadata.len()
+            + left_out(
+                Some(securityids),
+                self.market_leaf(MarketColumn::SecurityIds),
+            )
+            + left_out(
+                identifiers,
+                self.operation_leaf(OperationColumn::Identifiers),
+            )
+            + left_out(partyids, self.operation_leaf(OperationColumn::PartyIds));
+        check_pairs(
+            leaf,
+            row,
+            len,
+            |key| {
+                // Side information of a map the leaf holds answers from that
+                // map; a key under the name of a map it does not hold - a
+                // party's on a book - is metadata, as every other key is.
+                let mut keys = self.keys.borrow_mut();
+                let side = sets.iter().find_map(|(name, set)| {
+                    side_key(key, name, &mut keys).map(|read| (read, *set))
+                });
+                match side {
+                    Some((read, Some(set))) => set.get_from(&read),
+                    _ => metadata.get(key).map(SmolStr::as_str),
+                }
+            },
+            path,
+            MarketColumn::Metadata.name(),
+            metadata,
+        )
+    }
+
     fn check_operation<E: Operation + ?Sized>(
         &self,
         row: usize,
@@ -3204,6 +3419,7 @@ impl Landed {
                     };
                     check_ids(
                         leaf,
+                        self.market_leaf(MarketColumn::Metadata),
                         row,
                         derived,
                         path,
@@ -3241,11 +3457,14 @@ impl Landed {
 
 /// A stated identifier cell must name the identifiers its canonical leaf
 /// holds: each stated key and value held, matched once, and each held one
-/// stated - except a base key the row leaves out whose value a source the
-/// row does state holds, which closing the map filled. Each stated entry is
-/// looked up in place and marked, so the check builds nothing.
+/// stated, in the cell or, as side information, in the metadata cell
+/// `side`; the one exception is a base key the row leaves out whose value a
+/// source the row does state holds, which closing the map filled. Each
+/// stated entry is looked
+/// up in place and marked, so the check builds nothing.
 fn check_ids(
     leaf: &Leaf,
+    side: Option<&Leaf>,
     row: usize,
     held: &Identifiers,
     path: &Path<'_>,
@@ -3283,11 +3502,98 @@ fn check_ids(
                         && stated.value() == id.value()
                 })
         };
-        if !is_marked(&matched, at) && !filled() {
+        if !is_marked(&matched, at) && !filled() && !stated_as_side(side, row, name, id) {
             return Err(differs(path, name, held, &format_args!("no {}", id.key())));
         }
     }
     Ok(())
+}
+
+/// Whether the cell `side` states `id` under its key as spelled, beside its
+/// value - a map cell another writer filled with its sourced keys too.
+fn stated_in(side: Option<&Leaf>, row: usize, id: &Identifier) -> bool {
+    side.and_then(|leaf| leaf.pairs(row))
+        .is_some_and(|mut pairs| {
+            pairs.any(|(text, value)| id.key().cmp_text(text).is_eq() && value.trim() == id.value())
+        })
+}
+
+/// Whether the metadata cell `side` states `id` as the side information of
+/// the map `name`: its key spelled under that name, beside its value.
+fn stated_as_side(side: Option<&Leaf>, row: usize, name: &str, id: &Identifier) -> bool {
+    side.and_then(|leaf| leaf.pairs(row))
+        .is_some_and(|mut pairs| {
+            pairs.any(|(text, value)| {
+                id.key().cmp_text_under(name, text).is_eq() && value.trim() == id.value()
+            })
+        })
+}
+
+/// The sourced key a metadata entry spelled `text` files as the side
+/// information of the map `name` - `securityids.ullink:isin` - or none: an
+/// entry under another map's name, a base key or a plain key is no side
+/// information of this map.
+fn side_key(text: &str, name: &str, keys: &mut KeyReader) -> Option<IdKey> {
+    let rest = text.strip_prefix(name)?.strip_prefix('.')?;
+    keys.read(rest).filter(|key| !key.is_base())
+}
+
+/// The side information an identifier map holds: every key but the base
+/// ones, in key order; none where the row states no map.
+fn sourced(ids: Option<&Identifiers>) -> impl Iterator<Item = &Identifier> {
+    ids.into_iter()
+        .flat_map(Identifiers::iter)
+        .filter(|id| !id.key().is_base())
+}
+
+/// Appends one identifier: its key spelled - one static string for a key
+/// of two member words, else at most three writes, none into a buffer of
+/// its own - beside its value.
+fn append_id(id: &Identifier, keys: &mut StringBuilder, values: &mut StringBuilder) {
+    id.key()
+        .write_into(keys)
+        .expect("a string builder takes any text");
+    keys.append_value("");
+    values.append_value(id.value());
+}
+
+/// Appends one identifier as the side information of the map `name`: the
+/// name, a dot and its key spelled, beside its value - two more writes than
+/// [`append_id`], none into a buffer of its own.
+fn append_side_id(
+    name: &str,
+    id: &Identifier,
+    keys: &mut StringBuilder,
+    values: &mut StringBuilder,
+) {
+    std::fmt::Write::write_str(keys, name).expect("a string builder takes any text");
+    std::fmt::Write::write_str(keys, ".").expect("a string builder takes any text");
+    id.key()
+        .write_into(keys)
+        .expect("a string builder takes any text");
+    keys.append_value("");
+    values.append_value(id.value());
+}
+
+/// Which identifier maps a row's metadata is read beside: the security
+/// identifiers every market leaf holds, or every map an operation holds.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lift {
+    Security,
+    All,
+}
+
+impl Lift {
+    /// Whether the metadata entry spelled `text` is the side information of
+    /// a map the row holds, read beside that map rather than as metadata.
+    fn lifts(self, text: &str, keys: &mut KeyReader) -> bool {
+        if side_key(text, MarketColumn::SecurityIds.name(), keys).is_some() {
+            return true;
+        }
+        self == Self::All
+            && (side_key(text, OperationColumn::Identifiers.name(), keys).is_some()
+                || side_key(text, OperationColumn::PartyIds.name(), keys).is_some())
+    }
 }
 
 fn check_pairs<'a>(

@@ -587,12 +587,22 @@ fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened
 fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
     let lifts: Vec<FieldPath> = vec![
         "securityids['isin'] as isin".parse().unwrap(),
-        "securityids['derived:cusip'] as cusip".parse().unwrap(),
+        "securityids['cusip'] as cusip".parse().unwrap(),
+        "securityids['derived:cusip'] as derived".parse().unwrap(),
+        "metadata['securityids.derived:cusip'] as stated"
+            .parse()
+            .unwrap(),
         "securityids['wkn'] as wkn".parse().unwrap(),
     ];
     let out = view(&MarketView::Orders, &lifts);
     let mut expected = flat();
-    expected.extend(["isin".to_owned(), "cusip".to_owned(), "wkn".to_owned()]);
+    expected.extend([
+        "isin".to_owned(),
+        "cusip".to_owned(),
+        "derived".to_owned(),
+        "stated".to_owned(),
+        "wkn".to_owned(),
+    ]);
     assert_eq!(names(&out), expected);
     let codes = texts(column(&out, "crosscode"));
     let isins = texts(column(&out, "isin"));
@@ -600,12 +610,21 @@ fn a_lift_reads_one_identifier_of_a_root_column_and_null_where_it_is_missing() {
         let expected = (*code == Some("10:1:O-5")).then_some(ISIN);
         assert_eq!(*isin, expected, "{code:?}");
     }
-    // A United States ISIN states its CUSIP, which the set derives; no
-    // order states a WKN.
+    // A United States ISIN states its CUSIP, which the set derives: the cell
+    // holds the type's answer under its base key alone, and what derived it
+    // is side information in the metadata cell under its map's name,
+    // `securityids.derived:cusip`, never a second key of the map; no order
+    // states a WKN.
     let cusips = texts(column(&out, "cusip"));
     for (code, cusip) in codes.iter().zip(&cusips) {
         let expected = (*code == Some("10:1:O-5")).then_some(&ISIN[2..11]);
         assert_eq!(*cusip, expected, "{code:?}");
+    }
+    assert_eq!(column(&out, "derived").null_count(), out.num_rows());
+    let stated = texts(column(&out, "stated"));
+    for (code, source) in codes.iter().zip(&stated) {
+        let expected = (*code == Some("10:1:O-5")).then_some(&ISIN[2..11]);
+        assert_eq!(*source, expected, "{code:?}");
     }
     assert_eq!(column(&out, "wkn").null_count(), out.num_rows());
     // The key is read as it is stored, folded lower case: another case is

@@ -37,11 +37,12 @@ Install and cross-language conventions are in `yggdryl`.
 | size, kind, existence | `size()`, `kind()`, `is_container()`, `kind().is_known()` | `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` | `size()`, `kind()`, `exists()`, `isDir()`, `isFile()` |
 | child, parent | `child_by_path("a/b.bin")?`, `parent()` | `h / "a/b.bin"`, `joinpath(...)`, `parent` | `joinpath('a/b.bin')`, `parent` |
 | list, glob | `ls(recursive, include_private)`, `glob(pattern, include_private)?` | `ls(recursive=False)`, `iterdir()`, `glob(p)`, `rglob(p)` | `ls(recursive?)`, `iterdir()`, `glob(p)`, `rglob(p)`, `[...h]` |
-| make a folder | `LocalPath::as_directory()?.create()?`, `truncate(0)?` on a folder | `mkdir()` (returns the folder role) | `mkdir()` |
+| make a folder | `LocalPath::as_directory()?.create()?`, `truncate(0)?` on a folder | `mkdir()` (returns the folder role; on a wrapper, the plain handle's beneath it) | `mkdir()` |
 | empty / delete | `clear()?`, `remove(recursive)?` | `clear()`, `remove(recursive=False)` | `clear()`, `remove(recursive?)` |
 | media type, stored coding | `media_type()`, `codec()` | `media_type`, `codec` (`None` = identity) | `mediaType`, `codec` (`null` = identity) |
 | decoded view of coded bytes | `Coded::wrap(h, Codec::Gzip)`, `Coded::infer(h)`, `gzip::Gzip::new(h)`, `holder.into_coded()` | `IOBase("x.log.gz")`, `LocalPath(p).into_coded(codec=None, level=None)` | n/a: byte methods address stored bytes |
 | move bytes adding/removing a coding | `compress_into(&mut t, codec)?`, `decompress_into(&mut t)?`, `copy_into(&mut t)?` | `compress_into(t, codec=None, level=None)`, `decompress_into(t)`, `copy_into(t)` | `compressInto(t, codec?, level?)`, `decompressInto(t)`, `copyInto(t)` |
+| move a value | `move_into(&mut t)?`: one `rename` between two local handles (the local roles, or a `Text` or record media wrapper over one; never through a `Buffered` cache or a `Coded` view), the copy then the source's removal otherwise (five requests object to object, no server-side `CopyObject`), a move onto its own location a no-op on local storage and `Error::Conflict` on a store, an absent source `Error::Absent` on one `kind` read | `move_into(t)` the same, off the GIL (`FileExistsError`, `FileNotFoundError`), answering the target held again on its own store | `moveInto(t)` is the bridge's own, two `fromFs` handles; a native handle `copyInto(t)` then `remove()` |
 | whole-buffer codec | `gzip::dump/load`, `zlib::dump_raw/load_raw`, `zstd::dump_with_level(b, Level::BEST)`, `Codec::Zstd.dump(b)` | `gzip.dumps(b, level=None)`, `gzip.loads(b)`, `zlib.dumps_raw`, `zstd.dumps` | `gzip.dumps(b, level?)`, `gzip.loads(b)`, `zlib.dumpsRaw`, `zstd.dumps` |
 | streaming codec | `gzip::reader(r)`, `gzip::writer(w)` + `finish()?`, `Codec::reader/writer` | n/a (use a coded handle) | n/a |
 | charset decode / encode | `Charset::Cp1252.decode(b)?`, `.encode(s)?`, `.decode_lossy(b)`, `.transcribe(b)` | `charset.decode(name, b)`, `encode`, `decode_lossy` | `charset.decode(name, b)`, `encode`, `decodeLossy` |
@@ -60,7 +61,8 @@ Install and cross-language conventions are in `yggdryl`.
 | HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
 | paginate a REST API | `request.with_pagination(Pagination::from_str("url:next")?).pages()`, `session.pages(request)` | `session.pages(url, pagination="url:next")`, `Request(method, url, session=session).pages(pagination=...)` | `session.pages(url, { pagination: 'url:next' })`, `new Request(m, url).withSession(s).withPagination('url:next').pages()` |
 | an origin for tests, in process | `Server::bind("127.0.0.1:0")?` + `respond`, `route`, `mount`, `inject(Fault)` | `with http.Server.bind() as server:` | `http.Server.bind()` ... `server.shutdown()` |
-| foreign Arrow filesystem | `FsFile::from_path(Arc<dyn FileSystem>, path, uri)?` | `IOBase.from_fs(pyarrow_fs, path, uri=None)`, `IOBase.from_uri(uri, options=)` | `IOBase.fromFs(handler, path, uri?)` |
+| a location under properties | `Holder::from_url(&url, [("region", "eu-west-1")])?`; an object-store location's query read as the store's properties beneath the ones passed, a parameter no store reads `Error::Parse` | `IOBase.from_uri(uri, options=, **properties)` - `Holder::from_url`, no `pyarrow.fs` built; an object-store URL's query is read by the core as the store's properties beneath the given ones (keyword over mapping over query) and taken off the location the handle reports, a parameter no store reads (`?versionId=3`) a `ValueError` | `IOBase.fromUri(uri, options?)`, the same door: an option wins over the query whatever its spelling |
+| a pyarrow filesystem or a JS handler | the bridge alone, for a foreign `FileSystem`: `FsFile::from_path(Arc<dyn FileSystem>, path, uri)?` | `IOBase.from_fs(pyarrow_fs, path)`: `LocalFileSystem`, `S3FileSystem`, `GcsFileSystem`, `AzureFileSystem` and a `SubTreeFileSystem` over one answer the native role (`LocalPath`, `S3Path`) under the filesystem's own options; any other is bridged, `uri=` its caller's spelling, and so is a store filesystem stating an argument the native client cannot read (`tls_ca_file_path`, `default_metadata`, `target_service_account`, an Azure host or scheme of its own) | `IOBase.fromFs(handler, path, uri?)` (bridged) |
 | ZIP archive | `zip::mount(holder)`, `zip::from_url(&url)?`, `ZipArchive::new(h).mount()` | Rust only | Rust only |
 | from an open file | n/a | `IOBase(open_file)` (path), `IOBase(io.BytesIO(b))` (content) | n/a |
 
@@ -107,9 +109,9 @@ Install and cross-language conventions are in `yggdryl`.
    writes records through the CSV medium (`yggdryl-records`).
 8. **Know which bytes a handle presents.** Python `IOBase(name)` composes what
    the name declares (`Text(Gzip(LocalPath))`) and reads decoded bytes; the
-   role classes (`LocalPath`, `LocalFile`, `S3File`, `FsPath`) address stored
-   bytes. JavaScript byte methods always address stored bytes; the coding is
-   applied by `readScalar`/`writeScalar`, the record surface and
+   role classes (`LocalPath`, `LocalFile`, `S3File`, a bridged `FsPath`) address
+   stored bytes. JavaScript byte methods always address stored bytes; the coding
+   is applied by `readScalar`/`writeScalar`, the record surface and
    `compressInto`/`decompressInto`. Rust `Holder::local`, `Holder::from_url`
    and the `Local*` roles address stored bytes; `holder.into_coded()` (or
    `into_declared_media()`, which also puts the record encoding on top)
@@ -140,8 +142,10 @@ Install and cross-language conventions are in `yggdryl`.
     trimmed) - only bare `pwrite` stages without publishing.
 14. **Object stores state their request count.** Ranged read: one `GET`;
     whole read/drain/digest: one `GET`; whole write: one `PUT`; listing: one
-    request per 1000 entries; remove: one `DELETE`, no probe. `with_known_size`
-    skips the `HEAD`; `open()` before `buffered` on a remote handle.
+    request per 1000 entries; remove: one `DELETE`, no probe; a move between
+    objects: five (`HEAD`, two `GET`s, `PUT`, `DELETE`), the value crossing
+    the client. `with_known_size` skips the `HEAD`; `open()` before
+    `buffered` on a remote handle.
 15. **Credentials resolve lazily, explicit wins.** Unset knobs come from the
     URL, the environment (`AWS_`, `GOOGLE_`, `AZURE_`, `YGGDRYL_`), the store's
     files, then defaults; the AWS identity is botocore's chain, the console
@@ -183,8 +187,9 @@ Install and cross-language conventions are in `yggdryl`.
 18. **No host is made up.** A local file names none (`file:///path`; no
     host is added where none was given, since Windows reads a named one as
     a share, and on Unix `file://localhost/path` and `file://<HOSTNAME>/path`
-    read as that same path). A buffer (`mem://localhost/<pid>/<address>`)
-    and a filesystem answering in this process (`memory://localhost/...`)
+    read as that same path). A buffer (`mem://localhost/<pid>/<sequence>`,
+    numbered per process and never by address) and a filesystem answering
+    in this process (`memory://localhost/...`)
     name `localhost`, the one name the crate writes for this machine; a
     store names its bucket or endpoint, never this machine. Children, `ls`
     and `glob` keep their parent's host. `HOSTNAME` (Rust
@@ -209,7 +214,11 @@ Install and cross-language conventions are in `yggdryl`.
 | `folder.remove(); assert not folder.is_dir()` | `is_dir()`/`isDir()` keeps answering the cached kind (`exists()` is accurate); check the parent's listing |
 | JS `root.joinpath('a', 'b.bin')` when `a` does not exist | `root.joinpath('a/b.bin')` |
 | treating `read_range_bytes(past_end, n)` as an error | it answers what exists (possibly empty); check the length |
-| Python `IOBase.from_uri("s3://...")` expecting the native S3 client | `from_uri` binds `pyarrow.fs.S3FileSystem`; `IOBase("s3://...")`/`S3File` is the native store |
+| Python `IOBase.from_uri("s3://...")` or `from_fs(S3FileSystem(...), path)` expecting `pyarrow.fs` behind it | both are the native store: `from_uri` is `Holder::from_url` under the properties given - an object-store URL's query read by the core as the store's properties beneath `options` and the keywords, which win whatever their spelling - and `from_fs` reads `S3FileSystem`, `GcsFileSystem`, `AzureFileSystem` and `LocalFileSystem` as the native role under the filesystem's own options; a `PyFileSystem` over a handler is bridged, and so is a store filesystem stating an argument the native client cannot read |
+| `if h.exists(): h.delete_file()` on a native handle, `info()` before `size()` | `delete_file()`, `delete_dir()` and `delete_dir_contents()` act once and report absence as success; `info()` is one `open`/`close` scope of its own (an `S3File` one `HEAD`), and a handle already open keeps its cache |
+| `h.open_output_stream(metadata=...)` on a native handle | refused by name: output metadata reaches a bridged filesystem's own stream only |
+| `IOBase("s3://b/k?versionId=3")` to read a version | refused by name before anything is held: an object takes no query, and a parameter no store reads is never dropped |
+| `h.move_into(IOBase(h.url))` on a store expecting a no-op | refused (`Error::Conflict`, Python `FileExistsError`): a store URL does not say which client reaches it; onto its own location on local storage nothing moves |
 | a `str` of document content passed to `IOBase(...)` | a `str` is a path; content is `IOBase.from_bytes(b)` or `IOBase(io.BytesIO(b))` |
 | `s3://my.bucket.com/key` | a first part ending `.com`/`.io`/`.net` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |

@@ -8,20 +8,23 @@
 //! against a local directory, and the same code will run against a bucket when
 //! that backend lands, because only the handle changes.
 
-use std::collections::BTreeMap;
-
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyDictMethods, PyIterator, PyString, PyTuple, PyType};
+use pyo3::types::{
+    PyBool, PyBytes, PyDict, PyDictMethods, PyFloat, PyInt, PyIterator, PyString, PyTuple, PyType,
+};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::http::HttpOptions;
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
+use yggdryl::s3::S3Options;
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
 use crate::field::{PyField, core_field_from_value};
+use crate::holder::fs::NativeRole;
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
@@ -64,14 +67,104 @@ fn consumed() -> PyErr {
 
 /// Rebuild a foreign-filesystem handle, keeping the filesystem it stands on.
 ///
-/// `None` for anything else, so the local rebuild stays the default path.
+/// `None` for anything else, which [`cloned`] holds again on its own store.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     inner.bound_location().cloned().map(yggdryl::fs::located)
 }
 
-/// Hold the resource `location` names, on the store its scheme selects:
-/// [`Holder::from_url`] under no properties, so an identifier crosses whole
-/// and a scheme no backend speaks is refused by that scheme.
+/// The plain handle beneath every wrapper: the role that holds the store.
+fn plain(holder: &Holder) -> &Holder {
+    match holder {
+        Holder::Buffered(buffered) => plain(buffered.handle()),
+        Holder::Coded(coded) => plain(coded.handle()),
+        Holder::Text(text) => plain(text.handle()),
+        Holder::Media(media) => plain(media.handle()),
+        held => held,
+    }
+}
+
+/// A second holder on the same location, over the same store.
+///
+/// The plain handle beneath every wrapper is what is held again, and
+/// [`declared`] composes over it what the name says, as construction did. A
+/// native role is cloned - a local role over its path, an object-store role
+/// on its own client, so the endpoint, the credentials and every other
+/// option it was built with travel with it - and a bridged location is
+/// rebuilt on its filesystem. Nothing is rebuilt from its URL: a URL says
+/// where a resource is, not how it is reached, and only a handle with no
+/// store of its own - an HTTP resource, an archive member, a warehouse
+/// object - is held again by its location alone. A media type the handle
+/// declares beyond what its name says is carried across.
+fn cloned(holder: &Holder) -> PyResult<Holder> {
+    let holder = plain(holder);
+    if let Some(bound) = rebuilt_arrow_holder(holder) {
+        return Ok(bound);
+    }
+    let mut clone = match holder {
+        Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
+        Holder::LocalPath(path) => Holder::LocalPath(
+            yggdryl::local::LocalPath::from_url(path.url().clone()).map_err(value_error)?,
+        ),
+        Holder::LocalFile(file) => {
+            Holder::LocalFile(yggdryl::local::LocalFile::new(file.path()).map_err(value_error)?)
+        }
+        Holder::S3Folder(folder) => Holder::S3Folder(folder.clone()),
+        Holder::S3Path(path) => match store_sibling(path.parent(), path.url()) {
+            Some(sibling) => sibling.map_err(value_error)?,
+            // The bucket itself, or a location spelled with a trailing slash:
+            // a container by its spelling, held as one on the same client.
+            None => Holder::S3Folder(path.as_directory().map_err(value_error)?),
+        },
+        Holder::S3File(file) => {
+            let sibling = store_sibling(file.parent(), file.url()).ok_or_else(|| {
+                PyValueError::new_err(format!(
+                    "expected an object below a container, got {}",
+                    file.url()
+                ))
+            })?;
+            match sibling.map_err(value_error)? {
+                Holder::S3Path(path) => Holder::S3File(path.as_file().map_err(value_error)?),
+                held => held,
+            }
+        }
+        other => {
+            let url = other.url().ok_or_else(|| {
+                PyValueError::new_err("an in-memory resource has no location to rebuild from")
+            })?;
+            located_holder(url)?
+        }
+    };
+    if clone.media_type() != holder.media_type() {
+        clone.set_media_type(holder.media_type().clone());
+    }
+    Ok(clone)
+}
+
+/// The object-store location `url` names, built as the child of `parent` -
+/// its prefix on the same client - which is the one way a second `S3Path`
+/// or `S3File` on that client is built. `None` at a bucket root or under a
+/// trailing slash, where the location is its own container.
+fn store_sibling(parent: Option<Holder>, url: &yggdryl::Url) -> Option<yggdryl::Result<Holder>> {
+    if url.has_trailing_slash() {
+        return None;
+    }
+    let name = url.file_name()?;
+    Some(parent?.child_by_path(name))
+}
+
+/// Hold the resource `location` names, on the store its scheme selects.
+///
+/// The core's one dispatcher decides: an `http` or `https` URL is the `GET` of
+/// that resource, an object-store URL the native store, a `file:` URL whose
+/// fragment names an archive member that member, an `s3tables:` URL the
+/// catalog, the namespace or the table it names in its table bucket,
+/// anything else local - and a scheme no backend speaks is refused by that
+/// scheme. An identifier crosses as it was named and the core locates it, so
+/// an ARN that states more than its location - a table's, in a table bucket -
+/// is read whole. Construction touches nothing but a table bucket's table,
+/// sent here under no properties: a table's ARN one `GetTable`, a location
+/// one `GetTableMetadataLocation` after the one `ListTableBuckets` per page
+/// that finds the bucket, since nothing states its ARN or account.
 pub(crate) fn located_holder(location: impl AsRef<yggdryl::Uri>) -> PyResult<Holder> {
     Holder::from_url(location, std::iter::empty::<(&str, &str)>())
         .map_err(crate::holder::fs::storage_error)
@@ -102,13 +195,74 @@ pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
     Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
 }
 
-/// Address a foreign-filesystem handle's location as a container.
-pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
+/// Address a bridged filesystem's location as a container on that filesystem.
+fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
         .bound_location()
         .cloned()
         .map(yggdryl::fs::FsFolder::new)
         .map(Holder::FsFolder)
+}
+
+/// Address `holder`'s location as a container on the store it stands on,
+/// keeping that store: a bridged filesystem's folder role, an object-store
+/// role's prefix on its own client under its own options, a local role's
+/// directory. `None` for a holder whose location alone says where it lives -
+/// a buffer, an HTTP resource. A wrapper is asked through the plain handle
+/// beneath it ([`plain`]), which is what [`PyIOBase::folder_holder`] does.
+pub(crate) fn container_holder(holder: &Holder) -> PyResult<Option<Holder>> {
+    if let Some(bound) = fs_folder_holder(holder) {
+        return Ok(Some(bound));
+    }
+    Ok(Some(match holder {
+        Holder::LocalFolder(folder) => Holder::LocalFolder(folder.clone()),
+        Holder::LocalPath(path) => Holder::LocalFolder(path.as_directory().map_err(value_error)?),
+        Holder::LocalFile(file) => {
+            Holder::LocalFolder(yggdryl::local::LocalFolder::new(file.path()).map_err(value_error)?)
+        }
+        Holder::S3Folder(folder) => Holder::S3Folder(folder.clone()),
+        Holder::S3Path(path) => Holder::S3Folder(path.as_directory().map_err(value_error)?),
+        Holder::S3File(file) => Holder::S3Folder(file.as_directory().map_err(value_error)?),
+        _ => return Ok(None),
+    }))
+}
+
+/// The path a `pyarrow.fs.FileSystem` of this holder's kind would take for
+/// its location: a local role's platform path, an object-store role's
+/// container and the raw key beneath it as the store names it - `a b`, not
+/// the `a%20b` its URL spells, one slash between the two and a prefix
+/// without its closing one. `None` where no filesystem names it - a buffer,
+/// an HTTP resource, a warehouse object.
+fn native_path(holder: &Holder) -> Option<String> {
+    let store_path = |bucket: &str, key: &str| match key.trim_end_matches('/') {
+        "" => bucket.to_owned(),
+        key => format!("{bucket}/{key}"),
+    };
+    let holder = plain(holder);
+    match holder {
+        Holder::S3Folder(folder) => return Some(store_path(folder.bucket(), folder.prefix())),
+        Holder::S3Path(path) => return Some(store_path(path.bucket(), path.key())),
+        Holder::S3File(file) => return Some(store_path(file.bucket(), file.key())),
+        _ => {}
+    }
+    let url = holder.url()?;
+    if url.is_local() {
+        return url
+            .clone()
+            .into_path()
+            .ok()
+            .map(|path| path.to_string_lossy().into_owned());
+    }
+    None
+}
+
+/// Refuse a verb of the bound-filesystem surface on a handle holding its
+/// store natively, naming the role that has no such verb.
+fn no_native_meaning(holder: &Holder, operation: &'static str) -> PyErr {
+    crate::holder::fs::storage_error(yggdryl::Error::unsupported(
+        operation,
+        Role::of(holder).name(),
+    ))
 }
 
 /// The role one core holder is, named once for both of its readers.
@@ -342,42 +496,47 @@ impl PyIOBase {
         Holder::local(path).map_err(crate::holder::fs::storage_error)
     }
 
-    /// Build a second holder on the same location.
+    /// Build a second holder on the same location, over the same store.
     ///
-    /// A handle owns backend state - such as a mapping or an open descriptor -
-    /// so it is not copied; the location it describes is what gets
-    /// rebuilt. A handle on a foreign Arrow filesystem rebuilds onto that
-    /// same filesystem, because its location alone would not say where it
-    /// lives.
+    /// A handle owns backend state - a mapping, an open descriptor, a staged
+    /// write - so it is not copied: the plain handle beneath every wrapper is
+    /// held again ([`cloned`]), the client and the options it was built with
+    /// kept, and what comes back is the role with nothing composed over it.
     pub(crate) fn rebuilt(&self) -> PyResult<Holder> {
-        if let Some(holder) = rebuilt_arrow_holder(self.inner()?) {
-            return Ok(holder);
-        }
-        let url = self.inner()?.url().ok_or_else(|| {
-            PyValueError::new_err("an in-memory resource has no location to rebuild from")
-        })?;
-        located_holder(url)
+        cloned(self.inner()?)
+    }
+
+    /// Build a container handle on the same location.
+    ///
+    /// [`Self::container_for`] under the generic verb, for a caller that
+    /// addresses the container rather than acting on it.
+    pub(crate) fn folder_holder(&self) -> PyResult<Holder> {
+        self.container_for()
     }
 
     /// Build a container handle on the same location.
     ///
     /// A table is a folder, so a caller who names one that does not exist yet
     /// still gets a handle that can resolve children; [`Holder::local`] would
-    /// have decided it was a file, because nothing is there to look at. A
-    /// foreign filesystem's handle becomes a container on that filesystem, so
-    /// a table reached this way never learns which backend it stands on.
-    pub(crate) fn folder_holder(&self) -> PyResult<Holder> {
-        if let Some(holder) = fs_folder_holder(self.inner()?) {
+    /// have decided it was a file, because nothing is there to look at. The
+    /// container stands on the store this handle stands on - a bridged
+    /// filesystem, an object store's client under its options - because a
+    /// location alone does not say which store holds it. A wrapper - a page
+    /// cache, a coding, a text or record configuration - presents a value, so
+    /// the container is asked of the plain handle beneath it, on that store.
+    fn container_for(&self) -> PyResult<Holder> {
+        let inner = plain(self.inner()?);
+        if let Some(holder) = container_holder(inner)? {
             return Ok(holder);
         }
-        let url = self
-            .inner()?
+        let url = inner
             .url()
             .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
         folder_holder_for(url)
     }
 
-    /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
+    /// Build a handle on `path` over a `pyarrow.fs.FileSystem`, natively
+    /// where this build holds its store and bridged otherwise.
     fn over_fs(
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
@@ -385,19 +544,7 @@ impl PyIOBase {
     ) -> PyResult<Holder> {
         let path = crate::uri::path_string_from_value(path)?;
         let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
-        Self::over_fs_parts(filesystem, path, uri)
-    }
-
-    fn over_fs_parts(
-        filesystem: &Bound<'_, PyAny>,
-        path: String,
-        uri: Option<String>,
-    ) -> PyResult<Holder> {
-        let backend: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
-            std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
-        let bound = yggdryl::fs::BoundLocation::new(backend, path, uri)
-            .map_err(crate::holder::fs::storage_error)?;
-        Ok(yggdryl::fs::located(bound))
+        crate::holder::handles::fs_holder(filesystem, path, uri, NativeRole::Path)
     }
 
     fn arrow_binding(&self, py: Python<'_>) -> Option<(Py<PyAny>, String)> {
@@ -431,12 +578,6 @@ impl PyIOBase {
         py.import("pyarrow")?
             .getattr("PythonFile")?
             .call((cursor,), Some(&kwargs))
-    }
-
-    fn bound(&self) -> PyResult<&yggdryl::fs::BoundLocation> {
-        self.inner()?
-            .bound_location()
-            .ok_or_else(|| PyValueError::new_err("this handle has no bound filesystem location"))
     }
 
     /// Resolve the options a record call runs under.
@@ -659,77 +800,64 @@ fn record_options_into_py(py: Python<'_>, options: RecordOptions) -> PyResult<Bo
     })
 }
 
-fn filesystem_uri_options(
-    options: Option<&Bound<'_, PyAny>>,
-) -> PyResult<Option<BTreeMap<String, String>>> {
+/// The `(name, value)` text pairs of a properties mapping.
+///
+/// `None` is skipped as not given, a `bool` is spelled `true` or `false`,
+/// anything else as `str()` spells it, so `True` and `30` are as good as
+/// `"true"` and `"30"`.
+fn location_properties(options: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<(String, String)>> {
     let Some(options) = options else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
-    let mut values = BTreeMap::new();
+    let mut pairs = Vec::new();
     for item in options.call_method0("items")?.try_iter()? {
         let item = item?;
         let pair = item.cast::<PyTuple>()?;
         if pair.len() != 2 {
-            return Err(PyTypeError::new_err("filesystem options must be a mapping"));
+            return Err(PyTypeError::new_err(
+                "the location properties must be a mapping",
+            ));
         }
-        let key = pair.get_item(0)?.extract::<String>()?;
+        let name = pair.get_item(0)?.extract::<String>()?;
         let value = pair.get_item(1)?;
-        let value = if value.is_instance_of::<PyBool>() {
-            if value.extract::<bool>()? {
-                "true".to_owned()
-            } else {
-                "false".to_owned()
-            }
+        if value.is_none() {
+            continue;
+        }
+        let text = if let Ok(flag) = value.cast::<PyBool>() {
+            if flag.is_true() { "true" } else { "false" }.to_owned()
+        } else if value.is_instance_of::<PyString>()
+            || value.is_instance_of::<PyInt>()
+            || value.is_instance_of::<PyFloat>()
+        {
+            value.str()?.to_str()?.to_owned()
         } else {
-            value.extract::<String>().map_err(|_| {
-                PyTypeError::new_err(format!(
-                    "filesystem option {key:?} must be a string or boolean"
-                ))
-            })?
+            return Err(PyTypeError::new_err(format!(
+                "the location property {name:?} must be a str, a bool, an int or a float, got {}",
+                value.get_type().name()?
+            )));
         };
-        values.insert(key, value);
+        pairs.push((name, text));
     }
-    Ok(Some(values))
+    Ok(pairs)
 }
 
-fn resolved_arrow_filesystem<'py>(
-    py: Python<'py>,
-    filesystem: &yggdryl::fs::ResolvedFileSystem,
-) -> PyResult<Bound<'py, PyAny>> {
-    let module = py.import("pyarrow.fs")?;
-    match filesystem {
-        yggdryl::fs::ResolvedFileSystem::Local => module.getattr("LocalFileSystem")?.call0(),
-        yggdryl::fs::ResolvedFileSystem::S3(options) => {
-            let kwargs = PyDict::new(py);
-            if let Some(value) = options.access_key() {
-                kwargs.set_item("access_key", value)?;
-            }
-            if let Some(value) = options.secret_key() {
-                kwargs.set_item("secret_key", value)?;
-            }
-            if let Some(value) = options.session_token() {
-                kwargs.set_item("session_token", value)?;
-            }
-            if let Some(value) = options.endpoint_override() {
-                kwargs.set_item("endpoint_override", value)?;
-            }
-            if let Some(value) = options.region() {
-                kwargs.set_item("region", value)?;
-            }
-            kwargs.set_item("scheme", options.transport())?;
-            kwargs.set_item("anonymous", options.anonymous())?;
-            match options.addressing_style() {
-                yggdryl::fs::S3AddressingStyle::Automatic => {}
-                yggdryl::fs::S3AddressingStyle::Path => {
-                    kwargs.set_item("force_virtual_addressing", false)?;
-                }
-                yggdryl::fs::S3AddressingStyle::Virtual => {
-                    kwargs.set_item("force_virtual_addressing", true)?;
-                }
-            }
-            module.getattr("S3FileSystem")?.call((), Some(&kwargs))
-        }
-    }
+/// Whether `name` is a property `Holder::from_url` or a store behind it
+/// reads: the two every location takes, `media_type` and `codec`, the object
+/// stores' and HTTP's.
+fn is_location_property(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().replace('-', "_").as_str(),
+        "media_type" | "mime_type" | "content_type" | "codec" | "content_encoding"
+    ) || S3Options::is_property(name)
+        || HttpOptions::is_property(name)
+}
+
+/// What a mistyped location keyword is suggested against.
+fn location_property_names() -> Vec<&'static str> {
+    let mut names = vec!["media_type", "codec"];
+    names.extend(S3Options::PROPERTY_NAMES);
+    names.extend(HttpOptions::PROPERTY_NAMES);
+    names
 }
 
 /// The content coding the *stored* bytes carry.
@@ -765,10 +893,9 @@ impl PyIOBase {
     ///
     /// A `pyarrow.fs.FileSystem` as the first argument names the *backend*
     /// rather than the location, so the second says where on it:
-    /// `IOBase(S3FileSystem(region=...), "bucket/key.parquet")`. Every
-    /// filesystem `PyArrow` ships is accepted, as is a custom one wrapped in
-    /// `PyFileSystem(FileSystemHandler)`, and what comes back is this same
-    /// class - nothing filesystem-specific leaks into the surface.
+    /// `IOBase(S3FileSystem(region=...), "bucket/key.parquet")`, read as
+    /// [`from_fs`][Self::from_fs] reads it - a filesystem this build holds
+    /// natively by the native role over its store, any other bridged.
     #[new]
     #[pyo3(signature = (value, path = None))]
     #[allow(clippy::new_ret_no_self)] // Construction answers the role subclass, never this base class.
@@ -841,12 +968,16 @@ impl PyIOBase {
 
     /// Describe a resource on any `pyarrow.fs.FileSystem`.
     ///
-    /// This is the explicit spelling of what the constructor infers, and it
-    /// accepts every Arrow filesystem: `S3FileSystem`,
-    /// `GcsFileSystem`, `AzureFileSystem`, `LocalFileSystem`,
-    /// `SubTreeFileSystem`, and a custom filesystem wrapped in
-    /// `PyFileSystem(FileSystemHandler)` - which is also how `fsspec` arrives
-    /// - all reach the same complete filesystem and stream contract.
+    /// This is the explicit spelling of what the constructor infers. A
+    /// filesystem this build holds natively - `LocalFileSystem`,
+    /// `S3FileSystem`, `GcsFileSystem`, `AzureFileSystem`, and a
+    /// `SubTreeFileSystem` over one of them - is held by the native role
+    /// over its own store, under the options the filesystem was built with,
+    /// so no Python object stays in the path; any other - a custom filesystem
+    /// wrapped in `PyFileSystem(FileSystemHandler)`, which is also how
+    /// `fsspec` arrives - is bridged, and reaches the same complete
+    /// filesystem and stream contract through it. `uri` is the caller's
+    /// spelling of a bridged location, and is refused beside a native one.
     ///
     /// ```python
     /// handle = IOBase.from_fs(S3FileSystem(region="eu-west-1"), "bucket/key.parquet")
@@ -854,13 +985,13 @@ impl PyIOBase {
     /// ```
     ///
     /// The result is an ordinary handle: `iterdir`, `glob`, `/`, and `parent`
-    /// return handles that still carry the filesystem, and the three record
-    /// methods work exactly as they do on a local file. Per the laziness
-    /// contract nothing is opened, created, or read here.
+    /// return handles on the same store, and the three record methods work
+    /// exactly as they do on a local file. Per the laziness contract nothing
+    /// is opened, created, or read here.
     ///
-    /// The four explicit `open_*` methods return `PyArrow` native files and
-    /// forward writes as they arrive; close each returned stream to flush the
-    /// backend exactly once.
+    /// On a bridged filesystem the four explicit `open_*` methods return its
+    /// own `PyArrow` native files and forward writes as they arrive; close
+    /// each returned stream to flush the backend exactly once.
     #[classmethod]
     #[pyo3(signature = (filesystem, path, *, uri = None))]
     fn from_fs(
@@ -870,22 +1001,29 @@ impl PyIOBase {
         path: &Bound<'_, PyAny>,
         uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
-            return Err(PyValueError::new_err(format!(
-                "expected a pyarrow.fs.FileSystem, got {}",
-                filesystem.get_type().name()?,
-            )));
-        }
         declared(py, Self::over_fs(filesystem, path, uri)?)
     }
 
-    /// Resolve one `file`, `s3`, `s3a`, or `s3n` URI through the core parser.
+    /// Hold the resource `uri` names, on the store its scheme selects, under
+    /// that store's properties.
     ///
-    /// `options` is a mapping of filesystem options, and `properties` the same
-    /// options by name beside it - `IOBase.from_uri(uri, region="eu-west-1")`
-    /// - each winning over the mapping's. A keyword naming no option is
-    /// skipped with an `UnknownPropertyWarning`; a mapping key naming none is
-    /// refused, as the core refuses it.
+    /// The core's one location door, `Holder::from_url`, for every scheme
+    /// this build holds - a `file:` URL the local role, an object-store URL
+    /// the native store, an `http:` one the `GET` of that resource, an
+    /// `s3tables:` one the catalog object it names - with no
+    /// `pyarrow.fs.FileSystem` built on the way; the constructor is this door
+    /// under no properties. An object-store location's query states the
+    /// store's properties too, in the names its reader takes -
+    /// `s3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1`
+    /// - which the core reads beneath what is stated here and takes off the
+    /// location the handle reports, refusing a parameter no store reads by
+    /// name. `options` is a mapping of the store's properties
+    /// in any vocabulary the core reads - `PyIceberg`'s, `PyArrow`'s, each
+    /// store's own environment names - and `properties` the same by name
+    /// beside it, `IOBase.from_uri(uri, region="eu-west-1")`, each winning
+    /// over the mapping's. A keyword no store or location reads is skipped
+    /// with an `UnknownPropertyWarning`; a mapping key naming none is ignored,
+    /// as the core ignores it.
     #[classmethod]
     #[pyo3(signature = (uri, *, options = None, **properties))]
     fn from_uri(
@@ -895,21 +1033,21 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Py<PyAny>> {
-        let uri = crate::uri::path_string_from_value(uri)?;
-        let mut options = filesystem_uri_options(options)?;
-        let given = crate::properties::property_pairs(
-            "the filesystem options",
+        let location = core_uri_from_value(uri)?;
+        // The mapping, then the keywords; the core reads an object-store
+        // location's query beneath both and takes it off the location.
+        let mut pairs = location_properties(options)?;
+        pairs.extend(crate::properties::property_pairs(
+            "the location properties",
             properties,
-            yggdryl::fs::ResolvedFileSystemUri::is_option,
-            &yggdryl::fs::ResolvedFileSystemUri::OPTION_NAMES,
-        )?;
-        if !given.is_empty() {
-            options.get_or_insert_with(BTreeMap::new).extend(given);
-        }
-        let resolved = yggdryl::fs::ResolvedFileSystemUri::from_uri(uri.clone(), options.as_ref())
+            is_location_property,
+            &location_property_names(),
+        )?);
+        // Detached as the constructor is: a table bucket's table is described
+        // by its service, and a core thread that logs takes the GIL.
+        let holder = py
+            .detach(move || Holder::from_url(&location, pairs))
             .map_err(crate::holder::fs::storage_error)?;
-        let filesystem = resolved_arrow_filesystem(py, resolved.filesystem())?;
-        let holder = Self::over_fs_parts(&filesystem, resolved.path().to_owned(), Some(uri))?;
         declared(py, holder)
     }
 
@@ -965,7 +1103,8 @@ impl PyIOBase {
             .transpose()
     }
 
-    /// The exact `pyarrow.fs.FileSystem` supplied at construction.
+    /// The exact `pyarrow.fs.FileSystem` a bridged handle was built on;
+    /// `None` for a store held natively.
     #[getter]
     fn filesystem(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let Some(bound) = self.inner()?.bound_location() else {
@@ -978,17 +1117,24 @@ impl PyIOBase {
             .map(|filesystem| filesystem.original(py)))
     }
 
-    /// The exact opaque path passed to the bound filesystem.
+    /// The path a filesystem names this handle by: the exact opaque path a
+    /// bridged filesystem was given, or the one a `pyarrow.fs.FileSystem` of
+    /// the native store's kind would take - a local role's platform path, an
+    /// object-store role's container and the raw key beneath it as the store
+    /// names it, never its URL's escaped spelling - and `None` where no
+    /// filesystem names it.
     #[getter]
     fn path(&self) -> PyResult<Option<String>> {
-        Ok(self
-            .inner()?
+        let inner = self.inner()?;
+        Ok(inner
             .bound_location()
-            .map(|bound| bound.path().to_owned()))
+            .map(|bound| bound.path().to_owned())
+            .or_else(|| native_path(inner)))
     }
 
-    /// The caller's exact optional URI spelling for the bound filesystem. It
-    /// may contain credentials.
+    /// The caller's exact optional URI spelling for a bridged filesystem. It
+    /// may contain credentials. `None` for a store held natively, whose
+    /// `url` is its one spelling.
     #[getter]
     fn bound_uri(&self) -> PyResult<Option<String>> {
         Ok(self
@@ -997,7 +1143,9 @@ impl PyIOBase {
             .and_then(|bound| bound.uri().map(str::to_owned)))
     }
 
-    /// A credential-free URI for diagnostics and logs.
+    /// A credential-free spelling of `bound_uri` for diagnostics and logs;
+    /// `None` for a store held natively, whose `url` never carries the
+    /// credentials it was built with.
     #[getter]
     fn masked_uri(&self) -> PyResult<Option<String>> {
         Ok(self
@@ -1006,16 +1154,47 @@ impl PyIOBase {
             .and_then(|bound| bound.masked_uri().map(str::to_owned)))
     }
 
-    /// Inspect this exact bound path as a `pyarrow.fs.FileInfo`.
-    fn info<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let bound = self.bound()?;
-        let info = bound
-            .filesystem()
-            .file_info(bound.path())
-            .map_err(crate::holder::fs::storage_error)?;
+    /// Inspect this location as a `pyarrow.fs.FileInfo`: what a bridged
+    /// filesystem reports of its exact path, or the kind, size and
+    /// modification time the native store answers under the path a
+    /// filesystem of its kind would take - the three read in one `open` and
+    /// `close` scope of their own, off the GIL, so an object answers one
+    /// `HEAD`; a handle already open keeps what it holds.
+    fn info<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner_mut()?;
+        let (path, kind, size, mtime_ns) = if let Some(bound) = inner.bound_location() {
+            let info = bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+            (info.path, info.kind, info.size, info.mtime_ns)
+        } else {
+            let path = native_path(inner)
+                .or_else(|| inner.url().map(ToString::to_string))
+                .ok_or_else(|| {
+                    PyValueError::new_err("an in-memory resource has no path to inspect")
+                })?;
+            let (kind, size, mtime_ns) = py
+                .detach(|| -> yggdryl::Result<_> {
+                    // The trait method, for the reason `open` gives.
+                    let scoped = !inner.opened();
+                    if scoped {
+                        yggdryl::IOBase::open(inner)?;
+                    }
+                    let kind = inner.kind();
+                    let size = (kind == yggdryl::IOKind::File).then(|| inner.size());
+                    let mtime_ns = inner.mtime();
+                    if scoped {
+                        inner.close()?;
+                    }
+                    Ok((kind, size, mtime_ns))
+                })
+                .map_err(crate::holder::fs::storage_error)?;
+            (path, kind, size, mtime_ns)
+        };
         let module = py.import("pyarrow.fs")?;
         let file_type = module.getattr("FileType")?;
-        let kind = match info.kind {
+        let kind = match kind {
             yggdryl::IOKind::File => file_type.getattr("File")?,
             yggdryl::IOKind::Directory => file_type.getattr("Directory")?,
             yggdryl::IOKind::Unknown => file_type.getattr("NotFound")?,
@@ -1028,36 +1207,44 @@ impl PyIOBase {
         };
         let kwargs = PyDict::new(py);
         kwargs.set_item("type", kind)?;
-        if let Some(size) = info.size {
+        if let Some(size) = size {
             kwargs.set_item("size", size)?;
         }
-        if let Some(mtime_ns) = info.mtime_ns {
+        if let Some(mtime_ns) = mtime_ns {
             kwargs.set_item("mtime_ns", mtime_ns)?;
         }
-        module
-            .getattr("FileInfo")?
-            .call((&info.path,), Some(&kwargs))
+        module.getattr("FileInfo")?.call((&path,), Some(&kwargs))
     }
 
-    /// Return whether both handles bind the same filesystem and raw path.
+    /// Return whether both handles address one location: the same bridged
+    /// filesystem and raw path, or the same identifier on a store held
+    /// natively. A bridged handle and a native one never do.
     fn same_location(&self, other: &Self) -> PyResult<bool> {
-        let (Some(left), Some(right)) = (
-            self.inner()?.bound_location(),
-            other.inner()?.bound_location(),
-        ) else {
-            return Ok(false);
-        };
-        if left.path() != right.path() {
-            return Ok(false);
+        let (left, right) = (self.inner()?, other.inner()?);
+        match (left.bound_location(), right.bound_location()) {
+            (Some(left), Some(right)) => {
+                if left.path() != right.path() {
+                    return Ok(false);
+                }
+                left.try_same_location(right)
+                    .map_err(crate::holder::fs::storage_error)
+            }
+            (None, None) => Ok(left.uri().is_some() && left.uri() == right.uri()),
+            _ => Ok(false),
         }
-        left.try_same_location(right)
-            .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Ask the bound filesystem to normalize a path explicitly.
+    /// Ask the bridged filesystem to normalize a path explicitly.
+    ///
+    /// A store held natively spells its locations one way already, so it
+    /// refuses the question by name.
     fn normalize_path(&self, path: &Bound<'_, PyAny>) -> PyResult<String> {
         let path = crate::uri::path_string_from_value(path)?;
-        self.bound()?
+        let inner = self.inner()?;
+        let Some(bound) = inner.bound_location() else {
+            return Err(no_native_meaning(inner, "normalize_path"));
+        };
+        bound
             .filesystem()
             .normalize_path(&path)
             .map_err(crate::holder::fs::storage_error)
@@ -1871,15 +2058,18 @@ impl PyIOBase {
         )
     }
 
-    /// Create this bound directory with Arrow's explicit recursive policy.
+    /// Create this directory with Arrow's explicit recursive policy.
     ///
     /// The container it created is what comes back, because a role is what a
     /// handle's class says it is: this handle still addresses the location it
-    /// always did, and the returned `FsFolder` is the one that reads it as a
-    /// directory.
+    /// always did, and the returned folder role is the one that reads it as a
+    /// directory. A store held natively creates it as `mkdir` does, parents
+    /// included whatever `recursive` says.
     #[pyo3(signature = (recursive = false))]
     fn create_dir(&mut self, py: Python<'_>, recursive: bool) -> PyResult<Py<PyAny>> {
-        let bound = self.bound()?.clone();
+        let Some(bound) = self.inner()?.bound_location().cloned() else {
+            return self.mkdir(py);
+        };
         bound
             .filesystem()
             .create_dir(bound.path(), recursive)
@@ -1888,8 +2078,16 @@ impl PyIOBase {
     }
 
     /// Delete this empty directory itself.
-    fn delete_dir(&mut self) -> PyResult<()> {
-        let bound = self.bound()?.clone();
+    ///
+    /// A store held natively removes the container non-recursively, as
+    /// `remove()` on its folder role does: one still holding children refuses.
+    fn delete_dir(&mut self, py: Python<'_>) -> PyResult<()> {
+        let Some(bound) = self.inner()?.bound_location().cloned() else {
+            let mut folder = self.container_for()?;
+            return py
+                .detach(|| folder.remove(false))
+                .map_err(crate::holder::fs::storage_error);
+        };
         bound
             .filesystem()
             .delete_dir(bound.path())
@@ -1897,25 +2095,54 @@ impl PyIOBase {
     }
 
     /// Delete descendants while retaining this directory.
+    ///
+    /// A store held natively empties the container as `clear()` does, once,
+    /// and answers what the clear answers: absence is the success every
+    /// native store reports it as, and `missing_dir_ok` forgives only a
+    /// clear that itself reports it.
     #[pyo3(signature = (missing_dir_ok = false))]
-    fn delete_dir_contents(&mut self, missing_dir_ok: bool) -> PyResult<()> {
-        let bound = self.bound()?.clone();
+    fn delete_dir_contents(&mut self, py: Python<'_>, missing_dir_ok: bool) -> PyResult<()> {
+        let Some(bound) = self.inner()?.bound_location().cloned() else {
+            let mut folder = self.container_for()?;
+            return match py.detach(|| folder.clear()) {
+                Err(error) if missing_dir_ok && error.is_absent() => Ok(()),
+                cleared => cleared.map_err(crate::holder::fs::storage_error),
+            };
+        };
         bound
             .filesystem()
             .delete_dir_contents(bound.path(), missing_dir_ok)
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Delete all filesystem-root children while retaining its root.
+    /// Delete every child of a bridged filesystem's root while retaining it.
+    ///
+    /// A store held natively has no root a handle empties, so it refuses by
+    /// name.
     fn delete_root_dir_contents(&mut self) -> PyResult<()> {
-        yggdryl::fs::FsFolder::new(self.bound()?.clone())
+        let inner = self.inner()?;
+        let Some(bound) = inner.bound_location().cloned() else {
+            return Err(no_native_meaning(inner, "delete_root_dir_contents"));
+        };
+        yggdryl::fs::FsFolder::new(bound)
             .delete_root_dir_contents()
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Delete this file. Directories are rejected by the backend.
-    fn delete_file(&mut self) -> PyResult<()> {
-        let bound = self.bound()?.clone();
+    /// Delete this file.
+    ///
+    /// A bridged filesystem deletes its exact path and refuses a directory;
+    /// a store held natively acts once - `remove(recursive=False)` on the
+    /// plain handle, no kind read before it - and answers what that answers:
+    /// absence is success, an empty directory is removed and a populated one
+    /// refused as not empty.
+    fn delete_file(&mut self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner_mut()?;
+        let Some(bound) = inner.bound_location().cloned() else {
+            return py
+                .detach(|| inner.remove(false))
+                .map_err(crate::holder::fs::storage_error);
+        };
         bound
             .filesystem()
             .delete_file(bound.path())
@@ -1930,18 +2157,10 @@ impl PyIOBase {
     /// the handle that reads it as a directory is a different role, and a role
     /// is what a handle's class says it is.
     fn mkdir(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        // A handle on a foreign filesystem becomes a container on that
-        // filesystem. Rebuilding from the location alone would silently move
-        // the handle to the local disk, because a location does not say which
-        // backend it belongs to.
-        let mut folder = if let Some(holder) = fs_folder_holder(self.inner()?) {
-            holder
-        } else {
-            let url = self.inner()?.url().ok_or_else(|| {
-                PyValueError::new_err("an in-memory resource cannot become a directory")
-            })?;
-            folder_holder_for(url)?
-        };
+        // The container stands on the store this handle stands on - a bridged
+        // filesystem, an object store's client - because a location alone does
+        // not say which store holds it.
+        let mut folder = self.container_for()?;
         if let Some(bound) = folder.bound_location() {
             bound
                 .filesystem()
@@ -1980,7 +2199,7 @@ impl PyIOBase {
     /// because absence is a no-op success everywhere on this handle.
     fn unlink(&mut self, py: Python<'_>) -> PyResult<()> {
         if self.inner()?.bound_location().is_some() {
-            self.delete_file()
+            self.delete_file(py)
         } else {
             let inner = self.inner_mut()?;
             py.detach(|| inner.remove(false))
@@ -2275,17 +2494,24 @@ impl PyIOBase {
     }
 
     /// Copy every byte here into `target`, returning the count.
-    fn copy_into(&self, target: &mut Self) -> PyResult<u64> {
-        self.inner()?
-            .copy_into(target.inner_mut()?)
+    ///
+    /// Detached from the GIL: a transfer waits on the stores at both ends.
+    fn copy_into(&self, py: Python<'_>, target: &mut Self) -> PyResult<u64> {
+        let source = self.inner()?;
+        let target = target.inner_mut()?;
+        py.detach(|| source.copy_into(target))
             .map_err(crate::holder::fs::storage_error)
     }
 
-    /// Move this file into `target`, using the backend's native move when equal.
+    /// Move this value into `target`, as the core's `move_into` does: one
+    /// native move or rename where the two sides share a store, a copy then a
+    /// removal otherwise. The handle that comes back addresses the target on
+    /// the target's own store, under its own options ([`Self::rebuilt`]).
     fn move_into(&mut self, py: Python<'_>, target: &mut Self) -> PyResult<Py<PyAny>> {
         let returned = target.rebuilt()?;
-        self.inner_mut()?
-            .move_into(target.inner_mut()?)
+        let source = self.inner_mut()?;
+        let target = target.inner_mut()?;
+        py.detach(|| source.move_into(target))
             .map_err(crate::holder::fs::storage_error)?;
         declared(py, returned)
     }

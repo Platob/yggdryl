@@ -14,7 +14,8 @@ how a location is spelled, what configures it, and what each call costs.
 | `gs`, `gcs` | Google Cloud Storage | same | same | same |
 | `az`, `abfs`, `abfss`, `wasb`, `wasbs` | Azure Blob Storage | same | same | same |
 | `http`, `https` | HTTP (the `http` feature in Rust) | `http::located(url)`, `Holder::from_url` -> `Holder::HttpRequest`; `Session` a container over a base URL | `IOBase(url)` (a `Request`), `http.Session(base) / "child"` | `new IOBase(url)`, `new http.Request('GET', url).intoIOBase()` |
-| an Arrow filesystem + opaque path | Filesystems | `FsPath/FsFolder/FsFile::from_path(Arc<dyn FileSystem>, path, uri)` | `IOBase.from_fs(pyarrow_fs, path, uri=)` | `IOBase.fromFs(handler, path, uri?)` |
+| any of the above, under properties | the backend the scheme picks | `Holder::from_url(&url, props)` | `IOBase.from_uri(uri, options=, **properties)` | `IOBase.fromUri(uri, options?)` |
+| a pyarrow filesystem or a JS handler + path | Filesystems: the native role for a filesystem this build holds (PyArrow's local, S3, GCS, Azure, a subtree over one), the bridge for a foreign one | the bridge alone: `FsPath/FsFolder/FsFile::from_path(Arc<dyn FileSystem>, path, uri)` | `IOBase.from_fs(pyarrow_fs, path)`, `uri=` for a bridged one | `IOBase.fromFs(handler, path, uri?)` |
 | `file:///x.zip#member/path` | ZIP member | `zip::from_url(&url)`, `zip::mount(holder)` | Rust only | Rust only |
 | `urn:ns:a:b` | the path the name spells, under the working directory | `Uri::locator` then a backend | `IOBase(Urn(...))` | `new IOBase(new Urn(...))` |
 | `arn:aws:s3:::bucket/key` | the `s3:` URL it names | `Arn::locator` | `IOBase(Arn(...))` | `new IOBase(new Arn(...))` |
@@ -41,13 +42,15 @@ child keeps its parent's spelling.
 
 | Fact | Rule |
 | --- | --- |
-| seam | Rust `yggdryl::fs::FileSystem` (`MemoryFileSystem`, `LocalFileSystem` ship as references); Python any `pyarrow.fs.FileSystem`; JavaScript the synchronous handler protocol |
-| path | opaque: never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally |
-| `from_uri` (Python) | resolves a URI to a pyarrow filesystem once; `options=` override the query and go to `pyarrow.fs.S3FileSystem` |
-| `from_uri` (JavaScript) | local URIs only; an `s3:` URI reports `Unsupported` - bind an implementation with `fromFs` |
-| streams | `open_input_file` (random read), `open_input_stream` (sequential), `open_output_stream` (truncating), `open_append_stream`; each retains one backend stream |
-| copy / move | one native call on one filesystem; across two, a bounded chunked copy published only after success |
-| identity | `bound_uri` may carry secrets - log `masked_uri`; `same_location` needs filesystem equality plus byte-equal paths |
+| native | Python `from_fs` and `FsPath`/`FsFile`/`FsFolder` read `LocalFileSystem` as the local role at the platform path, `S3FileSystem`/`GcsFileSystem`/`AzureFileSystem` as the object-store role over `container/key` under the options the filesystem was built with (`__reduce__`, PyArrow's names, read by `S3Options::from_properties`), a `SubTreeFileSystem` as its base under its base path; the native class comes back, `filesystem` is `None`, `uri=` is refused, nothing is contacted; a store filesystem stating an argument the client has no reader for stays bridged - an `AzureFileSystem` with `blob_storage_authority`, `blob_storage_scheme`, `dfs_storage_authority` or `dfs_storage_scheme` beyond the account's own `*.core.windows.net` hosts over `https`, an `S3FileSystem` with `tls_ca_file_path` or `default_metadata`, a `GcsFileSystem` with `target_service_account` or `default_metadata` - `force_virtual_addressing` crosses only when true, and a `-1` PyArrow states for a timeout it was not given is no option |
+| bridge | Rust `yggdryl::fs::FileSystem` (`MemoryFileSystem`, `LocalFileSystem` ship as references), for a foreign filesystem only; Python every other `pyarrow.fs.FileSystem` (`PyFileSystem` over a handler, fsspec, the mock, HDFS); JavaScript the synchronous handler protocol |
+| path | on the bridge opaque: never parsed, decoded or normalized - `bucket/v=a%2Fb.bin` reaches the store literally; natively the platform path or `bucket/key` as the URL spells it |
+| `from_uri` (Python) | `Holder::from_url`, the core's one location door, for every scheme - no pyarrow filesystem built; `options=` a mapping of store properties in any vocabulary the core reads (its own names, PyIceberg `s3.*`, PyArrow's, environment names) beside `media_type`/`codec`, `**properties` the same by keyword over it; an object-store URL's query is read by the core as the store's properties, in its reader's names (the crate's, PyArrow's, PyIceberg's), beneath `options` and the keywords - keyword over mapping over query, a stated property winning whatever its spelling - and taken off the location the handle reports; a parameter no store reads is a `ValueError` naming it (`?versionId=3`); a `file:` or `http:` URL's query stays; a property's value is a `str`, `bool`, `int` or `float`, any other a `TypeError` naming the property |
+| `from_uri` (JavaScript) | the same door for every scheme the build holds; `options` a plain object - a string, boolean or number the property's text, `null` unstated, any other value refused by name; the query read by the same door, an option winning over it whatever its spelling, a parameter no store reads refused by name |
+| streams | `open_input_file` (random read), `open_input_stream` (sequential), `open_output_stream` (truncating), `open_append_stream`; on the bridge each retains one backend stream, natively each is a cursor over the handle and `metadata=` on the two output streams is refused by name; JavaScript's four opens take a `fromFs` handle |
+| copy / move | one native call between two handles on one bridged filesystem, the bridge's copy between two bridged ones; every other pair copies as `copy_into` does - the value staged whole, the target published once all of it has crossed - and a move is that copy then the source's removal (between two objects five requests and no server-side `CopyObject` yet), except that two local handles - the local roles, or a `Text` or record wrapper over one; never a page cache or a coding - are one `rename` (the source published first, a missing target folder created once, a volume boundary falling back to the copy); a move onto its own location moves nothing on local storage and is refused on a store (`Error::Conflict`, Python `FileExistsError`: a store URL does not say which client reaches it); an absent source is refused by name (`Error::Absent`, `FileNotFoundError`) on one `kind` read - one `HEAD` - confirmed by one bounded read where the kind is unknown, a store refusing that read refusing the move with its own reason (`OSError`); Python's `copy_into` and `move_into` run off the GIL, and `move_into` answers the target held again on its own store; JavaScript's `moveInto` is the bridge's own, two `fromFs` handles |
+| identity | on the bridge `bound_uri` may carry secrets - log `masked_uri` - and `same_location` needs filesystem equality plus byte-equal paths; natively both are `None`, `url` carries neither a credential nor the query that stated the store's properties, `same_location` is the identifier alone, `path` is the container and the raw key as the store names it (`trades/lake/a b/part.bin`), and a bridged and a native handle never share one |
+| native verbs | each acts once and answers what the core answers: `info` the kind, size and modification time in one `open`/`close` scope of its own (an `S3File` one `HEAD`; a handle already open keeps its cache), `create_dir` = `mkdir` (parents included, the container role answered), `delete_dir` = `remove(False)` on the container, `delete_dir_contents` = `clear()` (absence success whatever `missing_dir_ok`, which forgives only a clear reporting absence), `delete_file` = `remove(False)` on the plain handle (absence success, an empty directory removed, a populated one refused as not empty); `normalize_path` and `delete_root_dir_contents` refused by name; on a wrapper (a page cache, a coding, a text or record configuration) `mkdir`/`delete_dir`/`delete_dir_contents` reach the plain handle beneath it on its own store |
 | JS handler | `typeName`, `equals`, `normalizePath`, `fileInfo`, `list`, `createDir`, `deleteDir`, `deleteDirContents`, `deleteRootDirContents`, `deleteFile`, `copyFile`, `move`, `openInputFile`, `openInputStream`, `openOutputStream`, `openAppendStream`; `bigint` sizes, offsets, ns mtimes |
 
 ## Object stores (S3, Google Cloud Storage, Azure Blob Storage)
@@ -84,6 +87,7 @@ async runtime.
 | large write | parts + 2 | chunks + 1 | blocks + 1 |
 | append | 1 `GET` + 1 write (no `GET` while open) | same | same |
 | remove | 1 `DELETE`, no probe | 1 `objects.delete` | 1 `DELETE` |
+| move onto another object | 5: `HEAD`, `GET`, `GET` (the target's old value), `PUT`, `DELETE`; onto its own location `HEAD` + refusal; a refused `HEAD`, 1 bounded `GET` + the store's refusal | 1 `objects.get`, 2 `GET`, 1 `multipart/related` `POST`, 1 `objects.delete` | 1 `HEAD`, 2 `GET`, 1 `PUT`, 1 `DELETE` |
 | listing, one level or a subtree | 1 per 1000 entries | same | same |
 | empty or remove a prefix | 1 listing + 1 bulk delete per 1000 keys | per 100 | per 256 |
 
@@ -91,13 +95,15 @@ A recursive listing is one flat listing (keys in byte order are depth-first
 pre-order). A ranged read learns the length from `Content-Range`;
 `S3File::with_known_size(n)` takes one a manifest already stated (an Iceberg
 scan reads each data file with one `GET`). `open` caches metadata, never bytes -
-do it before wrapping a remote handle in `buffered`.
+do it before wrapping a remote handle in `buffered`. A move between objects is
+the copy and the removal, the value crossing the client: no server-side
+`CopyObject` yet.
 
 ### Configuration precedence
 
 | Order | Source |
 | --- | --- |
-| 1 | an explicit value (`S3Options::with_*`, Python/JS `options` property) - always wins |
+| 1 | an explicit value (`S3Options::with_*`, Python/JS `options` property) - always wins - then the location's query, read as properties beneath it |
 | 2 | the URL (host, port, region in the host, user info) |
 | 3 | the environment, swept under `AWS_`, `GOOGLE_`, `AZURE_`, `YGGDRYL_` (plus `with_environment_prefix("TRADING_")`) |
 | 4 | the store's own files (`~/.aws/config`, `~/.aws/credentials`, ADC JSON) |

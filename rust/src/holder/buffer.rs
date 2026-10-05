@@ -1,6 +1,7 @@
 //! An auto-scaling in-memory [`IOBase`].
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::iobase::oversized;
 use crate::{IOBase, MediaType, MimeType, Result, Uri, Url};
@@ -192,12 +193,16 @@ impl IOBase for Buffer {
 
     fn url(&self) -> Option<&Url> {
         // A buffer is not stored anywhere, so this is an identity rather than
-        // a location: this machine is its host, and the process id the scope
-        // that makes an address unique on it.
-        Some(
-            self.identity
-                .get_or_init(|| memory_identity(std::process::id(), self.bytes.as_ptr())),
-        )
+        // a location: this machine is its host, the process id the scope
+        // that makes a sequence unique on it, and the sequence what tells
+        // one buffer from another - an address would not, since every empty
+        // buffer holds the same dangling one.
+        Some(self.identity.get_or_init(|| {
+            memory_identity(
+                std::process::id(),
+                NEXT_IDENTITY.fetch_add(1, Ordering::Relaxed),
+            )
+        }))
     }
 
     fn media_type(&self) -> &MediaType {
@@ -262,14 +267,18 @@ impl AsRef<[u8]> for Buffer {
     }
 }
 
-/// The `mem:` identity of bytes held at `address` by process `pid` on this
-/// machine: `mem://localhost/<pid>/<address>`, what a buffer answers for a
-/// location it does not have.
+/// The next place in the sequence that tells one buffer of this process
+/// from another, whatever bytes each holds.
+static NEXT_IDENTITY: AtomicU64 = AtomicU64::new(1);
+
+/// The `mem:` identity of the `sequence`th in-memory value of process `pid`
+/// on this machine: `mem://localhost/<pid>/<sequence>`, what a buffer
+/// answers for a location it does not have.
 ///
 /// Built from its parts rather than parsed from text, the host static, so
 /// what an identity costs is the same on every machine.
-pub(crate) fn memory_identity<T>(pid: u32, address: *const T) -> Url {
-    let path = smol_str::format_smolstr!("/{pid}/{address:p}");
+pub(crate) fn memory_identity(pid: u32, sequence: u64) -> Url {
+    let path = smol_str::format_smolstr!("/{pid}/{sequence}");
     crate::UriPath::from_str(&path)
         .and_then(|path| {
             Uri::from_parts(

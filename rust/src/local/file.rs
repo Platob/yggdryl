@@ -472,6 +472,11 @@ impl IOBase for LocalFile {
         self.state.lock().is_ok_and(|state| state.is_some())
     }
 
+    /// A local file is its path, which a move renames.
+    fn local_url(&self) -> Option<&Url> {
+        Some(&self.url)
+    }
+
     fn close(&mut self) -> Result<()> {
         let mut state = self.state.lock().map_err(|_| poisoned())?;
         if let Some(mapped) = state.as_mut() {

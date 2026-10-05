@@ -519,13 +519,18 @@ pub(crate) fn table_layout(folder: &Holder) -> Result<bool> {
 /// The name of an entry as its store spells it - the last segment of a
 /// member's name inside an archive, never the archive's file name, else the
 /// location's file or folder name with its URI escapes decoded exactly once
-/// (`order%20book` is `order book`).
+/// (`order%20book` is `order book`); a container whose URL ends in its
+/// delimiter - an object store's prefix - is named by the segment before it.
 pub(crate) fn entry_name(holder: &Holder) -> Option<SmolStr> {
     if let Some(member) = crate::zip::member_name(holder) {
         let member = member.trim_end_matches('/');
         return Some(SmolStr::new(member.rsplit('/').next().unwrap_or(member)));
     }
-    let name = holder.url()?.file_name()?;
+    let url = holder.url()?;
+    let name = url
+        .file_name()
+        .filter(|name| !name.is_empty())
+        .or_else(|| url.path_segments().rfind(|segment| !segment.is_empty()))?;
     Some(
         match crate::uri::percent_decode(name, "a catalog entry's name") {
             Ok(decoded) => SmolStr::new(decoded),

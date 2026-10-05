@@ -446,19 +446,99 @@ configured = S3File(
 assert configured.url.scheme == "s3"
 ```
 
-## Bind a pyarrow filesystem
+## Hold a URI under properties
 
-`IOBase.from_fs(filesystem, path, uri=None)` wraps any `pyarrow.fs`
-filesystem; the path is opaque and reaches it literally. `IOBase.from_uri`
-resolves a URI into a pyarrow filesystem once (options forwarded to
-`pyarrow.fs.S3FileSystem`).
+`IOBase.from_uri(uri, options=None, **properties)` is `Holder::from_url`,
+the core's one location door, for every scheme - the constructor under
+properties, with no `pyarrow.fs` filesystem built. `options` is a mapping of
+the store's properties in any vocabulary the core reads (its own names,
+PyIceberg's `s3.*`, PyArrow's `endpoint_override`, environment names) beside
+`media_type` and `codec`; a keyword is the same by name and wins over the
+mapping, and a value is a `str`, a `bool`, an `int` or a `float` - any
+other a `TypeError` naming the property. A keyword nothing reads warns and
+a mapping key nothing reads is ignored. An object-store URL's query states
+the store's properties too, read by the core beneath the mapping and the
+keywords - a stated property wins whatever its spelling - and taken off the
+location the handle reports; a query parameter no store reads is a
+`ValueError` naming it (`?versionId=3`: an object takes no query), and a
+`file:` or `http:` URL's query stays.
 
 ```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase
+from yggdryl.holder import LocalPath, S3Path
+
+target = pathlib.Path(tempfile.mkdtemp()) / "events.bin"
+local = IOBase.from_uri(target.as_uri())
+assert isinstance(local, LocalPath)
+assert local.filesystem is None and pathlib.Path(local.path) == target
+
+# The native store under the properties given; construction sends nothing.
+s3 = IOBase.from_uri(
+    "s3://bucket/v=a%2Fb",
+    options={"anonymous": True, "endpoint_override": "127.0.0.1:9", "scheme": "http"},
+    region="eu-west-1",
+)
+assert isinstance(s3, S3Path)
+# The path is the key as the store names it; the URL is what escapes it.
+assert s3.path == "bucket/v=a/b" and str(s3.url) == "s3://bucket/v=a%2Fb"
+assert s3.filesystem is None and s3.bound_uri is None
+
+# A query states the same properties, beneath the ones given, off the location.
+spelled = IOBase.from_uri(
+    "s3://bucket/lake/key.bin?endpoint_override=127.0.0.1%3A9&scheme=http", anonymous=True
+)
+assert str(spelled.url) == "s3://bucket/lake/key.bin" and spelled.path == "bucket/lake/key.bin"
+```
+
+## Hold a pyarrow filesystem's location
+
+`IOBase.from_fs(filesystem, path)` - and `FsPath`, `FsFile`, `FsFolder` by
+name - read a filesystem this build holds as its native role: a
+`LocalFileSystem` is `LocalPath` at the platform path, an `S3FileSystem`,
+`GcsFileSystem` or `AzureFileSystem` is `S3Path` over `container/key` under
+the options the filesystem was built with, and a `SubTreeFileSystem` is its
+base under its base path; `filesystem` is `None`, `path` is the platform
+path or the container and the raw key as the store names it, and `uri=` is
+refused. Any other filesystem - a `PyFileSystem` over a handler, which is
+also how fsspec arrives, the mock, and a store filesystem stating an
+argument the native client cannot read (`tls_ca_file_path`,
+`default_metadata`, `target_service_account`, an Azure host or scheme of its
+own) - is bridged: the path is opaque and reaches it literally, and `uri=`
+is the caller's spelling of its location.
+
+```python
+import pathlib
+import tempfile
+
 import pyarrow.fs as pafs
 
 from yggdryl import IOBase
-from yggdryl.holder import FsFolder
+from yggdryl.holder import FsFolder, FsPath, LocalFolder, LocalPath, S3Path
 
+root = pathlib.Path(tempfile.mkdtemp())
+local = pafs.LocalFileSystem()
+leaf = IOBase.from_fs(local, (root / "trades.bin").as_posix())
+assert isinstance(leaf, LocalPath) and leaf.filesystem is None
+assert pathlib.Path(leaf.path) == root / "trades.bin"
+leaf.write_bytes(b"AAPL")
+assert (root / "trades.bin").read_bytes() == b"AAPL"
+assert isinstance(IOBase.from_fs(local, (root / "lake").as_posix()).create_dir(), LocalFolder)
+
+subtree = pafs.SubTreeFileSystem(root.as_posix(), local)
+assert pathlib.Path(FsPath(subtree, "trades.bin").path) == root / "trades.bin"
+
+# An S3 filesystem pointed at nothing: construction sends nothing.
+store = pafs.S3FileSystem(anonymous=True, region="eu-west-1", scheme="http", endpoint_override="127.0.0.1:9")
+part = IOBase.from_fs(store, "trades/lake/part.bin")
+assert isinstance(part, S3Path) and part.path == "trades/lake/part.bin"
+assert str(part.url) == "s3://trades/lake/part.bin"
+bridged = pafs.S3FileSystem(anonymous=True, default_metadata={"content-type": "binary"})
+assert isinstance(FsPath(bridged, "trades/lake/part.bin"), FsPath)
+
+# The bridge, for a filesystem this build does not hold.
 filesystem = pafs._MockFileSystem()
 folder = IOBase.from_fs(filesystem, "bucket").create_dir()
 assert isinstance(folder, FsFolder)
@@ -473,6 +553,113 @@ assert handle.masked_uri == "s3://bucket/v=a%2Fb.bin"
 archive = IOBase.from_fs(filesystem, "bucket/v=a%2Fb.copy.bin")
 assert handle.copy_into(archive) == 7
 assert archive.read_bytes() == b"literal"
+```
+
+## Move a value
+
+`move_into(target)` is the core's, run off the GIL as `copy_into` is: one
+`rename` between two local handles - the local roles, or a text or record
+configuration over one, which pass the bytes through unchanged; never a
+page cache or a coding - and `copy_into` then the source's removal between
+any other pair, the value staged whole and the target published once all
+of it has crossed (between two objects five requests, the value crossing
+the client). A move onto its own location moves nothing on local storage
+and raises `FileExistsError` on a store, whose URL does not say which
+client reaches it; an absent source raises `FileNotFoundError` naming it
+before the target is touched, while a store refusing the `kind` read
+refuses the move with its own reason (`OSError`); and the handle answered
+is the target held again on its own store, as `IOBase(handle)` holds one.
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase
+from yggdryl.holder import LocalFile, LocalPath
+
+root = pathlib.Path(tempfile.mkdtemp())
+source = LocalFile(root / "events.bin")
+source.write_bytes(b"literal")
+
+# Two local handles are one rename, into a folder not there yet.
+landed = source.move_into(LocalPath(root / "archive" / "events.bin"))
+assert isinstance(landed, LocalPath)
+assert landed.read_bytes() == b"literal" and not source.exists()
+
+# Onto its own local location nothing moves; an absent source is refused.
+assert landed.move_into(LocalPath(root / "archive" / "events.bin")).read_bytes() == b"literal"
+try:
+    source.move_into(LocalPath(root / "never.bin"))
+except FileNotFoundError as refused:
+    assert "events.bin" in str(refused)
+assert not (root / "never.bin").exists()
+
+# Any other pair - a page cache, a coding or an object on either side - is
+# the copy then the source's removal: a coded target lands the value coded.
+coded = IOBase(root / "archive" / "events.txt.gz")
+landed.move_into(coded)
+assert coded.read_bytes() == b"literal"
+assert LocalPath(root / "archive" / "events.txt.gz").read_bytes()[:2] == b"\x1f\x8b"
+assert not landed.exists()
+```
+
+## Act once on a native handle
+
+The Arrow-shaped verbs on a store held natively answer the native fact,
+each acting once: `info` reads the kind, size and modification time in one
+`open`/`close` scope of its own (an `S3File` one `HEAD`); `create_dir` is
+`mkdir`; `delete_dir`, `delete_dir_contents` and `delete_file` are
+`remove(False)` on the container, `clear()` and `remove(False)` on the
+plain handle, absence the success the store reports it as; `metadata=` on
+an output stream, `normalize_path` and `delete_root_dir_contents` are
+refused by name; `path` is the raw key as the store names it and
+`same_location` the identifier alone. On a wrapper - a page cache, a
+coding, a text or record configuration - `mkdir`, `delete_dir` and
+`delete_dir_contents` reach the plain handle beneath it on its own store.
+
+```python
+import io
+import pathlib
+import tempfile
+
+import pyarrow.fs as pafs
+from yggdryl import IOBase
+from yggdryl.holder import LocalFolder, S3File
+
+root = pathlib.Path(tempfile.mkdtemp())
+local = pafs.LocalFileSystem()
+leaf = IOBase.from_fs(local, (root / "trades.bin").as_posix())
+
+# Absence is success, nothing probed and nothing created.
+leaf.delete_file()
+IOBase.from_fs(local, (root / "lake").as_posix()).delete_dir()
+IOBase.from_fs(local, (root / "lake").as_posix()).delete_dir_contents()
+assert not (root / "lake").exists()
+
+# `info` is one scope of its own; `create_dir` answers the container role,
+# and `delete_dir` refuses a directory that still holds children.
+assert leaf.info().type == pafs.FileType.NotFound
+leaf.write_bytes(b"AAPL")
+assert leaf.info().size == 4
+made = IOBase.from_fs(local, (root / "lake" / "year=2026").as_posix()).create_dir()
+assert isinstance(made, LocalFolder)
+(root / "lake" / "year=2026" / "part.bin").write_bytes(b"x")
+try:
+    IOBase.from_fs(local, (root / "lake").as_posix()).delete_dir()
+except OSError as refused:
+    assert "children" in str(refused)
+
+# Output metadata reaches a bridged filesystem's own stream only.
+try:
+    leaf.open_output_stream(compression=None, metadata={"content-type": "binary"})
+except io.UnsupportedOperation as refused:
+    assert "metadata" in str(refused)
+
+# The raw key, and one identifier.
+part = S3File("trades", "lake/a b/part.bin", provider="s3", options={"anonymous": True})
+assert part.path == "trades/lake/a b/part.bin"
+assert str(part.url) == "s3://trades/lake/a%20b/part.bin"
+assert part.same_location(IOBase("s3://trades/lake/a%20b/part.bin"))
 ```
 
 ## Wrap an open file or stream
@@ -574,7 +761,8 @@ streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
 - A `str` argument to `IOBase(...)` is a path, never content; content is
   `IOBase.from_bytes(b)` or `IOBase(io.BytesIO(b))`.
 - `IOBase("x.gz")` presents decoded bytes; `LocalPath`, `LocalFile`, `S3File`
-  and `FsPath` address stored bytes - use them as `compress_into` targets.
+  and a bridged `FsPath` address stored bytes - use them as `compress_into`
+  targets.
 - `buffered`, `into_coded`, `into_text`, `into_media` consume the handle:
   the old reference raises `ValueError("... consumed by a conversion")`.
 - `write_bytes`, `pwrite`, `append_bytes` take `bytes` only (borrowed, no
@@ -583,7 +771,22 @@ streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
   properties; `size()`, `kind()`, `exists()`, `is_dir()`, `is_file()` are methods.
 - A folder handle keeps answering `is_dir()` after `remove()`; the parent's
   listing is what shows it gone.
-- `IOBase.from_uri("s3://...")` goes through `pyarrow.fs.S3FileSystem`;
-  `IOBase("s3://...")` and `S3File` are the native client.
+- `IOBase.from_uri(uri, options=, **properties)` is the native store under
+  the properties given, as `IOBase(uri)` is under none - an object-store
+  URL's query read by the core as the store's properties beneath the ones
+  given (keyword over mapping over query) and taken off the location the
+  handle reports, a parameter no store reads a `ValueError`; `from_fs` reads a `pyarrow.fs.S3FileSystem`
+  or `LocalFileSystem` as the same native role under the filesystem's own
+  options, and bridges a filesystem this build does not hold or one stating
+  an argument the native client cannot read.
+- A native handle's `delete_file()`, `delete_dir()` and
+  `delete_dir_contents()` act once and report absence as success; `info()`
+  is one `open`/`close` scope of its own; `metadata=` on an output stream is
+  refused by name; `path` is the raw key as the store names it, never the
+  URL's escaped spelling.
+- `move_into` onto its own location moves nothing on local storage and
+  raises `FileExistsError` on a store; `mkdir()` on a wrapper
+  (`IOBase("lake/x.txt.gz")`) makes the directory on the plain handle
+  beneath it.
 - Errors map to `ValueError`, `IsADirectoryError`, `OSError` with the native
   message.
