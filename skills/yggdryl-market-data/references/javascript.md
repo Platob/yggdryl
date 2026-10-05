@@ -297,7 +297,8 @@ fs.rmSync(directory, { recursive: true, force: true })
 `new graph.BookIterator(items, snapshotMillis = 0, filter = undefined)` folds
 sorted orders and quotes into one `BookEvent` per instant and book key that
 moved it - the instrument's ISIN, else its ticker, else `XX0000000000` -
-pruning every execution and trade. A book is complete (`isComplete`) only at a
+recording each execution among its instant's deltas, moving no side, and
+pruning every trade. A book is complete (`isComplete`) only at a
 snapshot tick; every other book states its deltas alone beside the top of book
 they settled on, and `withPrevious` over the complete book before it rebuilds
 it whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -458,7 +459,7 @@ assert.deepEqual([...chain.getChild('crosscode')], ['10:1:O-1001'])
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `bookArrowReader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry recorded as the execution it is - and
 `MarketData.fromArrowReader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -483,6 +484,39 @@ const last = values[1].asBookEvent()
 assert.equal(last.bestPrice('BUYS'), '101')
 // The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
 assert.deepEqual([last.isComplete, last.deltas().length], [false, 2])
+```
+
+## Read a table of books back as its deltas
+
+`graph.MarketData.deltasSerie(source, kind?)` lays the deltas of every book a
+`Serie`, a `ChunkedSerie` or a `SerieReader` (consumed) holds back out as
+`marketdata` rows in book order - every kind, or the one `kind` names - as a
+`SerieReader` pulled with the books: how a stage reads a window's orders,
+quotes or executions out of a table of books.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { IOBase, graph } = require('yggdryl')
+
+const T = 1_700_000_000_000_000_000n
+const bid = new graph.OrderEvent(T, { crosscode: 'B-1', ticker: 'AAPL', side: 'BUYS', price: '189', quantity: 100 })
+const fill = new graph.ExecutionEvent(T + 1n, { crosscode: 'E-1', ticker: 'AAPL', side: 'BUYS', lastqty: 100 })
+
+const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+// A table of books: one per instant, the execution recorded in the second.
+const table = new IOBase(path.join(directory, 'books.arrows'))
+table.overwriteArrowReader(graph.MarketData.arrowReader([...new graph.BookIterator([bid, fill])]))
+
+const deltas = (kind) => {
+  const rows = graph.MarketData.deltasSerie(table.readSerie(), kind)
+  return [...graph.MarketData.fromArrowReader(rows.intoArrowReader())].map((value) => value.crosscode)
+}
+assert.deepEqual(deltas(), ['10:1:B-1', '8:1:E-1'])
+assert.deepEqual(deltas('EXEC'), ['8:1:E-1'])
+fs.rmSync(directory, { recursive: true, force: true })
 ```
 
 ## Fold books into candles
@@ -558,8 +592,13 @@ line it prints on stdout in the endpoint's place (`✗ invalid record value at
 $.capture: ...`), then its stderr, where the argument parser refuses; an
 aborted `signal` (`AbortSignal.timeout(ms)`) rejects with an `AbortError`
 once it has ended the process. A table is
-`'name=location'`, a location or `{ name, location }`; `capture` folds FIX
-bridge logs into the first table before serving.
+`'name=location'`, a location or `{ name, location }` - an Iceberg folder,
+`s3tables://<bucket>/<namespace>/<table>`, a `.arrows`, `.parquet`, `.avro` or
+`.csv` leaf, a partitioned folder; `capture` folds FIX bridge logs into the
+first table before serving, and every other flag of
+[the command](https://platob.github.io/yggdryl/graph/serve/#the-command) -
+`--snapshot-millis`, `--registry`, `--timezone`, `--public-url` ... - rides
+`args`, verbatim, last.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -572,6 +611,11 @@ assert.equal(book.assetFiles[0], 'index.html')
 assert.deepEqual(
   book.serveArguments({ tables: [{ name: 'books', location: '/data/books' }], bind: '127.0.0.1:8080', capture: ['bridge.log'] }),
   ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:8080', '--path', '/', '--capture', 'bridge.log'],
+)
+// Unstated, `bind` takes a free port; the other flags follow in `args`.
+assert.deepEqual(
+  book.serveArguments({ tables: 'books=/data/books', args: ['--snapshot-millis', '1000', '--registry', '/etc/fix'] }),
+  ['market', 'serve', 'books=/data/books', '--bind', '127.0.0.1:0', '--path', '/', '--snapshot-millis', '1000', '--registry', '/etc/fix'],
 )
 // `serve` runs that vector and hands back the endpoint to open, or rejects with
 // the refusal the command printed in its place - its `✗` line, then any stderr:
@@ -612,8 +656,9 @@ assert.equal(typeof book.serve, 'function')
 - `withOperations`, `withPrevious`, `mergeWith` answer a new value; the one
   you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
   nothing moved; `withOperations` refuses an undated `Order` at
-  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`), and an
-  execution or a trade is pruned, no error and no book. What `BookIterator`
+  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`); an execution
+  is recorded among its instant's deltas, moving no side, and a trade is
+  pruned, no error and no book. What `BookIterator`
   finds wrong in the data - an operation dated before its book - it leaves
   out, and an order or a quote stating neither side it places nowhere (still
   the book's delta), each with a warning on standard error (unless a handler

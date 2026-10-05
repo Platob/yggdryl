@@ -1,6 +1,6 @@
 ---
 name: yggdryl-arrow
-description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or a stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), cutting a column or stream into windows of equal keys (window_by / windowBy, static_values), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
+description: Moves columns, tables and streams across the Apache Arrow boundary with yggdryl's Serie (one column), ChunkedSerie (chunked arrays and tables kept apart) and SerieReader (a stream under one compiled plan), and casts them with ArrowCastPlan and ArrowCastOptions (safe, representation). Use when landing arrow-rs arrays / RecordBatches / readers, pyarrow or Arrow JS (apache-arrow) tables and vectors under a Field (from_arrow_array / fromArrowArray, from_arrow_batch, SerieReader.from_arrow_reader), taking pyarrow, pandas, polars or NumPy in via Serie.from_, reading typed buffers (as_int64().values()), casting a column or stream, sorting, deduplicating, grouping or windowing a column (sort_indices / into_sorted, into_unique, partition_by, window), cutting a column or stream into windows of equal keys (window_by / windowBy, static_values), joining (join_with), spilling (spill), sizing (memory_size), or handing data back (into_arrow_array / intoArrowTable, into_pandas / into_polars). Covers Rust, Python and Node.js.
 ---
 
 # yggdryl Arrow: Serie, ChunkedSerie, SerieReader, casts
@@ -71,7 +71,7 @@ cross-language conventions: see the `yggdryl` entry skill.
 | The same across chunks, no join | `chunked.window_by("venue", sorted)?` -> `Vec<(Scalar, ChunkedSerie)>` | `chunked.window_by("venue", sorted=False)` | `chunked.windowBy('venue', sorted?)` |
 | A stream's windows, lazily, in order | `reader.window_by("venue", sorted)?` -> `SerieReaderWindows` of `SerieReader` | `reader.window_by(...)` -> `SerieReaderWindows` | `reader.windowBy(...)` -> `SerieReaderWindows` |
 | The values constant over a window | `window.static_values()` / `reader.static_values()` -> `Option<FieldScalar>`: `get_key_str("venue")`, `windownum`, `rownum` | `window.static_values` -> struct `Scalar` or `None`, `record["venue"]` | `window.staticValues` -> struct `Scalar` or `null`, `record.get('venue')` |
-| Bytes a column occupies | `serie.memory_size()` | `serie.memory_size()` | `serie.memorySize()` |
+| Bytes a column occupies | `serie.memory_size()`; a bare batch, array or value: `yggdryl::arrow::{memory_size, array_memory_size, scalar_memory_size}` - the one estimate every byte bound reads, a slice counting only its own rows | `serie.memory_size()` (the bare batch, array and value functions: Rust only) | `serie.memorySize()` (the bare batch, array and value functions: Rust only) |
 | Column -> Arrow | `into_arrow_array()` (`None` for a run), `require_arrow_array()?`, `into_arrow_batch()?`, `into_arrow_reader()?`, `into_arrow_scalar()?` | `into_arrow_array()`, `into_arrow_batch()`, `into_arrow_table()`, `into_arrow_reader()`, `into_arrow_scalar()`, `into_pandas()`, `into_polars()`, `into_numpy()`; PyCapsule: `pa.array(serie)`, `pa.table(record)` | `intoArrowArray()`, `intoArrowBatch()`, `intoArrowReader()`, `intoArrowScalar()` |
 | Chunked -> Arrow | `into_arrow_arrays()`, `into_arrow_reader()?` | `into_arrow_chunked_array()`, `into_arrow_table()`, `into_arrow_reader()` | `intoArrowArray()`, `intoArrowTable()`, `intoArrowReader()` |
 | Column as one value, and back | `Scalar::from(serie)`, `value.as_serie()` | `serie.into_scalar()`, `Scalar.from_(serie)`, `value.as_serie()` | `serie.intoScalar()`, `value.asSerie()` |
@@ -214,7 +214,7 @@ the record `row`.
     keeps both columns and suffixes the right one `_right`. Null keys match
     nothing. The plan's `from a join b using (k)` pushes the build's
     distinct keys into the probe's read for `inner`, `right` and `semi`.
-16. **Window by key instead of grouping by hand.** `window_by(by, sorted)`
+20. **Window by key instead of grouping by hand.** `window_by(by, sorted)`
     takes a selector (`"venue, minutes(ts, 15) as bucket"`), computes the key
     once and lends each window as a view - one key column and one bit per
     row, then each window costs its key. With
@@ -299,11 +299,13 @@ the record `row`.
 ## Deeper
 
 - Serie: https://platob.github.io/yggdryl/types/serie/ - leaves, costs,
-  [every columnar runtime in](https://platob.github.io/yggdryl/types/serie/#arrow-every-columnar-runtime-in)
+  [every columnar runtime in](https://platob.github.io/yggdryl/types/serie/#arrow-every-columnar-runtime-in),
   [sorting, uniqueness and partitions](https://platob.github.io/yggdryl/types/serie/#sorting-uniqueness-and-partitions),
   [windows](https://platob.github.io/yggdryl/types/window-serie/),
   [windows by key](https://platob.github.io/yggdryl/types/serie/#windows-by-key),
-  [windows of a stream](https://platob.github.io/yggdryl/arrow/readers/#windows-of-a-stream)
+  [windows of a stream](https://platob.github.io/yggdryl/arrow/readers/#windows-of-a-stream),
+  [spilling to disk](https://platob.github.io/yggdryl/types/serie/#spilling-to-disk),
+  [joins](https://platob.github.io/yggdryl/types/serie/#joins)
 - ChunkedSerie: https://platob.github.io/yggdryl/types/chunked-serie/
 - Cast: https://platob.github.io/yggdryl/types/cast/ -
   [required columns](https://platob.github.io/yggdryl/types/cast/#required-columns),
@@ -312,6 +314,7 @@ the record `row`.
 - Arrow overview and defaults: https://platob.github.io/yggdryl/arrow/
 - Schema projection: https://platob.github.io/yggdryl/arrow/schema/
 - Batch readers and `combined`: https://platob.github.io/yggdryl/arrow/readers/
+- The memory estimate (Rust): https://docs.rs/yggdryl/latest/yggdryl/arrow/size/
 - Sibling skills: `yggdryl-types` (building `DataType`, `Field`, `Scalar`),
   `yggdryl-records` (reading and writing files: `read_serie`,
   `write_serie` and its three intents, `read_arrow_reader`), `yggdryl-expressions` (filters,

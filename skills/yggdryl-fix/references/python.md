@@ -94,7 +94,9 @@ assert field.fix.tag == 38
 ## Decode one captured line
 
 `parse_line` takes a whole captured line - verb, prose and remarks included - and
-answers a lazy `FixMessages` stream: unpack it.
+answers a lazy `FixMessages` stream: unpack it. `parse_fix_line`,
+`parse_fixml_line`, `parse_ullink_line` and `parse_pairs` take one body of
+their dialect, or pairs already split, and answer that one message as stated.
 
 ```python
 from pathlib import Path
@@ -117,6 +119,10 @@ assert list(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")) == []
 # The single-frame door refuses a body holding a second frame.
 with pytest.raises(ValueError, match="expected one frame"):
     codec.parse_fix_line(both)
+
+# One FIXML row, or pairs a caller already split: one message each, nothing split off.
+assert codec.parse_fixml_line(b"<Order ClOrdID='XML-1' Side='1'/>").by_tag(11).as_py() == "XML-1"
+assert codec.parse_pairs([("35", "D"), ("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
 ```
 
 ## Read only the message types you need
@@ -566,10 +572,12 @@ assert ack.market_data() == []
 `market_data` admits orders, quotes, executions and `W`/`X` book messages - a
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
-them at; `graph.BookIterator` then walks them, pruning the executions.
+them at; `graph.BookIterator` then walks them, recording each execution among
+its book's deltas, moving no side.
 `book_arrow_reader(messages, snapshot_millis=0, filter=None)` folds the same
-messages into book rows, one book per book key. Compose `lifecycle` in front when
-predecessor state matters. `market_arrow_reader` writes the sorted leaves as
+messages into book rows, one book per book key, pruning trades and batches;
+`filter` narrows what folds. Compose `lifecycle` in front when predecessor
+state matters. `market_arrow_reader` writes the sorted leaves as
 `marketdata` rows, and `market_data_arrow_reader` is its twin over batches of
 FIX rows already in Arrow.
 
@@ -601,11 +609,57 @@ assert best is not None and best.as_py() == Decimal(101)
 # The book door does not sort: the same capture out of order is no error - the
 # snapshot dated before the book it would fold into is left out, with a warning.
 assert codec.book_arrow_reader(capture).read_all().num_rows == 1
+# A filter narrows what folds: the executions alone fold the book of their instant.
+assert codec.book_arrow_reader(capture, 0, "marketdatakind = 'EXEC'").read_all().num_rows == 1
 # The sorted leaves as `marketdata` rows.
 assert codec.market_arrow_reader(capture).read_all().num_rows == 4
 # The same leaves off the capture's FIX rows.
 fixed = codec.arrow_reader(fix_schema(registry, "fix"), capture)
 assert codec.market_data_arrow_reader(fixed).read_all().num_rows == 4
+```
+
+## Keep a capture on series, table to table
+
+Each Arrow door but `format_arrow_reader` and `write_arrow_reader` has a serie
+face: `parse_text_serie`, `lifecycle_serie`, `market_data_serie` and
+`messages_serie` take any source the Arrow doors take,
+the native `SerieReader` a handle's `read_serie` answers among them, and
+`serie_reader`, `book_serie` and `market_serie` take messages. Each answers a
+native `SerieReader` (`messages_serie` the messages) with the GIL released, so
+a table's `overwrite_serie` / `append_serie` writes it with no `pyarrow`
+stream between ([serie faces](https://platob.github.io/yggdryl/fix/arrow/#serie-faces)).
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase, SerieReader, TextOptions, graph
+from yggdryl.fix import FixCodec, FixRegistry
+
+codec = FixCodec(FixRegistry.from_handle(pathlib.Path("config/fix")))
+options = TextOptions()
+options.rowheader = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?P<level>IN|OUT) +"
+options.timezone = "UTC"
+
+with tempfile.TemporaryDirectory() as directory:
+    log = pathlib.Path(directory) / "session.log"
+    log.write_bytes(
+        b"2026-01-02 10:15:30.250 IN  8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|10=0|\n"
+        b"2026-01-02 10:15:30.500 OUT 8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|10=0|\n"
+    )
+    # Text rows in, walked FIX rows out: one native reader to the next.
+    walked = codec.lifecycle_serie(codec.parse_text_serie(IOBase(log).read_serie(options=options)))
+    assert isinstance(walked, SerieReader)
+    assert walked.field.index_of("level") is not None, "the capture's columns ride along"
+
+    # The door's own reader is what a table's write takes.
+    table = IOBase(pathlib.Path(directory) / "walked.arrows")
+    assert table.overwrite_serie(walked).written_rows == 2
+
+    # Read back, the rows are messages again, which the book faces fold.
+    messages = list(codec.messages_serie(table.read_serie()))
+    assert len(messages) == 2
+    assert codec.book_serie(messages).field == graph.MarketData.field()
 ```
 
 ## Build and commit a dictionary

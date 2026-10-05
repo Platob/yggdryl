@@ -4,7 +4,8 @@ No feature flag is needed for this layer. Name Arrow types through
 `arrow-array` and `arrow-schema` at the release yggdryl is built on (`59`);
 yggdryl does not re-export them. The core names are at the crate root:
 `yggdryl::{Serie, ChunkedSerie, SerieReader, ArrowCastPlan, ArrowCastOptions,
-Representation}`; stream helpers are in `yggdryl::arrow`.
+Representation}`; stream helpers and the memory estimate are in
+`yggdryl::arrow`.
 
 ## Build a column from values
 
@@ -819,6 +820,35 @@ assert_eq!(joined.schema().fields().len(), 2);
 let batches: Vec<RecordBatch> = joined.collect::<Result<_, _>>()?;
 assert!(batches[0].column(1).is_null(0)); // the left side has no `venue`
 assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+```
+
+## Measure what rows occupy
+
+`yggdryl::arrow::memory_size` is the one estimate every byte bound reads (a
+commit cadence, a batch byte target, Iceberg's file size): a zero-copy slice
+counts only the rows it reaches, never its parent's buffers. A held column's
+`memory_size()` counts its buffers the same way (a run, its values through
+`scalar_memory_size`, which charges one value). Python and JavaScript have
+only the column's `memory_size()` / `memorySize()`.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch};
+use yggdryl::arrow::{array_memory_size, memory_size, scalar_memory_size};
+use yggdryl::{ArrowCastOptions, Scalar, Serie};
+
+let column: ArrayRef = Arc::new(Int64Array::from_iter_values(0..1_024));
+let batch = RecordBatch::try_from_iter([("id", Arc::clone(&column))])?;
+
+// Eight bytes a row, and a slice counts its own rows alone.
+assert_eq!(memory_size(&batch), 8 * 1_024);
+assert_eq!(memory_size(&batch.slice(0, 16)), 8 * 16);
+assert_eq!(array_memory_size(&column.slice(0, 16)), 8 * 16);
+
+let serie = Serie::from_arrow_array(None, column, ArrowCastOptions::new())?;
+assert_eq!(serie.memory_size(), 8 * 1_024);
+assert!(scalar_memory_size(&Scalar::Null) < scalar_memory_size(&Scalar::from("ACME")));
 ```
 
 ## Gotchas in Rust

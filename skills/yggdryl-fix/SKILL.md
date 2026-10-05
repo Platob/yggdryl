@@ -1,6 +1,6 @@
 ---
 name: yggdryl-fix
-description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows or FIXML from logs (parse_line / parseLine, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow or Parquet (fix_schema, arrow_reader / arrowReader), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market data and books (market_data, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, from_cfb_file, merge_with, commit, code sets, FIX metadata) or running the yggdryl fix CLI.
+description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows, FIXML or pre-split pairs from logs (parse_line / parseLine, parse_pairs, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow, Parquet or a table (fix_schema, arrow_reader / arrowReader, format_messages, the serie faces parse_text_serie / lifecycle_serie / book_serie from read_serie to append_serie), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market data and books (market_data, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, from_cfb_file, merge_with, register_msgtype, commit, code sets, FIX metadata) or running the yggdryl fix CLI.
 ---
 
 # yggdryl FIX
@@ -50,21 +50,24 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | FIX facts on a field | `field.as_fix().tag()?`, `field.as_fix_mut().set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
 | look a field up | `field(55)`, `field_by_name`, `field_by_path(&FieldPath)`, `field_by_counter(453)`, `field_by_id(FixId)` | `field(55)`, `field_by_name`, `field_by_path("Parties.PartyID")`, `field_by_counter`, `field_by_id(int)` | `field(55)`, `fieldByName`, `fieldByPath`, `fieldByCounter`, `fieldById` |
 | a message definition | `registry.msgtype("D")?` | `registry.msgtype("D")` | `registry.msgtype('D')` |
+| register a message type, list dialects | `registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?`, `registry.dialects()` | `registry.register_msgtype("P Report Ack", "AllocationReportAck")`, `dialects()` | `registry.registerMsgtype('P Report Ack', 'AllocationReportAck')`, `dialects()` |
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
 | read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
 | fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `registry.add_cfb_files(&[Holder::local("cblocks")?], None)?` (a file, a folder or a glob each), `merge_with(&other)?` - each answering a `FixMerge` | `registry.add_cfb_file(path)`, `add_cfb_files(folder)` or `add_cfb_files(folder / "*.cfb")` - answering a `dict` | not bound (`yggdryl fix ingest`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
-| sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
+| sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)`, `infer_msgtype_text(text)` | `FixCodec.infer_msgtype_bytes(bytes)`, `infer_msgtype_text(text)` | `fix.FixCodec.inferMsgtypeBytes(buffer)`, `inferMsgtypeText(text)` |
 | decode one captured line | `codec.parse_line(bytes)?` (iterator) | `codec.parse_line(bytes)` | `codec.parseLine(buffer)` |
 | decode exactly one frame | `codec.parse_fix_line(bytes)?` | `codec.parse_fix_line(bytes)` | `codec.parseFixLine(buffer)` |
+| one body of one dialect, or pairs already split | `codec.parse_ullink_line(body)?`, `parse_fixml_line(body)?`, `parse_pairs([(b"55".as_slice(), b"AAPL".as_slice())])?` | `codec.parse_ullink_line(b)`, `parse_fixml_line(b)`, `parse_pairs([("55", "AAPL")])` | `codec.parseUllinkLine(buf)`, `parseFixmlLine(buf)`, `parsePairs([['55', 'AAPL']])` |
 | decode many lines lazily | `codec.parse_lines(lines)` | `codec.parse_lines(lines)` | `codec.parseLines(lines)` |
 | decode text-reader lines | `codec.parse_text_lines(lines)` | `codec.parse_text_lines(lines)` | `codec.parseTextLines(lines)` |
 | a capture's batches to FIX rows | `codec.parse_text_arrow_reader(reader)?` | `codec.parse_text_arrow_reader(reader)` | `codec.parseTextArrowReader(reader)` |
 | read a fact | `msg.by_tag(55)?`, `by_name`, `by_path`, `header()`, `get_side()` | `msg.by_tag(55)`, `by_path(...)`, `header()`, `msg.side` | `msg.byTag(55)`, `byPath(...)`, `header()`, `msg.side` |
 | the category, the strike | `msg.msgcat()`, `msg.strikeprice()` | `msg.msgcat`, `msg.strikeprice` | `msg.msgcat`, `msg.strikeprice` |
 | the type, how long it stands | `msg.get_marketdatatype()`, `msg.get_timeinforce()` (`Operation`) | `msg.marketdatatype`, `msg.timeinforce` (the `IntEnum` members) | `msg.marketdatatype`, `msg.timeinforce` (the member names) |
+| what the bridge's row header said | `msg.capture()` (`FixCapture`) | `msg.capture()` (`FixCapture`) | `msg.capture()` |
 | the parents of an identifier | `registry.parents_of(&IdType::ClOrdId)`, `parent_of(&kind)`, `parent_sources()`; `field.as_fix_mut().set_parents(..)?` | `registry.parents_of("clordid")`, `parent_of("origclordid")`, `field.fix.parents` | `registry.parentsOf('clordid')`, `parentOf('origclordid')`, `field.fix.parents` |
 | a venue's own values onto members | `field.as_fix_mut().set_marketdatatypes(..)?`, `set_timeinforces(&[("D", TimeInForce::Day)])?`; `registry.marketdatatype_of(tag, wire)`, `timeinforce_of(tag, wire)` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [("D", "DAY")]`; `registry.marketdatatype_of`, `timeinforce_of` | `field.fix.marketdatatypes`, `field.fix.timeinforces = [{ wire: 'D', timeinforce: 'DAY' }]`; `registry.marketdatatypeOf`, `timeinforceOf` |
 | a message as one market data value | `MarketData::from(msg)` (held whole, kind `fix`), `msg.into_market_leaf()?` (the one leaf it is) | `graph.MarketData(msg)` | `new graph.MarketData(msg)` |
@@ -72,7 +75,9 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | write or clear a fact | `msg.set(key, scalar)?`, `msg.remove(key)?` | `msg.set(key, value)`, `msg.remove(key)` | `msg.set(key, value)`, `msg.remove(key)` |
 | encode to the wire | `msg.into_text('\x01')?`, `msg.into_bytes(SOH)` | `msg.into_text()`, `msg.into_bytes()` | `msg.intoText()`, `msg.intoBytes()` |
 | the fixed row schema | `fix_schema(&registry, "fix")?` | `fix_schema(registry, "fix")` | `fix.schema(registry, 'fix')` |
+| a capture's columns over a row, the row's tags, the crate's own fields | `fix_schema_carrying(&carrier, &read)?`, `fix_schema_tags()`, `fix_crate_fields()?` | `fix_schema_carrying(carrier, read)`, `fix_schema_tags()`, `fix_crate_fields()` | `fix.schemaCarrying(carrier, read)`, `fix.schemaTags()`, `fix.crateFields()` |
 | a message as one row | `msg.into_row(&schema)?`, `FixMsg::from_row(arc, &schema, &row)?` | `msg.into_row(schema)`, `FixMsg.from_row(schema, row, registry)` | `msg.intoRow(schema)`, `fix.FixMsg.fromRow(schema, row, registry)` |
+| messages or FIX rows into a message's own row | `codec.format_messages(msgs, &field)`, `codec.format_arrow_reader(reader, &field)?` | `codec.format_messages(msgs, field)`, `format_arrow_reader(source, field)` | `codec.formatMessages(msgs, field)`, `formatArrowReader(source, field)` |
 | messages to batches | `codec.arrow_reader(schema, messages)?` | `codec.arrow_reader(schema, messages)` | `codec.arrowReader(schema, messages)` |
 | batches back to messages | `codec.messages(reader)` | `codec.messages(reader)` | `codec.messages(reader)` |
 | batches back to the wire | `codec.write_arrow_reader(reader, &mut sink)?` | `codec.write_arrow_reader(reader, sink)` | `codec.writeArrowReader(reader, { write })` |
@@ -84,7 +89,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, None)?`, `Some(&filter)` to narrow | `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.bookArrowReader(msgs, 0, filter)` |
 | sorted market data as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
 | FIX rows in Arrow to `marketdata` rows | `codec.market_data_arrow_reader(reader)?` | `codec.market_data_arrow_reader(reader)` | `codec.marketDataArrowReader(reader)` |
-| manage a dictionary from a shell | `yggdryl fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
+| a table's rows through the doors and into a table, on series | `codec.parse_text_serie(handle.read_serie(None)?)?`, `lifecycle_serie`, `market_data_serie`, `messages_serie` (any `SerieSource`); `serie_reader(schema, msgs)?`, `book_serie(msgs, 0, None)?`, `market_serie(msgs)?` | the same names, each a native `SerieReader` (`messages_serie` the messages), the GIL released | not bound: the Arrow doors above |
+| manage a dictionary from a shell | `yggdryl fix --root <dir> ...` ([cli](references/cli.md)) | the same binary, shipped in the wheel | not in the npm package: the `yggdryl` on `PATH` (the wheel ships it) |
 
 ## Rules for fast, correct use
 
@@ -102,6 +108,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    batches pools parsing across workers and merges rows in source order under
    the byte and row targets, so memory stays bounded. Materializing one
    `FixMsg`/`Scalar` per message and rebuilding rows yourself is the slow path.
+   Between tables, the serie faces (Rust and Python) take the `SerieReader`
+   `read_serie` answers and answer a `SerieReader`, which a table's
+   `append_serie` / `overwrite_serie` takes as the door's own reader: no row is
+   cast or copied
+   ([serie faces](https://platob.github.io/yggdryl/fix/arrow/#serie-faces)).
 4. Filter at the codec. `include_msgtypes` / `exclude_msgtypes` are read off
    the `35=` a row states before anything is built; a refused keepalive costs
    one look. By default `Heartbeat`, `TestRequest` and the untyped row are
@@ -127,10 +138,13 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
    a `QuoteID(117)`), so a venue's cancel, reject or expiry moves the book; an
    `ExecutionAcknowledgement` (`BN`) and a `DontKnowTrade` (`Q`) answer no
    leaf - they state no fact of the order. `book_arrow_reader` folds orders,
-   quotes and `W`/`X` entries, pruning executions and trades before a book
-   sees them, one book per book key - the instrument's ISIN, else the ticker,
-   else `XX0000000000` - and its `filter` narrows what folds, never admitting
-   an execution back. It does not sort - an operation dated before its book is
+   quotes and `W`/`X` entries into a book's sides and records each execution,
+   a `W`/`X` trade entry (`269=2`) included, among the deltas of its instant,
+   moving no side; trades and batches are pruned before a book sees them.
+   One book per book key - the instrument's ISIN, else the ticker, else
+   `XX0000000000` - and its `filter` narrows what folds
+   (`marketdatakind = 'EXEC'` keeps the executions alone), never admitting a
+   pruned kind. It does not sort - an operation dated before its book is
    left out with a warning - and neither door runs the lifecycle for you. For a capture already landed as FIX rows,
    `market_data_arrow_reader` reads each row as its message (no line parsed
    again) and sorts its leaves; it runs no lifecycle either, and a
@@ -410,18 +424,21 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 - JavaScript: [references/javascript.md](references/javascript.md) - the `fix` namespace, `Buffer` input, `BatchReader`.
 - CLI: [references/cli.md](references/cli.md) - `yggdryl fix` catalog commands.
 
-Read the one for the language you write; recipes appear in the same order in each.
+Read the one for the language you write; recipes appear in the same order in each
+(the serie-face recipe is Rust and Python only).
 
 ## Deeper
 
 - FIX overview and `FIX:` vocabulary: https://platob.github.io/yggdryl/fix/
-- Decode rules (none, one or many per line; type filter): https://platob.github.io/yggdryl/fix/decode/
+- Decode rules (none, one or many per line; type filter; one-dialect frames): https://platob.github.io/yggdryl/fix/decode/
 - Encode order and separators: https://platob.github.io/yggdryl/fix/encode/
 - Registry, one namespace, code sets, process default: https://platob.github.io/yggdryl/fix/registry/
+- Registering a message type: https://platob.github.io/yggdryl/fix/registry/#registering-a-message-type
 - Store layout and snapshots: https://platob.github.io/yggdryl/fix/store/
 - `FixMsg` holders, accessors, writes: https://platob.github.io/yggdryl/fix/message/
-- Arrow doors, pins, market books: https://platob.github.io/yggdryl/fix/arrow/
-- Capture, fixed row, clocks, warnings: https://platob.github.io/yggdryl/fix/capture/
+- Arrow doors, pins, market books, serie faces: https://platob.github.io/yggdryl/fix/arrow/
+- Capture, fixed row, carried columns, clocks, warnings: https://platob.github.io/yggdryl/fix/capture/
+- Every reader, one-dialect frames and pairs included: https://platob.github.io/yggdryl/fix/capture/#a-reader-is-the-whole-parse-surface
 - Lifecycle walk: https://platob.github.io/yggdryl/fix/lifecycle/
 - CLI: https://platob.github.io/yggdryl/fix/cli/
 - Sibling skills: `yggdryl-market-data` (the market data and books FIX turns

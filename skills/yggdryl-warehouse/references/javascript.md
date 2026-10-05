@@ -6,9 +6,10 @@ by a static constructor per implementation (`Catalog.memory`,
 `Catalog.folder`, `Catalog.fromUrl`, `Namespace.memory`, `Namespace.folder`,
 `Table.media`), with `implementation` naming it; `MemoryCatalog`,
 `FolderCatalog`, `MemoryNamespace`, `FolderNamespace` and `MediaTable` are
-constructors over those statics, callable with or without `new`. A path is
-dotted text or an array of parts; properties are an ordered plain object,
-numbers and booleans spelled as text.
+constructors over those statics, callable with or without `new`; the Iceberg
+implementations are `iceberg.IcebergCatalog`, `iceberg.IcebergNamespace` and
+`iceberg.IcebergTable`. A path is dotted text or an array of parts; properties
+are an ordered plain object, numbers and booleans spelled as text.
 
 ## Register a folder and resolve a path
 
@@ -209,6 +210,51 @@ try {
 }
 ```
 
+## An Iceberg warehouse folder creates
+
+`iceberg.IcebergCatalog` is the catalog that creates: namespaces nest to any
+depth, a create descends through existing ones only, and each level keeps its
+properties in its own document. It registers as the generic catalog
+`intoCatalog()` answers. See https://platob.github.io/yggdryl/media/iceberg/#catalog.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const arrow = require('apache-arrow')
+const { Field, IOBase, fields, iceberg, warehouse } = require('yggdryl')
+
+const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-skill-warehouse-')), 'lake')
+const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8')], { nullable: false })
+
+// `create` writes `metadata/catalog.json`; `openOrCreate` absorbs the
+// conflict a second `create` is.
+const lake = iceberg.IcebergCatalog.create('lake', root)
+assert.ok(fs.existsSync(path.join(root, 'metadata', 'catalog.json')))
+assert.equal(iceberg.IcebergCatalog.openOrCreate('lake', root).name, 'lake')
+
+// A create descends through existing namespaces only: `nyc` before `nyc.taxis`.
+assert.throws(() => lake.tables().create('nyc.taxis', schema), /lake\.nyc/)
+lake.namespaces().create('nyc', { owner: 'ops' })
+assert.equal(lake.tables().create('nyc.taxis', schema).implementation, 'IcebergTable')
+// The view's writes create a table from the rows' own schema.
+lake.tables().append('nyc.zones', new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) }))
+
+// What a namespace keeps is its own document: another catalog over the folder
+// reads it, and `updateProperties` writes it.
+const nyc = new iceberg.IcebergCatalog('lake', root).namespaces().get('nyc')
+assert.deepEqual(nyc.properties, { owner: 'ops' })
+nyc.updateProperties({ tier: 'gold' })
+assert.equal(nyc.properties.tier, 'gold')
+assert.deepEqual([...nyc.tables().keys()], ['taxis', 'zones'])
+
+const registry = new warehouse.Warehouse()
+registry.register(lake.intoCatalog())
+assert.equal(IOBase.from(registry.table('lake.nyc.zones')).rowSize(), 2)
+fs.rmSync(path.dirname(root), { recursive: true, force: true })
+```
+
 ## Gotchas in JavaScript
 
 - `name`, `path`, `kind`, `implementation`, `description`, `url`, `modified`
@@ -226,4 +272,11 @@ try {
   is `'file'` where the object's `kind` is `'table'`.
 - An option an implementation has no use for is refused by name:
   `Catalog.memory('lake', { levels: 2 })` throws.
-- `updateProperties` is refused by every implementation here.
+- `updateProperties` is refused by the memory, folder, media and S3 Tables
+  implementations; an Iceberg catalog or namespace writes it into its own
+  document.
+- `iceberg.IcebergCatalog` is not a `warehouse.Catalog`: register
+  `catalog.intoCatalog()`, and `iceberg.IcebergCatalog.from(catalog)` goes
+  back.
+- There is no XML for Analysis provider in the npm package: run the wheel's
+  `yggdryl xmla serve name=location ...` (see the door table).

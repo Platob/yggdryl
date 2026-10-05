@@ -1,6 +1,6 @@
 ---
 name: yggdryl-storage
-description: Read and write bytes through yggdryl's one positional handle (IOBase / Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, HTTP(S) URLs, page caches and ZIP archives, with gzip/zlib/zstd codings and charsets; talk HTTP like requests (http.Session, get/post, send_all fan-outs, resumable streams, HTTP/2 and HTTP/3, an in-process test Server). Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, listing or globbing a folder (ls, glob, rglob), clear/remove, open/close scopes, compress_into / decompressInto, gzip.dumps / zstd.loads, Charset / charset.decode, digests or read_scalar on a handle, S3Options / S3File, AWS credentials (aws::Session, profiles, SSO, assume role) or a MinIO / S3-compatible endpoint, Buffered caches, Counted call budgets. Covers Rust, Python and Node.js.
+description: Read and write bytes through yggdryl's one positional handle (IOBase/Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, HTTP(S), page caches and ZIP archives, with gzip/zlib/zstd codings and charsets; talk HTTP like requests (http.Session, send_all, resumable streams, HTTP/2, HTTP/3); serve or test against an in-process http.Server (mount, bounds, message/http traces, reverse proxy); SigV4-sign any AWS service (Rust). Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, ls, glob, rglob, clear/remove, open/close, compress_into / decompressInto, gzip.dumps / zstd.loads, charset.decode, digests, read_scalar on a handle, S3Options / S3File, AWS credentials (aws::Session, profiles, SSO, assume role), a MinIO / S3-compatible endpoint, Buffered caches, Counted call budgets, ServerOptions (public_url, trusted_proxies), a .http file (Response::from_bytes). Covers Rust, Python and Node.js.
 ---
 
 # Storage: handles, bytes, codings, charsets
@@ -61,6 +61,10 @@ Install and cross-language conventions are in `yggdryl`.
 | HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
 | paginate a REST API | `request.with_pagination(Pagination::from_str("url:next")?).pages()`, `session.pages(request)` | `session.pages(url, pagination="url:next")`, `Request(method, url, session=session).pages(pagination=...)` | `session.pages(url, { pagination: 'url:next' })`, `new Request(m, url).withSession(s).withPagination('url:next').pages()` |
 | an origin for tests, in process | `Server::bind("127.0.0.1:0")?` + `respond`, `route`, `mount`, `inject(Fault)` | `with http.Server.bind() as server:` | `http.Server.bind()` ... `server.shutdown()` |
+| serve a handle over HTTP, bounded and traced | `Server::bind_with("0.0.0.0:8080", ServerOptions::default().with_max_connections(n).with_read_timeout(d).with_max_body_size(n).with_trace(Holder::folder(dir)?))?`, `mount(prefix, holder)?`, `unmount(prefix)`, `set_media_type(path, mt)?`, `route(Some(Method::Get), path, handler)` with a streamed `Response::with_writer(..)` body | `http.Server.bind(address, max_connections=, read_timeout=, max_body_size=, trace=)`, `mount(prefix, handle)`, `unmount`, `route(path, handler, method=)` | `http.Server.bind(address, { maxConnections, readTimeout, maxBodySize, trace })`, `mount(prefix, handle)`, `unmount`, `setMediaType(path, mt)`; no `route` (a handler would deadlock the server thread) |
+| a server behind a reverse proxy | `ServerOptions::with_public_url(url)`, `with_trusted_proxies(["10.0.0.0/8"])?`, `with_forwarded_headers([ForwardedHeader::XForwardedFor, ..])`, `with_path_prefix("/olap")?`; `server.public_url_of(path)?`, `server.requests()[i].client` | `public_url=`, `trusted_proxies=`, `forwarded_headers=`, `path_prefix=`; `public_url_of(path)`, `server.requests[i]["client"]` | `{ publicUrl, trustedProxies, forwardedHeaders, pathPrefix }`; `publicUrlOf(path)`, `server.requests[i].client` |
+| a `message/http` document (a `.http` file, a trace) | `http::Request::from_bytes(&b)?`, `http::Response::from_bytes(&b)?`, `into_bytes()?`, `response.into_scalar()?`; `http::{parse_request, parse_response, render_request, render_response, decode_chunked, encode_chunked}` | none (`from_bytes` there is `IOBase`'s in-memory handle, not a parse) | `http.Request.fromBytes(buf)`, `http.Response.fromBytes(buf)`, `intoBytes()`, `response.intoScalar()` |
+| sign a request to any AWS service (`aws` feature) | `request.with_sigv4(&session, "glue", &region)`, `session.service_endpoint("s3tables", &region)?`, `aws::Session::from_properties(pairs)?` / `with_properties` (a catalog's bag: `client.region`, `AWS_REGION`, `role_arn`, ...) | Rust only: handles sign S3 alone | Rust only |
 | a location under properties | `Holder::from_url(&url, [("region", "eu-west-1")])?`; an object-store location's query read as the store's properties beneath the ones passed, a parameter no store reads `Error::Parse` | `IOBase.from_uri(uri, options=, **properties)` - `Holder::from_url`, no `pyarrow.fs` built; an object-store URL's query is read by the core as the store's properties beneath the given ones (keyword over mapping over query) and taken off the location the handle reports, a parameter no store reads (`?versionId=3`) a `ValueError` | `IOBase.fromUri(uri, options?)`, the same door: an option wins over the query whatever its spelling |
 | a pyarrow filesystem or a JS handler | the bridge alone, for a foreign `FileSystem`: `FsFile::from_path(Arc<dyn FileSystem>, path, uri)?` | `IOBase.from_fs(pyarrow_fs, path)`: `LocalFileSystem`, `S3FileSystem`, `GcsFileSystem`, `AzureFileSystem` and a `SubTreeFileSystem` over one answer the native role (`LocalPath`, `S3Path`) under the filesystem's own options; any other is bridged, `uri=` its caller's spelling, and so is a store filesystem stating an argument the native client cannot read (`tls_ca_file_path`, `default_metadata`, `target_service_account`, an Azure host or scheme of its own) | `IOBase.fromFs(handler, path, uri?)` (bridged) |
 | ZIP archive | `zip::mount(holder)`, `zip::from_url(&url)?`, `ZipArchive::new(h).mount()` | Rust only | Rust only |
@@ -196,6 +200,19 @@ Install and cross-language conventions are in `yggdryl`.
     `yggdryl::HOSTNAME`, Python `yggdryl.HOSTNAME`, JavaScript `HOSTNAME`)
     is the machine's own name, read once: intake reads it as this machine,
     and no URL names it.
+19. **A server streams what it mounts, bounded, and believes no proxy by
+    default.** A mount serves any handle - a leaf streamed, never held
+    whole, with `Range`, `ETag` and `Last-Modified`, a container as a JSON
+    listing - and answers `PUT` (`write_all_bytes`) and `DELETE` (`remove`)
+    too. `ServerOptions` bounds it (`max_connections` 512,
+    `read_timeout`/`write_timeout` 30 s, `max_body_size` 64 MiB) and
+    `with_trace(folder)` writes each exchange as `NNNN-request.http` /
+    `NNNN-response.http`, `message/http` documents, the response a moment
+    after the answer. Every URL it states is built on `with_public_url`
+    when given, else on what the request says - forwarded fields only from
+    `with_trusted_proxies` peers, and only the `with_forwarded_headers`
+    named (`X-Forwarded-For`, `X-Forwarded-Proto` by default);
+    `with_path_prefix` comes off before routing and goes back on those URLs.
 
 ## Pitfalls
 
@@ -227,13 +244,16 @@ Install and cross-language conventions are in `yggdryl`.
 | `Client(...).session(http_version=2)` on a client built without it | refused by name: the pool's knobs are the client's - `Client({"http_version": "2"}).session(...)` |
 | `http_version=3` against a plain `http://` origin | QUIC needs TLS: it answers as `2` (`h2c`); HTTP/3 is an `https` origin |
 | `session.get(url).content` on a large download | `get(url, stream=True)` and `iter_content(n)` / Rust `stream()?`: the body stays on the wire and resumes |
+| a writable folder mounted on `0.0.0.0` for untrusted clients | a mount answers `PUT` and `DELETE`: let the proxy in front pass only `GET` and `HEAD` |
+| `trusted_proxies=["0.0.0.0/0"]`, or naming `X-Forwarded-Host` the proxy passes through | trust the proxy's own addresses and name only fields it sets on every request - or state `public_url`, which no request overrides |
+| Python or JavaScript `server.requests()` | a property there, `server.requests`; Rust's is the method `server.requests()` |
 
 ## Language references
 
-- `references/rust.md` - read when writing Rust (`Holder`, `Buffer`, `Coded`, `Transcoded`, `Counted`, `s3`, `zip`).
-- `references/python.md` - read when writing Python (`IOBase`, role classes, `yggdryl.gzip`, `yggdryl.charset`).
-- `references/javascript.md` - read when writing Node.js (`IOBase`, `gzip`/`zlib`/`zstd`/`charset` namespaces, handler protocol).
-- `references/backends.md` - configuration and cost tables for Local, Filesystems, S3 / GCS / Azure, HTTP, Buffered and ZIP.
+- `references/rust.md` - read when writing Rust (`Holder`, `Buffer`, `Coded`, `Transcoded`, `Counted`, `s3`, `zip`, `http::Server`).
+- `references/python.md` - read when writing Python (`IOBase`, role classes, `yggdryl.gzip`, `yggdryl.charset`, `http.Server`).
+- `references/javascript.md` - read when writing Node.js (`IOBase`, `gzip`/`zlib`/`zstd`/`charset` namespaces, handler protocol, `http.Server`).
+- `references/backends.md` - configuration and cost tables for Local, Filesystems, S3 / GCS / Azure, HTTP (client and server), Buffered and ZIP.
 
 ## Deeper
 
@@ -243,6 +263,10 @@ Install and cross-language conventions are in `yggdryl`.
 - Object stores: https://platob.github.io/yggdryl/holder/#object-stores
 - HTTP, HTTP/2 and HTTP/3: https://platob.github.io/yggdryl/holder/#http
 - Pagination and `Pages`: https://platob.github.io/yggdryl/holder/#pages
+- Serving a handle, bounds and the trace: https://platob.github.io/yggdryl/holder/#serving-a-handle
+- Behind a reverse proxy: https://platob.github.io/yggdryl/holder/#behind-a-reverse-proxy
+- `message/http` documents: https://platob.github.io/yggdryl/media/http/
+- Signing other AWS services: https://platob.github.io/yggdryl/holder/#signing-other-services
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
 - Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/compression/
 - Logging through any handle: https://platob.github.io/yggdryl/logging/

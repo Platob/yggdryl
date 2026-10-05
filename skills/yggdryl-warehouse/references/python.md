@@ -3,10 +3,12 @@
 `from yggdryl.warehouse import ...` (every class is also on `yggdryl`).
 `Catalog`, `Namespace` and `Table` are `IOBase` subclasses and are never built
 directly: `type(object)` is the implementation - `MemoryCatalog`,
-`FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable`. A path is
-dotted text or a sequence of parts; properties are a `dict[str, str]` and are
-also taken as keywords (`region="eu-west-1"`), merged after the mapping,
-every value spelled as text, `None` clearing and `...` not given.
+`FolderCatalog`, `MemoryNamespace`, `FolderNamespace`, `MediaTable`, and
+`IcebergCatalog`, `IcebergNamespace`, `IcebergTable` from `yggdryl.iceberg`.
+A path is dotted text or a sequence of parts; properties are a
+`dict[str, str]` and are also taken as keywords (`region="eu-west-1"`), merged
+after the mapping, every value spelled as text, `None` clearing and `...` not
+given.
 
 ## Register a folder and resolve a path
 
@@ -203,6 +205,55 @@ finally:
     assert str(SystemWarehouse.unregister(catalog)) == catalog
 ```
 
+## An Iceberg warehouse folder creates
+
+`yggdryl.iceberg.IcebergCatalog` is the catalog that creates: namespaces nest
+to any depth, a create descends through existing ones only, and each level
+keeps its properties in its own document. See
+https://platob.github.io/yggdryl/media/iceberg/#catalog.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+
+from yggdryl.iceberg import IcebergCatalog, IcebergTable
+from yggdryl.warehouse import Warehouse
+
+root = pathlib.Path(tempfile.mkdtemp()) / "lake"
+schema = pa.schema([pa.field("id", pa.int64(), nullable=False), pa.field("venue", pa.string())])
+
+# `create` writes `metadata/catalog.json`; `open_or_create` absorbs the
+# conflict a second `create` is.
+lake = IcebergCatalog.create("lake", root)
+assert (root / "metadata" / "catalog.json").is_file()
+assert IcebergCatalog.open_or_create("lake", root).name == "lake"
+
+# A create descends through existing namespaces only: `nyc` before `nyc.taxis`.
+try:
+    lake.tables.create("nyc.taxis", schema)
+    raise AssertionError("no namespace `nyc` yet")
+except ValueError as error:
+    assert "lake.nyc" in str(error)
+lake.namespaces.create("nyc", owner="ops")
+assert type(lake.tables.create("nyc.taxis", schema)) is IcebergTable
+# The view's writes create a table from the rows' own schema.
+lake.tables.append("nyc.zones", pa.table({"id": [1, 2], "zone": ["a", "b"]}))
+
+# What a namespace keeps is its own document: another catalog over the folder
+# reads it, and `update_properties` writes it.
+nyc = IcebergCatalog("lake", root).namespaces["nyc"]
+assert nyc.properties == {"owner": "ops"}
+nyc.update_properties({"tier": "gold"})
+assert nyc.properties["tier"] == "gold"
+assert sorted(nyc.tables) == ["taxis", "zones"]
+
+warehouse = Warehouse()
+warehouse.register(lake)
+assert warehouse.table("lake.nyc.zones").row_size() == 2
+```
+
 ## Gotchas in Python
 
 - `name`, `path`, `description`, `modified`, `properties`, `storage`,
@@ -217,4 +268,8 @@ finally:
   the implementation.
 - `warehouse.register(IOBase(path))` is a `TypeError`: register a
   `MediaTable`, a `FolderCatalog` or another warehouse object.
-- `update_properties` is refused by every implementation here.
+- `update_properties` is refused by the memory, folder, media and S3 Tables
+  implementations; an `IcebergCatalog` or `IcebergNamespace` writes it into
+  its own document.
+- There is no XML for Analysis provider in Python: run the wheel's
+  `yggdryl xmla serve name=location ...` (see the door table).

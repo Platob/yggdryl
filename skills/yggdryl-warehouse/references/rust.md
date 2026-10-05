@@ -1,12 +1,16 @@
 # yggdryl-warehouse in Rust
 
-Every name is at the crate root: `use yggdryl::{Warehouse, FolderCatalog,
-MediaTable, ...};`. The traits must be in scope for their verbs -
+Every warehouse name is at the crate root: `use yggdryl::{Warehouse,
+FolderCatalog, MediaTable, ...};`. The traits must be in scope for their verbs -
 `ObjectValue` (`name`, `path`, `kind`, `properties`), `NamespaceValue`
 (`children`, `get`), `CatalogValue` (`namespace_levels`), `TableValue`
 (`field`, `storage`), `IOMedia` (`row_size`, `read_serie`,
-`read_arrow_reader`). Everything is a default-feature build; a table laid out
-as a table format reads its rows under `iceberg`.
+`read_arrow_reader`). The implementations of a table format and of a store
+live in their module: `yggdryl::iceberg::IcebergCatalog` (`iceberg`) and
+`yggdryl::s3tables::{S3Tables, S3TablesCatalog}` (`s3tables`); the provider
+`yggdryl::xmla::{Service, ServiceOptions}` is a default-feature module whose
+`route` needs `http`. Everything else is a default-feature build; a table laid
+out as a table format reads its rows under `iceberg`.
 
 ## Register a folder and resolve a path
 
@@ -211,6 +215,97 @@ assert_eq!(SystemWarehouse::table(path)?.storage(), "text/csv");
 assert_eq!(SystemWarehouse::unregister([catalog.as_str()])?.kind(), IOKind::Catalog);
 ```
 
+## An Iceberg warehouse folder creates
+
+`IcebergCatalog` (`iceberg` feature) lays a folder out as `HadoopCatalog`
+does: namespaces nest to any depth, a create descends through existing ones
+only, and each level keeps its properties in its own document. See
+https://platob.github.io/yggdryl/media/iceberg/#catalog.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch};
+use yggdryl::holder::Holder;
+use yggdryl::iceberg::IcebergCatalog;
+use yggdryl::{Catalog, DataType, IOMedia, ObjectValue, Properties, StructType, Table, Url, Warehouse};
+
+let root = std::env::temp_dir().join(format!("ygg-skill-warehouse-iceberg-{}", std::process::id()));
+let _ = std::fs::remove_dir_all(&root);
+let field = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
+
+// `create` writes `metadata/catalog.json`; a second `create` is a conflict,
+// which `open_or_create` absorbs.
+let lake = Catalog::from(IcebergCatalog::create("lake", Holder::folder(&root)?)?);
+assert!(IcebergCatalog::create("lake", Holder::folder(&root)?).unwrap_err().is_conflict());
+
+// A create descends through existing namespaces only: `nyc` before `nyc.taxis`.
+assert!(lake.tables().create("nyc.taxis", &field, &Properties::new()).unwrap_err().is_absent());
+lake.namespaces().create("nyc", &Properties::new().with_property("owner", "ops"))?;
+assert!(matches!(lake.tables().create("nyc.taxis", &field, &Properties::new())?, Table::Iceberg(_)));
+
+// The view's writes create a table from the reader's own schema.
+let batch = RecordBatch::try_new(field.into_arrow_schema()?, vec![Arc::new(Int64Array::from(vec![1_i64, 2]))])?;
+let zones = lake.tables().append_arrow_reader("nyc.zones", yggdryl::arrow::batch_reader(batch.schema(), [batch]))?;
+assert_eq!(zones.row_size()?, 2);
+
+// What a namespace keeps is its `metadata/namespace.json`: another catalog
+// over the folder reads it, and `update_properties` writes it.
+let again = Catalog::from(IcebergCatalog::new("lake", Url::from_path(&root)?)?);
+let nyc = again.namespace("nyc")?;
+assert_eq!(nyc.properties()?.get("owner"), Some("ops"));
+nyc.update_properties(&Properties::new().with_property("tier", "gold"), &[])?;
+assert_eq!(nyc.properties()?.get("tier"), Some("gold"));
+assert_eq!(nyc.tables().len()?, 2);
+
+let mut warehouse = Warehouse::new();
+warehouse.register(again)?;
+assert_eq!(warehouse.table("lake.nyc.zones")?.row_size()?, 2);
+std::fs::remove_dir_all(&root)?;
+```
+
+## Serve catalogs over XML for Analysis
+
+`xmla::Service` serves a warehouse's catalogs to Excel and Power Query, one
+cube per catalog; `handle` answers a request's bytes in process, and `route`
+puts it on the crate's `http::Server` (`yggdryl xmla serve` does the same from
+a terminal). See https://platob.github.io/yggdryl/media/xmla/#provider.
+
+```rust
+use std::sync::Arc;
+
+use yggdryl::holder::Holder;
+use yggdryl::http::{Request as HttpRequest, Server};
+use yggdryl::xmla::{Discover, Execute, Request, RequestType, Response, Service, ServiceOptions};
+use yggdryl::{FolderCatalog, Scalar, Serie, Warehouse};
+
+let root = std::env::temp_dir().join(format!("ygg-skill-warehouse-xmla-{}", std::process::id()));
+std::fs::create_dir_all(root.join("eu"))?;
+std::fs::write(root.join("eu/trades.csv"), "symbol,price\nAAPL,187.5\nMSFT,410.25\n")?;
+let mut warehouse = Warehouse::new();
+warehouse.register(FolderCatalog::bound("market", Holder::folder(&root)?))?;
+
+// Read-only unless `with_writable(true)`; a namespace is a schema to XMLA.
+let service = Service::new(ServiceOptions::new()).with_warehouse(warehouse);
+assert!(service.catalog("market").is_some());
+let tables = Request::from(Discover::new(RequestType::DbschemaTables));
+let answer = Response::from_bytes(&service.handle(&tables.into_bytes()?, Vec::new())?, None)?;
+let rows = answer.rows().expect("a rowset");
+assert_eq!(rows.child("TABLE_SCHEMA").expect("a column").scalar(0)?, Scalar::from("eu"));
+assert_eq!(rows.child("TABLE_NAME").expect("a column").scalar(0)?, Scalar::from("trades"));
+
+// On a socket: a statement in the expression grammar, `catalog.schema.table`.
+let server = Server::bind("127.0.0.1:0")?;
+let endpoint = Arc::new(service).route(&server, "/xmla")?;
+let execute = Request::from(Execute::statement("select symbol from market.eu.trades where price > 200"));
+let answer = HttpRequest::post(&endpoint.to_string(), execute.into_bytes()?)?
+    .with_header("content-type", "text/xml; charset=utf-8")?
+    .send()?;
+assert_eq!(Response::from_bytes(&answer.bytes()?, None)?.rows().map(Serie::len), Some(1));
+server.shutdown()?;
+std::fs::remove_dir_all(&root)?;
+```
+
 ## Gotchas in Rust
 
 - `Catalog`, `Namespace` and `Table` implement both `IOBase` and
@@ -228,5 +323,10 @@ assert_eq!(SystemWarehouse::unregister([catalog.as_str()])?.kind(), IOKind::Cata
 - `FolderCatalog::bound`/`MediaTable::bound` keep the handle given, and a
   clone rebuilds from its location; a `Holder::buffer` has none, so a clone
   of an object bound to one refuses its next verb by name.
-- `update_properties` is refused by every implementation here; stated
+- `update_properties` is refused by the memory, folder, media and S3 Tables
+  implementations; an `IcebergCatalog` or namespace writes it into its own
+  document (a table's is refused for `commit_metadata_changes`). Stated
   properties are never written into a document.
+- `xmla::Request`/`Response` and `http::Request`/`Response` share names:
+  alias one (`use yggdryl::http::Request as HttpRequest`). `Service::route`
+  takes `Arc<Self>`, so build the service fully before wrapping it.

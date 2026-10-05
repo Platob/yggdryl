@@ -1,6 +1,6 @@
 ---
 name: yggdryl-warehouse
-description: Find and open tables by dotted path through yggdryl's warehouse - catalogs of namespaces of tables - in Rust, Python and Node.js. Use when registering a folder, an object-store prefix or a ZIP archive as a catalog (FolderCatalog, Catalog.folder, Catalog.from_url), registering one table at any location under a path (MediaTable, Table.media), resolving `lake.eu.trades` to a handle (Warehouse.table, SystemWarehouse.table), listing one level (namespaces / tables views, children), checking membership, writing through a view (tables.append / overwrite), stating credentials once as properties that reach every table's storage, reading an object's kind, path, storage and schema, or holding a catalog, namespace or table as an IOBase (Holder::Catalog / Namespace / Table, IOBase.from). Covers the memory and folder implementations and the process's system warehouse.
+description: Find and open tables by dotted path through yggdryl's warehouse - catalogs of namespaces of tables - in Rust, Python and Node.js. Use when registering a folder, an object-store prefix or a ZIP archive as a catalog (FolderCatalog, Catalog.folder, Catalog.from_url), registering one table at any location under a path (MediaTable, Table.media), resolving `lake.eu.trades` to a handle (Warehouse.table, SystemWarehouse.table), listing one level (namespaces / tables views, children), checking membership, writing through a view (tables.append / overwrite), stating credentials once as properties that reach every table's storage, reading an object's kind, path, storage and schema, or holding a catalog, namespace or table as an IOBase (Holder::Catalog / Namespace / Table, IOBase.from); creating namespaces and tables in an Iceberg warehouse folder (IcebergCatalog create / open_or_create, update_properties) or an Amazon S3 Tables bucket (S3TablesCatalog, the S3Tables control-plane client); serving catalogs to Excel / Power Query over XML for Analysis (xmla::Service, the `yggdryl xmla serve` command and its reverse-proxy flags). Covers the memory, folder, Iceberg and S3 Tables implementations and the process's system warehouse.
 ---
 
 # Warehouse: catalogs, namespaces, tables
@@ -17,8 +17,9 @@ binding, and is also a **handle**: a catalog or a namespace a container whose
 
 Bytes, listings and backends of a handle are `yggdryl-storage`; rows on a
 handle, `RecordOptions` and partitions are `yggdryl-records`; a plan's
-`from catalog.namespace.table` is `yggdryl-expressions`. Install and
-cross-language conventions are in `yggdryl`.
+`from catalog.namespace.table` is `yggdryl-expressions`; an `.xmla` rowset
+file is `yggdryl-records`, while serving catalogs over XML for Analysis is
+here. Install and cross-language conventions are in `yggdryl`.
 
 ## Choose the door
 
@@ -27,11 +28,14 @@ cross-language conventions are in `yggdryl`.
 | a folder as a catalog, a handle in hand | `FolderCatalog::bound(name, holder)` | `FolderCatalog(name, IOBase(p))` | `warehouse.Catalog.folder(name, new IOBase(p))` |
 | a folder as a catalog, by location | `FolderCatalog::new(name, url)?` (`.with_levels(n)`, `.with_properties(bag)`) | `FolderCatalog(name, path_or_url, levels=1, **properties)` | `warehouse.Catalog.folder(name, location, { levels, properties })`, `new warehouse.FolderCatalog(...)` |
 | a catalog from a URL and a property bag | `Catalog::from_url(&url, &properties)?` | `Catalog.from_url(url, type="memory", name="m")` | `warehouse.Catalog.fromUrl(url, { type, name })` |
-| an Iceberg warehouse folder as a catalog - it creates | `IcebergCatalog::bound(name, holder)`, `::new(name, url)?`, `Catalog::from_url` with `type = hadoop` (`iceberg` feature) | `IcebergCatalog(name, location, **properties)` from `yggdryl.iceberg` | `new iceberg.IcebergCatalog(name, location, { description, properties })`, `.intoCatalog()` to register |
+| an Iceberg warehouse folder as a catalog - it creates | `yggdryl::iceberg::IcebergCatalog::bound(name, holder)`, `::new(name, url)?`; `::create(name, holder)?` writes `metadata/catalog.json` (an occupied folder conflicts), `::open_or_create`; `Catalog::from_url` with `type = hadoop` (`iceberg` feature) | `IcebergCatalog(name, location, **properties)`, `IcebergCatalog.create(name, location)`, `.open_or_create` from `yggdryl.iceberg` | `new iceberg.IcebergCatalog(name, location, { description, properties })`, `iceberg.IcebergCatalog.create(name, location)`, `.openOrCreate`; `.intoCatalog()` to register, `iceberg.IcebergCatalog.from(catalog)` back |
+| create a namespace or a table where the catalog creates (Iceberg, S3 Tables) | `catalog.namespaces().create("nyc", &props)?`, `.tables().create("nyc.taxis", &field, &props)?` | `catalog.namespaces.create("nyc", owner="ops")`, `catalog.tables.create("nyc.taxis", schema)` | `catalog.namespaces().create('nyc', { owner: 'ops' })`, `catalog.tables().create('nyc.taxis', field)` |
+| persist a catalog's or a namespace's properties (Iceberg writes its own document; the other implementations refuse) | `ns.update_properties(&updates, &removes)?` (`ObjectValue`) | `ns.update_properties({"tier": "gold"}, removes=[...])` | `ns.updateProperties({ tier: 'gold' }, removes)` |
 | an Amazon S3 Tables table bucket as a catalog - it creates, and commits through the control plane | `S3TablesCatalog::new(name, S3Tables::new(session), bucket_arn)?`, `Catalog::from_url(&bucket_arn, &props)?` - the ARN, or `s3tables://<bucket>` (`s3tables` feature) | `Catalog.from_url("arn:aws:s3tables:<region>:<account>:bucket/<name>", profile=...)` - the plain `Catalog` class | `warehouse.Catalog.fromUrl(arn, { profile })` - `implementation` `'Catalog'` |
 | what a table bucket's location names, with no catalog built - `s3tables://<bucket>[/<namespace>[/<table>]]`, the bucket's ARN, a table's ARN | `Holder::from_url(location, &props)?` - `Holder::Catalog`, `::Namespace` or `::Table`; `IcebergTable::from_url(location, &props)?` for the table (`s3tables` feature) | `IOBase(location)` - a `Catalog`, a `Namespace` or an `IcebergTable`; `IcebergTable(location, **props)` | `new IOBase(location)` - `kind()` says which; `iceberg.IcebergTable.open(location, props)` |
 | create a table in a table bucket by its location, the namespace made on the way | `IcebergTable::create_from_url(Url::from_str("s3tables://b/ns/t")?, &props, None, schema, None)?`, `open_or_create_from_url(..)` - a table's ARN is opened or absent, never created | `IcebergTable.create("s3tables://b/ns/t", schema, **props)`, `.open_or_create(..)` | `iceberg.IcebergTable.create('s3tables://b/ns/t', schema, undefined, undefined, props)`, `.openOrCreate(..)` |
 | drop a table a table bucket keeps | `table.remove(true)?` - one `DeleteTable` | `table.remove(recursive=True)` | `IOBase.from(table.intoTable()).remove(true)` |
+| provision buckets, namespaces and tables on the S3 Tables control plane | `s3tables::S3Tables::new(aws::Session::new()).with_region("eu-west-1")`: `create_table_bucket(name)?`, `table_buckets()`, `create_namespace(&bucket, ns)?`, `create_table(&bucket, ns, name, Some(&field))?`, `tables(&bucket, Some(ns))`, `get_table_by_arn(&arn)?`, `rename_table`, `remove_table`, `remove_namespace`, `remove_table_bucket` | no client: the bucket's `Catalog.from_url(arn)`, whose views create namespaces and tables | no client: the bucket's `warehouse.Catalog.fromUrl(arn)`, whose views create namespaces and tables |
 | a namespace of registered objects | `MemoryNamespace::new("lake.eu")?.with_object(t)?` | `MemoryNamespace("lake.eu", objects=[t])` | `warehouse.Namespace.memory('lake.eu', { objects: [t] })` |
 | a folder as a standalone namespace | `FolderNamespace::new("lake.eu", url)?`, `::bound(path, holder)?` | `FolderNamespace("lake.eu", location, levels=0)` | `warehouse.Namespace.folder('lake.eu', location)` |
 | a table at any location | `MediaTable::new("lake.eu.trades", url)?` (`.with_field`, `.with_dtype`, `.with_layout`) | `MediaTable(path, location, field=, dtype=, layout="leaf", **properties)` | `warehouse.Table.media(path, location, { field, dtype, layout, properties })` |
@@ -52,6 +56,8 @@ cross-language conventions are in `yggdryl`.
 | properties | `obj.properties()?` -> `Properties`; `Properties::new().with_property(k, v)` | `obj.properties` -> `dict[str, str]`; `properties={...}` or `**kw` | `obj.properties` -> ordered object; `{ properties: {...} }` |
 | properties of a location | `warehouse.properties_for(&url)` | `warehouse.properties_for(url_or_path)` | `registry.propertiesFor(url)` |
 | an object as a handle | `Holder::from(obj)`, `obj.into_holder()` | every object is an `IOBase` | `IOBase.from(obj)`, `new IOBase(obj)` |
+| serve catalogs over XML for Analysis (Excel, Power Query; one cube per catalog) | `xmla::Service::new(ServiceOptions::new()).with_catalog(c)`, `.with_warehouse(w)`; `Arc::new(service).route(&http::Server::bind(addr)?, "/xmla")?` (`http` feature); `service.handle(&request_bytes, writer)?` in process | Rust only - run the command below | Rust only - run the command below |
+| ... from a terminal | `yggdryl xmla serve market=/data/market ref=s3://b/ref --bind 127.0.0.1:8080 --path /xmla` (`--writable`, `--trace <folder>`, `--max-body`; behind a proxy `--public-url`, `--trusted-proxy`, `--forwarded-header`, `--path-prefix`, `--read-timeout`) | the same binary, shipped in the wheel | not in the npm package: the wheel's `yggdryl` on `PATH` |
 
 ## Rules for fast, correct use
 
@@ -77,8 +83,9 @@ cross-language conventions are in `yggdryl`.
    catalog and every table's storage under it opens with them; a `codec` or
    `media_type` stated on a table types an extensionless location.
    `update_properties` persists only where the store keeps something - the
-   memory, folder and media implementations keep nothing and refuse by name;
-   an Iceberg catalog and namespace keep theirs in their own document.
+   memory, folder, media and S3 Tables implementations keep nothing and
+   refuse by name; an Iceberg catalog and namespace keep theirs in their own
+   document.
 5. **Memory lists what was registered; a folder lists its store; neither
    creates.** `create`, `open_or_create` and the append/overwrite helpers
    refuse a name nothing holds by implementation name
@@ -129,6 +136,18 @@ cross-language conventions are in `yggdryl`.
     `field`/`storage`, `IOMedia` for `row_size`/`read_serie`. `IOBase` and
     `ObjectValue` both define `kind` and `url` on `Catalog`, `Namespace` and
     `Table`, so with both in scope write `ObjectValue::kind(&table)`.
+13. **A provider serves catalogs read-only, in the expression grammar.**
+    `xmla::Service` answers `Discover` from the catalogs' own traits
+    (`MDSCHEMA_CUBES` one cube per catalog, `DBSCHEMA_SCHEMATA` its
+    namespaces, `DBSCHEMA_TABLES` its tables, `DBSCHEMA_COLUMNS` each
+    `field()`) and `Execute` by running the statement through
+    `Plan::execute_in` against its warehouse: `select ... from
+    catalog.schema.table`, or `schema.table` under the connection's `Catalog`
+    (Excel's database). A write is refused unless `with_writable(true)` /
+    `--writable`; MDX and DAX are refused; every refusal is a SOAP fault at
+    HTTP `200`. The command builds each `name=location` with
+    `Catalog::from_url` - a folder or a URL is a folder catalog - and prints
+    the endpoint as its first line.
 
 ## Pitfalls
 
@@ -146,7 +165,7 @@ cross-language conventions are in `yggdryl`.
 | `new warehouse.Catalog(...)` in JavaScript | `warehouse.Catalog.memory(...)`, `.folder(...)`, `.fromUrl(...)`, or `new warehouse.MemoryCatalog(...)` |
 | `table.kind()` on a Rust `Table` with `IOBase` and `ObjectValue` both imported | `ObjectValue::kind(&table)` or `IOBase::kind(&table)` |
 | cloning a `MediaTable::bound(path, Holder::buffer(..))` and reading the clone | keep the original; a buffer has no location to rebuild from |
-| `Catalog::from_url` with `type = 'rest'` | this build has `memory` and `folder` catalogs, `hadoop` under `iceberg`, and the scheme `s3tables://` under `s3tables`; the refusal names them |
+| `Catalog::from_url` with `type = 'rest'` or `'xmla'` | this build has `memory` and `folder` catalogs, `hadoop` under `iceberg`, and the scheme `s3tables://` under `s3tables`; the refusal names them |
 | an S3 Tables bucket named by `s3tables://<bucket>` | a bare location states no region and no account: name the bucket by its ARN, or state `warehouse=<arn>` or `account_id=`, to skip the one `ListTableBuckets` that finds it |
 | `ls()` on an S3 Tables table, or expecting `remove()` or a failed commit to clean its warehouse | `ls` is refused, touching nothing; `remove` is one `DeleteTable`; a commit writes files and publishes one document through `UpdateTableMetadataLocation`. Nothing lists or deletes the warehouse - a failed commit's files stay for the bucket's own removal |
 | opening the location a table's ARN locates (`s3tables://<bucket>/<id>`) | refused at `$.url`: it spells the identifier where a namespace goes. Hand the ARN itself to the door, or name the table `s3tables://<bucket>/<namespace>/<table>` |
@@ -155,12 +174,16 @@ cross-language conventions are in `yggdryl`.
 | reading `region`, `endpoint` or a credential back off `properties` of a table opened by its location | a located table states its properties less the ones its store read - who signs, where it is, how it is addressed - which stay on the handle it is rooted on and every clone, listed and printed nowhere. A local path reads none, so a table on one states everything it was given; a table bucket's table states none - its session signs |
 | reading `kind()` in a loop on an identifier whose S3 Tables table is absent | an identifier used as a handle keeps a resolution that took, never one that failed: each ask is its request again (and the bucket listing, for a bare location). Open it once with `IcebergTable::from_url` and branch on the absence |
 | registering `lake` on `SystemWarehouse` in a test | a name unique to the process (`format!("test_{}", std::process::id())`), unregistered after |
+| sending the provider MDX or DAX (`EVALUATE 'trades'`), or browsing it with a PivotTable or Power Query's navigator | a statement - `select * from market.trades limit 100` - in Power Query's query box or an `.odc` command text |
+| `schema.table` with no `Catalog` set, or a bare `table` with several catalogs served | `catalog.schema.table`, or set the connection's `Initial Catalog` (the `Catalog` property) |
+| `--writable` over a lake a PyIceberg SQL catalog manages | serve it read-only: a commit here writes a metadata document the SQLite pointer does not name, and the two fork |
+| serving `/lake` as one catalog to see its layers | one `name=location` per warehouse - `bronze=/lake/bronze silver=/lake/silver` - each a cube, each namespace a schema |
 
 ## Language references
 
-- `references/rust.md` - read when writing Rust (`Warehouse`, `FolderCatalog`, `MediaTable`, the traits in scope, `Holder::Table`).
-- `references/python.md` - read when writing Python (`yggdryl.warehouse`, the mapping views, `**properties`, `IOBase` subclasses).
-- `references/javascript.md` - read when writing Node.js (the `warehouse` namespace, static constructors, Map-like views, `IOBase.from`).
+- `references/rust.md` - read when writing Rust (`Warehouse`, `FolderCatalog`, `MediaTable`, `IcebergCatalog`, the traits in scope, `Holder::Table`, `xmla::Service`).
+- `references/python.md` - read when writing Python (`yggdryl.warehouse`, the mapping views, `**properties`, `IOBase` subclasses, `IcebergCatalog`).
+- `references/javascript.md` - read when writing Node.js (the `warehouse` namespace, static constructors, Map-like views, `IOBase.from`, `iceberg.IcebergCatalog`).
 
 ## Deeper
 
@@ -169,5 +192,7 @@ cross-language conventions are in `yggdryl`.
 - Call counts: https://platob.github.io/yggdryl/warehouse/#performance
 - Handles and backends: https://platob.github.io/yggdryl/holder/
 - Locations and targets in a plan: https://platob.github.io/yggdryl/expression/plans/#locations-and-targets
+- Iceberg catalogs: https://platob.github.io/yggdryl/media/iceberg/#catalog; Amazon S3 Tables: https://platob.github.io/yggdryl/media/iceberg/#iceberg-on-amazon-s3-tables
+- Serving over XML for Analysis: https://platob.github.io/yggdryl/media/xmla/#provider, https://platob.github.io/yggdryl/media/xmla/#excel-as-a-client, https://platob.github.io/yggdryl/media/xmla/#behind-a-reverse-proxy, https://platob.github.io/yggdryl/media/xmla/#serve-iceberg-catalogs-as-cubes
 - Sibling skills: `yggdryl-storage` (bytes, listings, backends), `yggdryl-records`
   (rows on a handle, `RecordOptions`), `yggdryl-expressions` (plans over a path).

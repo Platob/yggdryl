@@ -4,7 +4,7 @@
 
 ## Parse and write one document
 
-`loads` answers natural Python values (`dict`, `list`, `int`, ...); `cls=Scalar` answers the exact core `Scalar`. `dumps` answers UTF-8 **bytes**, records written with sorted keys.
+`loads` answers natural Python values (`dict`, `list`, `int`, ...); `cls=Scalar` answers the exact core `Scalar`. `dumps` answers UTF-8 **bytes**: a record (a parsed one, a `Scalar`, a dataclass) writes its keys sorted, a `dict` keeps its own order.
 
 ```python
 from yggdryl import Scalar, json
@@ -19,6 +19,8 @@ assert value.as_py() == natural
 encoded = json.dumps(natural)
 assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
 assert json.dump(natural, utf8=True) == '{"quantity":100,"symbol":"AAPL"}'
+# A dict built by hand crosses as a map, in its own order.
+assert json.dumps({"symbol": "AAPL", "quantity": 100}) == b'{"symbol":"AAPL","quantity":100}'
 ```
 
 ## Type the document with a field or a dataclass

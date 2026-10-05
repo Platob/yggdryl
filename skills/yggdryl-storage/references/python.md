@@ -748,13 +748,64 @@ with http.Server.bind() as server:
     assert sum(len(batch) for batch in reader) == 3
 ```
 
+## Serve a handle over HTTP, behind a proxy
+
+`server.mount(prefix, handle)` serves any handle - a leaf streamed with ranges
+and validators, a folder as a JSON listing, `PUT`/`DELETE` as writes. The
+`bind` keywords bound what a peer can hold (timeouts in seconds or a
+`timedelta`), `trace=` keeps every exchange as `message/http` documents, and
+four keywords say what the server may believe behind a proxy. See
+https://platob.github.io/yggdryl/holder/#serving-a-handle and
+https://platob.github.io/yggdryl/holder/#behind-a-reverse-proxy.
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl import IOBase, http
+
+root = pathlib.Path(tempfile.mkdtemp())
+(root / "lake").mkdir()
+(root / "lake" / "rows.csv").write_bytes(b"symbol,price\nAAPL,1\n")
+
+# Production binds "0.0.0.0:8080"; the bounds hold against peers it does not trust.
+with http.Server.bind(
+    "127.0.0.1:0",
+    max_connections=256,
+    read_timeout=75.0,
+    max_body_size=64 << 20,
+    trace=root / "trace",  # every exchange as NNNN-request.http and NNNN-response.http
+    # Behind a proxy on 10.0.0.0/8 answering https://data.example.com/olap/...
+    public_url="https://data.example.com/olap",
+    trusted_proxies=["10.0.0.0/8"],
+    forwarded_headers=["X-Forwarded-For", "X-Forwarded-Proto"],
+    path_prefix="/olap",
+) as server:
+    server.mount("/data", IOBase(root / "lake"))
+
+    # The prefix comes off before routing; a listing states the public URLs.
+    listing = http.get(server.url_of("/olap/data")).json()
+    assert [entry["url"] for entry in listing] == ["https://data.example.com/olap/data/rows.csv"]
+    assert http.get(server.url_of("/olap/data/rows.csv")).text == "symbol,price\nAAPL,1\n"
+    assert str(server.public_url_of("/data/rows.csv")) == "https://data.example.com/olap/data/rows.csv"
+    assert [sent["path"] for sent in server.requests] == ["/data", "/data/rows.csv"]
+
+# A request's trace file is whole once the request is read: one message/http document.
+assert (root / "trace" / "0000-request.http").read_bytes().startswith(b"GET /olap/data HTTP/1.1\r\n")
+```
+
 ## Rust only
 
 Not bound in Python - reach for the Rust crate, never an invented name:
 `Counted` call tallies, ZIP archives (`zip::mount`), `Transcoded` handles,
 streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
 `S3Options`/`aws::Session` builders (Python passes the same knobs as
-`options=` properties), `mtime()`.
+`options=` properties), `mtime()`, SigV4 signing of another AWS service
+(`Request::with_sigv4`, `Session::service_endpoint`), the `message/http`
+doors (`Request::from_bytes`, `Response::from_bytes`; JavaScript has them
+too - Python's `from_bytes` on those classes is `IOBase.from_bytes`, an
+in-memory handle over the raw bytes, never a parse), a route's streamed body (`Response::with_writer`) and
+`Server::set_media_type` (JavaScript's `setMediaType`).
 
 ## Gotchas in Python
 
@@ -788,5 +839,7 @@ streaming codec `reader`/`writer`, `reader_at`/`writer_at`, the
   raises `FileExistsError` on a store; `mkdir()` on a wrapper
   (`IOBase("lake/x.txt.gz")`) makes the directory on the plain handle
   beneath it.
+- `http.Server`'s `requests` is a property, not a method; `read_timeout=` and
+  `write_timeout=` take seconds or a `timedelta`, refused past one day.
 - Errors map to `ValueError`, `IsADirectoryError`, `OSError` with the native
   message.

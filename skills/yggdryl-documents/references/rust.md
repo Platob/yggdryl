@@ -1,6 +1,6 @@
 # yggdryl-documents in Rust
 
-The four codecs are modules - `yggdryl::{json, yaml, toml, xml}` - plus the inferring entry points re-exported at the crate root (`from_json_scalar`, `from_json_scalar_with_field`, `into_json_scalar` and the YAML/TOML/XML twins). Placeholders, limits, formatting and format inference live in `yggdryl::text`. No feature flag is needed.
+The four codecs are modules - `yggdryl::{json, yaml, toml, xml}` - plus the inferring entry points re-exported at the crate root (`from_json_scalar`, `from_json_scalar_with_field`, `into_json_scalar` and the YAML/TOML/XML twins). Placeholders, limits, formatting and format inference live in `yggdryl::text`; `yggdryl::xml::Element` reads a document by namespace and `yggdryl::soap` is the SOAP 1.1 envelope over it (Rust only). No feature flag is needed.
 
 ## Parse and write one document
 
@@ -170,6 +170,36 @@ assert_eq!(
         Scalar::Null,
     ]),
 );
+```
+
+## XML namespaces and SOAP 1.1 envelopes
+
+`xml::Element` views the natural value by the namespace an element is in rather than the prefix it is spelled with; `soap::Envelope` reads and writes the SOAP 1.1 message over it - header blocks, one body element (a `Fragment`) or a `Fault` - and `EnvelopeWriter` streams one. Rust only; reference: [`xml::Element`](https://docs.rs/yggdryl/latest/yggdryl/xml/struct.Element.html), [`soap`](https://docs.rs/yggdryl/latest/yggdryl/soap/).
+
+```rust
+use yggdryl::soap::{self, Envelope, Fault, FaultCode, Fragment};
+use yggdryl::xml::{self, Element};
+use yggdryl::Scalar;
+
+let document = xml::from_utf8(
+    "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\">\
+     <s:Body><Ping xmlns=\"urn:example\">1</Ping></s:Body></s:Envelope>",
+)?;
+let root = Element::root(&document)?;
+assert_eq!((root.local_name(), root.namespace()), ("Envelope", Some(soap::ENVELOPE_NAMESPACE)));
+let body = root.child(Some(soap::ENVELOPE_NAMESPACE), "Body").expect("the body");
+assert_eq!(body.child(Some("urn:example"), "Ping").expect("the call").text(), Some("1"));
+
+// The envelope: one body element, or the fault that stands in for it.
+let request = Envelope::from_natural(&document)?;
+assert_eq!(request.payload().map(|call| call.element().local_name()), Some("Ping"));
+let bytes = Envelope::from_payload(Fragment::new("Pong", Scalar::from("1"))).into_bytes()?;
+assert!(bytes.starts_with(b"<?xml version=\"1.0\" encoding=\"utf-8\"?><SOAP-ENV:Envelope"));
+
+let answer = Envelope::from_bytes(&Envelope::from_fault(Fault::client("no such method")).into_bytes()?)?;
+let fault = answer.fault().expect("a fault");
+assert_eq!((fault.code(), fault.string()), (&FaultCode::Client, "no such method"));
+assert!(answer.into_payload().is_err());
 ```
 
 ## Bound untrusted input

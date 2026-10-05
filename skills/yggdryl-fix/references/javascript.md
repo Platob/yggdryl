@@ -94,7 +94,9 @@ assert.equal(field.fix.tag, 38)
 ## Decode one captured line
 
 `parseLine` takes a whole captured line as a `Buffer` - verb, prose and remarks
-included - and answers an iterable of every message it carries.
+included - and answers an iterable of every message it carries; `parseFixLine`,
+`parseFixmlLine`, `parseUllinkLine` and `parsePairs` take one body of their
+dialect, or pairs already split, and answer that one message as stated.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -114,6 +116,10 @@ assert.equal([...codec.parseLine(both)].length, 2)
 assert.equal([...codec.parseLine(Buffer.from('After Enrichment -> ACCOUNT=A1 SIDE=1'))].length, 0)
 // The single-frame door refuses a body holding a second frame.
 assert.throws(() => codec.parseFixLine(both), /expected one frame/)
+
+// One FIXML row, or pairs a caller already split: one message each, nothing split off.
+assert.equal(codec.parseFixmlLine(Buffer.from("<Order ClOrdID='XML-1' Side='1'/>")).byTag(11).asJs(), 'XML-1')
+assert.equal(codec.parsePairs([['35', 'D'], ['55', 'AAPL']]).byTag(55).asJs(), 'AAPL')
 ```
 
 ## Read only the message types you need
@@ -553,12 +559,13 @@ assert.deepEqual(ack.marketData(), [])
 `marketData` admits orders, quotes, executions and `W`/`X` book messages - a
 trade as the executions its parse split off - reads each as its one graph leaf
 (a book message one per entry) and sorts them by the instant a book folds them
-at; `graph.BookIterator` then walks them, pruning the executions.
-`bookArrowReader(messages, snapshotMillis, filter)` folds the same messages
-into book rows, one book per book key. Compose `lifecycle` in front when
-predecessor state matters. `marketArrowReader` writes the sorted leaves as
-`marketdata` rows, and `marketDataArrowReader` is its twin over batches of FIX
-rows already in Arrow.
+at; `graph.BookIterator` then walks them, recording each execution among its
+book's deltas, moving no side. `bookArrowReader(messages, snapshotMillis,
+filter)` folds the same messages into book rows, one book per book key,
+pruning trades and batches; `filter` narrows what folds. Compose `lifecycle`
+in front when predecessor state matters. `marketArrowReader` writes the sorted
+leaves as `marketdata` rows, and `marketDataArrowReader` is its twin over
+batches of FIX rows already in Arrow.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -585,6 +592,8 @@ assert.equal(books[1].bestPrice('BUYS'), '101')
 // The book door does not sort: the same capture out of order is no error - the
 // snapshot dated before the book it would fold into is left out, with a warning.
 assert.equal(codec.bookArrowReader(capture).intoTable().numRows, 1)
+// A filter narrows what folds: the executions alone fold the book of their instant.
+assert.equal(codec.bookArrowReader(capture, 0, "marketdatakind = 'EXEC'").intoTable().numRows, 1)
 // The sorted leaves as `marketdata` rows.
 assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
 // The same leaves off the capture's FIX rows.
@@ -694,6 +703,10 @@ fs.rmSync(folder, { recursive: true, force: true })
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
   bulk work inside `parseTextArrowReader` / `arrowReader` / `writeArrowReader`
   and cross into Arrow JS once at the end (`intoTable()`).
+- The serie faces (`parse_text_serie`, `lifecycle_serie`, `book_serie`, ...)
+  are Rust and Python only: chain the Arrow doors instead, as in
+  `codec.lifecycleArrowReader(codec.parseTextArrowReader(handle.readArrowReader()))`,
+  and hand the `BatchReader` to a table's `overwriteSerie` or `appendSerie`.
 - `handle.readTextLines()` reads under the handle's own text options, row
   header included, and takes other options or a property bag like every
   record read; `options.captureNames` is what `{ captureNames }` wants.

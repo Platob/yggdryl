@@ -1,6 +1,6 @@
 ---
 name: yggdryl-documents
-description: Parses and writes JSON, JSON Lines, YAML (multi-document), TOML and XML documents as yggdryl Scalar values or native objects, typed and validated by an optional Field, bounded by limits, with opt-in {{ }} and environment-variable placeholders. Use when loading or validating a config file, calling json/yaml/toml/xml loads, dumps, loads_all / loadsAll, dump_all / dumpAll, load_all / loadAll, from_json_scalar / into_json_scalar / from_json_scalar_with_field (and the yaml/toml/xml twins), json::from_utf8 / from_reader / into_writer, decoding into a dataclass with cls=, typing decimals/dates with field=, mapping XML attributes (@name) and #text, inferring a document's format, or read_scalar / write_scalar on a handle. Covers Rust, Python and Node.js.
+description: Parses and writes JSON, JSON Lines, YAML (multi-document), TOML and XML documents as yggdryl Scalar values or native objects, typed and validated by an optional Field, bounded by limits, with opt-in {{ }} and environment-variable placeholders. Use when loading or validating a config file, calling json/yaml/toml/xml loads, dumps, loads_all / loadsAll, dump_all / dumpAll, load_all / loadAll, from_json_scalar / into_json_scalar / from_json_scalar_with_field (and the yaml/toml/xml twins), json::from_utf8 / from_reader / into_writer, decoding into a dataclass with cls=, typing decimals/dates with field=, mapping XML attributes (@name) and own text (#text), reading XML by namespace rather than prefix (Rust xml::Element / Scope), reading or writing a SOAP 1.1 envelope or fault (Rust soap::Envelope, Fault, EnvelopeWriter), inferring a document's format, or read_scalar / write_scalar on a handle. Covers Rust, Python and Node.js.
 ---
 
 # Documents
@@ -38,6 +38,8 @@ field's columns, and refuses what does not fit with a located error.
 | field-typed row back to a named record | `field.into_natural_value(row)?` | `loads(src, field=f)` (no `cls=Scalar`) | `loads(src, { field })` (no `scalar: true`) |
 | whitespace-separated JSON values | `json::from_utf8_all(s)?` | - | - |
 | XML attribute / own text keys | `xml::ATTRIBUTE_PREFIX` (`@`), `xml::TEXT_KEY` (`#text`) | `"@id"`, `"#text"` | `'@id'`, `'#text'` |
+| XML element by namespace, whatever its prefix | `xml::Element::root(&doc)?`, then `namespace()`, `local_name()`, `child(Some(ns), "Body")`, `attribute_in`, `text()` (Rust only) | - | - |
+| SOAP 1.1 envelope or fault | `soap::Envelope::from_bytes(b)?` -> `payload()` / `fault()`; `Envelope::from_payload(Fragment::new(name, v)).into_bytes()?`, `Envelope::from_fault(Fault::client(msg))`, streamed `EnvelopeWriter::begin(w, &[])?` (Rust only) | - | - |
 | check a value is writable before writing | `toml::validate_for_write(&v)?`, `xml::validate_for_write(&v)?` | - (the `dumps` refusal) | - (the `dumps` refusal) |
 | limits | `json::from_utf8_with_limits(s, Limits::new(depth, bytes, nodes, docs))?` | `max_depth=`, `max_input_bytes=`, `max_nodes=`, `max_documents=` | `{ maxDepth, maxInputBytes, maxNodes, maxDocuments }` |
 | `{{ }}` placeholders | `text::from_utf8_with(s, Format::Yaml, &Loading::new().with_placeholders(p))?` | `yaml.loads(s, placeholders={...}, environment=False)` | `yaml.loads(s, { placeholders, environment: false })` |
@@ -75,8 +77,11 @@ field's columns, and refuses what does not fit with a located error.
    only with `environment=True` / `with_environment(true)`. YAML, TOML and XML
    only - JSON refuses them. Substitution walks the parsed value, so byte
    positions in errors stay exact; quote a placeholder in YAML.
-6. **Output is deterministic.** Records are written with sorted keys, one
-   natural shape per value; the encoder never closes a caller's stream.
+6. **Output is deterministic.** A record writes its keys sorted - a parsed
+   document's, a Rust `Scalar::Struct`, a JavaScript object, a Python
+   dataclass - while a Python `dict` crosses as a map and keeps its own
+   order; one natural shape per value; the encoder never closes a caller's
+   stream.
 7. **XML is text until typed.** Every leaf decodes as text; a repeated element
    is a sequence; one occurrence is a single value unless a field (or a
    dataclass) declares a sequence, which then reads it as a one-item list and
@@ -109,13 +114,17 @@ field's columns, and refuses what does not fit with a located error.
     document because Node's async reader cannot feed the synchronous parser;
     `loadAll(readable)` / `loadAllStream` stay incremental and honour
     backpressure, each complete document still parsed by the native codec.
-14. **Each format keeps its own limits.** YAML tags are annotations and are
-    ignored; anchors and aliases expand under the node budget. TOML follows
-    its native root table, `i64` integers, date/time types and single
-    document. XML skips comments, processing instructions and the DOCTYPE,
-    keeps name prefixes as spelled, and refuses an entity a declaration would
-    have defined; on a handle, a non-UTF-8 charset is read from the XML
-    declaration when neither the media type nor a byte-order mark states one.
+14. **Each format keeps its own limits.** A YAML core tag such as `!!str`,
+    `!!bool`, `!!int`, `!!float` or `!!binary` types the value it marks and any
+    other tag is an annotation read past; an untagged plain `yes`, `no`, `on`
+    or `off` is a boolean in any case (quote it for text); anchors and aliases
+    expand under the node budget. TOML follows its native root table, `i64`
+    integers, date/time types and single document. XML skips comments,
+    processing instructions and the DOCTYPE, keeps name prefixes as spelled
+    (Rust `xml::Element` resolves them to namespaces), and refuses an entity a
+    declaration would have defined; on a handle, a non-UTF-8 charset is read
+    from the XML declaration when neither the media type nor a byte-order mark
+    states one.
 
 ## Pitfalls
 
@@ -163,7 +172,7 @@ field's columns, and refuses what does not fit with a located error.
 
 ## Language references
 
-- `references/rust.md` - read for Rust: module functions, `_with_field` / `_with_limits` / `_all` / `_iter` forms, `text::Loading`, `Formatting`.
+- `references/rust.md` - read for Rust: module functions, `_with_field` / `_with_limits` / `_all` / `_iter` forms, `text::Loading`, `Formatting`, `xml::Element` and `soap`.
 - `references/python.md` - read for Python: `loads`/`dumps` keywords, `cls=` dataclasses, `load_all`, `yggdryl.text.codec`.
 - `references/javascript.md` - read for Node.js: option objects, `Buffer`, async `load`/`loadAll`, `codec`.
 
@@ -173,6 +182,7 @@ field's columns, and refuses what does not fit with a located error.
 - YAML (and placeholder cost): https://platob.github.io/yggdryl/media/yaml/
 - TOML: https://platob.github.io/yggdryl/media/toml/
 - XML (mapping, record medium): https://platob.github.io/yggdryl/media/xml/
+- XML namespaces and SOAP 1.1 (Rust only, no site page): https://docs.rs/yggdryl/latest/yggdryl/xml/struct.Element.html, https://docs.rs/yggdryl/latest/yggdryl/soap/
 - Structured values on a handle: https://platob.github.io/yggdryl/holder/#structured-values
 - Values and fields: https://platob.github.io/yggdryl/types/scalar/, https://platob.github.io/yggdryl/types/field/
 - Sibling skills: `yggdryl-types` (fields, dataclasses, `Scalar`), `yggdryl-storage` (handles, `read_scalar`, codings, charsets), `yggdryl-records` (rows in Arrow IPC, Parquet, Avro, text, Iceberg; `overwrite_serie` for document rows).

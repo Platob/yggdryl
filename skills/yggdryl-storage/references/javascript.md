@@ -594,6 +594,59 @@ assert.equal(totalRows, 3)
 server.shutdown()
 ```
 
+## Serve a handle over HTTP, behind a proxy
+
+`server.mount(prefix, handle)` serves any handle - a leaf streamed with ranges
+and validators, a folder as a JSON listing, `PUT`/`DELETE` as writes. The
+`bind` options bound what a peer can hold (timeouts in milliseconds), `trace`
+keeps every exchange as `message/http` documents `http.Request.fromBytes`
+reads back, and four options say what the server may believe behind a proxy.
+There is no `route`: `respond`, `mount` and `inject` cover it. See
+https://platob.github.io/yggdryl/holder/#serving-a-handle and
+https://platob.github.io/yggdryl/holder/#behind-a-reverse-proxy.
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { IOBase, http } = require('yggdryl')
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+fs.mkdirSync(path.join(root, 'lake'))
+fs.writeFileSync(path.join(root, 'lake', 'rows.csv'), 'symbol,price\nAAPL,1\n')
+
+// Production binds '0.0.0.0:8080'; the bounds hold against peers it does not trust.
+const server = http.Server.bind('127.0.0.1:0', {
+  maxConnections: 256,
+  readTimeout: 75_000,
+  maxBodySize: 64 * 2 ** 20,
+  trace: path.join(root, 'trace'), // every exchange as NNNN-request.http and NNNN-response.http
+  // Behind a proxy on 10.0.0.0/8 answering https://data.example.com/olap/...
+  publicUrl: 'https://data.example.com/olap',
+  trustedProxies: ['10.0.0.0/8'],
+  forwardedHeaders: ['X-Forwarded-For', 'X-Forwarded-Proto'],
+  pathPrefix: '/olap',
+})
+server.mount('/data', new IOBase(path.join(root, 'lake')))
+
+// The prefix comes off before routing; a listing states the public URLs.
+const listing = http.get(`${server.url}olap/data`).json()
+assert.deepEqual(listing.map((entry) => entry.url), ['https://data.example.com/olap/data/rows.csv'])
+assert.equal(http.get(`${server.url}olap/data/rows.csv`).text(), 'symbol,price\nAAPL,1\n')
+assert.equal(server.publicUrlOf('/data/rows.csv').toString(), 'https://data.example.com/olap/data/rows.csv')
+assert.deepEqual(server.requests.map((sent) => sent.path), ['/data', '/data/rows.csv'])
+
+// A request's trace file is whole once the request is read: one message/http document.
+const traced = http.Request.fromBytes(fs.readFileSync(path.join(root, 'trace', '0000-request.http')))
+assert.equal(traced.method, 'GET')
+assert.equal(String(traced.url), `${server.url}olap/data`)
+
+server.shutdown()
+// A connection thread may still be closing the last answer's trace file.
+fs.rmSync(root, { recursive: true, force: true, maxRetries: 3 })
+```
+
 ## Rust only
 
 Not bound in JavaScript - never invent these: a decoded-view handle
@@ -602,6 +655,10 @@ namespaces), `Transcoded`, `Counted` call tallies, ZIP archives, role classes
 (`LocalFile`, `LocalFolder`, `S3File`), `LocalFolder.temporary()/home()`,
 streaming codec readers/writers, `S3Options`/`Session` builders. The store
 knobs those builders take cross as `IOBase.fromUri(url, options)` properties.
+Nor is a server `route` (a JavaScript handler would wait on the thread
+sending the request; `respond`, `mount` and `inject` cover it), a route's
+streamed body (`Response::with_writer`), or SigV4 signing of another AWS
+service (`Request::with_sigv4`, `Session::service_endpoint`).
 
 ## Gotchas in JavaScript
 
@@ -621,6 +678,8 @@ knobs those builders take cross as `IOBase.fromUri(url, options)` properties.
   whatever its spelling (`endpoint` over the query's `endpoint_override`),
   and a parameter no store reads (`versionId`) is refused by name.
 - `buffered(...)` returns the same handle (Python's spends it).
+- `http.Server`'s `requests` is a getter, not a method; `readTimeout` and
+  `writeTimeout` are milliseconds.
 - A handler-backed handle is bound to the JavaScript thread that supplied the
   handler; it cannot be read from a `Worker`.
 - `gzip`, `zlib`, `zstd` and `charset` all ship full TypeScript declarations

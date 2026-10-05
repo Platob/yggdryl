@@ -1,6 +1,6 @@
 ---
 name: yggdryl-market-data
-description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (curruuid, crossuuid, with_previous / withPrevious, EventIterator), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve, BookService, node/book.js), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches, or serving a table of books as a display.
+description: Models and streams market data with yggdryl's graph layer in Rust, Python and Node.js - orders, quotes, executions and trades as dated events (OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent), identities and side-keyed chains (curruuid, crossuuid, with_previous / withPrevious, EventIterator), identifier maps (Identifier, Identifiers) and the instrument registry (IsinRegistry from_url, from_env, enrich, commit), order books keyed by ISIN or ticker (BookIterator and its filter, BookEvent, delta books rebuilt with with_previous, is_complete, alive_on, limits, best_price / bestPrice, spread, depth, SnapshotEvent), a table of books read back as its deltas (MarketData.deltas_serie / deltasSerie), OHLC candles of the best bid and ask per zone-aligned bucket (CandleIterator, CandleOptions, graph.candles, Candle.field), the book display served over a marketdata table (yggdryl market serve and its flags, BookService, node/book.js serve / serveArguments), the Side and MarketDataKind enums and the lifted marketdata Arrow row (MarketData.arrow_reader / arrowReader, from_arrow_reader / fromArrowReader, apply_view / applyView). Use when building market events, folding them into books or candles, persisting or querying marketdata batches or tables of books, or serving a table of books as a display.
 ---
 
 # yggdryl market data
@@ -150,9 +150,10 @@ Hold these facts:
 | a market-data entry's book control | `event.with_book(BookRef { .. })` | `event.with_book(graph.BookRef(action="new", position=1))` | `event.withBook(new graph.BookRef({ action: 'new', position: 1 }))` |
 | an identifier | `Identifier::new(IdKey::base(IdType::Isin), value)?`, `"ullink:isin".parse::<IdKey>()?`, `Identifiers` | `Identifier(key, value)` - `"isin"`, `"ullink:isin"` - `Identifiers([...])`, `Identifiers.from_dict({...})`, `into_dict()` | `new Identifier(key, value)`, `new Identifiers([...])`, `Identifiers.fromObject({...})`, `intoObject()` |
 | what instruments are known by | `IsinRegistry::from_url(&url, props)?`, `registry.enrich(&mut event)`, `get("CH0012214059")`, `get_by_ticker("HOLN", Some(&mic))`, `commit()?` | `IsinRegistry.from_url(path)`, `registry.get("CH0012214059")` (a `dict`), `get_by_ticker("HOLN", "XSWX")`, `enrich(fix_msg)`, `commit()` | `IsinRegistry.fromUrl(path)`, `registry.get('CH0012214059')` (a plain object), `getByTicker('HOLN', 'XSWX')`, `enrich(fixMsg)`, `commit()` |
+| the process's own registry | `IsinRegistry::from_env()?` (a `&'static Arc<Mutex<IsinRegistry>>`), `IsinRegistry::install_env(registry)?`, `install_env_shared(arc)?` | `IsinRegistry.from_env()`, `IsinRegistry.install_env(registry)` | `IsinRegistry.fromEnv()`, `IsinRegistry.installEnv(registry)` |
 | security, own and party identifiers | `insert_securityid(id)?`, `insert_identifier(id)?`, `insert_partyid(id)?` (Rust-only verbs) | `securityids=[Identifier("isin", ...)]`, `identifiers=[...]`, `partyids=[...]` at build | `securityids: [new Identifier('isin', ...)]`, `identifiers: [...]`, `partyids: [...]` at build |
-| read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&src, &kind)` | `order.securityids.get("isin")`, `get_from(src, type)`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom(src, type)`, `toArray()` |
-| FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
+| read an identifier map | `get_securityids().get(&IdType::Isin)`, `get_from(&"ullink:isin".parse()?)` (an `IdKey`) | `order.securityids.get("isin")`, `get_from("ullink:isin")`, iterate `Identifier`s | `order.securityids.get('isin')`, `getFrom('ullink:isin')`, `toArray()` |
+| FX rates (nothing fills them) | `insert_fxrate(ccy, rate)`, `set_fxrates(map, overwrite)` | `fxrates={"EUR": Decimal("1.1")}` at build | `fxrates: { EUR: '1.1' }` at build |
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
 | merge two statements of one event | `event.merge_with(&other)` | `event.merge_with(other)` | `event.mergeWith(other)` |
@@ -174,9 +175,11 @@ Hold these facts:
 | a named view of a stream | `MarketData::apply_view(&MarketView::Orders, &lifts, reader)?` | `graph.MarketData.apply_view("orders", source, lifts)` | `graph.MarketData.applyView('orders', reader, lifts)` |
 | a view as a plan | `MarketData::plan(&view, &lifts)?` | `graph.MarketData.plan("trades")` | `graph.MarketData.plan('trades')` |
 | FIX to sorted market data / books | `codec.market_data(codec.lifecycle(msgs))`, `codec.book_arrow_reader(msgs, 0, None)?` | `codec.market_data(...)`, `codec.book_arrow_reader(msgs, snapshot_millis=0, filter=None)` | `codec.marketData(..)`, `codec.bookArrowReader(msgs, 0, filter)` |
+| a table of books back as its deltas, `marketdata` rows in book order | `MarketData::deltas_serie(table.read_serie(None)?, Some(MarketDataKind::Execution))?` - any `SerieSource`, `None` every kind - a `SerieReader` | `graph.MarketData.deltas_serie(table.read_serie(), kind="EXEC")`, a native `SerieReader` | `graph.MarketData.deltasSerie(table.readSerie(), 'EXEC')` over a `Serie`, `ChunkedSerie` or `SerieReader` |
 | fold sorted books into candles | `CandleIterator::new(books, CandleOptions::from_spelling("1m")?.with_timezone(zone))` | `graph.candles(books, "1m", timezone=None)`, `graph.CandleIterator(books, graph.CandleOptions("1m", zone))` | `graph.candles(books, '1m', zone)`, `new graph.CandleIterator(books, new graph.CandleOptions('1m', zone))` |
 | a candle's row, and candles as Arrow | `Candle::field()?`, `Candle::arrow_reader(candles, None)?`, `candle.into_scalar()`, `Candle::from_scalar(&value)?` | `graph.Candle.field()`, `candle.into_scalar()`, `candle.as_py()`, `graph.Candle.from_scalar(value)` | `graph.Candle.field()`, `candle.intoScalar()`, `candle.toJSON()`, `graph.Candle.fromScalar(value)` |
 | serve a table of books as the display | `BookService::new(options).with_table(name, holder)`, `Arc::new(service).route(&server, "/")?` (the `http` feature); `yggdryl market serve books=/data/books` | `yggdryl market serve books=/data/books`, the wheel's own command | `book.serve({ tables: 'books=/data/books' })` over the package's `book.js`; `yggdryl market serve` |
+| the command's flags | `yggdryl market serve [TABLE...] --bind 127.0.0.1:8080 --path / --snapshot-millis 0 --capture LOG... --registry config/fix --rowheader REGEX --timezone UTC --max-body 16777216 --trace FOLDER --public-url URL --trusted-proxy IP-or-CIDR... --forwarded-header FIELD... --path-prefix PREFIX --read-timeout 30` - `--rowheader` defaults to the ULBridge log's, `--forwarded-header` to `X-Forwarded-For` and `X-Forwarded-Proto` | the wheel's `yggdryl`, the same flags | `book.serveArguments({ tables, bind, path, capture, args })` - `bind` defaults to the free port `127.0.0.1:0`, every other flag goes in `args` - and `book.serve` over it |
 | a served table's readings without HTTP | `service.tickers("books")?`, `service.candles(&query)?`, `service.book(table, key_or_ticker, at)?`, `service.events(&query)?` | Rust-only | Rust-only |
 
 ## Rules for fast, correct use
@@ -216,9 +219,9 @@ Hold these facts:
    book is yielded where it holds a delta, or at a snapshot tick where it
    holds an entry (a snapshot emptying a book is yielded too, empty and
    complete); an instant that only repeats what the book holds yields none.
-   Depth persists; `deltas` carry only that instant's orders and quotes, in
-   the order applied. A positive `snapshot_millis` adds the complete live book
-   at every crossed epoch-aligned tick.
+   Depth persists; `deltas` carry only that instant's orders, quotes and the
+   executions it recorded, in the order applied. A positive `snapshot_millis`
+   adds the complete live book at every crossed epoch-aligned tick.
 6. A book row nests `deltas` (operation rows, in the order applied) and, on a
    complete book, `alive` and `bidlimits`, `asklimits` (one `Limit` per price
    level, best first: `price`, `quantity`, `uuids`, `tradable`) - null on a
@@ -283,10 +286,12 @@ Hold these facts:
   `FixCodec.market_data`. The walk leaves out, never fails on, a group the
   book refuses; only a source's own failure ends it, and so does a value no
   book folds (the next bullet).
-- A book folds dated orders, dated quotes and snapshot controls. An
-  execution, a trade or a batch is pruned - no error, no book, no instant -
-  and a filter (`with_filter`, `filter=`) narrows what is left, never
-  admitting them back. An undated `Order` or a `BookEvent` is refused - by
+- A book folds dated orders, dated quotes and snapshot controls, and records
+  a dated execution among its instant's deltas, moving no side. A trade, a
+  batch or any other kind is pruned - no error, no book, no instant - by the
+  walk and by `with_operations`/`add_operations` alike, and a filter
+  (`with_filter`, `filter=`) narrows what is left, never admitting them back.
+  An undated `Order` or a `BookEvent` is refused - by
   `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
   at `$.operations[i].kind`. An order or a quote resting on neither the bid
   nor the ask (an order of side `UNKN`, a quote stating no leg, a leg sized zero) is
@@ -322,7 +327,12 @@ Hold these facts:
   stated value fills and replaces whatever the time. The bindings'
   `learn`/`fill`/`enrich` take a `FixMsg`, a FIX lifecycle runs them on every
   message, and a parse fills identifiers from the table its door fixed. Bind
-  one to a store with `from_url` and write it back with `commit()`.
+  one to a store with `from_url` and write it back with `commit()`. The
+  process's own, `from_env()`, resolves once - an `install_env` one, else
+  `YGGDRYL_ISIN_REGISTRY_URI`, else `~/.config/yggdryl/isin/`, else - with no
+  home directory - an empty one bound to nothing - and is what `FixCodec.from_env` attaches; installing
+  after it resolved is a conflict, and only the caller commits it
+  ([The process registry](https://platob.github.io/yggdryl/graph/isin-registry/#the-process-registry)).
 - `MarketData.kind` is `order_event` for a dated order; the leaf's own `kind`
   is `order`; both stand under `marketdatakind` `ORDR`.
 - An order's `price` is what it states, never its last execution and never a
@@ -337,7 +347,7 @@ Hold these facts:
   of no fill - a venue's acknowledgement, cancel, reject or expiry - is its
   order's leaf (its quote's, where it names a `QuoteID(117)`), so a venue
   cancel takes the entry off its book; a filling one is that report plus an
-  `EXEC` leaf, which no book folds.
+  `EXEC` leaf, which moves no side and is recorded among its book's deltas.
 - The lifecycle view needs its chain: `apply_view("lifecycle", source,
   crosscode="10:1:O-1")`; every other view refuses a `crosscode`.
 - Rust's `Limit` value type, the column enums' verbs (`EventColumn::fact`,
@@ -370,6 +380,13 @@ Hold these facts:
   answers (`UTC` first) rather than the runtime's own zone list. A table's
   `url` and every refusal are stated without the location's user
   information and query, so a credential in a location reaches no client.
+- A served table is `name=location`, or a location named after its last
+  segment: an Iceberg table folder, an S3 Tables table
+  (`s3tables://<bucket>/<namespace>/<table>`, which the wheel's command
+  reads), a record leaf (`.arrows`, `.parquet`, `.avro`, `.csv`) or a
+  partitioned folder; two tables of one name are refused. Every request is
+  one filtered read of it, nothing cached
+  ([The command](https://platob.github.io/yggdryl/graph/serve/#the-command)).
 - `yggdryl market serve --capture` appends the capture's books to the first
   table every time it runs: prepare the table once, then serve it without the
   capture. The Iceberg table it makes of an absent folder needs the `iceberg`
@@ -397,14 +414,15 @@ Read the one for the language you write; recipes appear in the same order in eac
 - Event (instants, following, merging, the walk): https://platob.github.io/yggdryl/graph/event/
 - Market facts, fill or overwrite, order quantities, security identifiers: https://platob.github.io/yggdryl/graph/market/
 - `Identifier` and `Identifiers`, the `IdType`/`IdSource` vocabularies, parentage, FIX party naming: https://platob.github.io/yggdryl/graph/identifier/
+- `IsinRegistry` - the update rule, persistence, the process registry: https://platob.github.io/yggdryl/graph/isin-registry/
 - The three row schemas, column by column: https://platob.github.io/yggdryl/graph/schemas/
 - Operation facts, identifiers and party ids: https://platob.github.io/yggdryl/graph/operation/
 - Order, quote, execution leaves and book control: https://platob.github.io/yggdryl/graph/order/
 - Trade: https://platob.github.io/yggdryl/graph/trade/
 - Book, limits, snapshots, the fold: https://platob.github.io/yggdryl/graph/book/
-- `MarketData`, columns, Arrow row, views: https://platob.github.io/yggdryl/graph/market-data/
+- `MarketData`, columns, Arrow row, views, the deltas of a table of books: https://platob.github.io/yggdryl/graph/market-data/
 - Candles, buckets and zones, the candle row: https://platob.github.io/yggdryl/graph/candle/
-- The book display, `yggdryl market serve`, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
+- The book display, `yggdryl market serve` and every flag, the routes, the components: https://platob.github.io/yggdryl/graph/serve/
 - `Side`, `MarketDataKind`, `MarketDataType` and `TimeInForce`: https://platob.github.io/yggdryl/types/enum/
 - Sibling skills: `yggdryl-fix` (FIX captures into market data and books),
   `yggdryl-expressions` (the `Plan` a view is), `yggdryl-records` (persisting

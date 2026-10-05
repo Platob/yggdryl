@@ -660,6 +660,80 @@ let batches = first.pages().into_arrow_reader(None, 0)?.collect::<Result<Vec<_>,
 assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2, 1]);
 ```
 
+## Serve a handle over HTTP, behind a proxy
+
+`mount` serves any `Holder` under a prefix - a leaf streamed with ranges and
+validators, a container as a JSON listing, `PUT`/`DELETE` as writes.
+`ServerOptions` bounds what a peer can hold, `with_trace` keeps every exchange
+as `message/http` documents, and the four proxy options say what the server
+may believe. A route's streamed body (`Response::with_writer`) and the
+forwarding rules are at https://platob.github.io/yggdryl/holder/#serving-a-handle
+and https://platob.github.io/yggdryl/holder/#behind-a-reverse-proxy.
+
+```rust
+use std::time::Duration;
+
+use yggdryl::Url;
+use yggdryl::holder::Holder;
+use yggdryl::http::{self, ForwardedHeader, Method, Request, Server, ServerOptions};
+use yggdryl::local::LocalFolder;
+
+let root = LocalFolder::temporary()?
+    .path()?
+    .join(format!("ygg-skill-serve-{}", std::process::id()));
+let _ = std::fs::remove_dir_all(&root);
+std::fs::create_dir_all(root.join("lake"))?;
+std::fs::write(root.join("lake/rows.csv"), b"symbol,price\nAAPL,1\n")?;
+
+// Production binds "0.0.0.0:8080"; the bounds hold against peers it does not trust.
+let options = ServerOptions::default()
+    .with_max_connections(256)
+    .with_read_timeout(Duration::from_secs(75))
+    .with_max_body_size(64 << 20)
+    // Every exchange as `NNNN-request.http` and `NNNN-response.http`.
+    .with_trace(Holder::folder(root.join("trace"))?)
+    // Behind a proxy on 10.0.0.0/8 answering `https://data.example.com/olap/...`.
+    .with_public_url(Url::from_str("https://data.example.com/olap")?)
+    .with_trusted_proxies(["10.0.0.0/8"])?
+    .with_forwarded_headers([
+        ForwardedHeader::XForwardedFor,
+        ForwardedHeader::XForwardedProto,
+    ])
+    .with_path_prefix("/olap")?;
+let server = Server::bind_with("127.0.0.1:0", options)?;
+server.mount("/data", Holder::folder(root.join("lake"))?)?;
+
+// The prefix comes off before routing; a listing states the public URLs.
+let listing = http::get(&server.url_of("/olap/data")?.to_string())?.text()?;
+assert!(listing.contains(r#""url":"https://data.example.com/olap/data/rows.csv""#));
+assert_eq!(
+    http::get(&server.url_of("/olap/data/rows.csv")?.to_string())?.text()?,
+    "symbol,price\nAAPL,1\n"
+);
+assert_eq!(
+    server.public_url_of("/data/rows.csv")?.to_string(),
+    "https://data.example.com/olap/data/rows.csv"
+);
+let routed: Vec<String> = server
+    .requests()
+    .into_iter()
+    .map(|sent| sent.path)
+    .collect();
+assert_eq!(routed, ["/data", "/data/rows.csv"]);
+
+// A request's trace file is whole once the request is read: one `message/http` document.
+let traced = Request::from_bytes(&std::fs::read(root.join("trace/0000-request.http"))?)?;
+assert_eq!(traced.method(), Method::Get);
+assert_eq!(
+    traced.url().to_string(),
+    server.url_of("/olap/data")?.to_string()
+);
+
+server.shutdown()?;
+// A connection thread may still be appending the last answer to its trace.
+let _ = std::fs::remove_dir_all(&root);
+```
+
 ## Gotchas in Rust
 
 - `IOBase` must be in scope (`use yggdryl::IOBase;`) for any byte method,
@@ -695,3 +769,8 @@ assert_eq!(batches.iter().map(|batch| batch.num_rows()).collect::<Vec<_>>(), [2,
   was built with; build the client with it (`Client::with_options`).
 - `request.send()` holds the body (up to `max_body_size`); `request.stream()`
   leaves it on the wire as a `Response` whose reads resume a cut transfer.
+- A long-running `Server` records the newest `Server::MAX_RECORDED` (65 536)
+  requests for `requests()`; `ServerOptions::with_recording(false)` keeps
+  only `request_count()`. `bind_with` refuses a timeout past
+  `ServerOptions::MAX_TIMEOUT` (a day) and a `public_url` carrying a query,
+  a fragment or user information.

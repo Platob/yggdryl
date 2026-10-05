@@ -323,8 +323,9 @@ with tempfile.TemporaryDirectory() as directory:
 
 `graph.BookIterator(items, snapshot_millis=0, filter=None)` folds sorted
 orders and quotes into one `BookEvent` per instant and book key that moved it -
-the instrument's ISIN, else its ticker, else `XX0000000000` - pruning every
-execution and trade. A book is complete (`is_complete`) only at a snapshot
+the instrument's ISIN, else its ticker, else `XX0000000000` - recording each
+execution among its instant's deltas, moving no side, and pruning every
+trade. A book is complete (`is_complete`) only at a snapshot
 tick; every other book states its deltas alone beside the top of book they
 settled on, and `with_previous` over the complete book before it rebuilds it
 whole. `filter` - a predicate over the `marketdata` row - narrows what folds.
@@ -505,7 +506,7 @@ assert chain.column("crosscode").to_pylist() == ["10:1:O-1001"]
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry recorded as the execution it is - and
 `MarketData.from_arrow_reader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -534,6 +535,39 @@ best = last.best_price(Side.BUYS)
 assert best is not None and best.as_py() == Decimal(101)
 # The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
 assert not last.is_complete and len(last.deltas) == 2
+```
+
+## Read a table of books back as its deltas
+
+`graph.MarketData.deltas_serie(source, kind=None)` lays the deltas of every
+book a source holds back out as `marketdata` rows in book order - every kind,
+or the one `kind` names - as a native `SerieReader` pulled with the books: how
+a stage reads a window's orders, quotes or executions out of a table of
+books. The source is anything `read_serie` answers or `SerieReader.from_`
+reads.
+
+```python
+import pathlib
+import tempfile
+from decimal import Decimal
+
+from yggdryl import IOBase, graph
+
+T = 1_700_000_000_000_000_000
+bid = graph.OrderEvent(T, crosscode="B-1", ticker="AAPL", side="BUYS", price=Decimal("189"), quantity=100)
+fill = graph.ExecutionEvent(T + 1, crosscode="E-1", ticker="AAPL", side="BUYS", lastqty=100)
+
+with tempfile.TemporaryDirectory() as directory:
+    # A table of books: one per instant, the execution recorded in the second.
+    table = IOBase(pathlib.Path(directory) / "books.arrows")
+    table.overwrite_arrow_reader(graph.MarketData.arrow_reader(graph.BookIterator([bid, fill])))
+
+    def deltas(kind: str | None = None) -> list[str]:
+        rows = graph.MarketData.deltas_serie(table.read_serie(), kind)
+        return [value.crosscode for value in graph.MarketData.from_arrow_reader(rows)]
+
+    assert deltas() == ["10:1:B-1", "8:1:E-1"]
+    assert deltas("EXEC") == ["8:1:E-1"]
 ```
 
 ## Fold books into candles
@@ -605,6 +639,25 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
     graph.candles([stream[0]], "1m")
 ```
 
+## Serve a table of books
+
+The display has no Python class: the wheel ships the `yggdryl` command, and
+`yggdryl market serve` serves any table of books - one written as above, an
+Iceberg folder, `s3tables://<bucket>/<namespace>/<table>`, a `.arrows`,
+`.parquet`, `.avro` or `.csv` leaf, a partitioned folder - printing its
+endpoint first ([the command](https://platob.github.io/yggdryl/graph/serve/#the-command)).
+
+```bash
+# name=location, or a location named after its last segment; port 0 takes a free one.
+yggdryl market serve books=/data/books.arrows --bind 127.0.0.1:0 --path /book
+# Fold FIX bridge logs into the first table once (it appends), on a 1 s grid.
+yggdryl market serve books=/data/books --capture bridge.log --registry /etc/fix \
+  --timezone Europe/Zurich --snapshot-millis 1000
+# Behind a reverse proxy.
+yggdryl market serve books=/data/books --public-url https://data.example.com/book \
+  --trusted-proxy 10.0.0.0/8 --path-prefix /book
+```
+
 ## Gotchas in Python
 
 - Seconds or milliseconds where nanoseconds are expected land in 1970; build
@@ -635,8 +688,9 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
 - Every verb answers a new value: `book.with_operations([...])` does not change
   `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
 - A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
-  `with_operations` at `$.operations[i].kind`; an execution or a trade is
-  pruned, no error and no book. What `BookIterator` finds wrong in the data -
+  `with_operations` at `$.operations[i].kind`; an execution is recorded among
+  its instant's deltas, moving no side, and a trade is pruned, no error and no
+  book. What `BookIterator` finds wrong in the data -
   an operation dated before its book - it leaves out, and an order or a quote
   stating neither side it places nowhere (still the book's delta), each with a
   `logging` warning under `yggdryl.graph.book`, and no error.
@@ -655,6 +709,8 @@ with pytest.raises(TypeError, match=r"expected book_event, got quote_event"):
   `imbalance` take arguments.
 - Identifier verbs (`insert_securityid`, `insert_identifier`, `insert_partyid`, ...)
   are Rust-only: state `securityids=`, `identifiers=` and `partyids=` - a list of
-  `Identifier` or an `Identifiers` - when you build. A dict is no identifier
-  map: build each `Identifier(src, type, value)`, or `Identifier.from_key(key,
-  value)` from a full `src:type` key.
+  `Identifier` or an `Identifiers` - when you build. Build each
+  `Identifier(key, value)` from its `src:type` key (`"ullink:isin"`), a map
+  from a `dict` with `Identifiers.from_dict({...})`, and an identifier from a
+  bridge's own name with `Identifier.from_key("OMS_InstrumentID", value)`,
+  which answers `None` where the name names none.

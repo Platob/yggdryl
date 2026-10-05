@@ -104,7 +104,9 @@ assert_eq!(field.as_fix().tag()?, Some(38));
 ## Decode one captured line
 
 `parse_line` takes a whole captured line - verb, prose and remarks included - and
-answers a lazy iterator of every message it carries.
+answers a lazy iterator of every message it carries; `parse_fix_line`,
+`parse_fixml_line`, `parse_ullink_line` and `parse_pairs` take one body of
+their dialect, or pairs already split, and answer that one message as stated.
 
 ```rust
 use std::sync::Arc;
@@ -128,6 +130,12 @@ assert_eq!(codec.parse_line(both)?.count(), 2);
 assert!(codec.parse_line(b"After Enrichment -> ACCOUNT=A1 SIDE=1")?.next().is_none());
 // The single-frame door refuses a body holding a second frame.
 assert!(codec.parse_fix_line(both).is_err());
+
+// One FIXML row, or pairs a caller already split: one message each, nothing split off.
+let fixml = codec.parse_fixml_line(br#"<Order ClOrdID="XML-1" Side="1"/>"#)?;
+assert_eq!(fixml.by_tag(11)?.as_str(), Some("XML-1"));
+let pairs = codec.parse_pairs([(b"35".as_slice(), b"D".as_slice()), (b"55", b"AAPL")])?;
+assert_eq!(pairs.by_tag(55)?.as_str(), Some("AAPL"));
 ```
 
 ## Read only the message types you need
@@ -610,9 +618,11 @@ assert!(ack.market_data()?.is_empty());
 `market_data` admits orders, quotes, executions and `W`/`X` book messages - a
 trade as the executions its parse split off - reads each as its one graph
 leaf (a book message one per entry) and sorts them by the instant a book folds
-them at; `BookIterator` then walks them, pruning the executions.
-`book_arrow_reader` folds the same messages into book rows, one book per book
-key, and takes a `Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in front when predecessor state matters.
+them at; `BookIterator` then walks them, recording each execution among its
+book's deltas, moving no side. `book_arrow_reader` folds the same messages into
+book rows, one book per book key, pruning trades and batches, and takes a
+`Filter` over the `marketdata` row to narrow what folds. Compose `lifecycle` in
+front when predecessor state matters.
 `market_arrow_reader` writes the sorted leaves as `marketdata` rows, and
 `market_data_arrow_reader` is its twin over batches of FIX rows already in
 Arrow.
@@ -622,7 +632,7 @@ use std::sync::Arc;
 
 use yggdryl::graph::{BookIterator, MarketData, MarketKind};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, fix_schema};
+use yggdryl::{Filter, FixCodec, FixMsg, FixRegistry, MarketDataKind, Side, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
@@ -645,6 +655,10 @@ assert_eq!(books[1].best_price(Side::Buy).map(|price| price.to_string()).as_dere
 // The book door does not sort: the same capture out of order is no error - the
 // snapshot dated before the book it would fold into is left out, with a warning.
 assert!(codec.book_arrow_reader(capture.clone(), 0, None)?.all(|batch| batch.is_ok()));
+// A filter narrows what folds: the executions alone fold the book of their instant.
+let executions: Filter = "marketdatakind = 'EXEC'".parse()?;
+let rows: usize = codec.book_arrow_reader(capture.clone(), 0, Some(&executions))?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
+assert_eq!(rows, 1);
 // The sorted leaves as `marketdata` rows.
 let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
@@ -652,6 +666,53 @@ assert_eq!(rows, 4);
 let fixed = codec.arrow_reader(fix_schema(&registry, "fix")?, capture)?;
 let rows: usize = codec.market_data_arrow_reader(fixed)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
+```
+
+## Keep a capture on series, table to table
+
+Each Arrow door but `format_arrow_reader` and `write_arrow_reader` has a serie
+face: `parse_text_serie`, `lifecycle_serie`, `market_data_serie` and
+`messages_serie` take any `SerieSource` - the `SerieReader` a handle's
+`read_serie` answers, a `Serie`, a `ChunkedSerie` - and `serie_reader`,
+`book_serie` and `market_serie` take messages. Each answers a `SerieReader`,
+which a table's `overwrite_serie` / `append_serie` takes as the door's own
+reader, so no row is cast or copied between stages
+([serie faces](https://platob.github.io/yggdryl/fix/arrow/#serie-faces)).
+
+```rust
+use std::sync::Arc;
+
+use yggdryl::graph::MarketData;
+use yggdryl::holder::Buffer;
+use yggdryl::local::LocalFolder;
+use yggdryl::media::RecordOptions;
+use yggdryl::text::TextOptions;
+use yggdryl::{FixCodec, FixMsg, FixRegistry, IOMedia as _, MimeType, Timezone, Url};
+
+let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
+
+let log = b"2026-01-02 10:15:30.250 IN  8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|10=0|\n\
+2026-01-02 10:15:30.500 OUT 8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|10=0|\n";
+let text = Buffer::from_bytes(log.to_vec()).with_media_type(Url::from_str("file:///session.log")?.media_type());
+let options = RecordOptions::from(
+    TextOptions::new()
+        .try_with_rowheader(r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?P<level>IN|OUT) +")?
+        .with_timezone(Timezone::UTC),
+);
+
+// Text rows in, walked FIX rows out: one `SerieReader` to the next.
+let walked = codec.lifecycle_serie(codec.parse_text_serie(text.read_serie(Some(&options))?)?)?;
+assert!(walked.field().index_of("level").is_some(), "the capture's columns ride along");
+
+// The door's own reader is what a table's write takes.
+let mut table = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+assert_eq!(table.overwrite_serie(walked.into(), None)?.written_rows, 2);
+
+// Read back, the rows are messages again, which the book faces fold.
+let messages: Vec<FixMsg> = codec.messages_serie(table.read_serie(None)?)?.collect::<yggdryl::Result<_>>()?;
+assert_eq!(messages.len(), 2);
+assert_eq!(codec.book_serie(messages, 0, None)?.field(), &MarketData::field()?);
 ```
 
 ## Build and commit a dictionary

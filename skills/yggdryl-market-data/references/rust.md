@@ -390,7 +390,8 @@ assert_eq!(read, values);
 
 `BookIterator` folds sorted orders and quotes into one `BookEvent` per
 instant and book key that moved it - the instrument's ISIN, else its ticker,
-else `XX0000000000` - pruning every execution and trade. A book is complete
+else `XX0000000000` - recording each execution among its instant's deltas,
+moving no side, and pruning every trade. A book is complete
 (`is_complete`) only at a snapshot tick; every other book states its deltas
 alone beside the top of book they settled on, and `with_previous` over the
 complete book before it rebuilds it whole. A filter over the `marketdata` row
@@ -603,7 +604,7 @@ assert_eq!(rows(MarketData::apply_view(&lifecycle, &[], stream()?)?.collect::<Re
 
 A FIX capture reaches the graph through the codec: `lifecycle` settles each
 message, `book_arrow_reader` folds sorted messages into book rows - orders,
-quotes and `W`/`X` entries, a trade entry pruned - and
+quotes and `W`/`X` entries, a trade entry recorded as the execution it is - and
 `MarketData::from_arrow_reader` reads the books back. A `W` full refresh is a
 snapshot input, so its book is complete; the `X` after it states its delta.
 
@@ -634,6 +635,49 @@ assert_eq!(last.best_price(Side::Buy).map(|price| price.to_string()).as_deref(),
 // The bid's change and the trade entry (`269=2`), recorded as the execution it is, are the deltas.
 assert!(!last.is_complete());
 assert_eq!(last.deltas().len(), 2);
+```
+
+## Read a table of books back as its deltas
+
+`MarketData::deltas_serie` lays the deltas of every book a source holds back
+out as `marketdata` rows in book order - every kind, or the one named - as a
+`SerieReader` pulled with the books: how a stage reads a window's orders,
+quotes or executions out of a table of books. The source is any
+`SerieSource`, here a table's `read_serie`.
+
+```rust
+use yggdryl::graph::{BookIterator, Element, ExecutionEvent, Market, MarketData, OrderEvent};
+use yggdryl::holder::Buffer;
+use yggdryl::{Decimal, IOBase, IOMedia, MarketDataKind, MimeType, Side};
+
+const T: i64 = 1_700_000_000_000_000_000;
+let mut bid = OrderEvent::at(T);
+bid.set_crosscode("B-1".to_owned());
+bid.set_ticker(Some("AAPL".into()), true);
+bid.set_side(Side::Buy, true);
+bid.set_price(Some(Decimal::from_int(189)), true);
+bid.set_quantity(Some(Decimal::from_int(100)), true);
+bid.finalize();
+let mut fill = ExecutionEvent::at(T + 1);
+fill.set_crosscode("E-1".to_owned());
+fill.set_ticker(Some("AAPL".into()), true);
+fill.set_side(Side::Buy, true);
+fill.set_lastqty(Some(Decimal::from_int(100)), true);
+fill.finalize();
+
+// A table of books: one per instant, the execution recorded in the second.
+let books = BookIterator::new(vec![MarketData::from(bid), MarketData::from(fill)].into_iter(), 0)?
+    .map(|book| book.map(MarketData::from));
+let mut table = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+let options = table.record_options()?;
+table.overwrite_arrow_reader(MarketData::arrow_reader(books, None, None)?, &options)?;
+
+let deltas = |kind: Option<MarketDataKind>| -> yggdryl::Result<Vec<MarketData>> {
+    let rows = MarketData::deltas_serie(table.read_serie(None)?, kind)?;
+    MarketData::from_arrow_reader(rows.into_arrow_reader())?.collect()
+};
+assert_eq!(deltas(None)?.iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["10:1:B-1", "8:1:E-1"]);
+assert_eq!(deltas(Some(MarketDataKind::Execution))?.iter().map(Element::get_crosscode).collect::<Vec<_>>(), ["8:1:E-1"]);
 ```
 
 ## Fold books into candles
@@ -710,7 +754,9 @@ candles of a key over a range, the book at an instant rebuilt whole, the audit
 of every alive entry and delta - and every reading is a method, so a program
 asks without HTTP what the display's routes answer. A `ticker` argument names
 a key, else the ticker one key's books state. `yggdryl market serve` is the
-same service with the display in front of it.
+same service with the display in front of it, over any location
+`Holder::from_url` reads books from
+([its flags](https://platob.github.io/yggdryl/graph/serve/#the-command)).
 
 ```rust
 use std::sync::Arc;
@@ -802,9 +848,11 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   `Result<BookEvent>`; `with_filter(filter)` binds an expression over the
   `marketdata` row once, refusing a column the row does not carry. An `Err`
   item is a source's own failure or a value no book folds (an undated order, a
-  `BookEvent`); every input `MarketDataKind::is_booked` refuses - an
-  execution, a trade, a batch - is pruned in silence. An operation dated before
-  its book and a group the book refuses are left out with a `log` warning, and
+  `BookEvent`); an execution is recorded among its instant's deltas, moving
+  no side, and every input `MarketDataKind::is_recorded` does not admit - a
+  trade, a batch - is pruned in silence, as `add_operations` prunes it. An
+  operation dated before its book and a group the book refuses are left out
+  with a `log` warning, and
   an order or a quote resting on neither side is placed nowhere with one, yet
   still counts as the book's delta.
 - A book from a walk is complete only at a snapshot tick: test
@@ -821,7 +869,8 @@ assert_eq!(error.as_struct().and_then(|body| body["error"].as_str()), Some("expe
   derivation that outranks it stands; `insert_identifier`, `insert_partyid` and `insert_fxrate` fill
   an absent key (a target) only, a named source filling its type's base key;
   `set_securityids`, `set_identifiers` and `set_partyids` replace the whole map
-  under `overwrite` and fill without it, `set_fxrates` replaces the map;
+  under `overwrite` and fill without it, `set_fxrates` replaces the map
+  under `overwrite` and fills only the targets it lacks without it;
   `remove_securityid(&IdKey::base(IdType::Isin))` removes the type and takes
   every `derived` identifier back. `Identifier::new(key, value)` takes an
   `IdKey` - `IdKey::base(kind)`, `"oms:clordid".parse()?` - and refuses a value
