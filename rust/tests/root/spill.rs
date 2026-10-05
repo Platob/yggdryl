@@ -424,7 +424,6 @@ mod internal {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_spill_file_is_gone_from_its_folder_while_it_is_mapped() -> yggdryl::Result<()> {
         let dir = std::env::temp_dir().join(format!("yggdryl-spill-test-{}", std::process::id()));
